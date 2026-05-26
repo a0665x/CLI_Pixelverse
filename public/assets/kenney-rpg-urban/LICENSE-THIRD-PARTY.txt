@@ -1,0 +1,6 @@
+Kenney RPG Urban Pack
+Source: https://kenney.nl/assets/rpg-urban-pack
+Downloaded from: https://kenney.nl/media/pages/assets/rpg-urban-pack/0a097d1dc7-1677578575/kenney_rpg-urban-pack.zip
+License: Creative Commons CC0
+
+This project integrates selected PNG tiles and character sprites from the pack for local UI visualization.

@@ -1,0 +1,13 @@
+.git
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+.pixelverse-service
+.spec
+.agents
+.codex
+node_modules
+npm-debug.log
+Dockerfile
+docker-compose.yml
