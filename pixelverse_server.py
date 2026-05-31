@@ -29,11 +29,15 @@ import httpx
 ROOT = Path(__file__).resolve().parent
 PUBLIC_DIR = ROOT / "public"
 INDEX_HTML = PUBLIC_DIR / "index.html"
+RUNTIME_DIR = Path(os.getenv("PIXELVERSE_RUNTIME_DIR", str(ROOT / "runtime"))).expanduser()
+RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
+FURNITURE_LAYOUT_FILE = RUNTIME_DIR / "furniture_layout_overrides.json"
 HOST = os.getenv("PIXELVERSE_HOST", "0.0.0.0")
 PORT = int(os.getenv("PIXELVERSE_PORT", "4321"))
 AGENT_KIND = os.getenv("PIXELVERSE_AGENT_KIND", "hermes").strip().lower() or "hermes"
 STALE_AFTER_SECONDS = int(os.getenv("PIXELVERSE_STALE_AFTER", "45"))
 IDLE_DECAY_SECONDS = int(os.getenv("PIXELVERSE_IDLE_DECAY", "12"))
+ACTIVE_EVENT_HOLD_SECONDS = float(os.getenv("PIXELVERSE_ACTIVE_EVENT_HOLD", "8"))
 HERMES_WEB_BASE = os.getenv("PIXELVERSE_HERMES_WEB_BASE", "http://127.0.0.1:9119").rstrip("/")
 HERMES_GATEWAY_HEALTH = os.getenv("PIXELVERSE_HERMES_GATEWAY_HEALTH", "http://127.0.0.1:8642/health/detailed")
 HERMES_API_TOKEN = os.getenv("PIXELVERSE_HERMES_API_TOKEN", "")
@@ -46,6 +50,15 @@ HERMES_REPO = Path(
 HERMES_POLL_SECONDS = float(os.getenv("PIXELVERSE_HERMES_POLL_SECONDS", "2.0"))
 OLLAMA_BASE = os.getenv("PIXELVERSE_OLLAMA_BASE", "http://127.0.0.1:11434").rstrip("/")
 OLLAMA_POLL_SECONDS = float(os.getenv("PIXELVERSE_OLLAMA_POLL_SECONDS", "2.0"))
+
+
+def env_flag(value: str | None, *, default: bool = False) -> bool:
+    if value is None:
+        return default
+    return str(value).strip().lower() in {"1", "true", "yes", "on", "auto"}
+
+
+HERMES_SOURCE_ENABLED = env_flag(os.getenv("PIXELVERSE_HERMES_ENABLE", "auto"), default=True)
 
 TOOL_DISPLAY: dict[str, dict[str, str]] = {
     "search_files": {"label": "搜尋檔案", "icon": "🔎"},
@@ -69,9 +82,31 @@ STATUS_LABELS = {
     "thinking": "思考中",
     "planning": "規劃中",
     "working": "執行中",
+    "blocked": "受阻",
+    "self_healing": "自我修復中",
+    "awaiting_input": "等待輸入",
+    "initializing": "初始化中",
+    "sleeping": "休眠中",
     "running": "執行中",
     "completed": "已完成",
     "failed": "失敗",
+    "offline": "離線",
+}
+
+PIXEL_STATE_LABELS = {
+    "idle": "待命",
+    "thinking": "思考",
+    "planning": "規劃",
+    "collaborating": "分身討論",
+    "invoking_skill": "技能調用",
+    "tool_call": "工具調用",
+    "executing": "代碼執行",
+    "responding": "輸出響應",
+    "blocked": "阻礙 / 報錯",
+    "self_healing": "自我修復",
+    "awaiting_input": "等待輸入",
+    "initializing": "初始化",
+    "sleeping": "休眠 / 節能",
     "offline": "離線",
 }
 
@@ -123,6 +158,58 @@ def trim_text(value: str | None, limit: int = 80) -> str | None:
     return value if len(value) <= limit else value[: limit - 1] + "…"
 
 
+def _sanitize_layout_value(value: Any, fallback: float = 50.0) -> float:
+    try:
+        num = float(value)
+    except Exception:
+        num = fallback
+    return round(max(6.0, min(94.0, num)), 2)
+
+
+def normalize_furniture_layout(layout: Any) -> dict[str, list[dict[str, float]]]:
+    if not isinstance(layout, dict):
+        return {}
+    normalized: dict[str, list[dict[str, float]]] = {}
+    for room_key, positions in layout.items():
+        if room_key not in ROOM_DISPLAY or room_key == "offline_corner" or not isinstance(positions, list):
+            continue
+        normalized[room_key] = [
+            {
+                "x": _sanitize_layout_value((item or {}).get("x")),
+                "y": _sanitize_layout_value((item or {}).get("y")),
+            }
+            for item in positions
+            if isinstance(item, dict)
+        ]
+    return normalized
+
+
+def furniture_layout_has_overlaps(layout: dict[str, list[dict[str, float]]], min_gap: float = 4.0) -> bool:
+    for positions in layout.values():
+        for index, left in enumerate(positions):
+            for right in positions[index + 1:]:
+                if abs(left["x"] - right["x"]) < min_gap and abs(left["y"] - right["y"]) < min_gap:
+                    return True
+    return False
+
+
+def load_furniture_layout() -> dict[str, list[dict[str, float]]]:
+    if not FURNITURE_LAYOUT_FILE.exists():
+        return {}
+    try:
+        return normalize_furniture_layout(json.loads(FURNITURE_LAYOUT_FILE.read_text(encoding="utf-8")))
+    except Exception:
+        return {}
+
+
+def save_furniture_layout(layout: Any) -> dict[str, list[dict[str, float]]]:
+    normalized = normalize_furniture_layout(layout)
+    if furniture_layout_has_overlaps(normalized):
+        raise ValueError("furniture layout contains overlapping positions")
+    FURNITURE_LAYOUT_FILE.write_text(json.dumps(normalized, ensure_ascii=False, indent=2), encoding="utf-8")
+    return normalized
+
+
 def humanize_tool_name(tool_name: str | None) -> dict[str, str]:
     name = (tool_name or "").strip()
     if not name:
@@ -154,7 +241,7 @@ def humanize_task_summary(task: str | None) -> str:
 
 def normalize_state(state: str | None) -> str:
     raw = (state or "idle").lower()
-    if raw in {"running", "working", "busy"}:
+    if raw in {"running", "working", "busy", "collaborating", "invoking_skill", "tool_call", "executing", "coding", "responding"}:
         return "working"
     if raw in {"thinking"}:
         return "thinking"
@@ -162,9 +249,59 @@ def normalize_state(state: str | None) -> str:
         return "planning"
     if raw in {"completed", "done", "success"}:
         return "idle"
-    if raw in {"failed", "error", "offline"}:
+    if raw in {"blocked", "failed", "error"}:
+        return "blocked"
+    if raw in {"self_healing", "self-healing", "recovering", "recovery"}:
+        return "self_healing"
+    if raw in {"awaiting_input", "awaiting-input", "waiting_input", "human_input"}:
+        return "awaiting_input"
+    if raw in {"initializing", "starting", "booting"}:
+        return "initializing"
+    if raw in {"sleeping", "sleep", "cold_start", "cold-start"}:
+        return "sleeping"
+    if raw in {"offline"}:
         return "offline"
     return "idle"
+
+def infer_pixel_state(state: str | None, task: str | None = None, action: dict[str, Any] | None = None) -> str:
+    raw_state = (state or "idle").strip().lower()
+    action = action or {}
+    text = " ".join(
+        str(value)
+        for value in (
+            raw_state,
+            task,
+            action.get("event_name"),
+            action.get("tool_name"),
+            " ".join(action.get("tool_names") or []),
+            action.get("message"),
+        )
+        if value
+    ).lower()
+    if raw_state in PIXEL_STATE_LABELS and raw_state != "working":
+        return raw_state
+    if _contains_any(text, ("awaiting_input", "human_input", "approval", "confirm", "等待輸入", "確認")):
+        return "awaiting_input"
+    if _contains_any(text, ("self_heal", "recover", "traceback", "修復", "自癒")):
+        return "self_healing"
+    if _contains_any(text, ("blocked", "failed", "error", "exception", "報錯", "失敗")):
+        return "blocked"
+    if _contains_any(text, ("initializing", "starting", "boot", "setup", "初始化")):
+        return "initializing"
+    if _contains_any(text, ("sleep", "cold_start", "休眠", "節能")):
+        return "sleeping"
+    if _contains_any(text, ("collaborat", "multi-agent", "delegate", "subagent", "分身", "協同")):
+        return "collaborating"
+    if _contains_any(text, ("skill", "技能")):
+        return "invoking_skill"
+    if _contains_any(text, ("respond", "reply", "stream", "draft", "回覆", "輸出")):
+        return "responding"
+    if _contains_any(text, ("execute", "coding", "code", "terminal", "patch", "write_file", "執行", "代碼", "終端機", "修改")):
+        return "executing"
+    if action.get("tool_name") or action.get("tool_names") or _contains_any(text, ("tool", "mcp", "browser", "read_file", "search_files", "工具")):
+        return "tool_call"
+    normalized = normalize_state(raw_state)
+    return normalized if normalized in PIXEL_STATE_LABELS else "idle"
 
 
 def classify_room(
@@ -175,16 +312,30 @@ def classify_room(
     room_hint: str | None = None,
 ) -> dict[str, str]:
     normalized = normalize_state(state)
+    raw_state = (state or "").strip().lower()
     text = (task or "").lower()
     hint = (room_hint or "").strip()
-    if normalized == "offline":
+    pixel_state = infer_pixel_state(state, task)
+    if normalized in {"offline", "blocked"}:
         key = "offline_corner"
+    elif normalized == "self_healing":
+        key = "tool_forge"
+    elif normalized in {"awaiting_input", "sleeping"}:
+        key = "standby_dock"
+    elif normalized == "initializing":
+        key = "clone_bay"
     elif hint in ROOM_DISPLAY and hint != "offline_corner":
         key = hint
     elif role == "subagent":
         key = "clone_bay"
     elif role == "branch_session":
         key = "session_archive"
+    elif raw_state == "collaborating":
+        key = "clone_bay"
+    elif raw_state in {"invoking_skill", "tool_call", "executing", "coding"}:
+        key = "tool_forge"
+    elif raw_state == "responding":
+        key = "response_studio"
     elif normalized == "planning":
         key = "blueprint_lab"
     elif normalized == "thinking":
@@ -273,6 +424,7 @@ class AgentState:
     name: str
     role: str = "main_agent"
     state: str = "idle"
+    pixel_state: str = "idle"
     energy: float = 1.0
     color: str = "#CD7F32"
     task: str | None = None
@@ -285,11 +437,53 @@ class AgentState:
     last_action_at: float = field(default_factory=now_ts)
     last_action_type: str | None = None
     room_key_hint: str | None = None
+    source_placeholder: bool = False
+    process_id: int | None = None
+    instance_name: str | None = None
+
+    def latest_recent_action(self) -> dict[str, Any] | None:
+        if not self.recent_actions:
+            return None
+        latest = self.recent_actions[0] or {}
+        if now_ts() - (latest.get("time", 0) / 1000) > ACTIVE_EVENT_HOLD_SECONDS:
+            return None
+        return latest
+
+    def held_active_state(self) -> str | None:
+        latest = self.latest_recent_action()
+        if not latest:
+            return None
+        latest_state = normalize_state(latest.get("state")) if latest.get("state") else infer_state_from_text(latest.get("message"), fallback="idle")
+        if latest_state not in {"thinking", "planning", "working"}:
+            return None
+        if latest.get("type") not in {"thought", "tool", "status"}:
+            return None
+        if latest.get("type") == "status" and latest_state == "idle":
+            return None
+        return latest_state
+
+    def effective_room_hint(self, effective_state: str | None = None) -> str | None:
+        state = normalize_state(effective_state or self.state)
+        if state == "idle":
+            held_state = self.held_active_state()
+            latest = self.latest_recent_action()
+            if held_state and latest:
+                return latest.get("target_room") or latest.get("room_key") or self.room_key_hint
+            return None
+        latest = self.latest_recent_action()
+        if latest and latest.get("target_room") in ROOM_DISPLAY:
+            return latest.get("target_room")
+        if latest and latest.get("room_key") in ROOM_DISPLAY:
+            return latest.get("room_key")
+        return self.room_key_hint
 
     def effective_state(self) -> str:
         state = normalize_state(self.state)
         task = trim_text(self.task, 60)
         recent_text = (self.recent_actions[0].get("message") if self.recent_actions else "") or ""
+        held_state = self.held_active_state()
+        if state == "idle" and held_state:
+            return held_state
         if state in {"thinking", "planning", "working"} and not task and now_ts() - self.last_action_at > IDLE_DECAY_SECONDS:
             return "idle"
         if state == "thinking" and infer_state_from_text(recent_text, fallback=state) == "planning":
@@ -297,22 +491,22 @@ class AgentState:
         return state
 
     def effective_task(self) -> str | None:
-        if self.effective_state() == "idle":
+        effective_state = self.effective_state()
+        if effective_state == "idle":
             return None
         task = trim_text(self.task, 60)
         if task:
             return task
-        if self.recent_actions:
-            latest = self.recent_actions[0]
-            if now_ts() - (latest.get("time", 0) / 1000) <= IDLE_DECAY_SECONDS:
-                return summarize_action_task(latest.get("type", ""), latest.get("message"), latest)
+        latest = self.latest_recent_action()
+        if latest:
+            return summarize_action_task(latest.get("type", ""), latest.get("message"), latest)
         return None
 
     def to_public(self) -> dict[str, Any]:
         data = asdict(self)
         effective_state = self.effective_state()
         effective_task = self.effective_task()
-        room_hint = None if effective_state == "idle" else self.room_key_hint
+        room_hint = self.effective_room_hint(effective_state)
         role = self.role if self.role in {"main_agent", "subagent", "branch_session"} else "main_agent"
         room_meta = classify_room(effective_state, effective_task, role=role, room_hint=room_hint)
         if role == "subagent":
@@ -322,12 +516,16 @@ class AgentState:
         else:
             px, py = build_main_agent_position(room_meta["room_key"])
         data["state"] = effective_state
+        latest = self.latest_recent_action() or {}
+        data["pixel_state"] = infer_pixel_state(self.pixel_state if self.pixel_state != "idle" or effective_state == "idle" else effective_state, effective_task, latest)
+        data["pixel_state_label"] = PIXEL_STATE_LABELS[data["pixel_state"]]
         data["task"] = effective_task
         data["last_seen_ms"] = int(self.last_seen * 1000)
         data["age_seconds"] = round(now_ts() - self.last_seen, 1)
         data["role"] = role
         data["role_label"] = "分身代理" if role == "subagent" else "分支工作階段" if role == "branch_session" else "主代理"
-        data["status_label"] = STATUS_LABELS.get(effective_state, effective_state)
+        data["status_label"] = PIXEL_STATE_LABELS.get(data["pixel_state"], STATUS_LABELS.get(effective_state, effective_state))
+        data["instance_label"] = self.instance_name or (f"PID {self.process_id}" if self.process_id else self.agent)
         data["tool_label"] = humanize_task_summary(effective_task)
         tool_meta = humanize_tool_name((effective_task or "").split(",", 1)[0].strip() if effective_task else None)
         data["tool_icon"] = tool_meta["icon"]
@@ -339,7 +537,7 @@ class AgentState:
             data["activity_hint"] = f"正在 {room_meta['room_label']} 整理推理與回覆"
         elif effective_state == "planning":
             data["activity_hint"] = f"正在 {room_meta['room_label']} 拆解需求與規劃步驟"
-        elif effective_state == "working":
+        elif effective_state in {"working", "self_healing"}:
             data["activity_hint"] = f"正在 {room_meta['room_label']} 使用 {data['tool_label']}"
         elif effective_state == "offline":
             data["activity_hint"] = "目前沒有收到新的主代理心跳"
@@ -389,10 +587,16 @@ class WorldState:
             "snapshot": snapshot,
         }
 
+    def agent_state(self, agent_id: str, fallback: str = "idle") -> str:
+        with self.lock:
+            agent = self.agents.get(agent_id)
+            return normalize_state(agent.state if agent else fallback)
+
     def upsert_agent(self, payload: dict[str, Any]) -> AgentState:
         agent_id = payload.get("agent") or payload.get("id") or "unknown"
         with self.lock:
             agent = self.agents.get(agent_id)
+            preserve_phase = bool(payload.get("preserve_phase")) and agent is not None
             if not agent:
                 x, y = self._next_position(len(self.agents))
                 agent = AgentState(
@@ -406,15 +610,22 @@ class WorldState:
             agent.name = payload.get("name") or agent.name
             if payload.get("role") in {"main_agent", "subagent", "branch_session"}:
                 agent.role = payload.get("role")
-            if payload.get("state") is not None:
+            if payload.get("source_placeholder") is not None:
+                agent.source_placeholder = bool(payload.get("source_placeholder"))
+            if payload.get("process_id") is not None:
+                agent.process_id = int(payload.get("process_id"))
+            if payload.get("instance_name"):
+                agent.instance_name = trim_text(payload.get("instance_name"), 40)
+            if payload.get("state") is not None and not preserve_phase:
+                agent.pixel_state = infer_pixel_state(payload.get("pixel_state") or payload.get("state"), payload.get("task"))
                 agent.state = normalize_state(payload.get("state"))
             agent.energy = float(payload.get("energy", agent.energy))
             agent.color = payload.get("color") or agent.color
-            if "task" in payload:
+            if "task" in payload and not preserve_phase:
                 agent.task = trim_text(payload.get("task"), 60)
-            if payload.get("target_room") in ROOM_DISPLAY:
+            if payload.get("target_room") in ROOM_DISPLAY and not preserve_phase:
                 agent.room_key_hint = payload.get("target_room")
-            elif payload.get("room_key") in ROOM_DISPLAY:
+            elif payload.get("room_key") in ROOM_DISPLAY and not preserve_phase:
                 agent.room_key_hint = payload.get("room_key")
             agent.last_seen = now_ts()
             self.add_event("heartbeat", {"agent": agent.agent, "state": agent.state, "task": agent.task})
@@ -433,7 +644,7 @@ class WorldState:
                 "to": action.get("to"),
                 "time": int(now_ts() * 1000),
             }
-            for key in ("event_name", "tool_name", "tool_names", "tool_phase", "preview", "state", "target_room", "room_key"):
+            for key in ("event_name", "tool_name", "tool_names", "tool_phase", "preview", "state", "target_room", "room_key", "pixel_state"):
                 if key in action:
                     entry[key] = action.get(key)
             agent.recent_actions = [entry, *agent.recent_actions[:9]]
@@ -442,6 +653,7 @@ class WorldState:
             agent.last_action_type = entry["type"]
             action_type = entry["type"]
             if action_type in {"thought", "tool", "status"}:
+                agent.pixel_state = infer_pixel_state(action.get("pixel_state") or action.get("state"), entry.get("message"), entry)
                 agent.state = normalize_state(action.get("state")) if action.get("state") else infer_state_from_text(entry.get("message"), fallback=agent.state)
                 if action.get("target_room") in ROOM_DISPLAY:
                     agent.room_key_hint = action.get("target_room")
@@ -488,12 +700,20 @@ class WorldState:
         for item in agents:
             age = item["age_seconds"]
             item["is_stale"] = age > STALE_AFTER_SECONDS
-            if item["is_stale"] and item["state"] != "offline":
+            item["connection_status"] = "awaiting_attach" if item.get("source_placeholder") else "attached"
+            if item["is_stale"] and item.get("source_placeholder"):
+                item["state"] = "idle"
+                item["status_label"] = "等待接線"
+                standby_room = classify_room("idle", None, role="main_agent")
+                item.update(standby_room)
+                item["activity_hint"] = "已選擇 agent source，等待新的 CLI session 接入"
+            elif item["is_stale"] and item["state"] != "offline":
                 item["state"] = "offline"
                 item["status_label"] = STATUS_LABELS["offline"]
                 offline_room = classify_room("offline", item.get("task"), role="main_agent")
                 item.update(offline_room)
                 item["activity_hint"] = "目前沒有收到新的主代理心跳"
+                item["connection_status"] = "stale"
         return agents
 
     def public_snapshot(self) -> dict[str, Any]:
@@ -511,6 +731,7 @@ class WorldState:
             "server_time_ms": int(now_ts() * 1000),
             "agents": merged_agents,
             "events": [humanize_event(event) for event in merged_events],
+            "furniture_layout": load_furniture_layout(),
             "webhooks": self.webhooks,
             "hermes": hermes,
             "ollama": ollama,
@@ -537,7 +758,8 @@ class HermesSource:
     def _empty_snapshot(self) -> dict[str, Any]:
         return {
             "connected": False,
-            "source": "disabled" if AGENT_KIND != "hermes" else "unavailable",
+            "enabled": HERMES_SOURCE_ENABLED,
+            "source": "unavailable" if HERMES_SOURCE_ENABLED else "disabled",
             "agent_kind": AGENT_KIND,
             "status": {},
             "subagents": {},
@@ -546,11 +768,11 @@ class HermesSource:
             "session_agents": [],
             "events": [],
             "active_session_count": 0,
-            "error": None if AGENT_KIND != "hermes" else None,
+            "error": None,
         }
 
     def get_snapshot(self) -> dict[str, Any]:
-        if AGENT_KIND != "hermes":
+        if not HERMES_SOURCE_ENABLED:
             snapshot = self._empty_snapshot()
             snapshot["status"] = {"agent_kind": AGENT_KIND}
             return snapshot
@@ -718,8 +940,10 @@ class HermesSource:
         if not connected:
             source = "unavailable"
         return {
+            "enabled": HERMES_SOURCE_ENABLED,
             "connected": connected,
             "source": source,
+            "agent_kind": AGENT_KIND,
             "status": status,
             "subagents": subagents,
             "sessions": sessions,
@@ -1306,6 +1530,14 @@ class PixelverseHandler(BaseHTTPRequestHandler):
         if parsed.path == "/api/webhook":
             WORLD.register_webhook(data.get("agent", "unknown"), data.get("url", ""))
             self._send_json({"ok": True})
+            return
+        if parsed.path == "/api/furniture-layout":
+            try:
+                layout = save_furniture_layout(data.get("layout", data))
+            except ValueError as exc:
+                self._send_json({"ok": False, "error": str(exc)}, status=422)
+                return
+            self._send_json({"ok": True, "layout": layout})
             return
         self._send_json({"error": "not found", "path": parsed.path}, status=404)
 

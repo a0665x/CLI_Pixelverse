@@ -1,6 +1,6 @@
 import { ROOM_LAYOUTS } from './house_layout.mjs';
 
-export const ROOM_PROP_POSITIONS = {
+export const DEFAULT_ROOM_PROP_POSITIONS = {
   think_lab: [
     { x: 18, y: 16 },
     { x: 14, y: 46 },
@@ -65,6 +65,10 @@ export const ROOM_PROP_POSITIONS = {
   ],
 };
 
+export const ROOM_PROP_POSITIONS = DEFAULT_ROOM_PROP_POSITIONS;
+
+let roomPropOverrides = {};
+
 export const VISIBLE_PROP_TYPES = new Set([
   'bed',
   'board',
@@ -103,6 +107,42 @@ function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
+function sanitizePosition(pos = {}, fallback = { x: 50, y: 50 }) {
+  return {
+    x: Number(clamp(Number.isFinite(Number(pos.x)) ? Number(pos.x) : fallback.x, 6, 94).toFixed(2)),
+    y: Number(clamp(Number.isFinite(Number(pos.y)) ? Number(pos.y) : fallback.y, 6, 94).toFixed(2)),
+  };
+}
+
+export function setFurnitureLayoutOverrides(overrides = {}) {
+  const next = {};
+  Object.entries(overrides || {}).forEach(([roomKey, positions]) => {
+    if (!ROOM_LAYOUTS[roomKey] || roomKey === 'offline_corner' || !Array.isArray(positions)) return;
+    const defaults = DEFAULT_ROOM_PROP_POSITIONS[roomKey] || [];
+    next[roomKey] = positions.map((pos, index) => sanitizePosition(pos, defaults[index] || { x: 50, y: 50 }));
+  });
+  roomPropOverrides = next;
+  return getFurnitureLayoutOverrides();
+}
+
+export function resetFurnitureLayoutOverrides() {
+  roomPropOverrides = {};
+}
+
+export function getFurnitureLayoutOverrides() {
+  return JSON.parse(JSON.stringify(roomPropOverrides));
+}
+
+export function getRoomPropPositions(roomKey) {
+  const defaults = DEFAULT_ROOM_PROP_POSITIONS[roomKey] || [];
+  const overrides = roomPropOverrides[roomKey] || [];
+  return defaults.map((fallback, index) => sanitizePosition(overrides[index], fallback));
+}
+
+export function exportFurnitureLayout(roomKeys = Object.keys(DEFAULT_ROOM_PROP_POSITIONS)) {
+  return Object.fromEntries(roomKeys.map((roomKey) => [roomKey, getRoomPropPositions(roomKey)]));
+}
+
 export function roomLocalToWorld(roomKey, local = { x: 50, y: 50 }) {
   const rect = ROOM_LAYOUTS[roomKey] || ROOM_LAYOUTS.standby_dock;
   return {
@@ -116,20 +156,21 @@ export function propBlockerSize(propType = '') {
 }
 
 export function roomDecorLayout(roomKey, decor = []) {
-  const positions = ROOM_PROP_POSITIONS[roomKey] || [];
+  const positions = getRoomPropPositions(roomKey);
   return decor
-    .map((prop, index) => ({ prop, pos: positions[index] || { x: 50, y: 50 } }))
+    .map((prop, index) => ({ prop, pos: positions[index] || { x: 50, y: 50 }, index }))
     .filter((item) => VISIBLE_PROP_TYPES.has(item.prop.type));
 }
 
 export function furnitureBlockers(roomKey, decor = []) {
-  return roomDecorLayout(roomKey, decor).map(({ prop, pos }, index) => {
+  return roomDecorLayout(roomKey, decor).map(({ prop, pos, index }) => {
     const center = roomLocalToWorld(roomKey, pos);
     const size = propBlockerSize(prop.type);
     return {
       key: `${roomKey}:${index}:${prop.type}`,
       roomKey,
       prop,
+      index,
       center,
       width: size.width,
       height: size.height,
@@ -145,6 +186,43 @@ export function allFurnitureBlockers(decorByRoom = {}) {
   return Object.keys(ROOM_LAYOUTS)
     .filter((roomKey) => roomKey !== 'offline_corner')
     .flatMap((roomKey) => furnitureBlockers(roomKey, decorByRoom[roomKey] || []));
+}
+
+function blockersOverlap(left, right, padding = 0.35) {
+  return left.left < right.right + padding
+    && left.right > right.left - padding
+    && left.top < right.bottom + padding
+    && left.bottom > right.top - padding;
+}
+
+function blockerForPosition(roomKey, prop, index, pos) {
+  const center = roomLocalToWorld(roomKey, pos);
+  const size = propBlockerSize(prop.type);
+  return {
+    key: `${roomKey}:${index}:${prop.type}`,
+    roomKey,
+    prop,
+    index,
+    center,
+    width: size.width,
+    height: size.height,
+    left: Number((center.x - size.width / 2).toFixed(2)),
+    right: Number((center.x + size.width / 2).toFixed(2)),
+    top: Number((center.y - size.height / 2).toFixed(2)),
+    bottom: Number((center.y + size.height / 2).toFixed(2)),
+  };
+}
+
+export function positionOverlapsFurniture(roomKey, decor = [], movingIndex, candidate, positions = getRoomPropPositions(roomKey)) {
+  const prop = decor[movingIndex];
+  if (!prop || !VISIBLE_PROP_TYPES.has(prop.type)) return false;
+  const moving = blockerForPosition(roomKey, prop, movingIndex, candidate);
+  return decor.some((other, index) => {
+    if (index === movingIndex || !VISIBLE_PROP_TYPES.has(other.type)) return false;
+    const pos = positions[index];
+    if (!pos) return false;
+    return blockersOverlap(moving, blockerForPosition(roomKey, other, index, pos));
+  });
 }
 
 export function isInsideFurnitureBlocker(candidate, blockers = [], padding = 0.15) {
@@ -201,11 +279,13 @@ export function interactionStandPoint(roomKey, propType, propCenter, blockers = 
 
 export function roomInteractionPositions(roomKey, decor = []) {
   const blockers = furnitureBlockers(roomKey, decor);
-  return roomDecorLayout(roomKey, decor).map(({ prop, pos }) => {
+  return roomDecorLayout(roomKey, decor).map(({ prop, pos, index }) => {
     const propCenter = roomLocalToWorld(roomKey, pos);
     return {
       ...interactionStandPoint(roomKey, prop.type, propCenter, blockers),
       propCenter,
+      index,
+      propType: prop.type,
     };
   });
 }

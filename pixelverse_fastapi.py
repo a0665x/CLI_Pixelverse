@@ -11,23 +11,38 @@ import asyncio
 import json
 from typing import Any
 
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from pixelverse_server import AGENT_KIND, INDEX_HTML, PUBLIC_DIR, PORT, WORLD, normalize_state
+from pixelverse_server import (
+    AGENT_KIND,
+    INDEX_HTML,
+    PUBLIC_DIR,
+    PORT,
+    WORLD,
+    classify_room,
+    load_furniture_layout,
+    normalize_furniture_layout,
+    normalize_state,
+    save_furniture_layout,
+)
 
 
 class HeartbeatPayload(BaseModel):
     agent: str = Field("main-agent", description="Stable agent id.")
     name: str | None = Field(None, description="Display name.")
-    state: str = Field("idle", description="idle, thinking, planning, working, completed, failed, offline.")
+    state: str = Field("idle", description="Backward-compatible lifecycle state. Fine-grained values such as blocked, self_healing, awaiting_input, initializing, and sleeping are accepted.")
     task: str | None = Field(None, description="Short current task or tool summary.")
     energy: float = Field(1.0, ge=0.0, le=1.0)
     color: str | None = Field(None, description="CSS color used by the world UI.")
     role: str | None = Field(None, description="main_agent, subagent, or branch_session.")
+    source_placeholder: bool | None = Field(None, description="True only for configured source placeholders that are waiting for an attached CLI.")
     target_room: str | None = Field(None, description="Optional Pixelverse room key override.")
+    preserve_phase: bool = Field(False, description="Refresh liveness without replacing the latest lifecycle phase.")
+    process_id: int | None = Field(None, description="Optional OS PID for a CLI-backed instance.")
+    instance_name: str | None = Field(None, description="Optional user-facing instance label.")
 
 
 class ActionPayload(BaseModel):
@@ -41,6 +56,7 @@ class ActionPayload(BaseModel):
     tool_phase: str | None = Field(None, description="started or completed.")
     preview: str | None = None
     target_room: str | None = Field(None, description="Optional Pixelverse room key override.")
+    pixel_state: str | None = Field(None, description="Optional fine-grained Pixel state override.")
 
 
 class AgentActionPayload(BaseModel):
@@ -51,6 +67,10 @@ class AgentActionPayload(BaseModel):
 class WebhookPayload(BaseModel):
     agent: str = Field("main-agent", description="Agent id.")
     url: str = Field(..., description="Webhook URL.")
+
+
+class FurnitureLayoutPayload(BaseModel):
+    layout: dict[str, list[dict[str, float]]] = Field(default_factory=dict, description="Room furniture overrides keyed by room.")
 
 
 class GenericAgentEvent(BaseModel):
@@ -65,6 +85,8 @@ class GenericAgentEvent(BaseModel):
     target_room: str | None = Field(None, description="Optional Pixelverse room key override.")
     role: str | None = Field(None, description="main_agent, subagent, or branch_session.")
     color: str | None = None
+    process_id: int | None = Field(None, description="Optional OS PID for a CLI-backed instance.")
+    instance_name: str | None = Field(None, description="Optional user-facing instance label.")
 
 
 app = FastAPI(
@@ -75,12 +97,27 @@ app = FastAPI(
     ),
     version="0.2.0",
 )
-app.mount("/assets", StaticFiles(directory=PUBLIC_DIR / "assets"), name="assets")
+
+NO_CACHE_HEADERS = {
+    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+    "Pragma": "no-cache",
+    "Expires": "0",
+}
+
+
+class NoCacheStaticFiles(StaticFiles):
+    async def get_response(self, path: str, scope: dict[str, Any]):
+        response = await super().get_response(path, scope)
+        response.headers.update(NO_CACHE_HEADERS)
+        return response
+
+
+app.mount("/assets", NoCacheStaticFiles(directory=PUBLIC_DIR / "assets"), name="assets")
 
 
 @app.get("/", include_in_schema=False)
 def index() -> FileResponse:
-    return FileResponse(INDEX_HTML)
+    return FileResponse(INDEX_HTML, headers=NO_CACHE_HEADERS)
 
 
 @app.get("/health", tags=["service"])
@@ -113,6 +150,20 @@ def get_sources() -> dict[str, Any]:
 @app.get("/api/agents", tags=["world"])
 def get_agents() -> dict[str, Any]:
     return {"agents": WORLD.public_snapshot()["agents"]}
+
+
+@app.get("/api/furniture-layout", tags=["world"])
+def get_furniture_layout() -> dict[str, Any]:
+    return {"layout": load_furniture_layout()}
+
+
+@app.post("/api/furniture-layout", tags=["world"])
+def update_furniture_layout(payload: FurnitureLayoutPayload) -> dict[str, Any]:
+    try:
+        layout = save_furniture_layout(normalize_furniture_layout(payload.layout))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"ok": True, "layout": layout}
 
 
 @app.get("/api/inbox", tags=["world"])
@@ -154,19 +205,25 @@ def act(payload: AgentActionPayload) -> dict[str, Any]:
 @app.post("/api/event", tags=["events"])
 def generic_event(payload: GenericAgentEvent) -> dict[str, Any]:
     data = _model_dump(payload)
-    state = _state_for_event(data)
+    state = _state_for_event(data, fallback=WORLD.agent_state(payload.agent))
     task = data.get("message") or data.get("tool_name") or ", ".join(data.get("tool_names") or [])
+    target_room = data.get("target_room") or _target_room_for_event(data, state, task)
     WORLD.upsert_agent(
         {
             "agent": payload.agent,
             "name": payload.name or _default_agent_name(payload.agent_type),
             "state": state,
+            "pixel_state": data.get("state") or data.get("event"),
             "task": task,
             "color": payload.color or _default_agent_color(payload.agent_type),
-            "target_room": data.get("target_room"),
+            "target_room": target_room,
             "role": data.get("role") or "main_agent",
+            "source_placeholder": False,
+            "process_id": data.get("process_id"),
+            "instance_name": data.get("instance_name"),
         }
     )
+    data["target_room"] = target_room
     WORLD.act(payload.agent, _action_for_event(data, state))
     return {"ok": True, "snapshot": WORLD.public_snapshot()}
 
@@ -187,7 +244,7 @@ def unregister_webhook(agent: str = Query(..., description="Agent id.")) -> dict
 def static_file(path: str):
     requested = (PUBLIC_DIR / path).resolve()
     if PUBLIC_DIR in requested.parents and requested.is_file():
-        return FileResponse(requested)
+        return FileResponse(requested, headers=NO_CACHE_HEADERS)
     return JSONResponse({"error": "not found", "path": f"/{path}"}, status_code=404)
 
 
@@ -212,7 +269,7 @@ def _source_summary(snapshot: dict[str, Any]) -> dict[str, Any]:
     ollama = snapshot.get("ollama") or {}
     return {
         "hermes": {
-            "enabled": AGENT_KIND == "hermes",
+            "enabled": bool(hermes.get("enabled", AGENT_KIND == "hermes")),
             "connected": bool(hermes.get("connected")),
             "source": hermes.get("source"),
             "error": hermes.get("error"),
@@ -233,21 +290,45 @@ def _source_summary(snapshot: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _state_for_event(data: dict[str, Any]) -> str:
+def _state_for_event(data: dict[str, Any], *, fallback: str = "idle") -> str:
     if data.get("state"):
         return normalize_state(data["state"])
     event = str(data.get("event") or "").lower()
     if event in {"start", "started"}:
-        return "planning"
-    if event in {"thought", "reasoning", "plan"}:
         return "thinking"
+    if event in {"thought", "reasoning", "reasoning.available", "plan", "planning"}:
+        return "planning"
     if event.startswith("tool") or event in {"step", "working"}:
         return "working"
     if event in {"end", "done", "completed", "complete"}:
         return "idle"
     if event in {"error", "failed", "fail"}:
-        return "offline"
-    return "idle"
+        return "blocked"
+    return normalize_state(fallback)
+
+
+def _target_room_for_event(data: dict[str, Any], state: str, task: str | None) -> str:
+    event = str(data.get("event") or "").lower()
+    if event.startswith("skill") or state == "invoking_skill":
+        return "tool_forge"
+    if state in {"offline", "blocked"}:
+        return "offline_corner"
+    if state == "self_healing":
+        return "tool_forge"
+    if state in {"awaiting_input", "sleeping"}:
+        return "standby_dock"
+    if state == "initializing":
+        return "clone_bay"
+    if state == "idle":
+        return "standby_dock"
+    if event in {"start", "started"} or state == "thinking":
+        return "think_lab"
+    if event in {"thought", "reasoning", "reasoning.available", "plan", "planning"} or state == "planning":
+        return "blueprint_lab"
+    if event in {"status", "working", "step"}:
+        return "response_studio"
+    route_task = data.get("tool_name") or ", ".join(data.get("tool_names") or []) or task
+    return classify_room(state, route_task)["room_key"]
 
 
 def _action_for_event(data: dict[str, Any], state: str) -> dict[str, Any]:
@@ -261,6 +342,7 @@ def _action_for_event(data: dict[str, Any], state: str) -> dict[str, Any]:
         "type": action_type,
         "message": data.get("message") or event,
         "state": state,
+        "pixel_state": data.get("state") or event,
         "event_name": f"agent.{event}",
     }
     for key in ("tool_name", "tool_names", "target_room"):

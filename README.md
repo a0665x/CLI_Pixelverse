@@ -2,6 +2,8 @@
 
 Pixelverse is a local visual observability UI for agent CLIs and Hermes/OpenWebUI workflows. It turns agent lifecycle events into a pixel-room scene so you can see when an agent is thinking, using tools, delegating work, answering, idle, or offline.
 
+![Hermes Pixelverse example UI](./pixel_ui.png)
+
 The service runs as a Docker Compose app and exposes:
 
 - UI: `http://localhost:4321`
@@ -47,6 +49,8 @@ Open:
 http://localhost:4321
 ```
 
+The UI uses a fixed left operations sidebar on desktop and a full-width agent timeline along the bottom. Use the top-right `Mobile Mode` button on phones; mobile mode keeps the world readable and exposes the left drawer through a compact `>` / `<` edge handle. The world viewport supports mouse drag panning, wheel zoom, and `+ / 1:1 / -` controls.
+
 ### 2. Attach A Native CLI
 
 Pixelverse does not overwrite or modify native agent CLI binaries. It creates local wrapper commands under `.pixelverse-service/bin/`.
@@ -73,6 +77,12 @@ Enable native command interception in the current shell:
 source .pixelverse-service/activate.sh
 ```
 
+Enable interception automatically for newly opened Bash terminals:
+
+```bash
+./run.sh enable-shell-adapter
+```
+
 Then run your normal CLI command:
 
 ```bash
@@ -82,6 +92,12 @@ claude
 ollama list
 hermes chat
 ```
+
+Start a new CLI process after activation. Pixelverse cannot retroactively attach to a CLI process that was already running before `source .pixelverse-service/activate.sh`.
+
+While a wrapped CLI process is running, its adapter sends a heartbeat every 15 seconds. This keeps the UI synchronized with long-running Codex, Gemini CLI, Claude Code, Ollama, and Hermes sessions instead of letting the character become stale after the default 45-second timeout. Wrapper heartbeats use `preserve_phase=true`: they refresh liveness without replacing a newer planning, reasoning, or tool route.
+
+Each wrapped CLI process gets a separate PID-backed identity such as `codex-cli:12345`. Codex also reads the repo-local `.codex/hooks.json` lifecycle adapter. The first time Codex opens this project, use `/hooks` to review and trust the project hook definition; after that, supported tool, subagent, and explicit `$skill` prompt events are relayed automatically.
 
 If you do not want to modify `PATH`, call the explicit Pixelverse wrapper instead:
 
@@ -233,8 +249,88 @@ The adapter is intentionally non-invasive:
 
 - It does not replace `/usr/local/bin`, `~/.local/bin`, npm global binaries, or installed agent repos.
 - It only creates files inside this repo's `.pixelverse-service/bin/`.
-- It only affects a shell after you run `source .pixelverse-service/activate.sh`, or when you call an explicit `pixelverse-*` wrapper.
+- It affects shells after `source .pixelverse-service/activate.sh`, new Bash shells after `./run.sh enable-shell-adapter`, or explicit `pixelverse-*` wrapper calls.
 - For Hermes, the optional user plugin lives in `~/.hermes/plugins/pixelverse` and can be removed by deleting that folder.
+
+## MCP Onboarding Tool
+
+Pixelverse includes a dependency-free stdio MCP server for third-party agent onboarding:
+
+```text
+scripts/pixelverse_mcp_server.py
+```
+
+The MCP layer is a DX wrapper. It does not replace the stable HTTP bridge protocol. Agent state still flows through:
+
+```text
+MCP tool or CLI adapter -> POST /api/event or POST /api/heartbeat -> Pixelverse world state -> SSE UI
+```
+
+After cloning this repository, register the MCP server in your MCP-capable client. Use an absolute repository path:
+
+```json
+{
+  "mcpServers": {
+    "pixelverse": {
+      "command": "python3",
+      "args": [
+        "/absolute/path/to/hermes-pixelverse/scripts/pixelverse_mcp_server.py"
+      ]
+    }
+  }
+}
+```
+
+Then ask the client to call:
+
+```text
+pixelverse_onboard {"agent_kind":"codex"}
+```
+
+This installs the selected adapter, runs `./run.sh bridge-status`, and returns the shell activation command:
+
+```bash
+source .pixelverse-service/activate.sh
+```
+
+Available MCP tools:
+
+| Tool | Purpose |
+| --- | --- |
+| `pixelverse_onboard` | One-click adapter install plus bridge status and activation guidance |
+| `pixelverse_install_adapter` | Wrap `./run.sh install-adapter <target>` |
+| `pixelverse_bridge_status` | Wrap `./run.sh bridge-status` |
+| `pixelverse_emit_event` | Emit a standardized lifecycle event through the existing HTTP bridge |
+
+Example lifecycle event call:
+
+```text
+pixelverse_emit_event {
+  "agent_type": "codex",
+  "agent": "codex-main",
+  "event": "tool.started",
+  "tool_names": ["terminal", "patch"],
+  "target_room": "tool_forge",
+  "message": "Updating project files"
+}
+```
+
+Safety notes:
+
+- `pixelverse_onboard` defaults to `generic`; choose the actual agent kind explicitly when possible.
+- `codex`, `gemini-cli`, `claude-code`, `ollama`, and `generic` create repo-local adapter files.
+- `hermes`, `hermes-hook`, `hermes-plugin`, and `all` may also install files under `~/.hermes/`.
+- The MCP server uses Python standard library code and the existing Pixelverse client, so no MCP SDK package is required.
+
+Manual stdio smoke test:
+
+```bash
+printf '%s\n' \
+  '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"manual-test","version":"0.1.0"}}}' \
+  '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
+  '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
+  | python3 scripts/pixelverse_mcp_server.py
+```
 
 ## Hermes Integration
 
@@ -343,6 +439,8 @@ python3 -m agent_bridges.pixelverse_client complete \
 
 Explicit `target_room` wins. If omitted, the backend and adapters infer a room from tool or message text.
 
+Each lifecycle phase is a route endpoint. The character stays at that endpoint until the next phase event: `start` routes to `think_lab`; reasoning or planning routes to `blueprint_lab`; `tool.started` and `tool.completed` remain active in the tool room; only an explicit session `completed`, `end`, or `state=idle` event returns the character to `standby_dock`. A `status` event without `state` preserves the current phase.
+
 Common rooms:
 
 - `think_lab`: planning or starting
@@ -420,6 +518,22 @@ If direct CLI commands do not show in Pixelverse, use the explicit wrapper first
 ./.pixelverse-service/bin/pixelverse-hermes chat
 ```
 
+If the selected CLI character becomes offline after about 45 seconds, the CLI process was not attached through the Pixelverse shim or its heartbeat is not reaching the API. Check the current shell:
+
+```bash
+./run.sh bridge-status
+source .pixelverse-service/activate.sh
+which codex
+```
+
+For Codex, `which codex` should resolve to:
+
+```text
+<repo>/.pixelverse-service/bin/codex
+```
+
+Then start a new Codex session. A Codex process that was already running before activation cannot be attached retroactively.
+
 ## Environment Variables
 
 Service:
@@ -439,6 +553,11 @@ CLI adapters:
 - `PIXELVERSE_CLAUDE_COMMAND`
 - `PIXELVERSE_OLLAMA_COMMAND`
 - `PIXELVERSE_HERMES_COMMAND`
+- `PIXELVERSE_HEARTBEAT_SECONDS`
+
+MCP onboarding:
+
+- `PIXELVERSE_URL`
 
 Hermes:
 
@@ -451,6 +570,7 @@ Hermes:
 ```bash
 bash -n run.sh
 python3 -m py_compile agent_bridges/*.py
+python3 -m py_compile scripts/pixelverse_mcp_server.py
 python3 -m pytest -q -o faulthandler_timeout=10
 node --test tests/*.mjs
 ```
@@ -466,6 +586,7 @@ node --test tests/*.mjs
 - `hooks/miniverse/`: Hermes hook payload relay
 - `public/`: pixel world frontend
 - `scripts/`: helper scripts and trajectory renderer
+- `scripts/pixelverse_mcp_server.py`: dependency-free stdio MCP onboarding server
 - `spec/`: architecture, module, and integration notes
 - `tests/`: Python and Node tests
 

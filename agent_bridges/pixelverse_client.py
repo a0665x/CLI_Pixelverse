@@ -40,6 +40,8 @@ class PixelverseClient:
     name: str | None = None
     role: str = "main_agent"
     color: str | None = None
+    process_id: int | None = None
+    instance_name: str | None = None
     timeout: float = 4.0
 
     def __post_init__(self) -> None:
@@ -85,6 +87,10 @@ class PixelverseClient:
             payload["name"] = self.name
         if self.color:
             payload["color"] = self.color
+        if self.process_id is not None:
+            payload["process_id"] = self.process_id
+        if self.instance_name:
+            payload["instance_name"] = self.instance_name
         if message:
             payload["message"] = message
         if state:
@@ -97,11 +103,19 @@ class PixelverseClient:
             payload["target_room"] = target_room
         return self._post("/api/event", payload)
 
-    def heartbeat(self, *, state: str = "idle", task: str | None = None, target_room: str | None = None) -> dict[str, Any]:
+    def heartbeat(
+        self,
+        *,
+        state: str = "idle",
+        task: str | None = None,
+        target_room: str | None = None,
+        preserve_phase: bool = False,
+    ) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "agent": self.agent,
             "state": state,
             "role": self.role,
+            "preserve_phase": preserve_phase,
         }
         if self.name:
             payload["name"] = self.name
@@ -109,6 +123,10 @@ class PixelverseClient:
             payload["task"] = task
         if self.color:
             payload["color"] = self.color
+        if self.process_id is not None:
+            payload["process_id"] = self.process_id
+        if self.instance_name:
+            payload["instance_name"] = self.instance_name
         if target_room:
             payload["target_room"] = target_room
         return self._post("/api/heartbeat", payload)
@@ -131,7 +149,7 @@ class PixelverseClient:
         return self.event("completed", message=message, state="idle", target_room=target_room)
 
     def error(self, message: str, *, target_room: str = "offline_corner") -> dict[str, Any]:
-        return self.event("error", message=message, state="offline", target_room=target_room)
+        return self.event("error", message=message, state="blocked", target_room=target_room)
 
 
 def _split_tools(value: str | None) -> list[str]:
@@ -147,6 +165,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--name", default=os.getenv("PIXELVERSE_AGENT_NAME"))
     parser.add_argument("--role", default=os.getenv("PIXELVERSE_AGENT_ROLE", "main_agent"))
     parser.add_argument("--color", default=os.getenv("PIXELVERSE_AGENT_COLOR"))
+    parser.add_argument("--process-id", type=int, default=int(os.getenv("PIXELVERSE_PROCESS_ID", "0")) or None)
+    parser.add_argument("--instance-name", default=os.getenv("PIXELVERSE_INSTANCE_NAME"))
     parser.add_argument("--event", default="status")
     parser.add_argument("--message", default="")
     parser.add_argument("--state", default="")
@@ -166,6 +186,8 @@ def main(argv: list[str] | None = None) -> int:
         name=args.name,
         role=args.role,
         color=args.color,
+        process_id=args.process_id,
+        instance_name=args.instance_name,
     )
     started = time.time()
     if args.command == "start":

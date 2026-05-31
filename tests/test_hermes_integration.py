@@ -14,6 +14,7 @@ from pixelverse_server import (
     humanize_task_summary,
     humanize_tool_name,
     infer_state_from_text,
+    infer_pixel_state,
     merge_hermes_events,
 )
 
@@ -168,6 +169,21 @@ def test_infer_state_from_text_detects_planning_and_idle():
     assert infer_state_from_text("正在規劃 Pixelverse 任務") == "planning"
     assert infer_state_from_text("任務已完成，回到待命站") == "idle"
 
+def test_pixel_state_mapping_preserves_fine_grained_ui_meaning():
+    assert infer_pixel_state("tool_call", "read_file") == "tool_call"
+    assert infer_pixel_state("working", "delegate_task to subagent") == "collaborating"
+    assert infer_pixel_state("working", "repair traceback") == "self_healing"
+    assert classify_room("blocked", "API exception")["room_key"] == "offline_corner"
+    assert classify_room("self_healing", "repair traceback")["room_key"] == "tool_forge"
+
+def test_world_state_exposes_instance_pid_and_pixel_state():
+    world = WorldState()
+    world.upsert_agent({"agent": "codex-cli:42", "state": "executing", "task": "patch", "process_id": 42})
+    agent = world.snapshot_local_agents()[0]
+    assert agent["pixel_state"] == "executing"
+    assert agent["process_id"] == 42
+    assert agent["instance_label"] == "PID 42"
+
 
 def test_world_state_actions_drive_main_agent_state_and_task():
     world = WorldState()
@@ -201,6 +217,106 @@ def test_world_state_stream_event_uses_monotonic_ids_and_latest_snapshot():
     assert event["snapshot"]["agents"][0]["agent"] == "henry-main"
     assert event["snapshot"]["agents"][0]["task"] is not None
     assert any(item["kind"] in {"main.tool.started", "heartbeat"} for item in event["snapshot"]["events"])
+
+
+def test_world_state_holds_recent_active_event_before_returning_idle(monkeypatch):
+    import pixelverse_server
+
+    current_time = [1000.0]
+    monkeypatch.setattr(pixelverse_server, "now_ts", lambda: current_time[0])
+
+    world = pixelverse_server.WorldState()
+    world.upsert_agent({"agent": "henry-main", "name": "Henry", "state": "idle", "task": None})
+    current_time[0] = 1001.0
+    world.act("henry-main", {"type": "tool", "message": "工具步驟：patch", "event_name": "main.tool.started", "tool_name": "patch", "tool_phase": "started", "state": "working", "target_room": "tool_forge"})
+    current_time[0] = 1002.0
+    world.upsert_agent({"agent": "henry-main", "name": "Henry", "state": "idle", "task": None})
+
+    active = world.snapshot_local_agents()[0]
+    assert active["state"] == "working"
+    assert active["room_key"] == "tool_forge"
+    assert active["task"] == "修改檔案"
+
+    current_time[0] = 1012.0
+    cooled = world.snapshot_local_agents()[0]
+    assert cooled["state"] == "idle"
+    assert cooled["room_key"] == "standby_dock"
+
+
+def test_liveness_heartbeat_does_not_replace_latest_lifecycle_phase():
+    world = WorldState()
+    world.upsert_agent({"agent": "codex-main", "state": "working", "task": "CLI session running", "target_room": "response_studio"})
+    world.act("codex-main", {
+        "type": "tool",
+        "message": "修改檔案",
+        "event_name": "agent.tool.completed",
+        "tool_name": "patch",
+        "tool_phase": "completed",
+        "state": "working",
+        "target_room": "tool_forge",
+    })
+    world.upsert_agent({
+        "agent": "codex-main",
+        "state": "working",
+        "task": "CLI session running",
+        "target_room": "response_studio",
+        "preserve_phase": True,
+    })
+
+    active = world.snapshot_local_agents()[0]
+    assert active["state"] == "working"
+    assert active["room_key"] == "tool_forge"
+    assert active["task"] == "修改檔案 已完成"
+
+
+def test_unattached_source_placeholder_waits_for_cli_instead_of_showing_offline(monkeypatch):
+    import pixelverse_server
+
+    current_time = [1000.0]
+    monkeypatch.setattr(pixelverse_server, "now_ts", lambda: current_time[0])
+
+    world = pixelverse_server.WorldState()
+    world.upsert_agent({
+        "agent": "codex-main",
+        "name": "codex",
+        "state": "idle",
+        "task": "codex ready",
+        "source_placeholder": True,
+    })
+    current_time[0] = 1100.0
+
+    waiting = world.snapshot_local_agents()[0]
+    assert waiting["state"] == "idle"
+    assert waiting["room_key"] == "standby_dock"
+    assert waiting["connection_status"] == "awaiting_attach"
+    assert waiting["is_stale"] is True
+    assert "等待新的 CLI session" in waiting["activity_hint"]
+
+
+def test_attached_cli_that_stops_heartbeats_still_becomes_offline(monkeypatch):
+    import pixelverse_server
+
+    current_time = [1000.0]
+    monkeypatch.setattr(pixelverse_server, "now_ts", lambda: current_time[0])
+
+    world = pixelverse_server.WorldState()
+    world.upsert_agent({"agent": "codex-main", "name": "Codex CLI", "state": "working", "source_placeholder": False})
+    current_time[0] = 1100.0
+
+    stale = world.snapshot_local_agents()[0]
+    assert stale["state"] == "offline"
+    assert stale["room_key"] == "offline_corner"
+    assert stale["connection_status"] == "stale"
+
+
+def test_furniture_layout_overlap_validation_rejects_colliding_positions():
+    from pixelverse_server import furniture_layout_has_overlaps, normalize_furniture_layout
+
+    overlapping = normalize_furniture_layout({"tool_forge": [{"x": 40, "y": 40}, {"x": 42, "y": 41}]})
+    spaced = normalize_furniture_layout({"tool_forge": [{"x": 40, "y": 40}, {"x": 55, "y": 41}]})
+
+    assert furniture_layout_has_overlaps(overlapping) is True
+    assert furniture_layout_has_overlaps(spaced) is False
 
 
 def test_humanize_event_supports_main_tool_lifecycle():

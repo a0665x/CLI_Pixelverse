@@ -17,7 +17,24 @@ export function deriveAgentEventVisual(agent = {}, locale = 'zh-TW') {
   const action = latestAction(agent);
   const eventName = action.event_name || '';
   const state = agent.state || 'idle';
+  const pixelState = agent.pixel_state || state;
   const localizedTool = toolLabel(action, locale);
+  const pixelVisuals = {
+    blocked: ['offline', '⚠️', 'Blocked', '受阻'],
+    self_healing: ['working', '🔧', 'Self-healing', '自我修復'],
+    awaiting_input: ['thinking', '⌛', 'Awaiting input', '等待輸入'],
+    initializing: ['planning', '🌀', 'Initializing', '初始化'],
+    sleeping: ['idle', '💤', 'Sleeping', '休眠'],
+    collaborating: ['working', '💬', 'Collaborating', '分身討論'],
+    invoking_skill: ['working', '✨', 'Invoking skill', '技能調用'],
+    tool_call: ['working', '🧰', 'Tool call', '工具調用'],
+    executing: ['working', '💻', 'Executing', '代碼執行'],
+    responding: ['working', '✍️', 'Responding', '輸出響應'],
+  };
+  if (pixelVisuals[pixelState]) {
+    const [tone, icon, en, zh] = pixelVisuals[pixelState];
+    return { tone, icon, label: locale === 'zh-TW' ? zh : en, detail: localizedTool || agent.task || agent.activity_hint || '' };
+  }
   if (agent.role === 'main_agent') {
     if (eventName === 'main.reasoning') {
       return {

@@ -9,20 +9,38 @@ import {
   summarizeWorld,
 } from '../public/ui_strings.mjs';
 
-test('normalizeLocale falls back to zh-TW', () => {
-  assert.equal(normalizeLocale('fr-FR'), 'zh-TW');
+test('normalizeLocale falls back to English', () => {
+  assert.equal(normalizeLocale('fr-FR'), 'en-US');
   assert.equal(normalizeLocale('en-US'), 'en-US');
 });
 
 test('getLocaleStrings returns translated HUD labels', () => {
   const zh = getLocaleStrings('zh-TW');
   const en = getLocaleStrings('en-US');
+  const ja = getLocaleStrings('ja-JP');
+  const ko = getLocaleStrings('ko-KR');
 
   assert.equal(zh.brandTitle, 'Hermes Pixelverse');
   assert.equal(zh.inspectorTitle, '狀態檢視器');
   assert.equal(zh.legendPlanningTitle, '規劃中');
   assert.equal(en.inspectorTitle, 'Inspector');
   assert.equal(en.legendIdleTitle, 'Idle');
+  assert.match(zh.layoutKeyboardHint, /Enter/);
+  assert.match(zh.layoutChangesCount(3), /3/);
+  assert.match(zh.layoutGridHint, /0.5%/);
+  assert.match(zh.layoutCoordChip('42.0', '18.5'), /x 42.0%/);
+  assert.match(en.layoutUnsavedChanges, /Unsaved/);
+  assert.match(en.layoutSavedDetail(4, 2), /4/);
+  assert.match(en.layoutSnapChip('1.0'), /1.0%/);
+  assert.match(en.mobileMode, /Mobile/);
+  assert.match(en.dashboardPanels, /Sidebar/);
+  assert.match(en.showPanels, /Open/);
+  assert.match(en.heartbeatLive('2s ago'), /2s ago/);
+  assert.match(en.layoutCollisionTitle, /overlap/);
+  assert.match(ja.layoutDragActiveHint, /ドラッグ中/);
+  assert.match(ja.layoutExitConfirm, /未保存/);
+  assert.match(ko.layoutPickHint, /드래그/);
+  assert.match(ko.layoutSelectedHint, /방향키/);
 });
 
 test('getRoomDecor exposes furniture labels in both locales', () => {

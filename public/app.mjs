@@ -8,12 +8,15 @@ import {
   KENNEY_PACK,
 } from './kenney_assets.mjs';
 import {
+  getLocaleLabel,
   getLocaleStrings,
   getRoomCopy,
   getRoomDecor,
+  LOCALE_LABELS,
   localizeToolSummary,
   normalizeLocale,
   summarizeWorld,
+  SUPPORTED_LOCALES,
 } from './ui_strings.mjs';
 import {
   buildStreamUrl,
@@ -30,6 +33,7 @@ import {
   movementDurationMs,
   nextWalkFrame,
   patrolPoint,
+  refreshFurnitureBlockers,
   shouldPatrol,
 } from './world_motion.mjs';
 import { getAgentPose, INTERACTION_OBJECT_ICONS, selectInteractionTarget } from './agent_pose.mjs';
@@ -40,9 +44,21 @@ import { deriveAgentEventVisual } from './main_agent_events.mjs';
 import { getAppleDogDoorSprite, getAppleDogPropSprite, getAppleDogRoomTheme } from './appledog_assets.mjs';
 import { shouldUseHighClarityProp } from './office_life_assets.mjs';
 import {
+  exportFurnitureLayout,
+  getRoomPropPositions,
+  positionOverlapsFurniture,
   roomDecorLayout,
   roomInteractionPositions,
+  setFurnitureLayoutOverrides,
 } from './room_furniture.mjs';
+import {
+  buildGridLines,
+  clampPercent,
+  formatPercent,
+  normalizePercent,
+  resolveSnapStep,
+} from './furniture_editing.mjs';
+import { buildAgentTimelinePanels } from './agent_timeline_graphs.mjs';
 
 const ROOM_ACTIVITY_TARGETS = {
   think_lab: {
@@ -105,11 +121,27 @@ const ROLE_CHIPS = {
 const dom = {
   agentsLayer: document.getElementById('agents-layer'),
   cameraStage: document.getElementById('camera-stage'),
+  cancelFurnitureButton: document.getElementById('cancel-furniture-btn'),
   eventSummary: document.getElementById('event-summary'),
   events: document.getElementById('events'),
+  editFurnitureButton: document.getElementById('edit-furniture-btn'),
+  furnitureEditBanner: document.getElementById('furniture-edit-banner'),
+  furnitureEditDirtyLabel: document.getElementById('furniture-edit-dirty-label'),
+  furnitureEditHint: document.getElementById('furniture-edit-hint'),
+  furnitureEditMeta: document.getElementById('furniture-edit-meta'),
+  furnitureEditModeLabel: document.getElementById('furniture-edit-mode-label'),
+  furnitureCoordBody: document.getElementById('furniture-coord-body'),
+  furnitureCoordHud: document.getElementById('furniture-coord-hud'),
+  furnitureCoordTitle: document.getElementById('furniture-coord-title'),
+  furnitureToast: document.getElementById('furniture-toast'),
+  furnitureToastBody: document.getElementById('furniture-toast-body'),
+  furnitureToastTitle: document.getElementById('furniture-toast-title'),
+  heartbeatCurve: document.getElementById('heartbeat-curve'),
+  heartbeatStatus: document.getElementById('heartbeat-status'),
   inspectorBody: document.getElementById('inspector-body'),
-  languageButtons: Array.from(document.querySelectorAll('[data-locale-switch]')),
+  languageSelect: document.getElementById('locale-select'),
   lastSync: document.getElementById('last-sync'),
+  mobileModeButton: document.getElementById('mobile-mode-btn'),
   pathLayer: document.getElementById('path-layer'),
   panels: Array.from(document.querySelectorAll('[data-draggable-panel]')),
   panelHandles: Array.from(document.querySelectorAll('[data-drag-handle]')),
@@ -118,13 +150,24 @@ const dom = {
   dialogTitle: document.getElementById('speech-dialog-title'),
   dialogBody: document.getElementById('speech-dialog-body'),
   dialogRows: document.getElementById('speech-dialog-rows'),
+  saveFurnitureButton: document.getElementById('save-furniture-btn'),
+  sidebarCloseButton: document.getElementById('sidebar-close-btn'),
+  sidebarTitle: document.getElementById('sidebar-title'),
+  sidebarToggleButton: document.getElementById('sidebar-toggle-btn'),
   sessionCount: document.getElementById('session-count'),
   subagentCount: document.getElementById('subagent-count'),
+  timelineRefreshLabel: document.getElementById('timeline-refresh-label'),
+  refreshSlowerButton: document.getElementById('refresh-slower-btn'),
+  refreshFasterButton: document.getElementById('refresh-faster-btn'),
+  refreshRateOutput: document.getElementById('refresh-rate-output'),
   summaryPanels: Array.from(document.querySelectorAll('.panel')),
   body: document.body,
   world: document.getElementById('world'),
   worldState: document.getElementById('world-state'),
   worldSummary: document.getElementById('world-summary'),
+  zoomInButton: document.getElementById('zoom-in-btn'),
+  zoomOutButton: document.getElementById('zoom-out-btn'),
+  zoomResetButton: document.getElementById('zoom-reset-btn'),
   agentCount: document.getElementById('agent-count'),
 };
 
@@ -133,20 +176,352 @@ let currentSnapshot = null;
 let selectedAgentId = null;
 let pollTimer = null;
 let patrolTimer = null;
+let timelineTimer = null;
+let uiTickTimer = null;
 let liveStream = null;
 let lastStreamId = 0;
+let heartbeatSamples = [];
+const DEFAULT_TIMELINE_REFRESH_MS = 1000;
+let timelineRefreshMs = Math.max(
+  100,
+  Number(localStorage.getItem('pixelverse:timeline-refresh-ms')) || DEFAULT_TIMELINE_REFRESH_MS,
+);
 const queryLocale = new URLSearchParams(window.location.search).get('lang');
-let currentLocale = normalizeLocale(queryLocale || localStorage.getItem('pixelverse:locale') || 'zh-TW');
+let currentLocale = normalizeLocale(queryLocale || localStorage.getItem('pixelverse:locale') || 'en-US');
+let mobileMode = localStorage.getItem('pixelverse:mobile-mode') === '1';
+let sidebarOpen = mobileMode ? localStorage.getItem('pixelverse:sidebar-open') === '1' : true;
 let cameraOffset = { x: 0, y: 0 };
 let cameraScale = 1;
 let cameraPanning = null;
 let panelDragging = null;
 let activeDialogAgentId = null;
+let furnitureEditMode = false;
+let furnitureDraft = {};
+let furnitureSavedLayout = {};
+let furnitureDirty = false;
+let furnitureSaving = false;
+let propDragging = null;
+let dragRenderQueued = false;
+let dragAgentsQueued = false;
+let furnitureToastTimer = null;
+let selectedFurnitureProp = null;
+let furnitureSnapStep = resolveSnapStep(false);
+let lastFurnitureCollisionAt = 0;
 
 const short = (text = '', max = 42) => text && text.length > max ? `${text.slice(0, max - 1)}…` : (text || '');
 
+function clampNumber(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
 function strings() {
   return getLocaleStrings(currentLocale);
+}
+
+function populateLocaleSelect() {
+  if (!dom.languageSelect) return;
+  dom.languageSelect.innerHTML = SUPPORTED_LOCALES.map((locale) => {
+    const label = getLocaleLabel(locale) || LOCALE_LABELS[locale] || locale;
+    return `<option value="${locale}">${label}</option>`;
+  }).join('');
+  dom.languageSelect.value = currentLocale;
+}
+
+function cloneLayout(layout = {}) {
+  return JSON.parse(JSON.stringify(layout || {}));
+}
+
+function layoutEquals(left = {}, right = {}) {
+  return JSON.stringify(left || {}) === JSON.stringify(right || {});
+}
+
+function selectedPropMeta() {
+  const target = propDragging || selectedFurnitureProp;
+  if (!target) return '';
+  const room = getRoomCopy(target.roomKey, currentLocale);
+  const roomName = room.name || target.roomKey;
+  const coords = `${Number(target.x || 0).toFixed(1)}%, ${Number(target.y || 0).toFixed(1)}%`;
+  return `${target.label || target.propType} · ${roomName} · ${coords}`;
+}
+
+function selectedPropCoordinates(target = propDragging || selectedFurnitureProp) {
+  if (!target) return null;
+  return {
+    x: formatPercent(target.x || 0),
+    y: formatPercent(target.y || 0),
+  };
+}
+
+function selectedPropGuideLabel(target = propDragging || selectedFurnitureProp) {
+  if (!target) return '';
+  const copy = strings();
+  const coords = selectedPropCoordinates(target);
+  return copy.layoutGuideBadge(target.label || target.propType || 'prop', coords?.x || '0.0', coords?.y || '0.0', Number(furnitureSnapStep || 0.5).toFixed(1));
+}
+
+function updateFurnitureCoordinateHud() {
+  if (!dom.furnitureCoordHud) return;
+  const copy = strings();
+  const target = propDragging || selectedFurnitureProp;
+  const active = furnitureEditMode && !!target;
+  dom.furnitureCoordHud.hidden = !active;
+  if (!active) return;
+  const room = getRoomCopy(target.roomKey, currentLocale);
+  const coords = selectedPropCoordinates(target);
+  if (dom.furnitureCoordTitle) {
+    dom.furnitureCoordTitle.textContent = `${copy.layoutCoordTitle} · ${target.label || target.propType || 'prop'}`;
+  }
+  if (dom.furnitureCoordBody) {
+    dom.furnitureCoordBody.textContent = `${room.name || target.roomKey} · ${copy.layoutCoordChip(coords?.x || '0.0', coords?.y || '0.0')} · ${copy.layoutSnapChip(Number(furnitureSnapStep || 0.5).toFixed(1))}`;
+  }
+}
+
+function setSelectedFurnitureProp(next = null) {
+  selectedFurnitureProp = next ? {
+    roomKey: next.roomKey,
+    index: Number(next.index || 0),
+    propType: next.propType || 'prop',
+    label: next.label || next.propType || 'prop',
+    x: Number(next.x || 50),
+    y: Number(next.y || 50),
+  } : null;
+}
+
+function selectedFurnitureKey() {
+  if (!selectedFurnitureProp) return '';
+  return `${selectedFurnitureProp.roomKey}:${selectedFurnitureProp.index}`;
+}
+
+function furnitureChangeCount(layout = currentLayoutSnapshot(), baseline = furnitureSavedLayout || {}) {
+  return Object.keys(layout || {}).reduce((count, roomKey) => {
+    const roomLayout = layout[roomKey] || [];
+    const roomBaseline = baseline[roomKey] || [];
+    return count + roomLayout.reduce((roomCount, item, index) => {
+      const previous = roomBaseline[index] || {};
+      return roomCount + ((Math.abs((item.x || 0) - (previous.x || 0)) > 0.01 || Math.abs((item.y || 0) - (previous.y || 0)) > 0.01) ? 1 : 0);
+    }, 0);
+  }, 0);
+}
+
+function changedRoomCount(layout = currentLayoutSnapshot(), baseline = furnitureSavedLayout || {}) {
+  return Object.keys(layout || {}).filter((roomKey) => {
+    const roomLayout = layout[roomKey] || [];
+    const roomBaseline = baseline[roomKey] || [];
+    return roomLayout.some((item, index) => {
+      const previous = roomBaseline[index] || {};
+      return Math.abs((item.x || 0) - (previous.x || 0)) > 0.01 || Math.abs((item.y || 0) - (previous.y || 0)) > 0.01;
+    });
+  }).length;
+}
+
+function dragHintText() {
+  const copy = strings();
+  if (propDragging) return copy.layoutDragActiveHint;
+  if (selectedFurnitureProp) return copy.layoutSelectedHint;
+  return copy.layoutEditingHint;
+}
+
+function queueDistrictRender() {
+  if (dragRenderQueued) return;
+  dragRenderQueued = true;
+  window.requestAnimationFrame(() => {
+    dragRenderQueued = false;
+    renderDistricts();
+  });
+}
+
+function queueAgentRefresh() {
+  if (dragAgentsQueued || !currentSnapshot) return;
+  dragAgentsQueued = true;
+  window.requestAnimationFrame(() => {
+    dragAgentsQueued = false;
+    if (currentSnapshot) renderAgents(currentSnapshot);
+  });
+}
+
+function updateFurnitureEditorBanner() {
+  const copy = strings();
+  if (!dom.furnitureEditBanner) return;
+  dom.furnitureEditBanner.hidden = !furnitureEditMode;
+  if (!furnitureEditMode) return;
+  const changes = furnitureChangeCount();
+  if (dom.furnitureEditModeLabel) {
+    dom.furnitureEditModeLabel.className = 'editor-chip info';
+    dom.furnitureEditModeLabel.textContent = furnitureSaving ? copy.layoutSaving : copy.layoutEditing;
+  }
+  if (dom.furnitureEditDirtyLabel) {
+    const dirtyClass = furnitureDirty ? 'warn' : 'success';
+    dom.furnitureEditDirtyLabel.className = `editor-chip ${dirtyClass}`;
+    dom.furnitureEditDirtyLabel.textContent = furnitureDirty ? copy.layoutChangesCount(changes) : copy.layoutNoChanges;
+  }
+  if (dom.furnitureEditHint) {
+    dom.furnitureEditHint.textContent = dragHintText();
+  }
+  if (dom.furnitureEditMeta) {
+    const coords = selectedPropCoordinates();
+    const chips = [
+      `<span class="editor-chip info">${copy.layoutKeyboardHint}</span>`,
+      `<span class="editor-chip info">${copy.layoutDragSurfaceHint}</span>`,
+      `<span class="editor-chip info">${copy.layoutGridHint}</span>`,
+      `<span class="editor-chip ${selectedFurnitureProp ? 'warn' : 'info'}">${selectedPropMeta() || copy.layoutPickHint}</span>`,
+      selectedFurnitureProp && coords ? `<span class="editor-chip success">${copy.layoutCoordChip(coords.x, coords.y)}</span>` : '',
+      selectedFurnitureProp ? `<span class="editor-chip info">${copy.layoutSnapChip(Number(furnitureSnapStep || 0.5).toFixed(1))}</span>` : '',
+    ].filter(Boolean);
+    dom.furnitureEditMeta.innerHTML = chips.join('');
+  }
+  updateFurnitureCoordinateHud();
+}
+
+function updateFurnitureToolbar() {
+  const copy = strings();
+  if (dom.editFurnitureButton) dom.editFurnitureButton.textContent = copy.editFurniture;
+  if (dom.saveFurnitureButton) {
+    dom.saveFurnitureButton.textContent = furnitureSaving ? copy.layoutSaving : copy.saveLayout;
+    dom.saveFurnitureButton.hidden = !furnitureEditMode;
+    dom.saveFurnitureButton.disabled = furnitureSaving || !furnitureDirty;
+  }
+  if (dom.cancelFurnitureButton) {
+    dom.cancelFurnitureButton.textContent = copy.cancelLayout;
+    dom.cancelFurnitureButton.hidden = !furnitureEditMode;
+    dom.cancelFurnitureButton.disabled = furnitureSaving;
+  }
+  if (dom.editFurnitureButton) {
+    dom.editFurnitureButton.hidden = furnitureEditMode;
+    dom.editFurnitureButton.disabled = furnitureSaving;
+  }
+  dom.world?.classList.toggle('editing', furnitureEditMode);
+  updateFurnitureEditorBanner();
+}
+
+function applyMobileMode() {
+  const copy = strings();
+  dom.body.dataset.mobileMode = mobileMode ? 'on' : 'off';
+  dom.body.dataset.sidebarOpen = sidebarOpen ? 'true' : 'false';
+  if (!dom.mobileModeButton) return;
+  dom.mobileModeButton.textContent = mobileMode ? copy.desktopMode : copy.mobileMode;
+  dom.mobileModeButton.setAttribute('aria-pressed', String(mobileMode));
+  dom.mobileModeButton.title = mobileMode ? copy.desktopModeHint : copy.mobileModeHint;
+  if (dom.sidebarTitle) dom.sidebarTitle.textContent = copy.dashboardPanels;
+  if (dom.sidebarToggleButton) {
+    dom.sidebarToggleButton.textContent = sidebarOpen ? '‹' : '›';
+    dom.sidebarToggleButton.setAttribute('aria-expanded', String(sidebarOpen));
+    dom.sidebarToggleButton.setAttribute('aria-label', sidebarOpen ? copy.hidePanels : copy.showPanels);
+  }
+  if (dom.sidebarCloseButton) dom.sidebarCloseButton.textContent = copy.closePanels;
+}
+
+function buildLiveSnapshot(snapshot = {}, nowMs = Date.now()) {
+  const serverTimeMs = Number(snapshot.server_time_ms || nowMs);
+  const elapsedSeconds = Math.max(0, (nowMs - serverTimeMs) / 1000);
+  const agents = Array.isArray(snapshot.agents)
+    ? snapshot.agents.map((agent) => ({
+      ...agent,
+      age_seconds: Number((Number(agent.age_seconds || 0) + elapsedSeconds).toFixed(1)),
+    }))
+    : [];
+  return {
+    ...snapshot,
+    server_time_ms: nowMs,
+    agents,
+  };
+}
+
+function updateLastSyncText(snapshot = currentSnapshot, nowMs = Date.now()) {
+  if (!dom.lastSync) return;
+  const copy = strings();
+  if (!snapshot) {
+    dom.lastSync.textContent = copy.syncPending;
+    return;
+  }
+  const serverTimeMs = Number(snapshot.server_time_ms || nowMs);
+  const syncAge = Math.max(0, Math.round((nowMs - serverTimeMs) / 1000));
+  const stamp = new Date(serverTimeMs).toLocaleTimeString(currentLocale, { hour12: false });
+  dom.lastSync.textContent = `${copy.lastSyncPrefix} ${stamp} · ${copy.secondsAgo(syncAge)}`;
+}
+
+function renderHeartbeatCurve(snapshot = {}, nowMs = Date.now()) {
+  if (!dom.heartbeatCurve) return;
+  const canvas = dom.heartbeatCurve;
+  const context = canvas.getContext('2d');
+  if (!context) return;
+  const mainAgent = (snapshot.agents || []).find((agent) => agent.role === 'main_agent') || (snapshot.agents || [])[0];
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  if (!mainAgent) {
+    heartbeatSamples = [];
+    return;
+  }
+  const load = mainAgent.is_stale || mainAgent.connection_status === 'awaiting_attach'
+    ? .06
+    : ({ idle: .18, sleeping: .08, thinking: .55, planning: .68, collaborating: .78, invoking_skill: .82, tool_call: .9, executing: 1, responding: .72, self_healing: .94, blocked: .3 }[mainAgent.pixel_state] || .5);
+  heartbeatSamples = [...heartbeatSamples, { time: nowMs, load }].slice(-96);
+  const { width, height } = canvas;
+  context.strokeStyle = 'rgba(171,192,223,.2)';
+  context.setLineDash([5, 5]);
+  context.beginPath();
+  context.moveTo(0, height / 2);
+  context.lineTo(width, height / 2);
+  context.stroke();
+  context.setLineDash([]);
+  context.strokeStyle = mainAgent.is_stale ? '#ef4444' : mainAgent.connection_status === 'awaiting_attach' ? '#fbbf24' : '#4ade80';
+  context.lineWidth = 3;
+  context.beginPath();
+  const speed = Math.max(.35, 1100 / timelineRefreshMs);
+  for (let x = 0; x <= width; x += 3) {
+    const phase = ((x / width) * Math.PI * 12 * speed) + (nowMs / 220);
+    const y = (height / 2) - (Math.pow(Math.max(0, Math.sin(phase)), 18) * load * 23) + (Math.sin(phase * .5) * load * 5);
+    if (x === 0) context.moveTo(x, y);
+    else context.lineTo(x, y);
+  }
+  context.stroke();
+}
+
+function renderHeartbeat(snapshot = {}) {
+  if (!dom.heartbeatStatus) return;
+  const mainAgent = (snapshot.agents || []).find((agent) => agent.role === 'main_agent') || (snapshot.agents || [])[0];
+  if (!mainAgent) {
+    dom.heartbeatStatus.classList.add('stale');
+    dom.heartbeatStatus.classList.remove('waiting');
+    return;
+  }
+  const waiting = mainAgent.connection_status === 'awaiting_attach';
+  const stale = !!mainAgent.is_stale && !waiting;
+  dom.heartbeatStatus.classList.toggle('stale', stale);
+  dom.heartbeatStatus.classList.toggle('waiting', waiting);
+}
+
+function updateRefreshController() {
+  const copy = strings();
+  if (dom.timelineRefreshLabel) dom.timelineRefreshLabel.textContent = copy.timelineRefreshLabel;
+  if (dom.refreshRateOutput) dom.refreshRateOutput.textContent = `${(timelineRefreshMs / 1000).toFixed(1)}s`;
+}
+
+function restartTimelineTimer() {
+  if (timelineTimer) {
+    clearInterval(timelineTimer);
+    timelineTimer = null;
+  }
+  const interval = Math.max(100, timelineRefreshMs || DEFAULT_TIMELINE_REFRESH_MS);
+  timelineTimer = window.setInterval(() => {
+    if (!currentSnapshot) return;
+    const nowMs = Date.now();
+    renderTimelinePanels(buildLiveSnapshot(currentSnapshot, nowMs), { nowMs, windowMs: 20 * 60 * 1000 });
+  }, interval);
+}
+
+function startLiveUiTicker() {
+  if (uiTickTimer) {
+    clearInterval(uiTickTimer);
+    uiTickTimer = null;
+  }
+  uiTickTimer = window.setInterval(() => {
+    if (!currentSnapshot) return;
+    const nowMs = Date.now();
+    const liveSnapshot = buildLiveSnapshot(currentSnapshot, nowMs);
+    updateLastSyncText(currentSnapshot, nowMs);
+    renderHeartbeat(liveSnapshot);
+    renderHeartbeatCurve(liveSnapshot, nowMs);
+    renderAgents(liveSnapshot);
+  }, Math.max(100, timelineRefreshMs));
 }
 
 function roomCopy(agent) {
@@ -394,7 +769,7 @@ function setText(id, value) {
 
 function applyStaticCopy() {
   const copy = strings();
-  document.documentElement.lang = currentLocale === 'zh-TW' ? 'zh-Hant' : 'en';
+  document.documentElement.lang = currentLocale === 'zh-TW' ? 'zh-Hant' : currentLocale === 'ja-JP' ? 'ja' : currentLocale === 'ko-KR' ? 'ko' : 'en';
   dom.body.dataset.locale = currentLocale;
   setText('brand-title', copy.brandTitle);
   setText('brand-subtitle', copy.brandSubtitle);
@@ -419,7 +794,10 @@ function applyStaticCopy() {
   setText('legend-idle-body', copy.legendIdleBody);
   setText('legend-offline-title', copy.legendOfflineTitle);
   setText('legend-offline-body', copy.legendOfflineBody);
-  dom.languageButtons.forEach((button) => button.classList.toggle('active', button.dataset.localeSwitch === currentLocale));
+  populateLocaleSelect();
+  updateRefreshController();
+  updateFurnitureToolbar();
+  applyMobileMode();
   if (!selectedAgentId) {
     dom.inspectorBody.className = 'empty';
     dom.inspectorBody.textContent = copy.inspectorEmpty;
@@ -480,9 +858,26 @@ function renderDistricts() {
     }
 
     const propLayout = roomDecorLayout(roomKey, getRoomDecor(roomKey, currentLocale));
+    const propPositions = getRoomPropPositions(roomKey);
+    district.classList.toggle('editing', furnitureEditMode);
+    const selectedKey = selectedFurnitureKey();
+    const selectedInRoom = selectedFurnitureProp && selectedFurnitureProp.roomKey === roomKey;
     const propsLayer = district.querySelector('.district-props');
     if (propsLayer) {
-      propsLayer.innerHTML = propLayout.map(({ prop, pos }) => {
+      const gridLines = buildGridLines();
+      const guide = furnitureEditMode && selectedInRoom ? `
+        <div class="room-edit-grid" aria-hidden="true">
+          ${gridLines.map((value) => `<span class="grid-line vertical${Math.abs(value - 50) < 0.01 ? ' mid' : ''}" style="left:${value}%"></span>`).join('')}
+          ${gridLines.map((value) => `<span class="grid-line horizontal${Math.abs(value - 50) < 0.01 ? ' mid' : ''}" style="top:${value}%"></span>`).join('')}
+        </div>
+        <div class="prop-guide${propDragging && propDragging.roomKey === roomKey ? ' dragging' : ''}" style="left:${Number(selectedFurnitureProp.x || 50).toFixed(2)}%;top:${Number(selectedFurnitureProp.y || 50).toFixed(2)}%">
+          <span class="snap-guide vertical"></span>
+          <span class="snap-guide horizontal"></span>
+          <span class="snap-guide-dot"></span>
+          <span class="prop-guide-badge">${selectedPropGuideLabel()}</span>
+        </div>
+      ` : '';
+      propsLayer.innerHTML = guide + propLayout.map(({ prop, pos, index }) => {
         const appledog = getAppleDogPropSprite(prop.type);
         const useHighClarity = shouldUseHighClarityProp(prop.type);
         const kenney = appledog || useHighClarity ? null : getKenneyPropSprite(prop.type);
@@ -493,11 +888,14 @@ function renderDistricts() {
         const fx = getPropFx(prop.type, roomKey);
         const icon = INTERACTION_OBJECT_ICONS[prop.type] || '▪';
         const assetPack = appledog ? 'appledog' : kenney ? 'kenney' : 'office-fallback';
+        const draftPos = propPositions[index] || pos;
+        const isSelected = selectedKey === `${roomKey}:${index}`;
         return `
-          <div class="prop ${fx.className}" data-prop-type="${prop.type}" data-asset-pack="${assetPack}" data-fx-intensity="${fx.intensity}" style="left:${pos.x}%;top:${pos.y}%;--prop-scale:${scale};--prop-width-tiles:${widthTiles};--prop-height-tiles:${heightTiles}" title="${prop.label}">
+          <div class="prop ${fx.className}${isSelected ? ' selected' : ''}" data-room-key="${roomKey}" data-prop-index="${index}" data-prop-type="${prop.type}" data-prop-label="${prop.label}" data-asset-pack="${assetPack}" data-fx-intensity="${fx.intensity}" style="left:${draftPos.x}%;top:${draftPos.y}%;--prop-scale:${scale};--prop-width-tiles:${widthTiles};--prop-height-tiles:${heightTiles}" title="${prop.label}">
             <div class="prop-icon" aria-hidden="true">${icon}</div>
             <img alt="${prop.label}" src="${src}" data-pack="${assetPack}" />
             <div class="prop-label">${prop.label}</div>
+            <div class="prop-meta">${prop.label} · ${draftPos.x.toFixed(1)}%, ${draftPos.y.toFixed(1)}%</div>
           </div>
         `;
       }).join('');
@@ -628,13 +1026,14 @@ function createAgentElement(agent) {
 function ensureAgentView(agent) {
   if (!agentViews.has(agent.agent)) {
     const el = createAgentElement(agent);
+    const slot = Array.from(String(agent.agent || '')).reduce((sum, char) => sum + char.charCodeAt(0), 0) % 3;
     agentViews.set(agent.agent, {
       el,
       data: agent,
       currentX: agent.x || 0,
       currentY: agent.y || 0,
       motionToken: 0,
-      patrolIndex: 0,
+      patrolIndex: slot,
       frame: 0,
       facing: 'right',
       lastPatrolKey: '',
@@ -671,7 +1070,8 @@ function decorateAgent(view) {
   view.el.classList.toggle('selected', selectedAgentId === agent.agent);
   view.el.classList.toggle('walking', !!view.isMoving);
   view.el.classList.toggle('at-interaction', !!interaction?.propType && !view.isMoving);
-  ['idle', 'thinking', 'planning', 'working', 'offline'].forEach((state) => view.el.classList.toggle(state, agent.state === state));
+  ['idle', 'thinking', 'planning', 'working', 'blocked', 'self_healing', 'awaiting_input', 'initializing', 'sleeping', 'offline'].forEach((state) => view.el.classList.toggle(state, agent.state === state));
+  view.el.dataset.pixelState = agent.pixel_state || agent.state || 'idle';
   ['ponder', 'planning', 'terminal', 'dispatch', 'notes', 'writing', 'rest', 'neutral'].forEach((name) => view.el.classList.toggle(`pose-${name}`, pose.pose === name));
   beamEl.className = `beam ${agent.state || 'idle'}`;
   objectChipEl.textContent = interaction?.objectIcon || INTERACTION_OBJECT_ICONS[interaction?.propType] || '';
@@ -693,7 +1093,7 @@ function decorateAgent(view) {
   imgEl.dataset.pack = sprite?.src ? 'kenney' : 'fallback';
   imgEl.style.transform = sprite?.flipX ? 'scaleX(-1)' : '';
   imgEl.alt = agent.name;
-  nameText.textContent = displayAgentName(agent);
+  nameText.textContent = `${displayAgentName(agent)} · ${agent.instance_label || agent.agent}`;
   roomEl.textContent = `${agent.room_icon || '📍'} ${roomName}`;
   metaEl.textContent = agent.role === 'main_agent'
     ? short(interactionCopy(interaction) || eventVisual.detail || displayTask, currentLocale === 'en-US' ? 32 : 26)
@@ -843,6 +1243,116 @@ function repaintAgents() {
   agentViews.forEach((view) => decorateAgent(view));
 }
 
+function syncFurnitureLayout(layout = {}) {
+  furnitureSavedLayout = cloneLayout(layout || {});
+  furnitureDraft = cloneLayout(layout || {});
+  furnitureDirty = false;
+  if (selectedFurnitureProp) {
+    const next = (furnitureDraft[selectedFurnitureProp.roomKey] || [])[selectedFurnitureProp.index];
+    if (next) {
+      selectedFurnitureProp.x = Number(next.x || selectedFurnitureProp.x || 50);
+      selectedFurnitureProp.y = Number(next.y || selectedFurnitureProp.y || 50);
+    } else {
+      setSelectedFurnitureProp(null);
+    }
+  }
+  setFurnitureLayoutOverrides(furnitureDraft);
+  refreshFurnitureBlockers();
+  updateFurnitureToolbar();
+}
+
+function currentLayoutSnapshot() {
+  return exportFurnitureLayout();
+}
+
+function updateFurnitureDirtyState() {
+  furnitureDirty = !layoutEquals(currentLayoutSnapshot(), furnitureSavedLayout || {});
+  updateFurnitureToolbar();
+}
+
+function updateDraggedPropVisual(prop, x, y) {
+  if (!prop) return;
+  prop.style.left = `${x}%`;
+  prop.style.top = `${y}%`;
+  prop.classList.add('selected');
+  const meta = prop.querySelector('.prop-meta');
+  if (meta) {
+    const label = prop.dataset.propLabel || prop.dataset.propType || 'prop';
+    meta.textContent = `${label} · ${formatPercent(x)}%, ${formatPercent(y)}%`;
+  }
+}
+
+function applyDraftPosition(roomKey, index, x, y, options = {}) {
+  const roomPositions = (furnitureDraft[roomKey] || getRoomPropPositions(roomKey)).map((item) => ({ ...item }));
+  const nextX = normalizePercent(x, { step: options.step || furnitureSnapStep });
+  const nextY = normalizePercent(y, { step: options.step || furnitureSnapStep });
+  if (positionOverlapsFurniture(roomKey, getRoomDecor(roomKey, currentLocale), index, { x: nextX, y: nextY }, roomPositions)) {
+    const now = Date.now();
+    if (now - lastFurnitureCollisionAt > 900) {
+      const copy = strings();
+      showFurnitureToast('error', copy.layoutCollisionTitle, copy.layoutCollisionDetail);
+      lastFurnitureCollisionAt = now;
+    }
+    return false;
+  }
+  roomPositions[index] = { x: nextX, y: nextY };
+  furnitureDraft[roomKey] = roomPositions;
+  if (selectedFurnitureProp && selectedFurnitureProp.roomKey === roomKey && selectedFurnitureProp.index === index) {
+    selectedFurnitureProp.x = nextX;
+    selectedFurnitureProp.y = nextY;
+  }
+  setFurnitureLayoutOverrides(furnitureDraft);
+  refreshFurnitureBlockers();
+  updateFurnitureDirtyState();
+  if (options.prop) updateDraggedPropVisual(options.prop, nextX, nextY);
+  if (options.renderDistricts) queueDistrictRender();
+  queueAgentRefresh();
+  return true;
+}
+
+function showFurnitureToast(kind = 'info', title = '', body = '') {
+  if (!dom.furnitureToast || !dom.furnitureToastTitle || !dom.furnitureToastBody) return;
+  if (furnitureToastTimer) window.clearTimeout(furnitureToastTimer);
+  dom.furnitureToast.className = `toast ${kind}`;
+  dom.furnitureToastTitle.textContent = title;
+  dom.furnitureToastBody.textContent = body;
+  window.requestAnimationFrame(() => dom.furnitureToast?.classList.add('show'));
+  furnitureToastTimer = window.setTimeout(() => {
+    dom.furnitureToast?.classList.remove('show');
+  }, 2600);
+}
+
+function renderTimelineSvg(panel) {
+  const rowHeight = 98 / Math.max(1, panel.rows.length);
+  const gridLines = panel.rows.map((row) => {
+    const y = Number((((row.index + 0.5) / panel.rows.length) * 98).toFixed(2));
+    return `<line x1="0" y1="${y}" x2="100" y2="${y}" stroke="rgba(171,192,223,0.16)" stroke-width="0.6" />`;
+  }).join('');
+  const dots = panel.points.map((point) => `<circle cx="${point.xPct}" cy="${Number((point.yPct * 0.98).toFixed(2))}" r="2.8" fill="${point.color}"><title>${point.title} | ${point.summary}</title></circle>`).join('');
+  return `<svg viewBox="0 0 100 98" preserveAspectRatio="none">${gridLines}${dots}</svg>`;
+}
+
+function renderTimelinePanels(snapshot, { nowMs = snapshot?.server_time_ms || Date.now(), windowMs = 20 * 60 * 1000 } = {}) {
+  const copy = strings();
+  const panels = buildAgentTimelinePanels(snapshot, copy, { nowMs, windowMs });
+  dom.eventSummary.textContent = panels.length ? copy.eventGraphSummary(panels.length) : copy.noEvents;
+  if (!panels.length) {
+    dom.events.innerHTML = `<div class="event-card"><div class="empty">${copy.waitingEvents}</div></div>`;
+    return;
+  }
+  dom.events.innerHTML = `<div class="timeline-grid">${panels.map((panel) => `
+    <article class="timeline-panel">
+      <div class="event-top"><span>${panel.role === 'subagent' ? '🧬' : panel.role === 'branch_session' ? '🗂️' : '🤖'} ${panel.name}</span><span class="muted">${stateText(panel.state)}</span></div>
+      <div class="timeline-meta"><span>${copy.latestEvent}: ${panel.latestCategory}</span><span>${copy.blockedFor}: ${ageText(panel.ageSeconds)}</span></div>
+      <div class="timeline-rows">
+        <div class="timeline-row-labels" style="grid-template-rows: repeat(${panel.rows.length}, 1fr)">${panel.rows.map((row) => `<span>${row.label}</span>`).join('')}</div>
+        <div>${renderTimelineSvg(panel)}</div>
+      </div>
+      <div class="event-summary">${short(panel.latestSummary || copy.noEvents, 120)}</div>
+    </article>
+  `).join('')}</div>`;
+}
+
 function renderAgents(snapshot) {
   const seen = new Set();
   const agents = snapshot.agents || [];
@@ -892,34 +1402,216 @@ function renderAgents(snapshot) {
 }
 
 function renderEvents(items = []) {
-  const copy = strings();
-  dom.eventSummary.textContent = items.length ? copy.recentCount(items.length) : copy.noEvents;
-  if (!items.length) {
-    dom.events.innerHTML = `<div class="event-card"><div class="empty">${copy.waitingEvents}</div></div>`;
-    return;
-  }
-  dom.events.innerHTML = items.map((item) => `
-    <div class="event-card">
-      <div class="event-top">
-        <span>${item.icon || '✨'} ${eventTitle(item)}</span>
-        <span class="muted">${new Date(item.time).toLocaleTimeString(currentLocale, { hour12: false })}</span>
-      </div>
-      <div class="event-summary">${eventSummary(item)}</div>
-    </div>
-  `).join('');
+  renderTimelinePanels(currentSnapshot || { events: items, agents: [], server_time_ms: Date.now() }, { nowMs: Date.now() });
 }
 
 function renderSnapshot(snapshot) {
   currentSnapshot = snapshot;
+  if (!furnitureEditMode) syncFurnitureLayout(snapshot.furniture_layout || {});
   const copy = strings();
   dom.agentCount.textContent = String(snapshot.stats.agent_count || 0);
   dom.subagentCount.textContent = String(snapshot.stats.subagent_count || 0);
   dom.sessionCount.textContent = String(snapshot.stats.branch_session_count || snapshot.stats.active_session_count || 0);
   dom.worldState.textContent = snapshot.stats.hermes_connected ? copy.hermesConnected : copy.localOnly;
   dom.worldSummary.textContent = summarizeWorld(snapshot.stats, currentLocale);
-  dom.lastSync.textContent = `${copy.lastSyncPrefix} ${new Date(snapshot.server_time_ms).toLocaleTimeString(currentLocale, { hour12: false })}`;
+  updateLastSyncText(snapshot, snapshot.server_time_ms);
+  renderHeartbeat(snapshot);
+  renderHeartbeatCurve(snapshot, snapshot.server_time_ms);
   renderAgents(snapshot);
-  renderEvents(snapshot.events || []);
+  renderTimelinePanels(snapshot, { nowMs: snapshot.server_time_ms, windowMs: 20 * 60 * 1000 });
+}
+
+function beginFurnitureEdit() {
+  const copy = strings();
+  furnitureEditMode = true;
+  furnitureSaving = false;
+  furnitureSnapStep = resolveSnapStep(false);
+  furnitureDraft = cloneLayout(furnitureSavedLayout || {});
+  furnitureDirty = false;
+  propDragging = null;
+  setSelectedFurnitureProp(null);
+  setFurnitureLayoutOverrides(furnitureDraft);
+  refreshFurnitureBlockers();
+  updateFurnitureToolbar();
+  renderDistricts();
+  showFurnitureToast('info', copy.layoutEditing, copy.layoutEditingHint);
+}
+
+function cancelFurnitureEdit() {
+  const copy = strings();
+  if (furnitureDirty && !window.confirm(copy.layoutExitConfirm)) return;
+  furnitureEditMode = false;
+  furnitureSaving = false;
+  furnitureSnapStep = resolveSnapStep(false);
+  propDragging = null;
+  setSelectedFurnitureProp(null);
+  syncFurnitureLayout(furnitureSavedLayout || {});
+  updateFurnitureToolbar();
+  renderDistricts();
+  if (currentSnapshot) renderAgents(currentSnapshot);
+  showFurnitureToast('info', copy.cancelLayout, copy.layoutReset);
+}
+
+async function saveFurnitureEdit() {
+  const copy = strings();
+  if (furnitureSaving) return;
+  const layout = currentLayoutSnapshot();
+  const changeCount = furnitureChangeCount(layout, furnitureSavedLayout || {});
+  const roomCount = changedRoomCount(layout, furnitureSavedLayout || {});
+  if (!furnitureDirty) {
+    showFurnitureToast('info', copy.layoutEditing, copy.layoutNoChanges);
+    return;
+  }
+  furnitureSaving = true;
+  updateFurnitureToolbar();
+  try {
+    const res = await fetch('/api/furniture-layout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ layout }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const payload = await res.json();
+    syncFurnitureLayout(payload.layout || layout);
+    furnitureEditMode = false;
+    furnitureSaving = false;
+    furnitureSnapStep = resolveSnapStep(false);
+    propDragging = null;
+    setSelectedFurnitureProp(null);
+    updateFurnitureToolbar();
+    renderDistricts();
+    if (currentSnapshot) renderAgents(currentSnapshot);
+    dom.worldState.textContent = copy.layoutSaved;
+    showFurnitureToast('success', copy.saveLayout, copy.layoutSavedDetail(changeCount, roomCount));
+  } catch (err) {
+    furnitureSaving = false;
+    updateFurnitureToolbar();
+    dom.worldState.textContent = `${copy.layoutSaveFailed}: ${err.message}`;
+    showFurnitureToast('error', copy.layoutSaveFailed, err.message);
+  }
+}
+
+function setupFurnitureEditor() {
+  dom.editFurnitureButton?.addEventListener('click', beginFurnitureEdit);
+  dom.cancelFurnitureButton?.addEventListener('click', cancelFurnitureEdit);
+  dom.saveFurnitureButton?.addEventListener('click', saveFurnitureEdit);
+
+  dom.world?.addEventListener('pointerdown', (event) => {
+    if (!furnitureEditMode || furnitureSaving) return;
+    const prop = event.target.closest('.prop');
+    if (!prop) {
+      if (selectedFurnitureProp) {
+        setSelectedFurnitureProp(null);
+        queueDistrictRender();
+        updateFurnitureEditorBanner();
+      }
+      return;
+    }
+    const roomKey = prop.dataset.roomKey;
+    const index = Number(prop.dataset.propIndex || 0);
+    const district = prop.closest('.district');
+    const rect = district?.getBoundingClientRect();
+    const propRect = prop.getBoundingClientRect();
+    if (!roomKey || !rect || !propRect) return;
+    const current = (furnitureDraft[roomKey] || getRoomPropPositions(roomKey))[index] || { x: 50, y: 50 };
+    setSelectedFurnitureProp({
+      roomKey,
+      index,
+      propType: prop.dataset.propType || 'prop',
+      label: prop.dataset.propLabel || prop.dataset.propType || 'prop',
+      x: Number(current.x || 50),
+      y: Number(current.y || 50),
+    });
+    propDragging = {
+      roomKey,
+      index,
+      prop,
+      rect,
+      propType: prop.dataset.propType || 'prop',
+      label: prop.dataset.propLabel || prop.dataset.propType || 'prop',
+      offsetX: event.clientX - (propRect.left + propRect.width / 2),
+      offsetY: event.clientY - (propRect.top + propRect.height / 2),
+      x: Number(current.x || 50),
+      y: Number(current.y || 50),
+      pointerId: event.pointerId,
+    };
+    prop.setPointerCapture?.(event.pointerId);
+    prop.classList.add('dragging');
+    queueDistrictRender();
+    updateFurnitureEditorBanner();
+    event.preventDefault();
+    event.stopPropagation();
+  });
+
+  window.addEventListener('pointermove', (event) => {
+    if (!propDragging || furnitureSaving) return;
+    const district = propDragging.prop?.closest('.district');
+    const liveRect = district?.getBoundingClientRect() || propDragging.rect;
+    const rawX = (((event.clientX - liveRect.left) - propDragging.offsetX) / liveRect.width) * 100;
+    const rawY = (((event.clientY - liveRect.top) - propDragging.offsetY) / liveRect.height) * 100;
+    furnitureSnapStep = resolveSnapStep(event.shiftKey);
+    const x = normalizePercent(rawX, { step: furnitureSnapStep });
+    const y = normalizePercent(rawY, { step: furnitureSnapStep });
+    propDragging.rect = liveRect;
+    const accepted = applyDraftPosition(propDragging.roomKey, propDragging.index, x, y, { prop: propDragging.prop, step: furnitureSnapStep });
+    if (accepted) {
+      propDragging.x = x;
+      propDragging.y = y;
+    }
+    updateFurnitureEditorBanner();
+  });
+
+  const finishDrag = ({ rerender = true } = {}) => {
+    if (!propDragging) return;
+    const settled = { ...propDragging };
+    setSelectedFurnitureProp(settled);
+    propDragging.prop?.releasePointerCapture?.(propDragging.pointerId);
+    propDragging.prop?.classList.remove('dragging');
+    propDragging = null;
+    updateFurnitureEditorBanner();
+    if (rerender) {
+      queueDistrictRender();
+      queueAgentRefresh();
+    }
+  };
+
+  window.addEventListener('pointerup', () => finishDrag());
+  window.addEventListener('pointercancel', () => finishDrag());
+  window.addEventListener('keydown', (event) => {
+    if (!furnitureEditMode || furnitureSaving) return;
+    if (event.key === 'Escape') {
+      if (propDragging) {
+        finishDrag();
+        return;
+      }
+      cancelFurnitureEdit();
+      return;
+    }
+    if (event.key === 'Enter' && furnitureDirty) {
+      event.preventDefault();
+      saveFurnitureEdit();
+      return;
+    }
+    if (!selectedFurnitureProp) return;
+    const delta = { x: 0, y: 0 };
+    const step = resolveSnapStep(event.shiftKey);
+    furnitureSnapStep = step;
+    if (event.key === 'ArrowLeft') delta.x = -step;
+    if (event.key === 'ArrowRight') delta.x = step;
+    if (event.key === 'ArrowUp') delta.y = -step;
+    if (event.key === 'ArrowDown') delta.y = step;
+    if (!delta.x && !delta.y) return;
+    event.preventDefault();
+    const nextX = clampPercent(selectedFurnitureProp.x + delta.x);
+    const nextY = clampPercent(selectedFurnitureProp.y + delta.y);
+    applyDraftPosition(selectedFurnitureProp.roomKey, selectedFurnitureProp.index, nextX, nextY, { renderDistricts: true, step });
+    updateFurnitureEditorBanner();
+  });
+  window.addEventListener('beforeunload', (event) => {
+    if (!furnitureEditMode || !furnitureDirty) return;
+    event.preventDefault();
+    event.returnValue = '';
+  });
 }
 
 async function refresh() {
@@ -938,7 +1630,7 @@ async function refresh() {
 function startPolling() {
   if (pollTimer) clearInterval(pollTimer);
   refresh();
-  pollTimer = window.setInterval(refresh, 2000);
+  pollTimer = window.setInterval(refresh, Math.max(100, timelineRefreshMs));
 }
 
 function connectRealtime() {
@@ -986,6 +1678,7 @@ function setupDraggablePanels() {
 
   dom.panelHandles.forEach((handle) => {
     handle.addEventListener('pointerdown', (event) => {
+      if (event.target.closest('button, select, option, input, textarea, a')) return;
       const panel = handle.closest('[data-draggable-panel]');
       if (!panel) return;
       panelDragging = {
@@ -1044,11 +1737,26 @@ function setupCameraPan() {
     cameraOffset = centeredCamera(viewport(), stage(), cameraScale);
     applyCameraTransform(false);
   };
+  const zoomAtCenter = (deltaY) => {
+    const currentViewport = viewport();
+    const next = nextZoomState({
+      offset: cameraOffset,
+      scale: cameraScale,
+      viewport: currentViewport,
+      stage: stage(),
+      pointer: { x: currentViewport.width / 2, y: currentViewport.height / 2 },
+      deltaY,
+    });
+    cameraOffset = next.offset;
+    cameraScale = next.scale;
+    applyCameraTransform(false);
+  };
   recenter();
   window.addEventListener('resize', recenter);
   dom.world.addEventListener('pointerdown', (event) => {
+    if (furnitureEditMode && event.target.closest('.prop')) return;
     if (event.target.closest('.agent-speech') || event.target.closest('.event-chip') || event.target.closest('.speech-dialog')) return;
-    if (event.target.closest('.agent') || event.target.closest('[data-draggable-panel]') || event.target.closest('button')) {
+    if (event.target.closest('.agent') || event.target.closest('[data-draggable-panel]') || event.target.closest('button') || event.target.closest('select')) {
       if (!event.target.closest('.speech-dialog')) closeAgentDialog();
       return;
     }
@@ -1078,6 +1786,13 @@ function setupCameraPan() {
     applyCameraTransform(false);
     event.preventDefault();
   }, { passive: false });
+  dom.zoomInButton?.addEventListener('click', () => zoomAtCenter(-120));
+  dom.zoomOutButton?.addEventListener('click', () => zoomAtCenter(120));
+  dom.zoomResetButton?.addEventListener('click', () => {
+    cameraScale = 1;
+    cameraOffset = centeredCamera(viewport(), stage(), cameraScale);
+    applyCameraTransform(false);
+  });
 }
 
 function setLocale(locale) {
@@ -1087,17 +1802,58 @@ function setLocale(locale) {
   if (currentSnapshot) renderSnapshot(currentSnapshot);
 }
 
-dom.languageButtons.forEach((button) => {
-  button.addEventListener('click', () => setLocale(button.dataset.localeSwitch));
+dom.languageSelect?.addEventListener('change', (event) => {
+  setLocale(event.target.value);
+});
+
+dom.mobileModeButton?.addEventListener('click', () => {
+  mobileMode = !mobileMode;
+  if (mobileMode) sidebarOpen = false;
+  localStorage.setItem('pixelverse:mobile-mode', mobileMode ? '1' : '0');
+  localStorage.setItem('pixelverse:sidebar-open', sidebarOpen ? '1' : '0');
+  applyMobileMode();
+  window.dispatchEvent(new Event('resize'));
+});
+
+dom.sidebarToggleButton?.addEventListener('click', () => {
+  sidebarOpen = !sidebarOpen;
+  localStorage.setItem('pixelverse:sidebar-open', sidebarOpen ? '1' : '0');
+  applyMobileMode();
+});
+
+dom.sidebarCloseButton?.addEventListener('click', () => {
+  sidebarOpen = false;
+  localStorage.setItem('pixelverse:sidebar-open', '0');
+  applyMobileMode();
 });
 
 dom.dialogBackdrop?.addEventListener('click', (event) => {
   if (!event.target.closest('.speech-dialog')) closeAgentDialog();
 });
 
+function adjustRefreshInterval(deltaMs) {
+  timelineRefreshMs = clampNumber(timelineRefreshMs + deltaMs, 100, 10_000);
+  localStorage.setItem('pixelverse:timeline-refresh-ms', String(timelineRefreshMs));
+  updateRefreshController();
+  restartTimelineTimer();
+  startLiveUiTicker();
+  if (pollTimer) startPolling();
+  if (currentSnapshot) {
+    renderTimelinePanels(buildLiveSnapshot(currentSnapshot, Date.now()), { nowMs: Date.now(), windowMs: 20 * 60 * 1000 });
+  }
+}
+
+dom.refreshSlowerButton?.addEventListener('click', () => adjustRefreshInterval(100));
+dom.refreshFasterButton?.addEventListener('click', () => adjustRefreshInterval(-100));
+
+populateLocaleSelect();
 applyStaticCopy();
+updateRefreshController();
 setupDraggablePanels();
 setupCameraPan();
+setupFurnitureEditor();
+startLiveUiTicker();
+restartTimelineTimer();
 connectRealtime();
 if (patrolTimer) clearInterval(patrolTimer);
 patrolTimer = window.setInterval(patrolActiveAgents, 1500);

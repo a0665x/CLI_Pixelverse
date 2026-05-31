@@ -38,9 +38,9 @@ case "$PIXELVERSE_AGENT_KIND" in
       --no-speak &
     ;;
   codex|gemini-cli|claude-code|ollama|generic)
-    curl -fsS -X POST "http://127.0.0.1:${PIXELVERSE_PORT}/api/event" \
+    curl -fsS -X POST "http://127.0.0.1:${PIXELVERSE_PORT}/api/heartbeat" \
       -H 'Content-Type: application/json' \
-      -d "{\"agent_type\":\"${PIXELVERSE_AGENT_KIND}\",\"agent\":\"${PIXELVERSE_AGENT_KIND}-main\",\"event\":\"status\",\"message\":\"${PIXELVERSE_AGENT_KIND} ready\"}" >/dev/null || true
+      -d "{\"agent\":\"${PIXELVERSE_AGENT_KIND}-main\",\"name\":\"${PIXELVERSE_AGENT_KIND}\",\"state\":\"idle\",\"task\":\"${PIXELVERSE_AGENT_KIND} ready\",\"source_placeholder\":true}" >/dev/null || true
     ;;
   *)
     echo "Unknown PIXELVERSE_AGENT_KIND: $PIXELVERSE_AGENT_KIND" >&2

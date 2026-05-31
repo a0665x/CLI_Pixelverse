@@ -53,7 +53,15 @@ function normalizeToolText(agent = {}) {
 
 export function getAgentPose(agent = {}) {
   const state = agent.state || 'idle';
+  const pixelState = agent.pixel_state || state;
   const toolText = normalizeToolText(agent);
+  if (pixelState === 'blocked') return { pose: 'neutral', icon: '⚠️', preferredTypes: ['server', 'terminal', 'workbench'], state };
+  if (pixelState === 'self_healing') return { pose: 'terminal', icon: '🔧', preferredTypes: ['workbench', 'terminal', 'server'], state };
+  if (pixelState === 'awaiting_input') return { pose: 'ponder', icon: '⌛', preferredTypes: ['terminal', 'desk', 'chair'], state };
+  if (pixelState === 'sleeping') return { pose: 'rest', icon: '💤', preferredTypes: ['bed', 'sofa', 'chair'], state };
+  if (pixelState === 'collaborating') return { pose: 'dispatch', icon: '💬', preferredTypes: ['portal', 'desk', 'terminal'], state };
+  if (pixelState === 'invoking_skill') return { pose: 'dispatch', icon: '✨', preferredTypes: ['portal', 'terminal', 'desk'], state };
+  if (pixelState === 'responding') return { pose: 'writing', icon: '✍️', preferredTypes: ['desk', 'terminal', 'table'], state };
   for (const rule of TOOL_RULES) {
     if (rule.test.test(toolText)) {
       return { pose: rule.pose, icon: rule.icon, preferredTypes: rule.types, state };

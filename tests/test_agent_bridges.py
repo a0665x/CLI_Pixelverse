@@ -1,3 +1,6 @@
+import time
+
+from agent_bridges.cli_adapter import HeartbeatLoop
 from agent_bridges.hermes_adapter import normalize_command
 from agent_bridges.pixelverse_client import PixelverseClient, infer_target_room
 
@@ -62,6 +65,21 @@ def test_complete_event_returns_agent_to_standby():
     assert payload["event"] == "completed"
     assert payload["state"] == "idle"
     assert payload["target_room"] == "standby_dock"
+
+
+def test_cli_adapter_heartbeat_loop_keeps_long_running_process_attached():
+    client = RecordingClient()
+    loop = HeartbeatLoop(client, task="CLI session running", target_room="response_studio", interval=0.05)
+
+    loop.start()
+    time.sleep(0.13)
+    loop.stop()
+
+    heartbeats = [payload for path, payload in client.posts if path == "/api/heartbeat"]
+    assert len(heartbeats) >= 2
+    assert all(payload["state"] == "working" for payload in heartbeats)
+    assert all(payload["target_room"] == "response_studio" for payload in heartbeats)
+    assert all(payload["preserve_phase"] is True for payload in heartbeats)
 
 
 def test_normalize_command_prefers_remainder_after_separator(monkeypatch):

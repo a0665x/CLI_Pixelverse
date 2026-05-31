@@ -16,7 +16,7 @@ mkdir -p "$STATE_DIR"
 
 usage() {
   cat <<EOF
-Usage: ./run.sh [start|stop|restart|down_up|status|log|logs|doctor|bridge-status|adapter|install-adapter|install-hermes-hook|hermes-chat|test-hook|down]
+Usage: ./run.sh [start|stop|restart|down_up|status|log|logs|doctor|bridge-status|adapter|install-adapter|enable-shell-adapter|install-hermes-hook|hermes-chat|test-hook|down]
 
 Commands:
   start      Select agent source and start Docker Compose service.
@@ -32,6 +32,8 @@ Commands:
              Install the adapter for the selected/native CLI without modifying the original CLI code.
   install-adapter [codex|gemini-cli|claude-code|ollama|hermes|generic|all|hermes-hook|hermes-plugin]
              Install local agent CLI shims/hooks. Default: current selected agent or hermes.
+  enable-shell-adapter
+             Add a managed Bash startup line so new terminals automatically load local CLI shims.
   install-hermes-hook
              Install/update the Hermes gateway hook that relays agent lifecycle events.
   hermes-chat
@@ -54,6 +56,10 @@ Universal bridge client:
   python3 -m agent_bridges.pixelverse_client start --agent-type codex --agent codex-main --name Codex
   python3 -m agent_bridges.pixelverse_client tool --agent-type gemini-cli --agent gemini-main --tool-names search,read_file
   python3 -m agent_bridges.pixelverse_client complete --agent-type claude-code --agent claude-main
+
+MCP onboarding server:
+  python3 scripts/pixelverse_mcp_server.py
+  Tools: pixelverse_onboard, pixelverse_install_adapter, pixelverse_bridge_status, pixelverse_emit_event
 
 Agent CLI adapters:
   ./run.sh adapter
@@ -199,6 +205,7 @@ MINIVERSE_AGENT_NAME=${MINIVERSE_AGENT_NAME:-Henry}
 MINIVERSE_AGENT_COLOR=${MINIVERSE_AGENT_COLOR:-#8b5cf6}
 PIXELVERSE_NOTIFY_TO=${PIXELVERSE_NOTIFY_TO:-henry.cos.allen@gmail.com}
 PIXELVERSE_NOTIFY_CMD=${PIXELVERSE_NOTIFY_CMD:-henry-notify}
+PIXELVERSE_HERMES_ENABLE=${PIXELVERSE_HERMES_ENABLE:-auto}
 PIXELVERSE_HERMES_WEB_BASE=${PIXELVERSE_HERMES_WEB_BASE:-http://host.docker.internal:9119}
 PIXELVERSE_HERMES_GATEWAY_HEALTH=${PIXELVERSE_HERMES_GATEWAY_HEALTH:-http://host.docker.internal:8642/health/detailed}
 PIXELVERSE_HERMES_REPO_HOST=${PIXELVERSE_HERMES_REPO_HOST:-/home/a0665x/Desktop/AI_AGX_WS/HermesAgent_OpenWebUI/hermes-agent}
@@ -419,6 +426,23 @@ print_tailscale_status() {
   echo "- Tailscale:   $url"
 }
 
+docker_image_is_stale() {
+  local image_created
+  image_created="$(docker image inspect -f '{{.Created}}' hermes-pixelverse:local 2>/dev/null || true)"
+  [[ -n "$image_created" ]] || return 0
+  find \
+    "$ROOT/Dockerfile" \
+    "$ROOT/requirements.txt" \
+    "$ROOT/pixelverse_server.py" \
+    "$ROOT/pixelverse_fastapi.py" \
+    "$ROOT/bridge.py" \
+    "$ROOT/public" \
+    "$ROOT/agent_bridges" \
+    "$ROOT/scripts" \
+    -type f -newermt "$image_created" -print -quit 2>/dev/null \
+    | grep -q .
+}
+
 start_service() {
   local agent_kind
   echo "Select agent source for Pixelverse. Use arrow keys + Enter, or set PIXELVERSE_AGENT_KIND=codex/gemini-cli/claude-code/ollama/hermes/generic." >&2
@@ -429,8 +453,8 @@ start_service() {
 
   stop_legacy_local_processes
   echo "Starting Pixelverse Docker service for $agent_kind..."
-  if [[ "${PIXELVERSE_REBUILD:-0}" == "1" ]]; then
-    echo "Rebuilding Docker image because PIXELVERSE_REBUILD=1."
+  if [[ "${PIXELVERSE_REBUILD:-0}" == "1" ]] || docker_image_is_stale; then
+    echo "Rebuilding Docker image because workspace sources changed or PIXELVERSE_REBUILD=1."
     compose up -d --build
   elif docker image inspect hermes-pixelverse:local >/dev/null 2>&1; then
     echo "Using existing Docker image hermes-pixelverse:local. Set PIXELVERSE_REBUILD=1 to rebuild."
@@ -458,6 +482,10 @@ Minimal event test:
   curl -X POST http://localhost:${PIXELVERSE_PORT}/api/event \\
     -H 'Content-Type: application/json' \\
     -d '{"agent_type":"$agent_kind","agent":"$agent_kind-main","event":"tool.started","tool_name":"terminal","message":"running a command"}'
+
+Attach native CLI commands in this shell:
+  source "$STATE_DIR/activate.sh"
+  $agent_kind
 EOF
 }
 
@@ -495,13 +523,16 @@ doctor_service() {
   echo "- Compose project: $COMPOSE_PROJECT_NAME"
   echo "- Env file: $ENV_FILE"
   sed -n '1,80p' "$ENV_FILE" 2>/dev/null || true
-  local configured_agent
+  local configured_agent hermes_enabled
   configured_agent="$(sed -n 's/^PIXELVERSE_AGENT_KIND=//p' "$ENV_FILE" 2>/dev/null | tail -1)"
-  if [[ "${configured_agent:-}" != "hermes" ]]; then
+  hermes_enabled="$(sed -n 's/^PIXELVERSE_HERMES_ENABLE=//p' "$ENV_FILE" 2>/dev/null | tail -1)"
+  if [[ "${hermes_enabled:-auto}" == "0" ]]; then
     echo
-    echo "!! Hermes alignment warning:"
-    echo "   Current PIXELVERSE_AGENT_KIND=${configured_agent:-unknown}. Hermes state polling is enabled only when this is 'hermes'."
-    echo "   Fix: PIXELVERSE_AGENT_KIND=hermes ./run.sh down_up"
+    echo "!! Hermes source warning:"
+    echo "   Current PIXELVERSE_HERMES_ENABLE=0. Hermes gateway/session polling is disabled."
+    echo "   Fix: PIXELVERSE_HERMES_ENABLE=auto ./run.sh down_up"
+  else
+    echo "- Hermes source polling: ${hermes_enabled:-auto} (independent of PIXELVERSE_AGENT_KIND=${configured_agent:-unknown})"
   fi
 
   echo
@@ -609,10 +640,9 @@ write_cli_shim() {
   local shim_name="$2"
   local command_name="$3"
   local env_prefix="$4"
-  local agent_id="$5"
-  local display_name="$6"
-  local color="$7"
-  local fallback_command="${8:-}"
+  local display_name="$5"
+  local color="$6"
+  local fallback_command="${7:-}"
   local bin_dir="$STATE_DIR/bin"
   local shim="$bin_dir/$shim_name"
   local fallback_quoted
@@ -648,7 +678,6 @@ if [[ -z "\$ORIG" ]]; then
 fi
 exec python3 "$ROOT/agent_bridges/cli_adapter.py" \\
   --agent-type "$kind" \\
-  --agent "$agent_id" \\
   --name "$display_name" \\
   --color "$color" \\
   -- "\$ORIG" "\$@"
@@ -658,16 +687,15 @@ EOF
 
 install_cli_adapter_for_kind() {
   local kind="$1"
-  local command_name display_name color env_prefix agent_id bin_dir fallback_command
+  local command_name display_name color env_prefix bin_dir fallback_command
   command_name="$(agent_command_name "$kind")"
   display_name="$(agent_display_name "$kind")"
   color="$(agent_color "$kind")"
   env_prefix="$(agent_env_prefix "$kind")"
-  agent_id="${kind}-cli"
   bin_dir="$STATE_DIR/bin"
   fallback_command="$(discover_agent_command "$kind" || true)"
-  write_cli_shim "$kind" "$command_name" "$command_name" "$env_prefix" "$agent_id" "$display_name" "$color" "$fallback_command"
-  write_cli_shim "$kind" "pixelverse-$command_name" "$command_name" "$env_prefix" "$agent_id" "$display_name" "$color" "$fallback_command"
+  write_cli_shim "$kind" "$command_name" "$command_name" "$env_prefix" "$display_name" "$color" "$fallback_command"
+  write_cli_shim "$kind" "pixelverse-$command_name" "$command_name" "$env_prefix" "$display_name" "$color" "$fallback_command"
   echo "Installed Pixelverse CLI adapter for $kind:"
   echo "- $bin_dir/$command_name"
   echo "- $bin_dir/pixelverse-$command_name"
@@ -752,6 +780,27 @@ adapter_command() {
   install_agent_adapter "$target"
 }
 
+enable_shell_adapter() {
+  local bashrc="${HOME}/.bashrc"
+  local activation="$STATE_DIR/activate.sh"
+  local marker="# hermes-pixelverse shell adapter"
+  local source_line="[ -f \"$activation\" ] && source \"$activation\""
+  write_adapter_activation
+  touch "$bashrc"
+  if grep -Fq "$marker" "$bashrc"; then
+    echo "Pixelverse shell adapter is already enabled in $bashrc"
+    return 0
+  fi
+  {
+    echo
+    echo "$marker"
+    echo "$source_line"
+  } >> "$bashrc"
+  echo "Enabled Pixelverse CLI interception for new Bash terminals:"
+  echo "- $bashrc"
+  echo "- $source_line"
+}
+
 bridge_status() {
   local bin_dir="$STATE_DIR/bin"
   echo "Pixelverse Bridge Status"
@@ -770,6 +819,19 @@ bridge_status() {
   [[ -f "$ROOT/agent_bridges/cli_adapter.py" ]] && echo "generic CLI adapter: ok" || echo "generic CLI adapter: missing"
   for shim in codex gemini claude ollama hermes; do
     [[ -x "$bin_dir/$shim" ]] && echo "$shim shim: $bin_dir/$shim" || echo "$shim shim: not installed"
+  done
+  echo
+  echo "== Current Shell CLI Resolution =="
+  for shim in codex gemini claude ollama hermes; do
+    local resolved
+    resolved="$(command -v "$shim" 2>/dev/null || true)"
+    if [[ "$resolved" == "$bin_dir/$shim" ]]; then
+      echo "$shim: attached through Pixelverse shim"
+    elif [[ -n "$resolved" ]]; then
+      echo "$shim: native CLI ($resolved); run: source \"$STATE_DIR/activate.sh\""
+    else
+      echo "$shim: command not found"
+    fi
   done
   if [[ -f "${HERMES_HOME:-$HOME/.hermes}/hooks/pixelverse/HOOK.yaml" ]]; then
     echo "Hermes hook: ${HERMES_HOME:-$HOME/.hermes}/hooks/pixelverse"
@@ -940,6 +1002,9 @@ case "$COMMAND" in
     else
       install_agent_adapter hermes
     fi
+    ;;
+  enable-shell-adapter)
+    enable_shell_adapter
     ;;
   install-hermes-hook)
     install_hermes_hook

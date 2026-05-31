@@ -22,6 +22,12 @@ test('getAgentPose maps planning and working toolsets to readable poses', () => 
   assert.equal(getAgentPose({ state: 'idle', task: null }).pose, 'rest');
 });
 
+test('getAgentPose maps fine-grained Pixel states to distinct interactions', () => {
+  assert.equal(getAgentPose({ state: 'working', pixel_state: 'self_healing' }).icon, '🔧');
+  assert.equal(getAgentPose({ state: 'working', pixel_state: 'collaborating' }).pose, 'dispatch');
+  assert.equal(getAgentPose({ state: 'idle', pixel_state: 'sleeping' }).pose, 'rest');
+});
+
 test('selectInteractionAnchor prefers matching room props before fallback', () => {
   const planning = selectInteractionAnchor({ state: 'planning', task: 'read_file' }, decor, positions, { x: 99, y: 99 });
   const working = selectInteractionAnchor({ state: 'working', task: 'terminal' }, decor, positions, { x: 99, y: 99 });

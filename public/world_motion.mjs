@@ -3,6 +3,7 @@ import { getRoomDecor } from './ui_strings.mjs';
 import {
   allFurnitureBlockers,
   isInsideFurnitureBlocker,
+  getFurnitureLayoutOverrides,
 } from './room_furniture.mjs';
 
 export const ROOM_ANCHORS = Object.fromEntries(
@@ -26,7 +27,16 @@ const FURNITURE_CLEARANCE = 0.35;
 const DECOR_BY_ROOM = Object.fromEntries(
   Object.keys(ROOM_LAYOUTS).map((roomKey) => [roomKey, getRoomDecor(roomKey, 'zh-TW')]),
 );
-export const FURNITURE_BLOCKERS = allFurnitureBlockers(DECOR_BY_ROOM);
+export let FURNITURE_BLOCKERS = allFurnitureBlockers(DECOR_BY_ROOM);
+
+export function refreshFurnitureBlockers() {
+  FURNITURE_BLOCKERS = allFurnitureBlockers(DECOR_BY_ROOM);
+  return FURNITURE_BLOCKERS;
+}
+
+export function currentFurnitureLayout() {
+  return getFurnitureLayoutOverrides();
+}
 
 const near = (a, b, epsilon = 0.25) => Math.abs(a - b) <= epsilon;
 
