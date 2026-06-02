@@ -107,10 +107,15 @@ function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
-function sanitizePosition(pos = {}, fallback = { x: 50, y: 50 }) {
+function isFurnitureRoom(roomKey) {
+  return !!ROOM_LAYOUTS[roomKey] && roomKey !== 'offline_corner';
+}
+
+function sanitizePosition(pos = {}, fallback = { x: 50, y: 50 }, originRoomKey = 'standby_dock') {
   return {
     x: Number(clamp(Number.isFinite(Number(pos.x)) ? Number(pos.x) : fallback.x, 6, 94).toFixed(2)),
     y: Number(clamp(Number.isFinite(Number(pos.y)) ? Number(pos.y) : fallback.y, 6, 94).toFixed(2)),
+    room: isFurnitureRoom(pos.room) ? pos.room : originRoomKey,
   };
 }
 
@@ -119,7 +124,7 @@ export function setFurnitureLayoutOverrides(overrides = {}) {
   Object.entries(overrides || {}).forEach(([roomKey, positions]) => {
     if (!ROOM_LAYOUTS[roomKey] || roomKey === 'offline_corner' || !Array.isArray(positions)) return;
     const defaults = DEFAULT_ROOM_PROP_POSITIONS[roomKey] || [];
-    next[roomKey] = positions.map((pos, index) => sanitizePosition(pos, defaults[index] || { x: 50, y: 50 }));
+    next[roomKey] = positions.map((pos, index) => sanitizePosition(pos, defaults[index] || { x: 50, y: 50 }, roomKey));
   });
   roomPropOverrides = next;
   return getFurnitureLayoutOverrides();
@@ -136,7 +141,7 @@ export function getFurnitureLayoutOverrides() {
 export function getRoomPropPositions(roomKey) {
   const defaults = DEFAULT_ROOM_PROP_POSITIONS[roomKey] || [];
   const overrides = roomPropOverrides[roomKey] || [];
-  return defaults.map((fallback, index) => sanitizePosition(overrides[index], fallback));
+  return defaults.map((fallback, index) => sanitizePosition(overrides[index], fallback, roomKey));
 }
 
 export function exportFurnitureLayout(roomKeys = Object.keys(DEFAULT_ROOM_PROP_POSITIONS)) {
@@ -155,20 +160,32 @@ export function propBlockerSize(propType = '') {
   return PROP_BLOCKER_SIZE[propType] || { width: 4.6, height: 3.8 };
 }
 
-export function roomDecorLayout(roomKey, decor = []) {
-  const positions = getRoomPropPositions(roomKey);
-  return decor
-    .map((prop, index) => ({ prop, pos: positions[index] || { x: 50, y: 50 }, index }))
+export function roomDecorLayout(roomKey, decor = [], decorByRoom = null) {
+  const sources = decorByRoom
+    ? Object.entries(decorByRoom)
+    : [[roomKey, decor]];
+  return sources
+    .flatMap(([originRoomKey, sourceDecor]) => {
+      const positions = getRoomPropPositions(originRoomKey);
+      return sourceDecor.map((prop, index) => ({
+        prop,
+        pos: positions[index] || { x: 50, y: 50, room: originRoomKey },
+        index,
+        originRoomKey,
+      }));
+    })
+    .filter((item) => item.pos.room === roomKey)
     .filter((item) => VISIBLE_PROP_TYPES.has(item.prop.type));
 }
 
-export function furnitureBlockers(roomKey, decor = []) {
-  return roomDecorLayout(roomKey, decor).map(({ prop, pos, index }) => {
+export function furnitureBlockers(roomKey, decor = [], decorByRoom = null) {
+  return roomDecorLayout(roomKey, decor, decorByRoom).map(({ prop, pos, index, originRoomKey }) => {
     const center = roomLocalToWorld(roomKey, pos);
     const size = propBlockerSize(prop.type);
     return {
-      key: `${roomKey}:${index}:${prop.type}`,
+      key: `${originRoomKey}:${index}:${prop.type}`,
       roomKey,
+      originRoomKey,
       prop,
       index,
       center,
@@ -185,7 +202,7 @@ export function furnitureBlockers(roomKey, decor = []) {
 export function allFurnitureBlockers(decorByRoom = {}) {
   return Object.keys(ROOM_LAYOUTS)
     .filter((roomKey) => roomKey !== 'offline_corner')
-    .flatMap((roomKey) => furnitureBlockers(roomKey, decorByRoom[roomKey] || []));
+    .flatMap((roomKey) => furnitureBlockers(roomKey, decorByRoom[roomKey] || [], decorByRoom));
 }
 
 function blockersOverlap(left, right, padding = 0.35) {
@@ -213,13 +230,15 @@ function blockerForPosition(roomKey, prop, index, pos) {
   };
 }
 
-export function positionOverlapsFurniture(roomKey, decor = [], movingIndex, candidate, positions = getRoomPropPositions(roomKey)) {
-  const prop = decor[movingIndex];
+export function positionOverlapsFurniture(roomKey, decor = [], movingIndex, candidate, positions = getRoomPropPositions(roomKey), options = {}) {
+  const originRoomKey = options.originRoomKey || roomKey;
+  const decorByRoom = options.decorByRoom || null;
+  const sourceDecor = decorByRoom?.[originRoomKey] || decor;
+  const prop = sourceDecor[movingIndex];
   if (!prop || !VISIBLE_PROP_TYPES.has(prop.type)) return false;
   const moving = blockerForPosition(roomKey, prop, movingIndex, candidate);
-  return decor.some((other, index) => {
-    if (index === movingIndex || !VISIBLE_PROP_TYPES.has(other.type)) return false;
-    const pos = positions[index];
+  return roomDecorLayout(roomKey, decor, decorByRoom).some(({ prop: other, pos, index, originRoomKey: otherOriginRoomKey }) => {
+    if ((otherOriginRoomKey || roomKey) === originRoomKey && index === movingIndex) return false;
     if (!pos) return false;
     return blockersOverlap(moving, blockerForPosition(roomKey, other, index, pos));
   });
@@ -277,9 +296,9 @@ export function interactionStandPoint(roomKey, propType, propCenter, blockers = 
   };
 }
 
-export function roomInteractionPositions(roomKey, decor = []) {
-  const blockers = furnitureBlockers(roomKey, decor);
-  return roomDecorLayout(roomKey, decor).map(({ prop, pos, index }) => {
+export function roomInteractionPositions(roomKey, decor = [], decorByRoom = null) {
+  const blockers = furnitureBlockers(roomKey, decor, decorByRoom);
+  return roomDecorLayout(roomKey, decor, decorByRoom).map(({ prop, pos, index }) => {
     const propCenter = roomLocalToWorld(roomKey, pos);
     return {
       ...interactionStandPoint(roomKey, prop.type, propCenter, blockers),

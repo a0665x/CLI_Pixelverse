@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Hermes Pixelverse local server.
+"""CLI_Pixelverse local server.
 
 Provides:
-- A Miniverse-compatible subset for bridge.py
+- A Pixelverse bridge API for lifecycle and heartbeat relay
 - A world-first pixel UI served from public/index.html
 - Read-only integration with Hermes status / subagent / session data when available
 
@@ -166,26 +166,32 @@ def _sanitize_layout_value(value: Any, fallback: float = 50.0) -> float:
     return round(max(6.0, min(94.0, num)), 2)
 
 
-def normalize_furniture_layout(layout: Any) -> dict[str, list[dict[str, float]]]:
+def normalize_furniture_layout(layout: Any) -> dict[str, list[dict[str, Any]]]:
     if not isinstance(layout, dict):
         return {}
     normalized: dict[str, list[dict[str, float]]] = {}
     for room_key, positions in layout.items():
         if room_key not in ROOM_DISPLAY or room_key == "offline_corner" or not isinstance(positions, list):
             continue
-        normalized[room_key] = [
-            {
-                "x": _sanitize_layout_value((item or {}).get("x")),
-                "y": _sanitize_layout_value((item or {}).get("y")),
-            }
-            for item in positions
-            if isinstance(item, dict)
-        ]
+        normalized[room_key] = []
+        for item in positions:
+            if not isinstance(item, dict):
+                continue
+            target_room = item.get("room")
+            normalized[room_key].append({
+                "x": _sanitize_layout_value(item.get("x")),
+                "y": _sanitize_layout_value(item.get("y")),
+                "room": target_room if target_room in ROOM_DISPLAY and target_room != "offline_corner" else room_key,
+            })
     return normalized
 
 
-def furniture_layout_has_overlaps(layout: dict[str, list[dict[str, float]]], min_gap: float = 4.0) -> bool:
-    for positions in layout.values():
+def furniture_layout_has_overlaps(layout: dict[str, list[dict[str, Any]]], min_gap: float = 4.0) -> bool:
+    positions_by_room: dict[str, list[dict[str, Any]]] = {}
+    for origin_room, positions in layout.items():
+        for item in positions:
+            positions_by_room.setdefault(item.get("room", origin_room), []).append(item)
+    for positions in positions_by_room.values():
         for index, left in enumerate(positions):
             for right in positions[index + 1:]:
                 if abs(left["x"] - right["x"]) < min_gap and abs(left["y"] - right["y"]) < min_gap:
@@ -193,7 +199,7 @@ def furniture_layout_has_overlaps(layout: dict[str, list[dict[str, float]]], min
     return False
 
 
-def load_furniture_layout() -> dict[str, list[dict[str, float]]]:
+def load_furniture_layout() -> dict[str, list[dict[str, Any]]]:
     if not FURNITURE_LAYOUT_FILE.exists():
         return {}
     try:
@@ -202,7 +208,7 @@ def load_furniture_layout() -> dict[str, list[dict[str, float]]]:
         return {}
 
 
-def save_furniture_layout(layout: Any) -> dict[str, list[dict[str, float]]]:
+def save_furniture_layout(layout: Any) -> dict[str, list[dict[str, Any]]]:
     normalized = normalize_furniture_layout(layout)
     if furniture_layout_has_overlaps(normalized):
         raise ValueError("furniture layout contains overlapping positions")
@@ -686,6 +692,20 @@ class WorldState:
             self.webhooks.pop(agent_id, None)
             self.add_event("webhook.removed", {"agent": agent_id})
 
+    def delete_offline_agent(self, agent_id: str) -> None:
+        with self.lock:
+            agent = self.agents.get(agent_id)
+            if not agent:
+                raise KeyError(agent_id)
+            is_stale = (now_ts() - agent.last_seen) > STALE_AFTER_SECONDS
+            is_offline = normalize_state(agent.state) == "offline" or (is_stale and not agent.source_placeholder)
+            if not is_offline:
+                raise ValueError("only offline agents can be deleted")
+            self.agents.pop(agent_id, None)
+            self.webhooks.pop(agent_id, None)
+            self.inboxes.pop(agent_id, None)
+            self.add_event("agent.deleted", {"agent": agent_id})
+
     def get_inbox(self, agent_id: str, peek: bool = False) -> list[dict[str, Any]]:
         with self.lock:
             items = list(self.inboxes.get(agent_id, []))
@@ -714,6 +734,7 @@ class WorldState:
                 item.update(offline_room)
                 item["activity_hint"] = "目前沒有收到新的主代理心跳"
                 item["connection_status"] = "stale"
+            item["can_delete"] = item["state"] == "offline" and item["connection_status"] != "awaiting_attach"
         return agents
 
     def public_snapshot(self) -> dict[str, Any]:
@@ -1543,6 +1564,19 @@ class PixelverseHandler(BaseHTTPRequestHandler):
 
     def do_DELETE(self) -> None:
         parsed = urlparse(self.path)
+        if parsed.path == "/api/agents":
+            qs = parse_qs(parsed.query)
+            agent_id = qs.get("agent", [""])[0]
+            try:
+                WORLD.delete_offline_agent(agent_id)
+            except KeyError:
+                self._send_json({"ok": False, "error": "agent not found"}, status=404)
+                return
+            except ValueError as exc:
+                self._send_json({"ok": False, "error": str(exc)}, status=409)
+                return
+            self._send_json({"ok": True, "agent": agent_id})
+            return
         if parsed.path == "/api/webhook":
             qs = parse_qs(parsed.query)
             WORLD.unregister_webhook(qs.get("agent", [""])[0])
@@ -1556,7 +1590,7 @@ class PixelverseHandler(BaseHTTPRequestHandler):
 
 def main() -> None:
     server = ThreadingHTTPServer((HOST, PORT), PixelverseHandler)
-    print(f"Hermes Pixelverse listening on http://{HOST}:{PORT}")
+    print(f"CLI_Pixelverse listening on http://{HOST}:{PORT}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

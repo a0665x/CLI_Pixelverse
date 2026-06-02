@@ -20,11 +20,14 @@ test('getLocaleStrings returns translated HUD labels', () => {
   const ja = getLocaleStrings('ja-JP');
   const ko = getLocaleStrings('ko-KR');
 
-  assert.equal(zh.brandTitle, 'Hermes Pixelverse');
+  assert.equal(zh.brandTitle, 'CLI_Pixelverse');
   assert.equal(zh.inspectorTitle, '狀態檢視器');
   assert.equal(zh.legendPlanningTitle, '規劃中');
   assert.equal(en.inspectorTitle, 'Inspector');
+  assert.equal(en.inspectorAgentSelect, 'Select agent');
   assert.equal(en.legendIdleTitle, 'Idle');
+  assert.equal(zh.hookStateTitle, 'Hook 狀態路由表');
+  assert.equal(en.states.executing, 'Executing');
   assert.match(zh.layoutKeyboardHint, /Enter/);
   assert.match(zh.layoutChangesCount(3), /3/);
   assert.match(zh.layoutGridHint, /0.5%/);

@@ -177,7 +177,7 @@ class PixelverseMCP:
             result = {
                 "protocolVersion": requested_version if requested_version in SUPPORTED_PROTOCOL_VERSIONS else SUPPORTED_PROTOCOL_VERSIONS[0],
                 "capabilities": {"tools": {}},
-                "serverInfo": {"name": "hermes-pixelverse-onboarding", "version": "0.1.0"},
+                "serverInfo": {"name": "cli-pixelverse-onboarding", "version": "0.1.0"},
             }
         elif method == "ping":
             result = {}

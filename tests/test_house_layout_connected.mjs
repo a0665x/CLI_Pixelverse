@@ -18,6 +18,7 @@ test('rooms use one coherent central-corridor floorplan', () => {
   assert.equal(roomRect('response_studio').top, roomRect('tool_forge').top);
   assert.equal(roomRect('tool_forge').top, roomRect('session_archive').top);
   assert.equal(CORRIDOR_RECTS.length, 1);
+  assert.ok(roomRect('tool_forge').width > roomRect('response_studio').width);
 });
 
 test('all active rooms have doors connected to the corridor graph', () => {

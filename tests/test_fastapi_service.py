@@ -95,6 +95,23 @@ def test_fastapi_rejects_overlapping_furniture_layout(monkeypatch, tmp_path):
     assert exc.value.status_code == 422
 
 
+def test_fastapi_saves_cross_room_furniture_layout(monkeypatch, tmp_path):
+    monkeypatch.setenv("PIXELVERSE_RUNTIME_DIR", str(tmp_path))
+    monkeypatch.setenv("PIXELVERSE_HERMES_ENABLE", "0")
+
+    import pixelverse_server
+    import pixelverse_fastapi
+
+    importlib.reload(pixelverse_server)
+    pixelverse_fastapi = importlib.reload(pixelverse_fastapi)
+
+    result = pixelverse_fastapi.update_furniture_layout(pixelverse_fastapi.FurnitureLayoutPayload(
+        layout={"think_lab": [{"x": 64, "y": 60, "room": "tool_forge"}]},
+    ))
+
+    assert result["layout"]["think_lab"][0] == {"x": 64.0, "y": 60.0, "room": "tool_forge"}
+
+
 def test_fastapi_lifecycle_stays_active_until_explicit_session_completion(monkeypatch):
     monkeypatch.setenv("PIXELVERSE_AGENT_KIND", "codex")
     monkeypatch.setenv("PIXELVERSE_HERMES_ENABLE", "0")
@@ -138,3 +155,22 @@ def test_fastapi_lifecycle_stays_active_until_explicit_session_completion(monkey
     completed = emit("completed", message="Session completed")
     assert completed["state"] == "idle"
     assert completed["room_key"] == "standby_dock"
+
+
+def test_fastapi_only_deletes_offline_local_agents(monkeypatch):
+    monkeypatch.setenv("PIXELVERSE_HERMES_ENABLE", "0")
+
+    import pixelverse_server
+    import pixelverse_fastapi
+
+    importlib.reload(pixelverse_server)
+    pixelverse_fastapi = importlib.reload(pixelverse_fastapi)
+
+    pixelverse_fastapi.heartbeat(pixelverse_fastapi.HeartbeatPayload(agent="codex-cli:42", state="working"))
+    with pytest.raises(HTTPException) as exc:
+        pixelverse_fastapi.delete_offline_agent("codex-cli:42")
+    assert exc.value.status_code == 409
+
+    pixelverse_fastapi.heartbeat(pixelverse_fastapi.HeartbeatPayload(agent="codex-cli:43", state="offline"))
+    assert pixelverse_fastapi.delete_offline_agent("codex-cli:43") == {"ok": True, "agent": "codex-cli:43"}
+    assert all(item["agent"] != "codex-cli:43" for item in pixelverse_fastapi.get_world()["agents"])

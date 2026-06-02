@@ -90,12 +90,65 @@ function activeSortScore(agent = {}) {
   return 1;
 }
 
+function heartbeatLoad(agent = {}) {
+  return ({
+    idle: 0,
+    sleeping: 0,
+    thinking: 0.62,
+    planning: 0.74,
+    collaborating: 0.84,
+    invoking_skill: 0.88,
+    tool_call: 0.94,
+    executing: 1,
+    responding: 0.78,
+    self_healing: 0.96,
+    blocked: 0.42,
+  })[agent.pixel_state] || 0.58;
+}
+
+function gaussian(value, center, width) {
+  return Math.exp(-Math.pow((value - center) / width, 2));
+}
+
+export function buildHeartbeatPath(panel = {}, nowMs = Date.now(), refreshMs = 1000, widthPx = 4096) {
+  const width = Math.max(1, Number(widthPx) || 4096);
+  const flat = panel.state === 'idle'
+    || panel.state === 'offline'
+    || panel.heartbeatTone === 'waiting'
+    || panel.heartbeatTone === 'stale'
+    || Number(panel.heartbeatLoad) <= 0;
+  if (flat) return `M 0,16 L ${width},16`;
+
+  const load = Math.max(.45, Math.min(1, Number(panel.heartbeatLoad) || .58));
+  const beatWidthPx = heartbeatBeatWidthPx(panel);
+  const phaseOffset = (nowMs / Math.max(90, Number(refreshMs) || 1000)) * .22;
+  const points = [];
+  for (let x = 0; x <= width; x += .25) {
+    const phase = ((x / beatWidthPx) + phaseOffset) % 1;
+    const signal = (
+      (.1 * gaussian(phase, .14, .045))
+      - (.18 * gaussian(phase, .27, .035))
+      + (1.12 * gaussian(phase, .31, .028))
+      - (.42 * gaussian(phase, .365, .04))
+      + (.22 * gaussian(phase, .62, .09))
+    );
+    const y = 16 - (signal * load * 14);
+    points.push(`${Number(x.toFixed(2))},${Number(y.toFixed(2))}`);
+  }
+  return `M ${points.join(' L ')}`;
+}
+
+export function heartbeatBeatWidthPx(panel = {}) {
+  const load = Math.max(.45, Math.min(1, Number(panel.heartbeatLoad) || .58));
+  return 20 - Math.round(load * 4);
+}
+
 export function buildAgentTimelinePanels(snapshot = {}, localeStrings = {}, options = {}) {
   const nowMs = toTime(options.nowMs ?? snapshot.server_time_ms ?? Date.now());
   const windowMs = Number.isFinite(Number(options.windowMs)) ? Number(options.windowMs) : 20 * 60 * 1000;
   const agents = Array.isArray(snapshot.agents) ? [...snapshot.agents] : [];
   const interesting = agents
-    .filter((agent) => agent.role === 'subagent' || agent.role === 'branch_session' || ['working', 'planning', 'thinking'].includes(agent.state || 'idle') || (agent.event_count || (agent.recent_actions || []).length || 0) > 0)
+    .filter((agent) => agent.state === 'offline' || agent.role === 'subagent' || agent.role === 'branch_session' || ['working', 'planning', 'thinking'].includes(agent.state || 'idle') || (agent.event_count || (agent.recent_actions || []).length || 0) > 0)
     .sort((a, b) => {
       const score = activeSortScore(b) - activeSortScore(a);
       if (score) return score;
@@ -112,6 +165,9 @@ export function buildAgentTimelinePanels(snapshot = {}, localeStrings = {}, opti
       name: agent.full_name || agent.name || agent.agent,
       shortName: agent.name || agent.agent,
       state: agent.state || 'idle',
+      heartbeatLoad: heartbeatLoad(agent),
+      heartbeatTone: agent.state === 'offline' || agent.is_stale ? 'stale' : agent.connection_status === 'awaiting_attach' ? 'waiting' : 'live',
+      canDelete: agent.can_delete === true,
       role: agent.role || 'main_agent',
       ageSeconds: agent.age_seconds || 0,
       roomLabel: agent.room_label || '',

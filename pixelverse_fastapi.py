@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""FastAPI service entrypoint for Hermes Pixelverse.
+"""FastAPI service entrypoint for CLI_Pixelverse.
 
 This keeps the existing stdlib server intact while exposing OpenAPI/Swagger
 for generic agent integrations.
@@ -70,7 +70,7 @@ class WebhookPayload(BaseModel):
 
 
 class FurnitureLayoutPayload(BaseModel):
-    layout: dict[str, list[dict[str, float]]] = Field(default_factory=dict, description="Room furniture overrides keyed by room.")
+    layout: dict[str, list[dict[str, Any]]] = Field(default_factory=dict, description="Furniture overrides keyed by origin room, including current room placement.")
 
 
 class GenericAgentEvent(BaseModel):
@@ -90,9 +90,9 @@ class GenericAgentEvent(BaseModel):
 
 
 app = FastAPI(
-    title="Hermes Pixelverse Agent Visualizer",
+    title="CLI_Pixelverse Agent Visualizer",
     description=(
-        "World-first pixel UI for Hermes, Codex, Gemini CLI, Claude Code, "
+        "World-first pixel UI for Codex, Gemini CLI, Claude Code, Hermes, "
         "or any agent that can send heartbeat/action events."
     ),
     version="0.2.0",
@@ -238,6 +238,17 @@ def register_webhook(payload: WebhookPayload) -> dict[str, Any]:
 def unregister_webhook(agent: str = Query(..., description="Agent id.")) -> dict[str, Any]:
     WORLD.unregister_webhook(agent)
     return {"ok": True}
+
+
+@app.delete("/api/agents", tags=["world"])
+def delete_offline_agent(agent: str = Query(..., description="Offline local agent id.")) -> dict[str, Any]:
+    try:
+        WORLD.delete_offline_agent(agent)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="agent not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {"ok": True, "agent": agent}
 
 
 @app.get("/{path:path}", include_in_schema=False)

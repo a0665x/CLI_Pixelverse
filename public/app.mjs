@@ -39,7 +39,8 @@ import {
 import { getAgentPose, INTERACTION_OBJECT_ICONS, selectInteractionTarget } from './agent_pose.mjs';
 import { buildAgentDialog, buildAgentSpeech } from './agent_dialog.mjs';
 import { clampCameraOffset, centeredCamera, clampZoom, nextDraggedOffset, nextZoomState } from './ui_state.mjs';
-import { HOUSE_DOORS, ROOM_LAYOUTS } from './house_layout.mjs';
+import { HOUSE_DOORS, ROOM_LAYOUTS, ROOM_STATE_GROUPS } from './house_layout.mjs';
+import { hookStateRoutes } from './hook_state_map.mjs';
 import { deriveAgentEventVisual } from './main_agent_events.mjs';
 import { getAppleDogDoorSprite, getAppleDogPropSprite, getAppleDogRoomTheme } from './appledog_assets.mjs';
 import { shouldUseHighClarityProp } from './office_life_assets.mjs';
@@ -54,11 +55,12 @@ import {
 import {
   buildGridLines,
   clampPercent,
+  dragPositionStyle,
   formatPercent,
   normalizePercent,
   resolveSnapStep,
 } from './furniture_editing.mjs';
-import { buildAgentTimelinePanels } from './agent_timeline_graphs.mjs';
+import { buildAgentTimelinePanels, buildHeartbeatPath, heartbeatBeatWidthPx } from './agent_timeline_graphs.mjs';
 
 const ROOM_ACTIVITY_TARGETS = {
   think_lab: {
@@ -136,15 +138,18 @@ const dom = {
   furnitureToast: document.getElementById('furniture-toast'),
   furnitureToastBody: document.getElementById('furniture-toast-body'),
   furnitureToastTitle: document.getElementById('furniture-toast-title'),
-  heartbeatCurve: document.getElementById('heartbeat-curve'),
+  heartbeatLabel: document.getElementById('heartbeat-label'),
   heartbeatStatus: document.getElementById('heartbeat-status'),
+  inspectorAgentSelect: document.getElementById('inspector-agent-select'),
   inspectorBody: document.getElementById('inspector-body'),
+  hookStateTable: document.getElementById('hook-state-table'),
   languageSelect: document.getElementById('locale-select'),
   lastSync: document.getElementById('last-sync'),
   mobileModeButton: document.getElementById('mobile-mode-btn'),
   pathLayer: document.getElementById('path-layer'),
   panels: Array.from(document.querySelectorAll('[data-draggable-panel]')),
   panelHandles: Array.from(document.querySelectorAll('[data-drag-handle]')),
+  resizablePanels: Array.from(document.querySelectorAll('[data-resizable-panel]')),
   dialogBackdrop: document.getElementById('speech-dialog-backdrop'),
   dialogPanel: document.getElementById('speech-dialog'),
   dialogTitle: document.getElementById('speech-dialog-title'),
@@ -180,7 +185,6 @@ let timelineTimer = null;
 let uiTickTimer = null;
 let liveStream = null;
 let lastStreamId = 0;
-let heartbeatSamples = [];
 const DEFAULT_TIMELINE_REFRESH_MS = 1000;
 let timelineRefreshMs = Math.max(
   100,
@@ -279,6 +283,7 @@ function updateFurnitureCoordinateHud() {
 function setSelectedFurnitureProp(next = null) {
   selectedFurnitureProp = next ? {
     roomKey: next.roomKey,
+    originRoomKey: next.originRoomKey || next.roomKey,
     index: Number(next.index || 0),
     propType: next.propType || 'prop',
     label: next.label || next.propType || 'prop',
@@ -289,7 +294,15 @@ function setSelectedFurnitureProp(next = null) {
 
 function selectedFurnitureKey() {
   if (!selectedFurnitureProp) return '';
-  return `${selectedFurnitureProp.roomKey}:${selectedFurnitureProp.index}`;
+  return `${selectedFurnitureProp.originRoomKey}:${selectedFurnitureProp.index}`;
+}
+
+function getDecorByRoom() {
+  return Object.fromEntries(
+    Object.keys(ROOM_LAYOUTS)
+      .filter((roomKey) => roomKey !== 'offline_corner')
+      .map((roomKey) => [roomKey, getRoomDecor(roomKey, currentLocale)]),
+  );
 }
 
 function furnitureChangeCount(layout = currentLayoutSnapshot(), baseline = furnitureSavedLayout || {}) {
@@ -298,7 +311,9 @@ function furnitureChangeCount(layout = currentLayoutSnapshot(), baseline = furni
     const roomBaseline = baseline[roomKey] || [];
     return count + roomLayout.reduce((roomCount, item, index) => {
       const previous = roomBaseline[index] || {};
-      return roomCount + ((Math.abs((item.x || 0) - (previous.x || 0)) > 0.01 || Math.abs((item.y || 0) - (previous.y || 0)) > 0.01) ? 1 : 0);
+      return roomCount + ((Math.abs((item.x || 0) - (previous.x || 0)) > 0.01
+        || Math.abs((item.y || 0) - (previous.y || 0)) > 0.01
+        || (item.room || roomKey) !== (previous.room || roomKey)) ? 1 : 0);
     }, 0);
   }, 0);
 }
@@ -309,7 +324,9 @@ function changedRoomCount(layout = currentLayoutSnapshot(), baseline = furniture
     const roomBaseline = baseline[roomKey] || [];
     return roomLayout.some((item, index) => {
       const previous = roomBaseline[index] || {};
-      return Math.abs((item.x || 0) - (previous.x || 0)) > 0.01 || Math.abs((item.y || 0) - (previous.y || 0)) > 0.01;
+      return Math.abs((item.x || 0) - (previous.x || 0)) > 0.01
+        || Math.abs((item.y || 0) - (previous.y || 0)) > 0.01
+        || (item.room || roomKey) !== (previous.room || roomKey);
     });
   }).length;
 }
@@ -413,11 +430,25 @@ function applyMobileMode() {
 function buildLiveSnapshot(snapshot = {}, nowMs = Date.now()) {
   const serverTimeMs = Number(snapshot.server_time_ms || nowMs);
   const elapsedSeconds = Math.max(0, (nowMs - serverTimeMs) / 1000);
+  const staleAfterSeconds = Number(snapshot.stats?.stale_after_seconds || 0);
   const agents = Array.isArray(snapshot.agents)
-    ? snapshot.agents.map((agent) => ({
-      ...agent,
-      age_seconds: Number((Number(agent.age_seconds || 0) + elapsedSeconds).toFixed(1)),
-    }))
+    ? snapshot.agents.map((agent) => {
+      const ageSeconds = Number((Number(agent.age_seconds || 0) + elapsedSeconds).toFixed(1));
+      const becameStale = staleAfterSeconds > 0
+        && ageSeconds > staleAfterSeconds
+        && agent.connection_status !== 'awaiting_attach';
+      return becameStale ? {
+        ...agent,
+        age_seconds: ageSeconds,
+        state: 'offline',
+        is_stale: true,
+        connection_status: 'stale',
+        can_delete: true,
+      } : {
+        ...agent,
+        age_seconds: ageSeconds,
+      };
+    })
     : [];
   return {
     ...snapshot,
@@ -439,54 +470,27 @@ function updateLastSyncText(snapshot = currentSnapshot, nowMs = Date.now()) {
   dom.lastSync.textContent = `${copy.lastSyncPrefix} ${stamp} · ${copy.secondsAgo(syncAge)}`;
 }
 
-function renderHeartbeatCurve(snapshot = {}, nowMs = Date.now()) {
-  if (!dom.heartbeatCurve) return;
-  const canvas = dom.heartbeatCurve;
-  const context = canvas.getContext('2d');
-  if (!context) return;
-  const mainAgent = (snapshot.agents || []).find((agent) => agent.role === 'main_agent') || (snapshot.agents || [])[0];
-  context.clearRect(0, 0, canvas.width, canvas.height);
-  if (!mainAgent) {
-    heartbeatSamples = [];
-    return;
-  }
-  const load = mainAgent.is_stale || mainAgent.connection_status === 'awaiting_attach'
-    ? .06
-    : ({ idle: .18, sleeping: .08, thinking: .55, planning: .68, collaborating: .78, invoking_skill: .82, tool_call: .9, executing: 1, responding: .72, self_healing: .94, blocked: .3 }[mainAgent.pixel_state] || .5);
-  heartbeatSamples = [...heartbeatSamples, { time: nowMs, load }].slice(-96);
-  const { width, height } = canvas;
-  context.strokeStyle = 'rgba(171,192,223,.2)';
-  context.setLineDash([5, 5]);
-  context.beginPath();
-  context.moveTo(0, height / 2);
-  context.lineTo(width, height / 2);
-  context.stroke();
-  context.setLineDash([]);
-  context.strokeStyle = mainAgent.is_stale ? '#ef4444' : mainAgent.connection_status === 'awaiting_attach' ? '#fbbf24' : '#4ade80';
-  context.lineWidth = 3;
-  context.beginPath();
-  const speed = Math.max(.35, 1100 / timelineRefreshMs);
-  for (let x = 0; x <= width; x += 3) {
-    const phase = ((x / width) * Math.PI * 12 * speed) + (nowMs / 220);
-    const y = (height / 2) - (Math.pow(Math.max(0, Math.sin(phase)), 18) * load * 23) + (Math.sin(phase * .5) * load * 5);
-    if (x === 0) context.moveTo(x, y);
-    else context.lineTo(x, y);
-  }
-  context.stroke();
-}
-
 function renderHeartbeat(snapshot = {}) {
   if (!dom.heartbeatStatus) return;
+  const copy = strings();
   const mainAgent = (snapshot.agents || []).find((agent) => agent.role === 'main_agent') || (snapshot.agents || [])[0];
   if (!mainAgent) {
     dom.heartbeatStatus.classList.add('stale');
     dom.heartbeatStatus.classList.remove('waiting');
+    if (dom.heartbeatLabel) dom.heartbeatLabel.textContent = copy.uiStatusMissing || copy.heartbeatMissing;
     return;
   }
   const waiting = mainAgent.connection_status === 'awaiting_attach';
   const stale = !!mainAgent.is_stale && !waiting;
   dom.heartbeatStatus.classList.toggle('stale', stale);
   dom.heartbeatStatus.classList.toggle('waiting', waiting);
+  if (dom.heartbeatLabel) {
+    dom.heartbeatLabel.textContent = stale
+      ? (copy.uiStatusStale || copy.heartbeatStale(ageText(mainAgent.age_seconds || 0)))
+      : waiting
+        ? (copy.uiStatusWaiting || copy.heartbeatWaiting)
+        : (copy.uiStatusHealthy || copy.heartbeatLive(ageText(mainAgent.age_seconds || 0)));
+  }
 }
 
 function updateRefreshController() {
@@ -519,7 +523,6 @@ function startLiveUiTicker() {
     const liveSnapshot = buildLiveSnapshot(currentSnapshot, nowMs);
     updateLastSyncText(currentSnapshot, nowMs);
     renderHeartbeat(liveSnapshot);
-    renderHeartbeatCurve(liveSnapshot, nowMs);
     renderAgents(liveSnapshot);
   }, Math.max(100, timelineRefreshMs));
 }
@@ -578,9 +581,10 @@ function activityTarget(agent, patrolIndex = 0) {
   const fallback = points.length ? points[patrolIndex % points.length] : (room.center || { x: agent.x || 0, y: agent.y || 0 });
   if (patrolIndex > 0) return fallback;
   const roomDecor = getRoomDecor(roomKey, currentLocale);
-  const layout = roomDecorLayout(roomKey, roomDecor);
+  const decorByRoom = getDecorByRoom();
+  const layout = roomDecorLayout(roomKey, roomDecor, decorByRoom);
   const decor = layout.map((item) => item.prop);
-  const worldPositions = roomInteractionPositions(roomKey, roomDecor);
+  const worldPositions = roomInteractionPositions(roomKey, roomDecor, decorByRoom);
   return selectInteractionTarget(agent, decor, worldPositions, fallback) || fallback;
 }
 
@@ -794,6 +798,8 @@ function applyStaticCopy() {
   setText('legend-idle-body', copy.legendIdleBody);
   setText('legend-offline-title', copy.legendOfflineTitle);
   setText('legend-offline-body', copy.legendOfflineBody);
+  setText('hook-state-title', copy.hookStateTitle);
+  renderHookStateTable();
   populateLocaleSelect();
   updateRefreshController();
   updateFurnitureToolbar();
@@ -827,7 +833,8 @@ function renderDistricts() {
     district.style.setProperty('--district-wall-size', roomTheme.wallSize || '64px 64px');
     const labelEl = district.querySelector('.district-label');
     if (labelEl) {
-      labelEl.innerHTML = `<span>${roomKey === 'think_lab' ? '💡' : roomKey === 'blueprint_lab' ? '🗺️' : roomKey === 'tool_forge' ? '🛠️' : roomKey === 'response_studio' ? '📨' : roomKey === 'standby_dock' ? '🛏️' : roomKey === 'clone_bay' ? '🧬' : '🗂️'}</span><div><strong>${room.name}</strong><div class="district-subtitle">${room.subtitle}</div></div>`;
+      const stateLabels = (ROOM_STATE_GROUPS[roomKey] || []).map((state) => `<span>${stateText(state)}</span>`).join('');
+      labelEl.innerHTML = `<span>${roomKey === 'think_lab' ? '💡' : roomKey === 'blueprint_lab' ? '🗺️' : roomKey === 'tool_forge' ? '🛠️' : roomKey === 'response_studio' ? '📨' : roomKey === 'standby_dock' ? '🛏️' : roomKey === 'clone_bay' ? '🧬' : '🗂️'}</span><div><strong>${room.name}</strong><div class="district-subtitle">${room.subtitle}</div><div class="district-state-tags">${stateLabels}</div></div>`;
     }
 
     const floorAccentLayer = district.querySelector('.district-floor-accents');
@@ -857,8 +864,7 @@ function renderDistricts() {
       `).join('');
     }
 
-    const propLayout = roomDecorLayout(roomKey, getRoomDecor(roomKey, currentLocale));
-    const propPositions = getRoomPropPositions(roomKey);
+    const propLayout = roomDecorLayout(roomKey, getRoomDecor(roomKey, currentLocale), getDecorByRoom());
     district.classList.toggle('editing', furnitureEditMode);
     const selectedKey = selectedFurnitureKey();
     const selectedInRoom = selectedFurnitureProp && selectedFurnitureProp.roomKey === roomKey;
@@ -877,7 +883,7 @@ function renderDistricts() {
           <span class="prop-guide-badge">${selectedPropGuideLabel()}</span>
         </div>
       ` : '';
-      propsLayer.innerHTML = guide + propLayout.map(({ prop, pos, index }) => {
+      propsLayer.innerHTML = guide + propLayout.map(({ prop, pos, index, originRoomKey }) => {
         const appledog = getAppleDogPropSprite(prop.type);
         const useHighClarity = shouldUseHighClarityProp(prop.type);
         const kenney = appledog || useHighClarity ? null : getKenneyPropSprite(prop.type);
@@ -888,10 +894,10 @@ function renderDistricts() {
         const fx = getPropFx(prop.type, roomKey);
         const icon = INTERACTION_OBJECT_ICONS[prop.type] || '▪';
         const assetPack = appledog ? 'appledog' : kenney ? 'kenney' : 'office-fallback';
-        const draftPos = propPositions[index] || pos;
-        const isSelected = selectedKey === `${roomKey}:${index}`;
+        const draftPos = pos;
+        const isSelected = selectedKey === `${originRoomKey}:${index}`;
         return `
-          <div class="prop ${fx.className}${isSelected ? ' selected' : ''}" data-room-key="${roomKey}" data-prop-index="${index}" data-prop-type="${prop.type}" data-prop-label="${prop.label}" data-asset-pack="${assetPack}" data-fx-intensity="${fx.intensity}" style="left:${draftPos.x}%;top:${draftPos.y}%;--prop-scale:${scale};--prop-width-tiles:${widthTiles};--prop-height-tiles:${heightTiles}" title="${prop.label}">
+          <div class="prop ${fx.className}${isSelected ? ' selected' : ''}" data-room-key="${roomKey}" data-origin-room-key="${originRoomKey}" data-prop-index="${index}" data-prop-type="${prop.type}" data-prop-label="${prop.label}" data-asset-pack="${assetPack}" data-fx-intensity="${fx.intensity}" style="left:${draftPos.x}%;top:${draftPos.y}%;--prop-scale:${scale};--prop-width-tiles:${widthTiles};--prop-height-tiles:${heightTiles}" title="${prop.label}">
             <div class="prop-icon" aria-hidden="true">${icon}</div>
             <img alt="${prop.label}" src="${src}" data-pack="${assetPack}" />
             <div class="prop-label">${prop.label}</div>
@@ -913,6 +919,18 @@ function renderDistricts() {
     door.style.backgroundImage = `url("${getAppleDogDoorSprite() || getKenneyDoorSprite()}")`;
     door.title = `${KENNEY_PACK.name} / AppleDog door tile`;
   });
+}
+
+function renderHookStateTable() {
+  if (!dom.hookStateTable) return;
+  const copy = strings();
+  dom.hookStateTable.innerHTML = `
+    <div class="hook-state-head"><span>${copy.hookStateHook}</span><span>${copy.hookStateState}</span><span>${copy.hookStateRoom}</span></div>
+    ${hookStateRoutes().map((route) => {
+      const room = getRoomCopy(route.room, currentLocale);
+      return `<div class="hook-state-row"><code>${route.hook}</code><span>${stateText(route.state)}</span><span>${room.name}</span></div>`;
+    }).join('')}
+  `;
 }
 
 function setRouteDoorsOpen(roomKeys = [], open = false) {
@@ -964,6 +982,39 @@ function renderInspector(agent) {
       ${actions}
     </div>
   `;
+}
+
+function renderInspectorAgentSelect(agents = []) {
+  if (!dom.inspectorAgentSelect) return;
+  const copy = strings();
+  const roleOrder = ['main_agent', 'subagent', 'branch_session'];
+  const grouped = new Map(roleOrder.map((role) => [role, []]));
+  agents.forEach((agent) => {
+    const role = grouped.has(agent.role) ? agent.role : 'main_agent';
+    grouped.get(role).push(agent);
+  });
+  dom.inspectorAgentSelect.innerHTML = '';
+  roleOrder.forEach((role) => {
+    const items = grouped.get(role);
+    if (!items.length) return;
+    const group = document.createElement('optgroup');
+    group.label = roleLabel(role);
+    items.forEach((agent) => {
+      const option = document.createElement('option');
+      option.value = agent.agent;
+      option.textContent = `${displayAgentName(agent)} · ${stateText(agent.state)}`;
+      group.append(option);
+    });
+    dom.inspectorAgentSelect.append(group);
+  });
+  dom.inspectorAgentSelect.hidden = !agents.length;
+  if (selectedAgentId && agents.some((agent) => agent.agent === selectedAgentId)) {
+    dom.inspectorAgentSelect.value = selectedAgentId;
+  } else if (agents[0]) {
+    selectedAgentId = agents[0].agent;
+    dom.inspectorAgentSelect.value = selectedAgentId;
+  }
+  dom.inspectorAgentSelect.setAttribute('aria-label', copy.inspectorAgentSelect || copy.inspectorTitle);
 }
 
 function closeAgentDialog() {
@@ -1248,8 +1299,9 @@ function syncFurnitureLayout(layout = {}) {
   furnitureDraft = cloneLayout(layout || {});
   furnitureDirty = false;
   if (selectedFurnitureProp) {
-    const next = (furnitureDraft[selectedFurnitureProp.roomKey] || [])[selectedFurnitureProp.index];
+    const next = (furnitureDraft[selectedFurnitureProp.originRoomKey] || [])[selectedFurnitureProp.index];
     if (next) {
+      selectedFurnitureProp.roomKey = next.room || selectedFurnitureProp.originRoomKey;
       selectedFurnitureProp.x = Number(next.x || selectedFurnitureProp.x || 50);
       selectedFurnitureProp.y = Number(next.y || selectedFurnitureProp.y || 50);
     } else {
@@ -1261,6 +1313,15 @@ function syncFurnitureLayout(layout = {}) {
   updateFurnitureToolbar();
 }
 
+function districtAtPoint(clientX, clientY) {
+  return Array.from(dom.world?.querySelectorAll('.district[data-room]') || []).find((district) => {
+    const roomKey = district.dataset.room;
+    if (!roomKey || roomKey === 'offline_corner') return false;
+    const rect = district.getBoundingClientRect();
+    return clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom;
+  }) || null;
+}
+
 function currentLayoutSnapshot() {
   return exportFurnitureLayout();
 }
@@ -1270,11 +1331,53 @@ function updateFurnitureDirtyState() {
   updateFurnitureToolbar();
 }
 
-function updateDraggedPropVisual(prop, x, y) {
+function updateDraggedGuideVisual(roomKey, x, y, { create = false } = {}) {
+  const propsLayer = dom.world?.querySelector(`.district[data-room="${roomKey}"] .district-props`);
+  if (!propsLayer) return;
+  if (create) {
+    dom.world?.querySelectorAll('.room-edit-grid, .prop-guide').forEach((item) => {
+      if (!propsLayer.contains(item)) item.remove();
+    });
+  }
+  let guide = propsLayer.querySelector('.prop-guide');
+  if (!guide && create) {
+    const gridLines = buildGridLines();
+    const grid = document.createElement('div');
+    grid.className = 'room-edit-grid';
+    grid.setAttribute('aria-hidden', 'true');
+    grid.innerHTML = [
+      ...gridLines.map((value) => `<span class="grid-line vertical${Math.abs(value - 50) < 0.01 ? ' mid' : ''}" style="left:${value}%"></span>`),
+      ...gridLines.map((value) => `<span class="grid-line horizontal${Math.abs(value - 50) < 0.01 ? ' mid' : ''}" style="top:${value}%"></span>`),
+    ].join('');
+    guide = document.createElement('div');
+    guide.className = 'prop-guide dragging';
+    guide.innerHTML = `
+      <span class="snap-guide vertical"></span>
+      <span class="snap-guide horizontal"></span>
+      <span class="snap-guide-dot"></span>
+      <span class="prop-guide-badge"></span>
+    `;
+    propsLayer.prepend(grid, guide);
+  }
+  if (!guide) return;
+  const style = dragPositionStyle(x, y);
+  guide.style.left = style.left;
+  guide.style.top = style.top;
+  guide.classList.add('dragging');
+  const badge = guide.querySelector('.prop-guide-badge');
+  if (badge) badge.textContent = selectedPropGuideLabel();
+}
+
+function updateDraggedPropVisual(prop, roomKey, x, y) {
   if (!prop) return;
-  prop.style.left = `${x}%`;
-  prop.style.top = `${y}%`;
+  const propsLayer = dom.world?.querySelector(`.district[data-room="${roomKey}"] .district-props`);
+  if (propsLayer && prop.parentElement !== propsLayer) propsLayer.append(prop);
+  prop.dataset.roomKey = roomKey;
+  const style = dragPositionStyle(x, y);
+  prop.style.left = style.left;
+  prop.style.top = style.top;
   prop.classList.add('selected');
+  updateDraggedGuideVisual(roomKey, x, y, { create: true });
   const meta = prop.querySelector('.prop-meta');
   if (meta) {
     const label = prop.dataset.propLabel || prop.dataset.propType || 'prop';
@@ -1282,11 +1385,21 @@ function updateDraggedPropVisual(prop, x, y) {
   }
 }
 
-function applyDraftPosition(roomKey, index, x, y, options = {}) {
-  const roomPositions = (furnitureDraft[roomKey] || getRoomPropPositions(roomKey)).map((item) => ({ ...item }));
+function updateFurnitureDragGhost(event) {
+  if (!propDragging?.ghost) return;
+  propDragging.ghost.style.left = `${event.clientX - propDragging.offsetX}px`;
+  propDragging.ghost.style.top = `${event.clientY - propDragging.offsetY}px`;
+}
+
+function applyDraftPosition(originRoomKey, index, x, y, options = {}) {
+  const roomKey = options.roomKey || originRoomKey;
+  const roomPositions = (furnitureDraft[originRoomKey] || getRoomPropPositions(originRoomKey)).map((item) => ({ ...item }));
   const nextX = normalizePercent(x, { step: options.step || furnitureSnapStep });
   const nextY = normalizePercent(y, { step: options.step || furnitureSnapStep });
-  if (positionOverlapsFurniture(roomKey, getRoomDecor(roomKey, currentLocale), index, { x: nextX, y: nextY }, roomPositions)) {
+  if (positionOverlapsFurniture(roomKey, getRoomDecor(roomKey, currentLocale), index, { x: nextX, y: nextY }, roomPositions, {
+    originRoomKey,
+    decorByRoom: getDecorByRoom(),
+  })) {
     const now = Date.now();
     if (now - lastFurnitureCollisionAt > 900) {
       const copy = strings();
@@ -1295,16 +1408,22 @@ function applyDraftPosition(roomKey, index, x, y, options = {}) {
     }
     return false;
   }
-  roomPositions[index] = { x: nextX, y: nextY };
-  furnitureDraft[roomKey] = roomPositions;
-  if (selectedFurnitureProp && selectedFurnitureProp.roomKey === roomKey && selectedFurnitureProp.index === index) {
+  roomPositions[index] = { x: nextX, y: nextY, room: roomKey };
+  furnitureDraft[originRoomKey] = roomPositions;
+  if (selectedFurnitureProp && selectedFurnitureProp.originRoomKey === originRoomKey && selectedFurnitureProp.index === index) {
+    selectedFurnitureProp.roomKey = roomKey;
     selectedFurnitureProp.x = nextX;
     selectedFurnitureProp.y = nextY;
+  }
+  if (propDragging && propDragging.originRoomKey === originRoomKey && propDragging.index === index) {
+    propDragging.roomKey = roomKey;
+    propDragging.x = nextX;
+    propDragging.y = nextY;
   }
   setFurnitureLayoutOverrides(furnitureDraft);
   refreshFurnitureBlockers();
   updateFurnitureDirtyState();
-  if (options.prop) updateDraggedPropVisual(options.prop, nextX, nextY);
+  if (options.prop) updateDraggedPropVisual(options.prop, roomKey, nextX, nextY);
   if (options.renderDistricts) queueDistrictRender();
   queueAgentRefresh();
   return true;
@@ -1332,6 +1451,15 @@ function renderTimelineSvg(panel) {
   return `<svg viewBox="0 0 100 98" preserveAspectRatio="none">${gridLines}${dots}</svg>`;
 }
 
+function renderTimelineHeartbeat(panel, nowMs = Date.now()) {
+  const beatWidth = heartbeatBeatWidthPx(panel);
+  const patternId = `ecg-${String(panel.agentId || 'agent').replace(/[^a-z0-9_-]/gi, '-')}`;
+  return `<svg aria-hidden="true">
+    <defs><pattern id="${patternId}" width="${beatWidth}" height="32" patternUnits="userSpaceOnUse"><path d="${buildHeartbeatPath(panel, nowMs, timelineRefreshMs, beatWidth)}" /></pattern></defs>
+    <rect width="100%" height="32" fill="url(#${patternId})" />
+  </svg>`;
+}
+
 function renderTimelinePanels(snapshot, { nowMs = snapshot?.server_time_ms || Date.now(), windowMs = 20 * 60 * 1000 } = {}) {
   const copy = strings();
   const panels = buildAgentTimelinePanels(snapshot, copy, { nowMs, windowMs });
@@ -1343,6 +1471,11 @@ function renderTimelinePanels(snapshot, { nowMs = snapshot?.server_time_ms || Da
   dom.events.innerHTML = `<div class="timeline-grid">${panels.map((panel) => `
     <article class="timeline-panel">
       <div class="event-top"><span>${panel.role === 'subagent' ? '🧬' : panel.role === 'branch_session' ? '🗂️' : '🤖'} ${panel.name}</span><span class="muted">${stateText(panel.state)}</span></div>
+      <div class="timeline-heartbeat ${panel.heartbeatTone}">
+        <span>${panel.heartbeatTone === 'stale' ? copy.heartbeatStale(ageText(panel.ageSeconds)) : panel.heartbeatTone === 'waiting' ? copy.heartbeatWaiting : copy.heartbeatLive(ageText(panel.ageSeconds))}</span>
+        ${renderTimelineHeartbeat(panel, nowMs)}
+        ${panel.canDelete ? `<button type="button" class="timeline-delete-agent" data-delete-agent="${encodeURIComponent(panel.agentId)}">${copy.deleteOfflineAgent || 'Delete'}</button>` : ''}
+      </div>
       <div class="timeline-meta"><span>${copy.latestEvent}: ${panel.latestCategory}</span><span>${copy.blockedFor}: ${ageText(panel.ageSeconds)}</span></div>
       <div class="timeline-rows">
         <div class="timeline-row-labels" style="grid-template-rows: repeat(${panel.rows.length}, 1fr)">${panel.rows.map((row) => `<span>${row.label}</span>`).join('')}</div>
@@ -1351,6 +1484,18 @@ function renderTimelinePanels(snapshot, { nowMs = snapshot?.server_time_ms || Da
       <div class="event-summary">${short(panel.latestSummary || copy.noEvents, 120)}</div>
     </article>
   `).join('')}</div>`;
+}
+
+async function deleteOfflineAgent(agentId) {
+  const copy = strings();
+  if (!window.confirm(copy.deleteOfflineAgentConfirm?.(agentId) || `Delete offline agent ${agentId}?`)) return;
+  const response = await fetch(`/api/agents?agent=${encodeURIComponent(agentId)}`, { method: 'DELETE' });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    window.alert(payload.detail || payload.error || copy.deleteOfflineAgentFailed || 'Unable to delete offline agent');
+    return;
+  }
+  await refresh();
 }
 
 function renderAgents(snapshot) {
@@ -1388,12 +1533,8 @@ function renderAgents(snapshot) {
     }
   });
 
-  if (!selectedAgentId && agents[0]) {
-    selectedAgentId = agents[0].agent;
-    renderInspector(agents[0]);
-  } else if (selectedAgentId) {
-    renderInspector(agents.find((item) => item.agent === selectedAgentId) || agents[0]);
-  }
+  renderInspectorAgentSelect(agents);
+  renderInspector(agents.find((item) => item.agent === selectedAgentId) || agents[0]);
   if (activeDialogAgentId) {
     const active = agents.find((item) => item.agent === activeDialogAgentId);
     if (active) openAgentDialog(active);
@@ -1416,7 +1557,6 @@ function renderSnapshot(snapshot) {
   dom.worldSummary.textContent = summarizeWorld(snapshot.stats, currentLocale);
   updateLastSyncText(snapshot, snapshot.server_time_ms);
   renderHeartbeat(snapshot);
-  renderHeartbeatCurve(snapshot, snapshot.server_time_ms);
   renderAgents(snapshot);
   renderTimelinePanels(snapshot, { nowMs: snapshot.server_time_ms, windowMs: 20 * 60 * 1000 });
 }
@@ -1508,14 +1648,16 @@ function setupFurnitureEditor() {
       return;
     }
     const roomKey = prop.dataset.roomKey;
+    const originRoomKey = prop.dataset.originRoomKey || roomKey;
     const index = Number(prop.dataset.propIndex || 0);
     const district = prop.closest('.district');
     const rect = district?.getBoundingClientRect();
     const propRect = prop.getBoundingClientRect();
     if (!roomKey || !rect || !propRect) return;
-    const current = (furnitureDraft[roomKey] || getRoomPropPositions(roomKey))[index] || { x: 50, y: 50 };
+    const current = (furnitureDraft[originRoomKey] || getRoomPropPositions(originRoomKey))[index] || { x: 50, y: 50, room: roomKey };
     setSelectedFurnitureProp({
       roomKey,
+      originRoomKey,
       index,
       propType: prop.dataset.propType || 'prop',
       label: prop.dataset.propLabel || prop.dataset.propType || 'prop',
@@ -1524,6 +1666,7 @@ function setupFurnitureEditor() {
     });
     propDragging = {
       roomKey,
+      originRoomKey,
       index,
       prop,
       rect,
@@ -1535,9 +1678,15 @@ function setupFurnitureEditor() {
       y: Number(current.y || 50),
       pointerId: event.pointerId,
     };
+    const ghost = prop.cloneNode(true);
+    ghost.classList.add('furniture-drag-ghost', 'dragging');
+    ghost.classList.remove('selected');
+    document.body.append(ghost);
+    propDragging.ghost = ghost;
     prop.setPointerCapture?.(event.pointerId);
-    prop.classList.add('dragging');
-    queueDistrictRender();
+    prop.classList.add('dragging', 'drag-source');
+    updateFurnitureDragGhost(event);
+    updateDraggedGuideVisual(roomKey, propDragging.x, propDragging.y, { create: true });
     updateFurnitureEditorBanner();
     event.preventDefault();
     event.stopPropagation();
@@ -1545,16 +1694,27 @@ function setupFurnitureEditor() {
 
   window.addEventListener('pointermove', (event) => {
     if (!propDragging || furnitureSaving) return;
-    const district = propDragging.prop?.closest('.district');
-    const liveRect = district?.getBoundingClientRect() || propDragging.rect;
+    updateFurnitureDragGhost(event);
+    const district = districtAtPoint(event.clientX, event.clientY);
+    if (!district) {
+      updateFurnitureEditorBanner();
+      return;
+    }
+    const roomKey = district.dataset.room;
+    const liveRect = district.getBoundingClientRect();
     const rawX = (((event.clientX - liveRect.left) - propDragging.offsetX) / liveRect.width) * 100;
     const rawY = (((event.clientY - liveRect.top) - propDragging.offsetY) / liveRect.height) * 100;
     furnitureSnapStep = resolveSnapStep(event.shiftKey);
     const x = normalizePercent(rawX, { step: furnitureSnapStep });
     const y = normalizePercent(rawY, { step: furnitureSnapStep });
     propDragging.rect = liveRect;
-    const accepted = applyDraftPosition(propDragging.roomKey, propDragging.index, x, y, { prop: propDragging.prop, step: furnitureSnapStep });
+    const accepted = applyDraftPosition(propDragging.originRoomKey, propDragging.index, x, y, {
+      prop: propDragging.prop,
+      roomKey,
+      step: furnitureSnapStep,
+    });
     if (accepted) {
+      propDragging.roomKey = roomKey;
       propDragging.x = x;
       propDragging.y = y;
     }
@@ -1566,7 +1726,8 @@ function setupFurnitureEditor() {
     const settled = { ...propDragging };
     setSelectedFurnitureProp(settled);
     propDragging.prop?.releasePointerCapture?.(propDragging.pointerId);
-    propDragging.prop?.classList.remove('dragging');
+    propDragging.prop?.classList.remove('dragging', 'drag-source');
+    propDragging.ghost?.remove();
     propDragging = null;
     updateFurnitureEditorBanner();
     if (rerender) {
@@ -1604,7 +1765,11 @@ function setupFurnitureEditor() {
     event.preventDefault();
     const nextX = clampPercent(selectedFurnitureProp.x + delta.x);
     const nextY = clampPercent(selectedFurnitureProp.y + delta.y);
-    applyDraftPosition(selectedFurnitureProp.roomKey, selectedFurnitureProp.index, nextX, nextY, { renderDistricts: true, step });
+    applyDraftPosition(selectedFurnitureProp.originRoomKey, selectedFurnitureProp.index, nextX, nextY, {
+      renderDistricts: true,
+      roomKey: selectedFurnitureProp.roomKey,
+      step,
+    });
     updateFurnitureEditorBanner();
   });
   window.addEventListener('beforeunload', (event) => {
@@ -1728,6 +1893,39 @@ function setupDraggablePanels() {
   });
 }
 
+function setupResizablePanels() {
+  const root = document.documentElement;
+  const restore = (panel) => {
+    const key = panel.dataset.resizablePanel;
+    const saved = Number(localStorage.getItem(`pixelverse:size:${key}`));
+    if (!Number.isFinite(saved) || saved <= 0) return;
+    if (key === 'sidebar') {
+      root.style.setProperty('--sidebar-width', `${saved}px`);
+      panel.style.width = `${saved}px`;
+    } else if (key === 'timeline') {
+      root.style.setProperty('--timeline-height', `${saved}px`);
+      panel.style.height = `${saved}px`;
+    } else {
+      panel.style.height = `${saved}px`;
+    }
+  };
+  dom.resizablePanels.forEach(restore);
+  if (!window.ResizeObserver) return;
+  const observer = new ResizeObserver((entries) => {
+    entries.forEach(({ target }) => {
+      if (mobileMode) return;
+      const key = target.dataset.resizablePanel;
+      const bounds = target.getBoundingClientRect();
+      const size = key === 'sidebar' ? bounds.width : bounds.height;
+      if (!key || !Number.isFinite(size) || size <= 0) return;
+      localStorage.setItem(`pixelverse:size:${key}`, String(Math.round(size)));
+      if (key === 'sidebar') root.style.setProperty('--sidebar-width', `${Math.round(size)}px`);
+      if (key === 'timeline') root.style.setProperty('--timeline-height', `${Math.round(size)}px`);
+    });
+  });
+  dom.resizablePanels.forEach((panel) => observer.observe(panel));
+}
+
 function setupCameraPan() {
   if (!dom.world || !dom.cameraStage) return;
   const viewport = () => ({ width: dom.world.clientWidth, height: dom.world.clientHeight });
@@ -1831,6 +2029,18 @@ dom.dialogBackdrop?.addEventListener('click', (event) => {
   if (!event.target.closest('.speech-dialog')) closeAgentDialog();
 });
 
+dom.inspectorAgentSelect?.addEventListener('change', (event) => {
+  selectedAgentId = event.target.value;
+  repaintAgents();
+  renderInspector((currentSnapshot?.agents || []).find((agent) => agent.agent === selectedAgentId));
+});
+
+dom.events?.addEventListener('click', (event) => {
+  const button = event.target.closest('[data-delete-agent]');
+  if (!button) return;
+  deleteOfflineAgent(decodeURIComponent(button.dataset.deleteAgent || ''));
+});
+
 function adjustRefreshInterval(deltaMs) {
   timelineRefreshMs = clampNumber(timelineRefreshMs + deltaMs, 100, 10_000);
   localStorage.setItem('pixelverse:timeline-refresh-ms', String(timelineRefreshMs));
@@ -1850,6 +2060,7 @@ populateLocaleSelect();
 applyStaticCopy();
 updateRefreshController();
 setupDraggablePanels();
+setupResizablePanels();
 setupCameraPan();
 setupFurnitureEditor();
 startLiveUiTicker();

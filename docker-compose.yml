@@ -2,28 +2,33 @@ services:
   pixelverse:
     build:
       context: .
-    image: hermes-pixelverse:local
-    container_name: hermes-pixelverse
+    image: cli-pixelverse:local
+    container_name: cli-pixelverse
     environment:
       PIXELVERSE_AGENT_KIND: ${PIXELVERSE_AGENT_KIND:-generic}
       PIXELVERSE_HOST: 0.0.0.0
       PIXELVERSE_PORT: 4321
-      MINIVERSE_BRIDGE_PORT: 4567
-      MINIVERSE_AGENT_ID: ${MINIVERSE_AGENT_ID:-henry-main}
-      MINIVERSE_AGENT_NAME: ${MINIVERSE_AGENT_NAME:-Henry}
-      MINIVERSE_AGENT_COLOR: ${MINIVERSE_AGENT_COLOR:-#8b5cf6}
+      PIXELVERSE_BRIDGE_PORT: 4567
+      PIXELVERSE_AGENT_ID: ${PIXELVERSE_AGENT_ID:-henry-main}
+      PIXELVERSE_AGENT_NAME: ${PIXELVERSE_AGENT_NAME:-Henry}
+      PIXELVERSE_AGENT_COLOR: ${PIXELVERSE_AGENT_COLOR:-#8b5cf6}
+      PIXELVERSE_BRIDGE_AGENT_ID: ${PIXELVERSE_BRIDGE_AGENT_ID:-henry-main}
+      PIXELVERSE_BRIDGE_AGENT_NAME: ${PIXELVERSE_BRIDGE_AGENT_NAME:-Henry}
+      PIXELVERSE_BRIDGE_AGENT_COLOR: ${PIXELVERSE_BRIDGE_AGENT_COLOR:-#8b5cf6}
       PIXELVERSE_NOTIFY_TO: ${PIXELVERSE_NOTIFY_TO:-henry.cos.allen@gmail.com}
       PIXELVERSE_NOTIFY_CMD: ${PIXELVERSE_NOTIFY_CMD:-henry-notify}
       PIXELVERSE_HERMES_ENABLE: ${PIXELVERSE_HERMES_ENABLE:-auto}
       PIXELVERSE_HERMES_WEB_BASE: ${PIXELVERSE_HERMES_WEB_BASE:-http://host.docker.internal:9119}
       PIXELVERSE_HERMES_GATEWAY_HEALTH: ${PIXELVERSE_HERMES_GATEWAY_HEALTH:-http://host.docker.internal:8642/health/detailed}
       PIXELVERSE_HERMES_REPO: /host-hermes-agent
+      PIXELVERSE_RUNTIME_DIR: /app/runtime
       PIXELVERSE_OLLAMA_BASE: ${PIXELVERSE_OLLAMA_BASE:-http://host.docker.internal:11434}
     ports:
       - "${PIXELVERSE_PORT:-4321}:4321"
-      - "${MINIVERSE_BRIDGE_PORT:-4567}:4567"
+      - "${PIXELVERSE_BRIDGE_PORT:-4567}:4567"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
       - ${PIXELVERSE_HERMES_REPO_HOST:-/home/a0665x/Desktop/AI_AGX_WS/HermesAgent_OpenWebUI/hermes-agent}:/host-hermes-agent:ro
+      - ${PIXELVERSE_RUNTIME_DIR_HOST:-./.pixelverse-service/runtime}:/app/runtime
     restart: unless-stopped

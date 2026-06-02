@@ -1,0 +1,13 @@
+name: pixelverse
+description: >
+  Broadcasts Hermes agent state to the Pixelverse visual world via the
+  CLI_Pixelverse bridge. Translates agent lifecycle events into
+  Pixelverse heartbeats and actions.
+
+events:
+  - agent:start
+  - agent:step
+  - agent:end
+  - reasoning.available
+  - tool.started
+  - tool.completed

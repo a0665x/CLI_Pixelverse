@@ -1,6 +1,8 @@
 .pixelverse-service/
 tmp/
 spec/
+.spec/
+.codex/
 
 __pycache__/
 *.py[cod]

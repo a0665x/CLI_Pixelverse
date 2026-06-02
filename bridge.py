@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""hermes-miniverse bridge — connects Hermes Agent to a Miniverse pixel world."""
+"""CLI_Pixelverse bridge for lifecycle, heartbeat, and message relay."""
 
 from __future__ import annotations
 
@@ -18,16 +18,20 @@ from urllib.parse import urlparse
 
 import httpx
 
-log = logging.getLogger("hermes-miniverse")
+log = logging.getLogger("cli-pixelverse")
+
+
+def env(name: str, default: str) -> str:
+    return os.getenv(name, default)
 
 DEFAULT_CONFIG = {
-    "server": os.getenv("MINIVERSE_SERVER", "http://localhost:4321"),
-    "agent_id": os.getenv("MINIVERSE_AGENT_ID", "hermes-1"),
-    "agent_name": os.getenv("MINIVERSE_AGENT_NAME", "Hermes Agent"),
-    "agent_color": os.getenv("MINIVERSE_AGENT_COLOR", "#CD7F32"),
-    "bridge_port": int(os.getenv("MINIVERSE_BRIDGE_PORT", "4567")),
+    "server": env("PIXELVERSE_URL", "http://localhost:4321"),
+    "agent_id": env("PIXELVERSE_AGENT_ID", "hermes-1"),
+    "agent_name": env("PIXELVERSE_AGENT_NAME", "Hermes Agent"),
+    "agent_color": env("PIXELVERSE_AGENT_COLOR", "#CD7F32"),
+    "bridge_port": int(env("PIXELVERSE_BRIDGE_PORT", "4567")),
     "hermes_webhook_url": os.getenv("HERMES_WEBHOOK_URL", ""),
-    "hermes_cmd": os.getenv("MINIVERSE_HERMES_CMD", "hermes chat -c -q"),
+    "hermes_cmd": env("PIXELVERSE_HERMES_CMD", "hermes chat -c -q"),
     "heartbeat_interval": 20,
     "speak_responses": True,
     "notify_on_complete": os.getenv("PIXELVERSE_NOTIFY_ON_COMPLETE", "0").lower() in {"1", "true", "yes", "on"},
@@ -36,7 +40,7 @@ DEFAULT_CONFIG = {
 }
 
 
-class MiniverseClient:
+class PixelverseClient:
     def __init__(self, server_url: str, agent_id: str, agent_name: str, agent_color: str = "#CD7F32"):
         self.server = server_url.rstrip("/")
         self.agent_id = agent_id
@@ -148,7 +152,7 @@ class BridgeState:
 
 
 def relay_world_action(
-    client: MiniverseClient,
+    client: PixelverseClient,
     message: str,
     *,
     action_type: str = "status",
@@ -209,7 +213,7 @@ def send_completion_notification(config: dict, bridge_state: BridgeState, ctx: d
         log.error("Completion notification error: %s", exc)
 
 
-def heartbeat_loop(client: MiniverseClient, state: BridgeState, interval: int = 20):
+def heartbeat_loop(client: PixelverseClient, state: BridgeState, interval: int = 20):
     log.info("Heartbeat loop started (every %ds)", interval)
     while True:
         current_state, current_task = state.get()
@@ -217,7 +221,7 @@ def heartbeat_loop(client: MiniverseClient, state: BridgeState, interval: int = 
         time.sleep(interval)
 
 
-def handle_incoming_message(from_agent: str, message: str, config: dict, client: MiniverseClient, bridge_state: BridgeState):
+def handle_incoming_message(from_agent: str, message: str, config: dict, client: PixelverseClient, bridge_state: BridgeState):
     log.info("Message from %s: %s", from_agent, message[:80])
     bridge_state.update("thinking", f"Reading message from {from_agent}", start_message=message)
     relay_world_action(client, f"收到來自 {from_agent} 的訊息，正在整理", action_type="thought")
@@ -245,8 +249,8 @@ def handle_incoming_message(from_agent: str, message: str, config: dict, client:
     else:
         log.warning("No HERMES_WEBHOOK_URL set — using CLI fallback (not recommended for multi-agent)")
         hermes_input = (
-            f"[Miniverse message from agent '{from_agent}']: {message}\n\n"
-            f"(You are in a Miniverse pixel world. Reply naturally.)"
+            f"[Pixelverse message from agent '{from_agent}']: {message}\n\n"
+            f"(You are connected through the CLI_Pixelverse world. Reply naturally.)"
         )
         cmd = config["hermes_cmd"].split() + [hermes_input]
         bridge_state.update("working", f"Responding to {from_agent}")
@@ -270,7 +274,7 @@ def handle_incoming_message(from_agent: str, message: str, config: dict, client:
     log.info("Replied to %s: %s", from_agent, response[:80])
 
 
-def handle_hook_event(event: str, ctx: dict, config: dict, client: MiniverseClient, bridge_state: BridgeState):
+def handle_hook_event(event: str, ctx: dict, config: dict, client: PixelverseClient, bridge_state: BridgeState):
     log.info("Hook event received: %s context_keys=%s", event or "(empty)", sorted(ctx.keys()))
     if event == "agent:start":
         start_message = (ctx.get("message", "") or "")[:60]
@@ -354,7 +358,7 @@ def handle_hook_event(event: str, ctx: dict, config: dict, client: MiniverseClie
     client.heartbeat(state=state, task=task)
 
 
-def make_webhook_handler(config: dict, client: MiniverseClient, bridge_state: BridgeState):
+def make_webhook_handler(config: dict, client: PixelverseClient, bridge_state: BridgeState):
     class WebhookHandler(BaseHTTPRequestHandler):
         def do_POST(self):
             path = urlparse(self.path).path
@@ -426,9 +430,9 @@ def make_webhook_handler(config: dict, client: MiniverseClient, bridge_state: Br
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Bridge between Hermes Agent and Miniverse", formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--server", default=DEFAULT_CONFIG["server"], help="Miniverse server URL")
-    parser.add_argument("--agent", default=DEFAULT_CONFIG["agent_id"], help="Agent ID in miniverse")
+    parser = argparse.ArgumentParser(description="Bridge between Hermes Agent and Pixelverse", formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--server", default=DEFAULT_CONFIG["server"], help="Pixelverse server URL")
+    parser.add_argument("--agent", default=DEFAULT_CONFIG["agent_id"], help="Agent ID in Pixelverse")
     parser.add_argument("--name", default=DEFAULT_CONFIG["agent_name"], help="Display name")
     parser.add_argument("--color", default=DEFAULT_CONFIG["agent_color"], help="Agent color (hex)")
     parser.add_argument("--port", type=int, default=DEFAULT_CONFIG["bridge_port"], help="Local port for webhook callbacks")
@@ -438,6 +442,7 @@ def main():
     parser.add_argument("--notify-to", action="append", default=None, help="Notification recipient; repeat for multiple")
     parser.add_argument("--notify-cmd", default=DEFAULT_CONFIG["notify_cmd"], help="Notification command")
     parser.add_argument("--no-speak", action="store_true", help="Don't speak responses in the world")
+    parser.add_argument("--relay-only", action="store_true", help="Expose hook relay without creating an idle bridge agent until an event arrives.")
     parser.add_argument("--verbose", "-v", action="store_true")
     args = parser.parse_args()
 
@@ -458,27 +463,31 @@ def main():
         "notify_cmd": args.notify_cmd,
     }
 
-    client = MiniverseClient(config["server"], config["agent_id"], config["agent_name"], config["agent_color"])
+    client = PixelverseClient(config["server"], config["agent_id"], config["agent_name"], config["agent_color"])
     bridge_state = BridgeState()
 
-    log.info("Connecting to miniverse at %s ...", config["server"])
-    if not client.heartbeat(state="idle"):
-        log.error("Could not connect to miniverse server. Is it running?")
-        sys.exit(1)
-    log.info("✓ Connected as '%s' (%s)", config["agent_id"], config["agent_name"])
+    log.info("Connecting to Pixelverse at %s ...", config["server"])
+    if args.relay_only:
+        log.info("Relay-only mode: waiting for Hermes gateway lifecycle events before creating an agent")
+    else:
+        if not client.heartbeat(state="idle"):
+            log.error("Could not connect to Pixelverse server. Is it running?")
+            sys.exit(1)
+        log.info("✓ Connected as '%s' (%s)", config["agent_id"], config["agent_name"])
 
-    agents = client.get_agents()
-    if agents:
-        names = [a.get("name", a.get("agent", "?")) for a in agents]
-        log.info("Agents in world: %s", ", ".join(names))
+        agents = client.get_agents()
+        if agents:
+            names = [a.get("name", a.get("agent", "?")) for a in agents]
+            log.info("Agents in world: %s", ", ".join(names))
 
-    hb_thread = threading.Thread(target=heartbeat_loop, args=(client, bridge_state, config["heartbeat_interval"]), daemon=True)
-    hb_thread.start()
+        hb_thread = threading.Thread(target=heartbeat_loop, args=(client, bridge_state, config["heartbeat_interval"]), daemon=True)
+        hb_thread.start()
 
     handler = make_webhook_handler(config, client, bridge_state)
     server = HTTPServer(("0.0.0.0", config["bridge_port"]), handler)
     webhook_url = f"http://localhost:{config['bridge_port']}/webhook"
-    client.register_webhook(webhook_url)
+    if not args.relay_only:
+        client.register_webhook(webhook_url)
 
     log.info("Bridge running on port %d", config["bridge_port"])
     log.info("  Webhook endpoint: %s", webhook_url)

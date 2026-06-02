@@ -34,3 +34,10 @@ export function buildGridLines(step = GRID_STEP, bounds = EDIT_BOUNDS) {
 export function formatPercent(value) {
   return Number(clampPercent(value)).toFixed(1);
 }
+
+export function dragPositionStyle(x, y) {
+  return {
+    left: `${clampPercent(x)}%`,
+    top: `${clampPercent(y)}%`,
+  };
+}

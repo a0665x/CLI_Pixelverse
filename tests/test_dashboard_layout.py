@@ -34,6 +34,21 @@ def test_dashboard_layout_keeps_timeline_outside_left_sidebar_and_exposes_camera
     assert "event-timeline-belt" in parser.ids
     assert "dashboard-sidebar" not in parser.parents["events"]
     assert "dashboard-sidebar" not in parser.parents["event-timeline-belt"]
-    assert {"mobile-mode-btn", "sidebar-toggle-btn", "heartbeat-status", "heartbeat-curve"} <= parser.ids
+    assert {"mobile-mode-btn", "sidebar-toggle-btn", "heartbeat-status", "heartbeat-label"} <= parser.ids
+    assert {"hook-state-title", "hook-state-table"} <= parser.ids
+    assert {"hook-state-panel", "inspector-panel", "inspector-agent-select"} <= parser.ids
+    assert {"event-timeline-belt", "furniture-coord-hud", "furniture-coord-title"} <= parser.ids
     assert {"refresh-slower-btn", "refresh-faster-btn", "refresh-rate-output"} <= parser.ids
     assert {"zoom-in-btn", "zoom-reset-btn", "zoom-out-btn"} <= parser.ids
+
+
+def test_dashboard_supports_persistent_furniture_and_visible_timeline_lanes():
+    compose = Path("docker-compose.yml").read_text(encoding="utf-8")
+    html = Path("public/index.html").read_text(encoding="utf-8")
+    app = Path("public/app.mjs").read_text(encoding="utf-8")
+
+    assert "PIXELVERSE_RUNTIME_DIR: /app/runtime" in compose
+    assert ":/app/runtime" in compose
+    assert "furniture-drag-ghost" in html
+    assert "updateFurnitureDragGhost" in app
+    assert "overflow-y: auto;" in html

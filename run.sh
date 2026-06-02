@@ -4,15 +4,16 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 STATE_DIR="${PIXELVERSE_STATE_DIR:-$ROOT/.pixelverse-service}"
 ENV_FILE="$STATE_DIR/compose.env"
+RUNTIME_DIR="$STATE_DIR/runtime"
 COMMAND="${1:-start}"
 
 PIXELVERSE_PORT="${PIXELVERSE_PORT:-4321}"
-BRIDGE_PORT="${MINIVERSE_BRIDGE_PORT:-4567}"
-COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-hermes-pixelverse}"
+BRIDGE_PORT="${PIXELVERSE_BRIDGE_PORT:-4567}"
+COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-cli-pixelverse}"
 PIXELVERSE_TAILSCALE_ENABLE="${PIXELVERSE_TAILSCALE_ENABLE:-1}"
 PIXELVERSE_TAILSCALE_PORT="${PIXELVERSE_TAILSCALE_PORT:-10000}"
 
-mkdir -p "$STATE_DIR"
+mkdir -p "$STATE_DIR" "$RUNTIME_DIR"
 
 usage() {
   cat <<EOF
@@ -199,16 +200,20 @@ write_env_file() {
   cat > "$ENV_FILE" <<EOF
 PIXELVERSE_AGENT_KIND=$agent_kind
 PIXELVERSE_PORT=$PIXELVERSE_PORT
-MINIVERSE_BRIDGE_PORT=$BRIDGE_PORT
-MINIVERSE_AGENT_ID=${MINIVERSE_AGENT_ID:-henry-main}
-MINIVERSE_AGENT_NAME=${MINIVERSE_AGENT_NAME:-Henry}
-MINIVERSE_AGENT_COLOR=${MINIVERSE_AGENT_COLOR:-#8b5cf6}
+PIXELVERSE_BRIDGE_PORT=$BRIDGE_PORT
+PIXELVERSE_AGENT_ID=${PIXELVERSE_AGENT_ID:-henry-main}
+PIXELVERSE_AGENT_NAME=${PIXELVERSE_AGENT_NAME:-Henry}
+PIXELVERSE_AGENT_COLOR=${PIXELVERSE_AGENT_COLOR:-#8b5cf6}
+PIXELVERSE_BRIDGE_AGENT_ID=${PIXELVERSE_BRIDGE_AGENT_ID:-henry-main}
+PIXELVERSE_BRIDGE_AGENT_NAME=${PIXELVERSE_BRIDGE_AGENT_NAME:-Henry}
+PIXELVERSE_BRIDGE_AGENT_COLOR=${PIXELVERSE_BRIDGE_AGENT_COLOR:-#8b5cf6}
 PIXELVERSE_NOTIFY_TO=${PIXELVERSE_NOTIFY_TO:-henry.cos.allen@gmail.com}
 PIXELVERSE_NOTIFY_CMD=${PIXELVERSE_NOTIFY_CMD:-henry-notify}
 PIXELVERSE_HERMES_ENABLE=${PIXELVERSE_HERMES_ENABLE:-auto}
 PIXELVERSE_HERMES_WEB_BASE=${PIXELVERSE_HERMES_WEB_BASE:-http://host.docker.internal:9119}
 PIXELVERSE_HERMES_GATEWAY_HEALTH=${PIXELVERSE_HERMES_GATEWAY_HEALTH:-http://host.docker.internal:8642/health/detailed}
 PIXELVERSE_HERMES_REPO_HOST=${PIXELVERSE_HERMES_REPO_HOST:-/home/a0665x/Desktop/AI_AGX_WS/HermesAgent_OpenWebUI/hermes-agent}
+PIXELVERSE_RUNTIME_DIR_HOST=${PIXELVERSE_RUNTIME_DIR_HOST:-$RUNTIME_DIR}
 PIXELVERSE_OLLAMA_BASE=${PIXELVERSE_OLLAMA_BASE:-http://host.docker.internal:11434}
 PIXELVERSE_TAILSCALE_ENABLE=$PIXELVERSE_TAILSCALE_ENABLE
 PIXELVERSE_TAILSCALE_PORT=$PIXELVERSE_TAILSCALE_PORT
@@ -222,7 +227,7 @@ agent_command_name() {
     claude-code) printf 'claude\n' ;;
     ollama) printf 'ollama\n' ;;
     hermes) printf 'hermes\n' ;;
-    generic) printf 'sh\n' ;;
+    generic) printf 'generic\n' ;;
   esac
 }
 
@@ -428,7 +433,7 @@ print_tailscale_status() {
 
 docker_image_is_stale() {
   local image_created
-  image_created="$(docker image inspect -f '{{.Created}}' hermes-pixelverse:local 2>/dev/null || true)"
+  image_created="$(docker image inspect -f '{{.Created}}' cli-pixelverse:local 2>/dev/null || true)"
   [[ -n "$image_created" ]] || return 0
   find \
     "$ROOT/Dockerfile" \
@@ -452,22 +457,22 @@ start_service() {
   install_agent_adapter "$agent_kind"
 
   stop_legacy_local_processes
-  echo "Starting Pixelverse Docker service for $agent_kind..."
+  echo "Starting CLI_Pixelverse Docker service for $agent_kind..."
   if [[ "${PIXELVERSE_REBUILD:-0}" == "1" ]] || docker_image_is_stale; then
     echo "Rebuilding Docker image because workspace sources changed or PIXELVERSE_REBUILD=1."
     compose up -d --build
-  elif docker image inspect hermes-pixelverse:local >/dev/null 2>&1; then
-    echo "Using existing Docker image hermes-pixelverse:local. Set PIXELVERSE_REBUILD=1 to rebuild."
+  elif docker image inspect cli-pixelverse:local >/dev/null 2>&1; then
+    echo "Using existing Docker image cli-pixelverse:local. Set PIXELVERSE_REBUILD=1 to rebuild."
     compose up -d --no-build
   else
-    echo "Docker image hermes-pixelverse:local not found; building it once."
+    echo "Docker image cli-pixelverse:local not found; building it once."
     compose up -d --build
   fi
   wait_for_openapi || doctor_service
   ensure_tailscale_exposure
 
   cat <<EOF
-Pixelverse Docker service started
+CLI_Pixelverse Docker service started
 - Agent source: $agent_kind
 - UI:          http://localhost:${PIXELVERSE_PORT}
 - Swagger API: http://localhost:${PIXELVERSE_PORT}/docs
@@ -517,7 +522,7 @@ doctor_service() {
     write_env_file "${PIXELVERSE_AGENT_KIND:-generic}"
   fi
 
-  echo "Pixelverse Doctor"
+  echo "CLI_Pixelverse Doctor"
   echo "== Config =="
   echo "- Root: $ROOT"
   echo "- Compose project: $COMPOSE_PROJECT_NAME"
@@ -548,7 +553,7 @@ doctor_service() {
   echo
   echo "== Containers =="
   compose ps || true
-  docker ps -a --filter name=hermes-pixelverse --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}' 2>/dev/null || true
+  docker ps -a --filter name=cli-pixelverse --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}' 2>/dev/null || true
 
   echo
   echo "== Port Owners =="
@@ -606,8 +611,8 @@ install_hermes_hook() {
   local hermes_home="${HERMES_HOME:-$HOME/.hermes}"
   local target="$hermes_home/hooks/pixelverse"
   mkdir -p "$target"
-  cp "$ROOT/hooks/miniverse/HOOK.yaml" "$target/HOOK.yaml"
-  cp "$ROOT/hooks/miniverse/handler.py" "$target/handler.py"
+  cp "$ROOT/hooks/pixelverse/HOOK.yaml" "$target/HOOK.yaml"
+  cp "$ROOT/hooks/pixelverse/handler.py" "$target/handler.py"
   echo "Installed Pixelverse Hermes hook:"
   echo "- $target/HOOK.yaml"
   echo "- $target/handler.py"
@@ -616,7 +621,7 @@ install_hermes_hook() {
   echo "  ~/Desktop/AI_AGX_WS/HermesAgent_OpenWebUI/run.sh restart"
   echo
   echo "The hook posts Hermes agent lifecycle events to:"
-  echo "  ${MINIVERSE_BRIDGE_URL:-http://localhost:${BRIDGE_PORT}}/hook"
+  echo "  ${PIXELVERSE_BRIDGE_URL:-http://localhost:${BRIDGE_PORT}}/hook"
 }
 
 install_hermes_plugin() {
@@ -708,6 +713,18 @@ install_cli_adapter_for_kind() {
   echo "  $bin_dir/pixelverse-$command_name --help"
 }
 
+install_codex_project_hooks() {
+  local codex_dir="$ROOT/.codex"
+  local target="$codex_dir/hooks.json"
+  mkdir -p "$codex_dir"
+  cp "$ROOT/scripts/codex_hooks_template.json" "$target"
+  echo
+  echo "Installed local Codex project hooks:"
+  echo "- $target"
+  echo
+  echo "Inside the first Codex session, run /hooks and trust the project hook definition."
+}
+
 write_adapter_activation() {
   local bin_dir="$STATE_DIR/bin"
   local activation="$STATE_DIR/activate.sh"
@@ -744,9 +761,10 @@ install_agent_adapter() {
   esac
 
   if [[ "$target" == "all" ]]; then
-    for kind in codex gemini-cli claude-code ollama hermes generic; do
+    for kind in codex gemini-cli claude-code ollama hermes; do
       install_cli_adapter_for_kind "$kind"
     done
+    install_codex_project_hooks
     install_hermes_hook
     install_hermes_plugin
     write_adapter_activation
@@ -763,7 +781,18 @@ install_agent_adapter() {
     return 0
   fi
 
+  if [[ "$target" == "generic" ]]; then
+    echo "Generic agents use the universal HTTP client; no shell command shim is installed."
+    echo "Example:"
+    echo "  python3 -m agent_bridges.pixelverse_client start --agent-type generic --agent generic-main --name Generic"
+    write_adapter_activation
+    return 0
+  fi
+
   install_cli_adapter_for_kind "$target"
+  if [[ "$target" == "codex" ]]; then
+    install_codex_project_hooks
+  fi
   if [[ "$target" == "hermes" ]]; then
     install_hermes_hook
     install_hermes_plugin
@@ -783,7 +812,7 @@ adapter_command() {
 enable_shell_adapter() {
   local bashrc="${HOME}/.bashrc"
   local activation="$STATE_DIR/activate.sh"
-  local marker="# hermes-pixelverse shell adapter"
+  local marker="# cli-pixelverse shell adapter"
   local source_line="[ -f \"$activation\" ] && source \"$activation\""
   write_adapter_activation
   touch "$bashrc"
@@ -873,7 +902,7 @@ capture_world_snapshot() {
   if curl -fsS "$snapshot_url" > "$output"; then
     return 0
   fi
-  docker exec hermes-pixelverse curl -fsS "$snapshot_url" > "$output"
+  docker exec cli-pixelverse curl -fsS "$snapshot_url" > "$output"
 }
 
 post_json() {
@@ -884,13 +913,13 @@ post_json() {
     -d "$payload" >/dev/null; then
     return 0
   fi
-  docker exec hermes-pixelverse curl -fsS -X POST "$url" \
+  docker exec cli-pixelverse curl -fsS -X POST "$url" \
     -H 'Content-Type: application/json' \
     -d "$payload" >/dev/null
 }
 
 test_hook() {
-  local bridge_url="${MINIVERSE_BRIDGE_URL:-http://127.0.0.1:${BRIDGE_PORT}}"
+  local bridge_url="${PIXELVERSE_BRIDGE_URL:-http://127.0.0.1:${BRIDGE_PORT}}"
   local delay="${PIXELVERSE_TEST_HOOK_DELAY:-3}"
   local scenarios=(
     "blueprint_lab|search_files,read_file|搜尋與讀檔測試"

@@ -5,7 +5,7 @@ from scripts.codex_pixelverse_hook import build_event
 
 
 def test_codex_hooks_json_is_valid():
-    data = json.loads(Path(".codex/hooks.json").read_text(encoding="utf-8"))
+    data = json.loads(Path("scripts/codex_hooks_template.json").read_text(encoding="utf-8"))
     assert {"SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "SubagentStart", "SubagentStop", "Stop"} <= set(data["hooks"])
 
 

@@ -4,7 +4,7 @@ set -euo pipefail
 PIXELVERSE_AGENT_KIND="${PIXELVERSE_AGENT_KIND:-generic}"
 PIXELVERSE_HOST="${PIXELVERSE_HOST:-0.0.0.0}"
 PIXELVERSE_PORT="${PIXELVERSE_PORT:-4321}"
-BRIDGE_PORT="${MINIVERSE_BRIDGE_PORT:-4567}"
+BRIDGE_PORT="${PIXELVERSE_BRIDGE_PORT:-4567}"
 
 cleanup() {
   jobs -p | xargs -r kill >/dev/null 2>&1 || true
@@ -28,9 +28,9 @@ case "$PIXELVERSE_AGENT_KIND" in
   hermes)
     python3 /app/bridge.py \
       --server "http://127.0.0.1:${PIXELVERSE_PORT}" \
-      --agent "${MINIVERSE_AGENT_ID:-henry-main}" \
-      --name "${MINIVERSE_AGENT_NAME:-Henry}" \
-      --color "${MINIVERSE_AGENT_COLOR:-#8b5cf6}" \
+      --agent "${PIXELVERSE_BRIDGE_AGENT_ID:-henry-main}" \
+      --name "${PIXELVERSE_BRIDGE_AGENT_NAME:-Henry}" \
+      --color "${PIXELVERSE_BRIDGE_AGENT_COLOR:-#8b5cf6}" \
       --port "$BRIDGE_PORT" \
       --notify-on-complete \
       --notify-to "${PIXELVERSE_NOTIFY_TO:-henry.cos.allen@gmail.com}" \
@@ -38,6 +38,14 @@ case "$PIXELVERSE_AGENT_KIND" in
       --no-speak &
     ;;
   codex|gemini-cli|claude-code|ollama|generic)
+    python3 /app/bridge.py \
+      --server "http://127.0.0.1:${PIXELVERSE_PORT}" \
+      --agent "${PIXELVERSE_BRIDGE_AGENT_ID:-henry-main}" \
+      --name "${PIXELVERSE_BRIDGE_AGENT_NAME:-Henry}" \
+      --color "${PIXELVERSE_BRIDGE_AGENT_COLOR:-#8b5cf6}" \
+      --port "$BRIDGE_PORT" \
+      --no-speak \
+      --relay-only &
     curl -fsS -X POST "http://127.0.0.1:${PIXELVERSE_PORT}/api/heartbeat" \
       -H 'Content-Type: application/json' \
       -d "{\"agent\":\"${PIXELVERSE_AGENT_KIND}-main\",\"name\":\"${PIXELVERSE_AGENT_KIND}\",\"state\":\"idle\",\"task\":\"${PIXELVERSE_AGENT_KIND} ready\",\"source_placeholder\":true}" >/dev/null || true

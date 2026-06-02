@@ -3,9 +3,11 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Hermes Pixelverse</title>
+  <title>CLI_Pixelverse</title>
   <style>
     :root {
+      --sidebar-width: 440px;
+      --timeline-height: 320px;
       --bg: #08111f;
       --bg2: #10203a;
       --panel: rgba(7, 14, 26, 0.92);
@@ -111,6 +113,7 @@
     }
     .house-corridor {
       position: absolute;
+      z-index: 0;
       border: 4px solid #2e2530;
       border-radius: 8px;
       background-color: #cdbf91;
@@ -366,13 +369,13 @@
       opacity: 0.95;
       pointer-events: none;
     }
-    .district[data-room="think_lab"] { left: 7%; top: 12%; width: 23%; height: 24%; }
-    .district[data-room="blueprint_lab"] { left: 32%; top: 11%; width: 25%; height: 28%; }
-    .district[data-room="clone_bay"] { left: 69%; top: 11%; width: 24%; height: 29%; }
-    .district[data-room="standby_dock"] { left: 7%; top: 58%; width: 23%; height: 23%; }
-    .district[data-room="response_studio"] { left: 32%; top: 58%; width: 22%; height: 23%; }
-    .district[data-room="tool_forge"] { left: 56%; top: 58%; width: 20%; height: 23%; }
-    .district[data-room="session_archive"] { left: 77%; top: 58%; width: 16%; height: 23%; }
+    .district[data-room="think_lab"] { left: 6%; top: 10%; width: 20%; height: 34%; }
+    .district[data-room="blueprint_lab"] { left: 26%; top: 10%; width: 32%; height: 34%; }
+    .district[data-room="clone_bay"] { left: 58%; top: 10%; width: 36%; height: 34%; }
+    .district[data-room="standby_dock"] { left: 6%; top: 56%; width: 20%; height: 32%; }
+    .district[data-room="response_studio"] { left: 26%; top: 56%; width: 20%; height: 32%; }
+    .district[data-room="tool_forge"] { left: 46%; top: 56%; width: 28%; height: 32%; }
+    .district[data-room="session_archive"] { left: 74%; top: 56%; width: 20%; height: 32%; }
 
     .district-label {
       position: absolute;
@@ -391,6 +394,20 @@
     .district-label strong {
       color: #fff;
       font-size: 0.95em;
+    }
+    .district-state-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 3px;
+      margin-top: 4px;
+    }
+    .district-state-tags span {
+      padding: 1px 4px;
+      border-radius: 999px;
+      background: rgba(96,165,250,.16);
+      color: #bfdbfe;
+      font-size: 9px;
+      line-height: 1.25;
     }
     .district-floor-accents,
     .district-semantics,
@@ -574,10 +591,27 @@
       z-index: 12;
       filter: drop-shadow(0 0 18px rgba(110,231,249,0.28));
       transform: translate(-50%, -50%) scale(1.08);
+      transition: none;
     }
     .district.editing .prop.dragging .prop-icon {
       border-color: rgba(110,231,249,0.4);
       background: rgba(8, 16, 30, 0.96);
+    }
+    .prop.drag-source {
+      opacity: 0;
+    }
+    .furniture-drag-ghost {
+      position: fixed;
+      z-index: 70;
+      pointer-events: none;
+      transition: none;
+      filter: drop-shadow(0 0 18px rgba(110,231,249,0.32));
+      transform: translate(-50%, -50%) scale(1.08);
+    }
+    .furniture-drag-ghost .prop-meta {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
     }
     .room-edit-grid {
       position: absolute;
@@ -1192,7 +1226,7 @@
     .coord-hud {
       position: absolute;
       right: 16px;
-      bottom: 118px;
+      bottom: calc(var(--timeline-height) + 24px);
       z-index: 54;
       min-width: 280px;
       max-width: min(420px, calc(100vw - 36px));
@@ -1206,6 +1240,8 @@
     .coord-hud .coord-title {
       color: #fff;
       margin-bottom: 4px;
+      cursor: move;
+      touch-action: none;
     }
     .coord-hud .coord-body {
       color: var(--muted);
@@ -1427,7 +1463,7 @@
       z-index: 34;
       width: min(390px, calc(100vw - 24px));
       display: grid;
-      grid-template-rows: auto auto minmax(180px, 1fr) minmax(220px, 1.3fr);
+      grid-template-rows: auto auto auto minmax(180px, 1fr) minmax(180px, 1fr);
       gap: 10px;
       pointer-events: none;
     }
@@ -1457,6 +1493,38 @@
     .dashboard-sidebar .inspector {
       overflow: auto;
       min-height: 0;
+    }
+    .hook-state-panel {
+      overflow: auto;
+      padding: 10px 12px;
+    }
+    .hook-state-table {
+      display: grid;
+      gap: 3px;
+      margin-top: 7px;
+      font-size: 10px;
+    }
+    .hook-state-head,
+    .hook-state-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr) minmax(0, 1fr);
+      gap: 5px;
+      align-items: center;
+    }
+    .hook-state-head {
+      color: var(--muted);
+      font-weight: 700;
+    }
+    .hook-state-row {
+      padding: 4px 0;
+      border-top: 1px solid rgba(171,192,223,.1);
+    }
+    .hook-state-row code {
+      overflow: hidden;
+      color: #c4b5fd;
+      font-size: 10px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
     .dashboard-sidebar .events-belt {
       min-height: 0;
@@ -1574,13 +1642,13 @@
       body:not([data-mobile-mode="on"]) .brand { width: calc(100vw - 368px); }
     }
     .world {
-      inset: 138px 12px 254px 414px;
+      inset: 138px 12px calc(var(--timeline-height) + 28px) calc(var(--sidebar-width) + 24px);
       border-radius: 16px;
       border: 2px solid rgba(74,116,174,0.5);
       box-shadow: inset 0 0 0 1px rgba(255,255,255,0.04);
     }
     .hud {
-      inset: 12px 12px auto 414px;
+      inset: 12px 12px auto calc(var(--sidebar-width) + 24px);
     }
     .brand {
       width: 100%;
@@ -1590,25 +1658,54 @@
       left: 12px;
       right: auto;
       bottom: 254px;
-      width: 390px;
-      grid-template-rows: auto auto minmax(0, 1fr);
+      width: var(--sidebar-width);
+      min-width: 350px;
+      max-width: min(620px, calc(100vw - 36px));
+      grid-template-rows: auto auto minmax(220px, .9fr) minmax(240px, 1.1fr);
+      resize: horizontal;
+      overflow: auto;
     }
     .dashboard-sidebar .events-belt { display: none; }
     .events-belt {
       left: 12px;
       right: 12px;
       bottom: 12px;
-      min-height: 226px;
-      max-height: 226px;
+      height: var(--timeline-height);
+      min-height: 240px;
+      max-height: min(70vh, 620px);
+      resize: vertical;
     }
     .events-track {
       overflow-x: auto;
-      overflow-y: hidden;
+      overflow-y: auto;
+      min-height: 0;
     }
     .timeline-grid {
       grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
       overflow-x: auto;
-      overflow-y: hidden;
+      overflow-y: auto;
+      min-height: 0;
+      align-items: start;
+    }
+    .hook-state-panel,
+    .dashboard-sidebar .inspector {
+      min-height: 180px;
+      resize: vertical;
+      overflow: auto;
+    }
+    .hook-state-head,
+    .hook-state-row {
+      grid-template-columns: minmax(150px, 1.7fr) minmax(88px, .9fr) minmax(110px, 1fr);
+    }
+    .inspector-agent-select {
+      width: 100%;
+      min-height: 34px;
+      margin-top: 8px;
+      padding: 5px 8px;
+      border: 1px solid var(--line-2);
+      border-radius: 8px;
+      background: rgba(10, 18, 34, .96);
+      color: var(--text);
     }
     .heartbeat-status {
       display: grid;
@@ -1635,32 +1732,46 @@
       gap: 6px;
       min-width: 0;
     }
-    .heartbeat-curve {
+    .heartbeat-label {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: .04em;
+      text-align: center;
+    }
+    .timeline-heartbeat {
+      display: grid;
+      grid-template-columns: auto minmax(110px, 1fr) auto;
+      align-items: center;
+      gap: 8px;
+      min-height: 24px;
+      color: #86efac;
+      font-size: 11px;
+    }
+    .timeline-heartbeat.stale { color: #fca5a5; }
+    .timeline-heartbeat.waiting { color: #fde68a; }
+    .timeline-heartbeat svg {
       width: 100%;
-      height: 28px;
+      height: 30px;
       display: block;
-      border-radius: 8px;
+      border-radius: 5px;
       background: rgba(3, 8, 16, .42);
     }
-    .heartbeat-curve .guide {
-      stroke: rgba(171,192,223,0.22);
-      stroke-dasharray: 3 3;
-    }
-    .heartbeat-curve .line {
+    .timeline-heartbeat path {
       fill: none;
-      stroke: var(--green);
-      stroke-width: 2.2;
+      stroke: currentColor;
+      stroke-width: 1.8;
       stroke-linecap: round;
       stroke-linejoin: round;
-      filter: drop-shadow(0 0 4px rgba(74,222,128,0.28));
+      vector-effect: non-scaling-stroke;
     }
-    .heartbeat-status.stale .heartbeat-curve .line {
-      stroke: var(--red);
-      filter: drop-shadow(0 0 4px rgba(239,68,68,0.28));
-    }
-    .heartbeat-status.waiting .heartbeat-curve .line {
-      stroke: var(--yellow);
-      filter: drop-shadow(0 0 4px rgba(251,191,36,0.28));
+    .timeline-delete-agent {
+      border: 1px solid rgba(239,68,68,.48);
+      border-radius: 5px;
+      background: rgba(69,10,10,.7);
+      color: #fecaca;
+      cursor: pointer;
+      font-size: 11px;
+      padding: 3px 7px;
     }
     .refresh-stepper { display: inline-flex; align-items: center; gap: 6px; }
     .refresh-stepper button {
@@ -1794,13 +1905,13 @@
       <div class="brand panel">
         <div class="brand-top">
           <div>
-            <div class="title" id="brand-title">Hermes Pixelverse</div>
+            <div class="title" id="brand-title">CLI_Pixelverse</div>
             <div class="subtitle" id="brand-subtitle"></div>
           </div>
           <div class="top-tools">
             <div class="heartbeat-status stale" id="heartbeat-status">
               <div class="heartbeat-stack">
-                <canvas class="heartbeat-curve" id="heartbeat-curve" width="240" height="56" aria-label="Agent load waveform"></canvas>
+                <span class="heartbeat-label" id="heartbeat-label"></span>
               </div>
             </div>
             <div class="muted" id="last-sync"></div>
@@ -1826,7 +1937,7 @@
       </div>
     </div>
 
-    <aside class="dashboard-sidebar" id="dashboard-sidebar">
+    <aside class="dashboard-sidebar" id="dashboard-sidebar" data-resizable-panel="sidebar">
       <div class="sidebar-head">
         <span class="strong" id="sidebar-title"></span>
         <button type="button" id="sidebar-close-btn" aria-controls="dashboard-sidebar"></button>
@@ -1849,9 +1960,15 @@
       <div class="legend-item"><span class="dot offline"></span><div><strong id="legend-offline-title"></strong><br><span class="muted" id="legend-offline-body"></span></div></div>
       </aside>
 
-      <aside class="inspector panel">
+      <aside class="hook-state-panel panel" id="hook-state-panel" data-resizable-panel="hook-state">
+        <div class="subtitle" id="hook-state-title"></div>
+        <div class="hook-state-table" id="hook-state-table"></div>
+      </aside>
+
+      <aside class="inspector panel" id="inspector-panel" data-resizable-panel="inspector">
       <div class="inspector-card">
         <div class="subtitle" id="inspector-title" data-drag-handle></div>
+        <select class="inspector-agent-select" id="inspector-agent-select" aria-label="Select agent"></select>
         <div id="inspector-body" class="empty"></div>
       </div>
       </aside>
@@ -1860,7 +1977,7 @@
 
     <button type="button" id="sidebar-toggle-btn" aria-expanded="false" aria-controls="dashboard-sidebar" aria-label="Toggle sidebar">›</button>
 
-    <section class="events-belt panel" id="event-timeline-belt">
+    <section class="events-belt panel" id="event-timeline-belt" data-resizable-panel="timeline">
       <div class="belt-title" data-drag-handle>
         <span id="event-belt-title"></span>
         <span id="event-summary" class="muted"></span>
@@ -1884,8 +2001,8 @@
       </div>
     </div>
 
-    <div class="coord-hud" id="furniture-coord-hud" hidden>
-      <div class="coord-title strong" id="furniture-coord-title"></div>
+    <div class="coord-hud" id="furniture-coord-hud" data-draggable-panel="furniture-coordinates" hidden>
+      <div class="coord-title strong" id="furniture-coord-title" data-drag-handle></div>
       <div class="coord-body" id="furniture-coord-body"></div>
     </div>
 

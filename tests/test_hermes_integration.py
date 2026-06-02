@@ -1,6 +1,8 @@
 from pathlib import Path
 import sys
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from pixelverse_server import (
@@ -307,6 +309,26 @@ def test_attached_cli_that_stops_heartbeats_still_becomes_offline(monkeypatch):
     assert stale["state"] == "offline"
     assert stale["room_key"] == "offline_corner"
     assert stale["connection_status"] == "stale"
+    assert stale["can_delete"] is True
+
+
+def test_world_state_only_deletes_offline_agents(monkeypatch):
+    import pixelverse_server
+
+    current_time = [1000.0]
+    monkeypatch.setattr(pixelverse_server, "now_ts", lambda: current_time[0])
+
+    world = pixelverse_server.WorldState()
+    world.upsert_agent({"agent": "codex-cli:42", "state": "working"})
+
+    with pytest.raises(ValueError):
+        world.delete_offline_agent("codex-cli:42")
+
+    current_time[0] = 1100.0
+    world.delete_offline_agent("codex-cli:42")
+
+    assert world.snapshot_local_agents() == []
+    assert world.current_event_seq() == 2
 
 
 def test_furniture_layout_overlap_validation_rejects_colliding_positions():
@@ -317,6 +339,19 @@ def test_furniture_layout_overlap_validation_rejects_colliding_positions():
 
     assert furniture_layout_has_overlaps(overlapping) is True
     assert furniture_layout_has_overlaps(spaced) is False
+
+
+def test_furniture_layout_preserves_cross_room_moves_and_rejects_target_room_overlap():
+    from pixelverse_server import furniture_layout_has_overlaps, normalize_furniture_layout
+
+    layout = normalize_furniture_layout({
+        "think_lab": [{"x": 40, "y": 40, "room": "tool_forge"}],
+        "tool_forge": [{"x": 42, "y": 41}],
+    })
+
+    assert layout["think_lab"][0]["room"] == "tool_forge"
+    assert layout["tool_forge"][0]["room"] == "tool_forge"
+    assert furniture_layout_has_overlaps(layout) is True
 
 
 def test_humanize_event_supports_main_tool_lifecycle():

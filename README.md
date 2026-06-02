@@ -1,8 +1,10 @@
-# Hermes Pixelverse
+# CLI_Pixelverse
 
-Pixelverse is a local visual observability UI for agent CLIs and Hermes/OpenWebUI workflows. It turns agent lifecycle events into a pixel-room scene so you can see when an agent is thinking, using tools, delegating work, answering, idle, or offline.
+CLI_Pixelverse is a local visual observability UI for agent CLIs. It turns
+agent lifecycle events into a pixel-room scene so you can see when a CLI is
+thinking, using tools, delegating work, answering, idle, or offline.
 
-![Hermes Pixelverse example UI](./pixel_ui.png)
+![CLI_Pixelverse animated UI preview](./pixel_ui.gif)
 
 The service runs as a Docker Compose app and exposes:
 
@@ -10,11 +12,11 @@ The service runs as a Docker Compose app and exposes:
 - Swagger API: `http://localhost:4321/docs`
 - OpenAPI: `http://localhost:4321/openapi.json`
 - World snapshot: `http://localhost:4321/api/world`
-- Hermes hook bridge: `http://localhost:4567/hook`
+- Hook bridge: `http://localhost:4567/hook`
 
 ## What It Supports
 
-Pixelverse has two integration styles.
+CLI_Pixelverse has two integration styles.
 
 1. Generic HTTP events
    - Any agent can `POST /api/event`.
@@ -28,17 +30,98 @@ Pixelverse has two integration styles.
    - `hermes`
    - The shim forwards to the real CLI and mirrors process-level lifecycle events to Pixelverse.
 
-Hermes has an additional hook adapter for gateway lifecycle events. If you use Hermes through OpenWebUI, the Hermes API server also needs a relay patch so its `tool_progress_callback` events are mirrored to Pixelverse.
+Hermes has an additional hook adapter for gateway lifecycle events. The `4567/hook` relay stays available even when the selected primary agent is Codex, Gemini CLI, Claude Code, Ollama, or generic. In those modes it runs relay-only and does not create a Hermes avatar until a Hermes gateway event arrives. If you use Hermes through OpenWebUI, the Hermes API server also needs a relay patch so its `tool_progress_callback` events are mirrored to Pixelverse.
 
 Hermes also installs a user plugin under `~/.hermes/plugins/pixelverse`. That plugin is the important path for direct `hermes chat` sessions because it observes Hermes `pre_llm_call`, `post_llm_call`, `pre_tool_call`, and `post_tool_call` hooks even when your shell is running the original Hermes binary instead of the Pixelverse CLI shim.
 
-## Quick Start
+The Hermes gateway relay uses its own `PIXELVERSE_BRIDGE_AGENT_ID` identity (default: `henry-main`). This prevents a `run.sh` invocation launched from inside an already-wrapped Codex process from reusing the Codex CLI identity for Hermes gateway events.
+
+## Beginner Quick Start
+
+Use Codex for the first setup because it currently has the deepest built-in
+project hook integration. Gemini CLI, Claude Code, Ollama, Hermes, and generic
+HTTP agents can be attached afterward.
+
+### Codex First-Time Setup
+
+Run this flow after cloning the repository:
+
+```bash
+cd /path/to/CLI_Pixelverse
+
+PIXELVERSE_AGENT_KIND=codex ./run.sh down_up
+./run.sh install-adapter codex
+./run.sh enable-shell-adapter
+
+source .pixelverse-service/activate.sh
+./run.sh status
+./run.sh bridge-status
+which codex
+codex
+```
+
+`which codex` must resolve to:
+
+```text
+<repo>/.pixelverse-service/bin/codex
+```
+
+Inside the first Codex session, run:
+
+```text
+/hooks
+```
+
+The adapter installer generates a local, git-ignored `.codex/hooks.json`.
+Review and trust that project hook definition. Start a new
+Codex process after activation. A Codex process that was already open before
+`source .pixelverse-service/activate.sh` cannot be attached retroactively.
+
+### Confirm The Connection
+
+Open `http://localhost:4321`, then run:
+
+```bash
+./run.sh status
+./run.sh bridge-status
+which codex
+curl -fsS http://localhost:4321/health
+curl -fsS http://localhost:4567/health
+curl -fsS http://localhost:4321/api/world
+./run.sh test-hook
+```
+
+Expected results:
+
+- `which codex` returns `<repo>/.pixelverse-service/bin/codex`.
+- `4321/health` reports `"ok": true`.
+- `4567/health` reports `"ok": true`.
+- `./run.sh test-hook` makes the UI character move through lifecycle rooms.
+- A newly opened Codex session appears as its own CLI-backed agent timeline.
+
+The complete connection path is:
+
+```text
+Normal codex command
+  -> repo-local .pixelverse-service/bin/codex wrapper
+  -> periodic POST /api/heartbeat
+
+Codex project lifecycle hooks
+  -> .codex/hooks.json
+  -> scripts/codex_pixelverse_hook.py
+  -> POST /api/event
+
+Pixelverse backend
+  -> world state
+  -> GET /api/world and SSE /api/world/stream
+  -> browser UI room movement, timeline events, and per-agent heartbeat
+```
 
 ### 1. Start Pixelverse
 
 ```bash
-git clone <your-repo-url> hermes-pixelverse
-cd hermes-pixelverse
+git clone https://github.com/a0665x/CLI_Pixelverse.git
+cd CLI_Pixelverse
 chmod +x run.sh
 PIXELVERSE_AGENT_KIND=codex ./run.sh down_up
 ```
@@ -50,6 +133,14 @@ http://localhost:4321
 ```
 
 The UI uses a fixed left operations sidebar on desktop and a full-width agent timeline along the bottom. Use the top-right `Mobile Mode` button on phones; mobile mode keeps the world readable and exposes the left drawer through a compact `>` / `<` edge handle. The world viewport supports mouse drag panning, wheel zoom, and `+ / 1:1 / -` controls.
+
+The sidebar includes a live hook state routing table. Room labels also show
+their assigned state categories, so the floorplan explains where each
+lifecycle phase is handled.
+
+Furniture layout overrides are saved under `.pixelverse-service/runtime/`.
+This directory is mounted into the container, so saved positions survive
+`./run.sh down_up` and image rebuilds.
 
 ### 2. Attach A Native CLI
 
@@ -95,9 +186,34 @@ hermes chat
 
 Start a new CLI process after activation. Pixelverse cannot retroactively attach to a CLI process that was already running before `source .pixelverse-service/activate.sh`.
 
-While a wrapped CLI process is running, its adapter sends a heartbeat every 15 seconds. This keeps the UI synchronized with long-running Codex, Gemini CLI, Claude Code, Ollama, and Hermes sessions instead of letting the character become stale after the default 45-second timeout. Wrapper heartbeats use `preserve_phase=true`: they refresh liveness without replacing a newer planning, reasoning, or tool route.
+While a wrapped CLI process is running, its adapter sends a heartbeat every 15 seconds. This keeps the UI synchronized with long-running Codex, Gemini CLI, Claude Code, Ollama, and Hermes sessions instead of letting the character become stale after the default 45-second timeout. Wrapper heartbeats use `preserve_phase=true`: they refresh liveness without replacing a newer planning, reasoning, or tool route. Gemini CLI, Claude Code, and Ollama currently expose wrapper-level lifecycle only; Codex project hooks and the Hermes plugin/gateway hook add deeper tool-level events.
 
-Each wrapped CLI process gets a separate PID-backed identity such as `codex-cli:12345`. Codex also reads the repo-local `.codex/hooks.json` lifecycle adapter. The first time Codex opens this project, use `/hooks` to review and trust the project hook definition; after that, supported tool, subagent, and explicit `$skill` prompt events are relayed automatically.
+Each wrapped CLI process gets a separate PID-backed identity such as `codex-cli:12345`. Codex also reads the locally generated, git-ignored `.codex/hooks.json` lifecycle adapter. The first time Codex opens this project, use `/hooks` to review and trust the project hook definition; after that, supported tool, subagent, and explicit `$skill` prompt events are relayed automatically.
+
+## Codex Hook To UI State Map
+
+The CLI wrapper and Codex project hooks have different responsibilities:
+
+- The wrapper sends `POST /api/heartbeat` periodically so the UI knows the CLI process is still alive.
+- The generated `.codex/hooks.json` sends lifecycle events through `scripts/codex_pixelverse_hook.py` so the UI knows what the CLI is doing.
+- The backend translates lifecycle state into room routing and exposes the result through `/api/world` and `/api/world/stream`.
+
+| Codex hook or condition | API event | Pixel state | Room | UI meaning |
+| --- | --- | --- | --- | --- |
+| CLI wrapper starts | heartbeat | `working` | current room | CLI process attached |
+| Periodic wrapper heartbeat | heartbeat with `preserve_phase=true` | unchanged | unchanged | Refresh liveness only |
+| `SessionStart` | `SessionStart` | `initializing` | `clone_bay` | New Codex session |
+| `UserPromptSubmit` | `UserPromptSubmit` | `thinking` | `think_lab` | Reading the new request |
+| Prompt contains explicit `$skill` or `/skill` | `skill.invoke` | `invoking_skill` | `tool_forge` | Skill requested explicitly |
+| `PreToolUse` | `tool.started` | `tool_call` or `executing` | `tool_forge` | Tool is running |
+| `PostToolUse` | `tool.completed` | `tool_call` or `executing` | `tool_forge` | Tool completed; session remains active |
+| `SubagentStart` / `SubagentStop` | hook name | `collaborating` | `clone_bay` | Subagent lifecycle changed |
+| `Stop` | `completed` | `idle` | `standby_dock` | Current Codex turn completed |
+| No fresh heartbeat past stale timeout | backend projection | `offline` | `offline_corner` | CLI closed or detached |
+
+Internal skill reads that do not appear in the submitted user prompt cannot be
+detected reliably by native Codex hooks. Only an explicit `$skill` or `/skill`
+prompt maps to `invoking_skill`.
 
 If you do not want to modify `PATH`, call the explicit Pixelverse wrapper instead:
 
@@ -171,7 +287,7 @@ When an agent kind is selected, `run.sh` also installs the matching local adapte
 .pixelverse-service/bin/
 ```
 
-`down_up` reuses the existing local Docker image when `hermes-pixelverse:local` already exists. This avoids failing on restart when Docker Hub or DNS is temporarily unavailable. Force a rebuild only when needed:
+`down_up` reuses the existing local Docker image when `cli-pixelverse:local` already exists. This avoids failing on restart when Docker Hub or DNS is temporarily unavailable. Force a rebuild only when needed:
 
 ```bash
 PIXELVERSE_REBUILD=1 PIXELVERSE_AGENT_KIND=hermes ./run.sh down_up
@@ -274,7 +390,7 @@ After cloning this repository, register the MCP server in your MCP-capable clien
     "pixelverse": {
       "command": "python3",
       "args": [
-        "/absolute/path/to/hermes-pixelverse/scripts/pixelverse_mcp_server.py"
+        "/absolute/path/to/CLI_Pixelverse/scripts/pixelverse_mcp_server.py"
       ]
     }
   }
@@ -318,7 +434,7 @@ pixelverse_emit_event {
 Safety notes:
 
 - `pixelverse_onboard` defaults to `generic`; choose the actual agent kind explicitly when possible.
-- `codex`, `gemini-cli`, `claude-code`, `ollama`, and `generic` create repo-local adapter files.
+- `codex`, `gemini-cli`, `claude-code`, and `ollama` create repo-local adapter files. `generic` uses the universal HTTP client and intentionally does not install a shell shim.
 - `hermes`, `hermes-hook`, `hermes-plugin`, and `all` may also install files under `~/.hermes/`.
 - The MCP server uses Python standard library code and the existing Pixelverse client, so no MCP SDK package is required.
 
@@ -337,7 +453,7 @@ printf '%s\n' \
 For Hermes CLI:
 
 ```bash
-cd /path/to/hermes-pixelverse
+cd /path/to/CLI_Pixelverse
 PIXELVERSE_AGENT_KIND=hermes ./run.sh down_up
 ./run.sh install-adapter hermes
 export PATH="$PWD/.pixelverse-service/bin:$PATH"
@@ -365,7 +481,7 @@ After installing the plugin, restart any already-running `hermes chat` session s
 For Hermes gateway hooks:
 
 ```bash
-cd /path/to/hermes-pixelverse
+cd /path/to/CLI_Pixelverse
 ./run.sh install-adapter hermes-hook
 ```
 
@@ -472,7 +588,7 @@ Check all important probes:
 ```bash
 ./run.sh doctor
 ./run.sh bridge-status
-docker logs --tail 120 hermes-pixelverse
+docker logs --tail 120 cli-pixelverse
 ```
 
 If the UI is running but real agents stay idle:
@@ -497,7 +613,7 @@ If the UI is running but real agents stay idle:
 3. Confirm Pixelverse receives events:
    ```bash
    curl -fsS http://localhost:4321/api/world
-   docker logs --tail 80 hermes-pixelverse
+   docker logs --tail 80 cli-pixelverse
    ```
 
 4. For Hermes/OpenWebUI, confirm Hermes API is healthy:
@@ -540,7 +656,10 @@ Service:
 
 - `PIXELVERSE_AGENT_KIND`
 - `PIXELVERSE_PORT`
-- `MINIVERSE_BRIDGE_PORT`
+- `PIXELVERSE_BRIDGE_PORT`
+- `PIXELVERSE_AGENT_ID`
+- `PIXELVERSE_AGENT_NAME`
+- `PIXELVERSE_AGENT_COLOR`
 - `PIXELVERSE_REBUILD`
 - `PIXELVERSE_TAILSCALE_ENABLE`
 - `PIXELVERSE_TAILSCALE_PORT`
@@ -563,7 +682,7 @@ Hermes:
 
 - `HERMES_HOME`
 - `HERMES_REPO`
-- `MINIVERSE_BRIDGE_URL`
+- `PIXELVERSE_BRIDGE_URL`
 
 ## Development Checks
 
@@ -583,7 +702,8 @@ node --test tests/*.mjs
 - `pixelverse_server.py`: world state and agent lifecycle logic
 - `bridge.py`: Hermes hook bridge
 - `agent_bridges/`: generic client and CLI adapters
-- `hooks/miniverse/`: Hermes hook payload relay
+- `hooks/pixelverse/`: Hermes hook payload relay
+- `skill/pixelverse-onboarding/`: newcomer setup and architecture handoff skill
 - `public/`: pixel world frontend
 - `scripts/`: helper scripts and trajectory renderer
 - `scripts/pixelverse_mcp_server.py`: dependency-free stdio MCP onboarding server
