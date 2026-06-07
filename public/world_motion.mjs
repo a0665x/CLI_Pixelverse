@@ -1,4 +1,4 @@
-import { CORRIDOR_BAND, CORRIDOR_RECTS, ROOM_LAYOUTS } from './house_layout.mjs';
+import { CORRIDOR_BAND, CORRIDOR_RECTS, roomMapCopy, ROOM_LAYOUTS } from './house_layout.mjs';
 import { getRoomDecor } from './ui_strings.mjs';
 import {
   allFurnitureBlockers,
@@ -6,31 +6,51 @@ import {
   getFurnitureLayoutOverrides,
 } from './room_furniture.mjs';
 
-export const ROOM_ANCHORS = Object.fromEntries(
-  Object.entries(ROOM_LAYOUTS).map(([key, value]) => [key, {
-    x: value.center.x,
-    y: value.center.y,
-    portal: value.portal,
-    aisle: value.aisle,
-    hub: value.hub,
-    patrol: value.patrol,
-  }]),
-);
+export const ROOM_ANCHORS = {};
 
-const CORRIDOR_Y = (CORRIDOR_BAND.top + CORRIDOR_BAND.bottom) / 2;
+export function refreshRoomAnchors() {
+  Object.keys(ROOM_ANCHORS).forEach((key) => { delete ROOM_ANCHORS[key]; });
+  Object.entries(ROOM_LAYOUTS).forEach(([key, value]) => {
+    ROOM_ANCHORS[key] = {
+      x: value.center.x,
+      y: value.center.y,
+      portal: value.portal,
+      aisle: value.aisle,
+      hub: value.hub,
+      patrol: value.patrol,
+    };
+  });
+  return ROOM_ANCHORS;
+}
+
+refreshRoomAnchors();
+
 const SAME_ROOM_LANE_THRESHOLD = 10;
 const GRID_STEP = 1;
 const MAX_SEARCH_VISITS = 18000;
 const AGENT_CLEARANCE = 1.6;
 const CORRIDOR_CLEARANCE = 0.45;
 const FURNITURE_CLEARANCE = 0.35;
-const DECOR_BY_ROOM = Object.fromEntries(
-  Object.keys(ROOM_LAYOUTS).map((roomKey) => [roomKey, getRoomDecor(roomKey, 'zh-TW')]),
-);
-export let FURNITURE_BLOCKERS = allFurnitureBlockers(DECOR_BY_ROOM);
+function decorForRoom(roomKey) {
+  const localized = getRoomDecor(roomKey, 'zh-TW');
+  if (localized.length) return localized;
+  return (roomMapCopy(roomKey).furniture || []).map((item) => ({
+    type: item.type || 'table',
+    label: item.label || item.type || 'prop',
+    labelKey: item.type || 'prop',
+    handles: item.handles || [],
+  }));
+}
+
+function decorByRoom() {
+  return Object.fromEntries(Object.keys(ROOM_LAYOUTS).map((roomKey) => [roomKey, decorForRoom(roomKey)]));
+}
+
+export let FURNITURE_BLOCKERS = allFurnitureBlockers(decorByRoom());
 
 export function refreshFurnitureBlockers() {
-  FURNITURE_BLOCKERS = allFurnitureBlockers(DECOR_BY_ROOM);
+  refreshRoomAnchors();
+  FURNITURE_BLOCKERS = allFurnitureBlockers(decorByRoom());
   return FURNITURE_BLOCKERS;
 }
 
@@ -46,6 +66,10 @@ export function point(x, y) {
 
 function pointKey(item) {
   return `${Math.round(item.x)},${Math.round(item.y)}`;
+}
+
+function nodeKey(node) {
+  return `${node.layer}:${Math.round(node.x)},${Math.round(node.y)}`;
 }
 
 function parsePointKey(key) {
@@ -115,13 +139,86 @@ export function isWalkable(candidate) {
   return false;
 }
 
+function roomLayer(roomKey) {
+  return `room:${roomKey}`;
+}
+
+function roomFromLayer(layer = '') {
+  return layer.startsWith('room:') ? layer.slice(5) : null;
+}
+
+function isDoorCell(candidate, roomKey) {
+  return roomKey in ROOM_ANCHORS && inDoorThreshold(candidate, ROOM_ANCHORS[roomKey]);
+}
+
+function roomPointIsClear(candidate, roomKey) {
+  if (roomKey === 'offline_corner' || !(roomKey in ROOM_LAYOUTS)) return false;
+  if (inDoorThreshold(candidate, ROOM_ANCHORS[roomKey])) return true;
+  return inRect(candidate, roomRect(roomKey), AGENT_CLEARANCE)
+    && !isInsideFurnitureBlocker(candidate, FURNITURE_BLOCKERS, FURNITURE_CLEARANCE);
+}
+
+function layerIsWalkable(candidate, layer) {
+  const roomKey = roomFromLayer(layer);
+  if (layer === 'corridor') return isCorridor(candidate) || Object.keys(ROOM_ANCHORS).some((key) => isDoorCell(candidate, key));
+  if (roomKey) return roomPointIsClear(candidate, roomKey);
+  return false;
+}
+
+function possibleLayers(candidate) {
+  const layers = [];
+  if (layerIsWalkable(candidate, 'corridor')) layers.push('corridor');
+  for (const roomKey of Object.keys(ROOM_LAYOUTS)) {
+    if (roomPointIsClear(candidate, roomKey)) layers.push(roomLayer(roomKey));
+  }
+  return layers;
+}
+
+function canSwitchLayer(candidate, fromLayer, toLayer) {
+  if (fromLayer === toLayer) return true;
+  const fromRoom = roomFromLayer(fromLayer);
+  const toRoom = roomFromLayer(toLayer);
+  if (fromRoom && toLayer === 'corridor') return isDoorCell(candidate, fromRoom);
+  if (fromLayer === 'corridor' && toRoom) return isDoorCell(candidate, toRoom);
+  return false;
+}
+
+function canMoveBetweenLayers(start, startLayer, end, endLayer) {
+  if (!layerIsWalkable(start, startLayer) || !layerIsWalkable(end, endLayer)) return false;
+  if (startLayer === endLayer) return true;
+  const startRoom = roomFromLayer(startLayer);
+  const endRoom = roomFromLayer(endLayer);
+  if (startRoom && endLayer === 'corridor') {
+    return inDoorThreshold(start, ROOM_ANCHORS[startRoom]) && inDoorThreshold(end, ROOM_ANCHORS[startRoom]);
+  }
+  if (startLayer === 'corridor' && endRoom) {
+    return inDoorThreshold(start, ROOM_ANCHORS[endRoom]) && inDoorThreshold(end, ROOM_ANCHORS[endRoom]);
+  }
+  return false;
+}
+
 export function segmentStaysWalkable(start, end, step = 0.5) {
   const distance = Math.hypot(end.x - start.x, end.y - start.y);
   const samples = Math.max(1, Math.ceil(distance / step));
+  let activeLayers = new Set(possibleLayers(start));
+  if (!activeLayers.size) return false;
   for (let i = 0; i <= samples; i += 1) {
     const ratio = i / samples;
     const sample = point(start.x + (end.x - start.x) * ratio, start.y + (end.y - start.y) * ratio);
     if (!isWalkable(sample)) return false;
+    if (i === 0) continue;
+    const prevRatio = (i - 1) / samples;
+    const prev = point(start.x + (end.x - start.x) * prevRatio, start.y + (end.y - start.y) * prevRatio);
+    const nextLayers = new Set();
+    for (const currentLayer of possibleLayers(sample)) {
+      for (const previousLayer of activeLayers) {
+        if (canMoveBetweenLayers(prev, previousLayer, sample, currentLayer)) {
+          nextLayers.add(currentLayer);
+        }
+      }
+    }
+    activeLayers = nextLayers;
+    if (!activeLayers.size) return false;
   }
   return true;
 }
@@ -138,7 +235,7 @@ function heuristic(a, b) {
   return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
 }
 
-function snapToWalkable(raw) {
+export function snapToWalkable(raw) {
   const origin = point(Math.round(raw.x), Math.round(raw.y));
   if (isWalkable(origin)) return origin;
   for (let radius = 1; radius <= 4; radius += 1) {
@@ -152,22 +249,49 @@ function snapToWalkable(raw) {
   return origin;
 }
 
+function snapToLayer(raw, layer) {
+  const origin = point(Math.round(raw.x), Math.round(raw.y));
+  if (layerIsWalkable(origin, layer)) return { ...origin, layer };
+  for (let radius = 1; radius <= 4; radius += 1) {
+    for (let dx = -radius; dx <= radius; dx += 1) {
+      for (let dy = -radius; dy <= radius; dy += 1) {
+        const candidate = point(origin.x + dx, origin.y + dy);
+        if (layerIsWalkable(candidate, layer)) return { ...candidate, layer };
+      }
+    }
+  }
+  return { ...origin, layer };
+}
+
 function neighbors(node) {
-  return [
-    { x: node.x + GRID_STEP, y: node.y },
-    { x: node.x - GRID_STEP, y: node.y },
-    { x: node.x, y: node.y + GRID_STEP },
-    { x: node.x, y: node.y - GRID_STEP },
-  ].filter((candidate) => candidate.x >= 0 && candidate.x <= 100 && candidate.y >= 0 && candidate.y <= 100 && isWalkable(candidate));
+  const candidates = [
+    { x: node.x + GRID_STEP, y: node.y, layer: node.layer },
+    { x: node.x - GRID_STEP, y: node.y, layer: node.layer },
+    { x: node.x, y: node.y + GRID_STEP, layer: node.layer },
+    { x: node.x, y: node.y - GRID_STEP, layer: node.layer },
+  ].filter((candidate) => (
+    candidate.x >= 0
+    && candidate.x <= 100
+    && candidate.y >= 0
+    && candidate.y <= 100
+    && canMoveBetweenLayers(node, node.layer, candidate, candidate.layer)
+  ));
+
+  for (const layer of possibleLayers(node)) {
+    if (layer !== node.layer && canSwitchLayer(node, node.layer, layer)) {
+      candidates.push({ x: node.x, y: node.y, layer });
+    }
+  }
+  return candidates;
 }
 
 function reconstructPath(cameFrom, current) {
   const path = [current];
-  let key = pointKey(current);
+  let key = nodeKey(current);
   while (cameFrom.has(key)) {
     const prev = cameFrom.get(key);
     path.push(prev);
-    key = pointKey(prev);
+    key = nodeKey(prev);
   }
   path.reverse();
   return path.map((item) => point(item.x, item.y));
@@ -191,6 +315,7 @@ function compressPath(path) {
 }
 
 function ensureOrthogonal(points) {
+  if (!points.length) return [];
   const expanded = [points[0]];
   for (let i = 1; i < points.length; i += 1) {
     const prev = expanded.at(-1);
@@ -212,12 +337,15 @@ function ensureOrthogonal(points) {
   return dedupe(expanded);
 }
 
-function findPathSegment(start, end) {
-  const snappedStart = snapToWalkable(start);
-  const snappedEnd = snapToWalkable(end);
-  const startKey = pointKey(snappedStart);
-  const goalKey = pointKey(snappedEnd);
-  if (startKey === goalKey) return [snappedStart];
+function findPathSegment(start, end, options = {}) {
+  const startLayer = options.startLayer || 'corridor';
+  const endLayer = options.endLayer || startLayer;
+  const snappedStart = snapToLayer(start, startLayer);
+  const snappedEnd = snapToLayer(end, endLayer);
+  const startKey = nodeKey(snappedStart);
+  const goalKey = nodeKey(snappedEnd);
+  if (!layerIsWalkable(snappedStart, startLayer) || !layerIsWalkable(snappedEnd, endLayer)) return [];
+  if (startKey === goalKey) return [point(snappedStart.x, snappedStart.y)];
 
   const open = [snappedStart];
   const openSet = new Set([startKey]);
@@ -228,15 +356,19 @@ function findPathSegment(start, end) {
 
   while (open.length && visits < MAX_SEARCH_VISITS) {
     visits += 1;
-    open.sort((a, b) => (fScore.get(pointKey(a)) ?? Infinity) - (fScore.get(pointKey(b)) ?? Infinity));
+    open.sort((a, b) => (fScore.get(nodeKey(a)) ?? Infinity) - (fScore.get(nodeKey(b)) ?? Infinity));
     const current = open.shift();
-    const currentKey = pointKey(current);
+    const currentKey = nodeKey(current);
     openSet.delete(currentKey);
-    if (currentKey === goalKey) return compressPath(reconstructPath(cameFrom, current));
+    if (currentKey === goalKey) {
+      const path = compressPath(reconstructPath(cameFrom, current));
+      return routeStaysWalkable(path) ? path : [];
+    }
 
     for (const neighbor of neighbors(current)) {
-      const neighborKey = pointKey(neighbor);
-      const tentative = (gScore.get(currentKey) ?? Infinity) + 1;
+      const neighborKey = nodeKey(neighbor);
+      const layerSwitchCost = neighbor.layer === current.layer ? 1 : 0.2;
+      const tentative = (gScore.get(currentKey) ?? Infinity) + layerSwitchCost;
       if (tentative >= (gScore.get(neighborKey) ?? Infinity)) continue;
       cameFrom.set(neighborKey, current);
       gScore.set(neighborKey, tentative);
@@ -248,7 +380,7 @@ function findPathSegment(start, end) {
     }
   }
 
-  return dedupe([snappedStart, snappedEnd]);
+  return [];
 }
 
 function stitchSegments(segments) {
@@ -262,20 +394,17 @@ function stitchSegments(segments) {
     if (pointKey(stitched.at(-1)) === pointKey(segment[0])) stitched.push(...segment.slice(1));
     else stitched.push(...segment);
   });
-  return ensureOrthogonal(dedupe(stitched.map((item) => point(item.x, item.y))));
+  if (!stitched.length) return [];
+  const route = ensureOrthogonal(dedupe(stitched.map((item) => point(item.x, item.y))));
+  return routeStaysWalkable(route) ? route : [];
 }
 
 function routeBetweenHubs(fromHub, toHub) {
-  if (near(fromHub.x, toHub.x) && near(fromHub.y, toHub.y)) return [];
-  if (near(fromHub.x, toHub.x) || near(fromHub.y, toHub.y)) return [point(toHub.x, toHub.y)];
-  const via = [];
-  if (!near(fromHub.y, CORRIDOR_Y)) via.push(point(fromHub.x, CORRIDOR_Y));
-  if (!near(fromHub.x, toHub.x)) via.push(point(toHub.x, CORRIDOR_Y));
-  if (!near(toHub.y, CORRIDOR_Y)) via.push(point(toHub.x, toHub.y));
-  return via;
+  return [];
 }
 
 export function buildRoute(start, end, roomFrom, roomTo) {
+  refreshRoomAnchors();
   const from = ROOM_ANCHORS[roomFrom] || ROOM_ANCHORS.standby_dock;
   const to = ROOM_ANCHORS[roomTo] || ROOM_ANCHORS.standby_dock;
   const startPoint = point(start.x, start.y);
@@ -289,25 +418,42 @@ export function buildRoute(start, end, roomFrom, roomTo) {
 
   if (roomFrom === roomTo) {
     const directDistance = Math.hypot(endPoint.x - startPoint.x, endPoint.y - startPoint.y);
-    if (directDistance <= SAME_ROOM_LANE_THRESHOLD) return dedupe([startPoint, endPoint]);
-    return stitchSegments([
-      findPathSegment(startPoint, fromAisle),
-      findPathSegment(fromAisle, endPoint),
+    if (directDistance <= SAME_ROOM_LANE_THRESHOLD && segmentStaysWalkable(startPoint, endPoint)) return dedupe([startPoint, endPoint]);
+    const layer = roomLayer(roomFrom);
+    const route = stitchSegments([
+      findPathSegment(startPoint, fromAisle, { startLayer: layer, endLayer: layer }),
+      findPathSegment(fromAisle, endPoint, { startLayer: layer, endLayer: layer }),
     ]);
+    return route.length ? route : [startPoint];
   }
 
   const corridorWaypoints = routeBetweenHubs(fromHub, toHub);
-  const waypoints = [fromAisle, fromPortal, fromHub, ...corridorWaypoints, toHub, toPortal, toAisle, endPoint];
+  const fromLayer = roomLayer(roomFrom);
+  const toLayer = roomLayer(roomTo);
+  const waypoints = [
+    { point: fromAisle, layer: fromLayer },
+    { point: fromPortal, layer: fromLayer },
+    { point: fromHub, layer: 'corridor' },
+    ...corridorWaypoints.map((waypoint) => ({ point: waypoint, layer: 'corridor' })),
+    { point: toHub, layer: 'corridor' },
+    { point: toPortal, layer: 'corridor' },
+    { point: toAisle, layer: toLayer },
+    { point: endPoint, layer: toLayer },
+  ];
   const segments = [];
-  let current = startPoint;
-  waypoints.forEach((next) => {
-    segments.push(findPathSegment(current, next));
+  let current = { point: startPoint, layer: fromLayer };
+  for (const next of waypoints) {
+    const segment = findPathSegment(current.point, next.point, { startLayer: current.layer, endLayer: next.layer });
+    if (!segment.length) return [startPoint];
+    segments.push(segment);
     current = next;
-  });
-  return stitchSegments(segments);
+  }
+  const route = stitchSegments(segments);
+  return route.length ? route : [startPoint];
 }
 
 export function routeUsesDoorThresholds(route = [], roomFrom, roomTo) {
+  refreshRoomAnchors();
   const from = ROOM_ANCHORS[roomFrom] || ROOM_ANCHORS.standby_dock;
   const to = ROOM_ANCHORS[roomTo] || ROOM_ANCHORS.standby_dock;
   return route.some((item) => near(item.x, from.portal.x, 1.1) && near(item.y, from.portal.y, 1.2))
@@ -315,6 +461,7 @@ export function routeUsesDoorThresholds(route = [], roomFrom, roomTo) {
 }
 
 export function patrolPoint(roomKey, index = 0) {
+  refreshRoomAnchors();
   const room = ROOM_ANCHORS[roomKey] || ROOM_ANCHORS.standby_dock;
   const waypoint = room.patrol[index % room.patrol.length] || room;
   return point(waypoint.x, waypoint.y);

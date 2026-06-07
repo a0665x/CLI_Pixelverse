@@ -25,6 +25,9 @@ const PROP_SPRITES = {
 const ROOM_THEMES = {
   think_lab: { floorColor: '#c7b18a', wallTile: `${BASE}/wall-cream.png`, rugColor: 'rgba(102,75,48,0.18)' },
   blueprint_lab: { floorColor: '#d8d0a8', wallTile: `${BASE}/wall-aqua.png`, rugColor: 'rgba(74,144,154,0.18)' },
+  file_library: { floorColor: '#c3c0a4', wallTile: `${BASE}/wall-wood.png`, rugColor: 'rgba(73,92,110,0.16)' },
+  code_workbench: { floorColor: '#b9c08e', wallTile: `${BASE}/wall-green.png`, rugColor: 'rgba(55,99,71,0.16)' },
+  terminal_bay: { floorColor: '#c4b083', wallTile: `${BASE}/wall-aqua.png`, rugColor: 'rgba(91,82,46,0.16)' },
   tool_forge: { floorColor: '#b99772', wallTile: `${BASE}/wall-wood.png`, rugColor: 'rgba(77,60,45,0.18)' },
   response_studio: { floorColor: '#b8c792', wallTile: `${BASE}/wall-green.png`, rugColor: 'rgba(69,108,74,0.16)' },
   standby_dock: { floorColor: '#cdb892', wallTile: `${BASE}/wall-cream.png`, rugColor: 'rgba(126,89,61,0.18)' },

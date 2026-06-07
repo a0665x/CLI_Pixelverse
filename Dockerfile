@@ -14,6 +14,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-EXPOSE 4321 4567
+EXPOSE 5660 4567
 
 CMD ["./scripts/container_entrypoint.sh"]

@@ -23,11 +23,13 @@ class RecordingClient(PixelverseClient):
 
 
 def test_infer_target_room_from_tools_and_messages():
-    assert infer_target_room("patch terminal") == "tool_forge"
+    assert infer_target_room("patch terminal") == "code_workbench"
+    assert infer_target_room("Bash") == "terminal_bay"
+    assert infer_target_room("Read Grep") == "file_library"
     assert infer_target_room("delegate_task to subagent") == "clone_bay"
     assert infer_target_room("session_search history") == "session_archive"
     assert infer_target_room("reply to user") == "response_studio"
-    assert infer_target_room("plan and read files") == "blueprint_lab"
+    assert infer_target_room("plan architecture") == "blueprint_lab"
     assert infer_target_room("unclassified work") == "response_studio"
 
 
@@ -49,7 +51,7 @@ def test_tool_event_posts_standard_payload_with_inferred_room():
                 "message": "patch, terminal",
                 "state": "working",
                 "tool_names": ["patch", "terminal"],
-                "target_room": "tool_forge",
+                "target_room": "code_workbench",
             },
         )
     ]

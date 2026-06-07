@@ -62,12 +62,12 @@ test('positionOverlapsFurniture rejects occupied prop locations', () => {
   const decor = getRoomDecor(roomKey, 'en-US');
 
   assert.equal(positionOverlapsFurniture(roomKey, decor, 1, positions[0], positions), true);
-  assert.equal(positionOverlapsFurniture(roomKey, decor, 1, { x: 42, y: 74 }, positions), false);
+  assert.equal(positionOverlapsFurniture(roomKey, decor, 1, { x: 8, y: 88 }, positions), false);
 });
 
 test('furniture layout can move props across rooms with blockers and collision checks', () => {
   const decorByRoom = Object.fromEntries(
-    ['think_lab', 'blueprint_lab', 'tool_forge', 'response_studio', 'standby_dock', 'clone_bay', 'session_archive']
+    ['think_lab', 'blueprint_lab', 'file_library', 'code_workbench', 'terminal_bay', 'tool_forge', 'response_studio', 'standby_dock', 'clone_bay', 'session_archive']
       .map((roomKey) => [roomKey, getRoomDecor(roomKey, 'en-US')]),
   );
   const thinkPositions = getRoomPropPositions('think_lab');

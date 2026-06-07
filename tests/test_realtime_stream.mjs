@@ -9,8 +9,8 @@ test('supportsEventStream detects EventSource availability', () => {
 });
 
 test('buildStreamUrl preserves existing origin and uses world stream route', () => {
-  const url = buildStreamUrl('http://localhost:4321/ui');
-  assert.equal(url, 'http://localhost:4321/api/world/stream');
+  const url = buildStreamUrl('http://localhost:5660/ui');
+  assert.equal(url, 'http://localhost:5660/api/world/stream');
 });
 
 test('parseStreamMessage returns snapshot payload', () => {

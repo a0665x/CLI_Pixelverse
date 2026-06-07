@@ -7,11 +7,12 @@ ENV_FILE="$STATE_DIR/compose.env"
 RUNTIME_DIR="$STATE_DIR/runtime"
 COMMAND="${1:-start}"
 
-PIXELVERSE_PORT="${PIXELVERSE_PORT:-4321}"
+PIXELVERSE_PORT="${PIXELVERSE_PORT:-5660}"
 BRIDGE_PORT="${PIXELVERSE_BRIDGE_PORT:-4567}"
 COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-cli-pixelverse}"
 PIXELVERSE_TAILSCALE_ENABLE="${PIXELVERSE_TAILSCALE_ENABLE:-1}"
 PIXELVERSE_TAILSCALE_PORT="${PIXELVERSE_TAILSCALE_PORT:-10000}"
+PIXELVERSE_EXPOSURE_MODE="${PIXELVERSE_EXPOSURE_MODE:-}"
 
 mkdir -p "$STATE_DIR" "$RUNTIME_DIR"
 
@@ -29,9 +30,9 @@ Commands:
   doctor     Diagnose ports, legacy processes, Docker, Compose, and API health.
   bridge-status
              Show Pixelverse API, bridge hook, Hermes hook, and local adapter status.
-  adapter [codex|gemini-cli|claude-code|ollama|hermes|generic|all]
+  adapter [codex|gemini-cli|claude-code|antigravity|ollama|hermes|generic|all]
              Install the adapter for the selected/native CLI without modifying the original CLI code.
-  install-adapter [codex|gemini-cli|claude-code|ollama|hermes|generic|all|hermes-hook|hermes-plugin]
+  install-adapter [codex|gemini-cli|claude-code|antigravity|ollama|hermes|generic|all|hermes-hook|hermes-plugin]
              Install local agent CLI shims/hooks. Default: current selected agent or hermes.
   enable-shell-adapter
              Add a managed Bash startup line so new terminals automatically load local CLI shims.
@@ -45,6 +46,7 @@ Commands:
 Non-interactive agent selection:
   PIXELVERSE_AGENT_KIND=ollama ./run.sh start
   PIXELVERSE_AGENT_KIND=codex ./run.sh down_up
+  PIXELVERSE_AGENT_KIND=antigravity ./run.sh down_up
 
 Common service flows:
   PIXELVERSE_AGENT_KIND=hermes ./run.sh down_up
@@ -65,14 +67,17 @@ MCP onboarding server:
 Agent CLI adapters:
   ./run.sh adapter
   ./run.sh adapter codex
+  ./run.sh adapter antigravity
   ./run.sh install-adapter codex
   ./run.sh install-adapter gemini-cli
   ./run.sh install-adapter claude-code
+  ./run.sh install-adapter antigravity
   ./run.sh install-adapter hermes
   source "$STATE_DIR/activate.sh"
   codex
   gemini
   claude
+  antigravity
   hermes chat
 
 Hermes adapters:
@@ -124,13 +129,34 @@ select_agent_kind() {
   python3 "$ROOT/scripts/select_agent.py"
 }
 
+select_exposure_mode() {
+  if [[ -n "${PIXELVERSE_EXPOSURE_MODE:-}" ]]; then
+    printf '%s\n' "$PIXELVERSE_EXPOSURE_MODE"
+    return 0
+  fi
+  if [[ ! -t 0 ]]; then
+    printf 'localhost\n'
+    return 0
+  fi
+  python3 "$ROOT/scripts/select_exposure.py"
+}
+
+normalize_exposure_mode() {
+  case "$1" in
+    tailscale|2) printf 'tailscale\n' ;;
+    ngrok|3) printf 'ngrok\n' ;;
+    localhost|local|1|"") printf 'localhost\n' ;;
+    *) printf 'localhost\n' ;;
+  esac
+}
+
 normalize_agent_kind() {
   local value="$1"
   value="$(
     printf '%s\n' "$value" \
       | tr -d '\r' \
       | sed -E 's/\x1B\[[0-9;?]*[[:alpha:]]//g' \
-      | grep -Eo 'codex|gemini-cli|claude-code|ollama|hermes|generic|[1-6]' \
+      | grep -Eo 'codex|gemini-cli|claude-code|antigravity|antugravity|ollama|hermes|generic|[1-7]' \
       | head -n 1 \
       || true
   )"
@@ -138,9 +164,11 @@ normalize_agent_kind() {
     1) value="codex" ;;
     2) value="gemini-cli" ;;
     3) value="claude-code" ;;
-    4) value="ollama" ;;
-    5) value="hermes" ;;
-    6) value="generic" ;;
+    4) value="antigravity" ;;
+    5) value="ollama" ;;
+    6) value="hermes" ;;
+    7) value="generic" ;;
+    antugravity) value="antigravity" ;;
   esac
   printf '%s\n' "$value"
 }
@@ -154,10 +182,10 @@ validate_agent_kind() {
     exit 2
   fi
   case "$1" in
-    codex|gemini-cli|claude-code|ollama|hermes|generic) return 0 ;;
+    codex|gemini-cli|claude-code|antigravity|ollama|hermes|generic) return 0 ;;
   esac
   printf 'Unknown PIXELVERSE_AGENT_KIND after normalization: %q\n' "$1" >&2
-  echo "Use one of: codex, gemini-cli, claude-code, ollama, hermes, generic" >&2
+  echo "Use one of: codex, gemini-cli, claude-code, antigravity, ollama, hermes, generic" >&2
   exit 2
 }
 
@@ -184,6 +212,11 @@ select_adapter_target() {
       printf 'all\n'
       return 0
     fi
+    case "$requested" in
+      gemini) requested="gemini-cli" ;;
+      claude) requested="claude-code" ;;
+      antugravity) requested="antigravity" ;;
+    esac
     normalize_agent_kind "$requested"
     return 0
   fi
@@ -197,9 +230,16 @@ select_adapter_target() {
 
 write_env_file() {
   local agent_kind="$1"
+  local exposure_mode="${2:-${PIXELVERSE_EXPOSURE_MODE:-localhost}}"
+  local tailscale_public_url="${PIXELVERSE_TAILSCALE_URL:-}"
+  if [[ -z "$tailscale_public_url" ]]; then
+    tailscale_public_url="$(tailscale_url 2>/dev/null || true)"
+    tailscale_public_url="${tailscale_public_url%/}"
+  fi
   cat > "$ENV_FILE" <<EOF
 PIXELVERSE_AGENT_KIND=$agent_kind
 PIXELVERSE_PORT=$PIXELVERSE_PORT
+PIXELVERSE_PUBLIC_PORT=$PIXELVERSE_PORT
 PIXELVERSE_BRIDGE_PORT=$BRIDGE_PORT
 PIXELVERSE_AGENT_ID=${PIXELVERSE_AGENT_ID:-henry-main}
 PIXELVERSE_AGENT_NAME=${PIXELVERSE_AGENT_NAME:-Henry}
@@ -217,6 +257,9 @@ PIXELVERSE_RUNTIME_DIR_HOST=${PIXELVERSE_RUNTIME_DIR_HOST:-$RUNTIME_DIR}
 PIXELVERSE_OLLAMA_BASE=${PIXELVERSE_OLLAMA_BASE:-http://host.docker.internal:11434}
 PIXELVERSE_TAILSCALE_ENABLE=$PIXELVERSE_TAILSCALE_ENABLE
 PIXELVERSE_TAILSCALE_PORT=$PIXELVERSE_TAILSCALE_PORT
+PIXELVERSE_TAILSCALE_URL=$tailscale_public_url
+PIXELVERSE_NGROK_URL=${PIXELVERSE_NGROK_URL:-}
+PIXELVERSE_EXPOSURE_MODE=$exposure_mode
 EOF
 }
 
@@ -225,6 +268,7 @@ agent_command_name() {
     codex) printf 'codex\n' ;;
     gemini-cli) printf 'gemini\n' ;;
     claude-code) printf 'claude\n' ;;
+    antigravity) printf 'antigravity\n' ;;
     ollama) printf 'ollama\n' ;;
     hermes) printf 'hermes\n' ;;
     generic) printf 'generic\n' ;;
@@ -236,6 +280,7 @@ agent_display_name() {
     codex) printf 'Codex CLI\n' ;;
     gemini-cli) printf 'Gemini CLI\n' ;;
     claude-code) printf 'Claude Code\n' ;;
+    antigravity) printf 'Antigravity\n' ;;
     ollama) printf 'Ollama\n' ;;
     hermes) printf 'Hermes CLI\n' ;;
     generic) printf 'Generic Agent\n' ;;
@@ -247,6 +292,7 @@ agent_color() {
     codex) printf '#2563eb\n' ;;
     gemini-cli) printf '#16a34a\n' ;;
     claude-code) printf '#d97706\n' ;;
+    antigravity) printf '#7c3aed\n' ;;
     ollama) printf '#0f766e\n' ;;
     hermes) printf '#8b5cf6\n' ;;
     generic) printf '#64748b\n' ;;
@@ -258,6 +304,7 @@ agent_env_prefix() {
     codex) printf 'CODEX\n' ;;
     gemini-cli) printf 'GEMINI\n' ;;
     claude-code) printf 'CLAUDE\n' ;;
+    antigravity) printf 'ANTIGRAVITY\n' ;;
     ollama) printf 'OLLAMA\n' ;;
     hermes) printf 'HERMES\n' ;;
     generic) printf 'GENERIC\n' ;;
@@ -284,6 +331,9 @@ detect_agent_roots() {
       ;;
     claude-code)
       [[ -d "$HOME/.claude" ]] && echo "- config: $HOME/.claude" || echo "- config: $HOME/.claude not found"
+      ;;
+    antigravity)
+      [[ -d "$HOME/.antigravity" ]] && echo "- config: $HOME/.antigravity" || echo "- config: $HOME/.antigravity not found"
       ;;
     ollama)
       [[ -d "$HOME/.ollama" ]] && echo "- config: $HOME/.ollama" || echo "- config: $HOME/.ollama not found"
@@ -449,12 +499,17 @@ docker_image_is_stale() {
 }
 
 start_service() {
-  local agent_kind
-  echo "Select agent source for Pixelverse. Use arrow keys + Enter, or set PIXELVERSE_AGENT_KIND=codex/gemini-cli/claude-code/ollama/hermes/generic." >&2
+  local agent_kind exposure_mode agent_command
+  echo "Select agent source for Pixelverse. Use arrow keys + Enter, or set PIXELVERSE_AGENT_KIND=codex/gemini-cli/claude-code/antigravity/ollama/hermes/generic." >&2
   agent_kind="$(normalize_agent_kind "$(select_agent_kind)")"
   validate_agent_kind "$agent_kind"
-  write_env_file "$agent_kind"
+  exposure_mode="$(normalize_exposure_mode "$(select_exposure_mode)")"
+  if [[ "$exposure_mode" != "tailscale" && -z "${PIXELVERSE_TAILSCALE_ENABLE_SET:-}" ]]; then
+    PIXELVERSE_TAILSCALE_ENABLE=0
+  fi
+  write_env_file "$agent_kind" "$exposure_mode"
   install_agent_adapter "$agent_kind"
+  agent_command="$(agent_command_name "$agent_kind")"
 
   stop_legacy_local_processes
   echo "Starting CLI_Pixelverse Docker service for $agent_kind..."
@@ -469,7 +524,10 @@ start_service() {
     compose up -d --build
   fi
   wait_for_openapi || doctor_service
-  ensure_tailscale_exposure
+  if [[ "$exposure_mode" == "tailscale" ]]; then
+    ensure_tailscale_exposure
+    write_env_file "$agent_kind" "$exposure_mode"
+  fi
 
   cat <<EOF
 CLI_Pixelverse Docker service started
@@ -479,8 +537,12 @@ CLI_Pixelverse Docker service started
 - OpenAPI:     http://localhost:${PIXELVERSE_PORT}/openapi.json
 - World API:   http://localhost:${PIXELVERSE_PORT}/api/world
 - Bridge hook: http://localhost:${BRIDGE_PORT}/hook
+- UI exposure: $exposure_mode
 EOF
   print_tailscale_status
+  if [[ -n "${PIXELVERSE_NGROK_URL:-}" ]]; then
+    echo "- ngrok:       ${PIXELVERSE_NGROK_URL%/}/"
+  fi
   cat <<EOF
 
 Minimal event test:
@@ -490,7 +552,7 @@ Minimal event test:
 
 Attach native CLI commands in this shell:
   source "$STATE_DIR/activate.sh"
-  $agent_kind
+  $agent_command
 EOF
 }
 
@@ -515,6 +577,9 @@ status_service() {
   echo "- OpenAPI:     http://localhost:${PIXELVERSE_PORT}/openapi.json"
   echo "- World API:   http://localhost:${PIXELVERSE_PORT}/api/world"
   print_tailscale_status
+  if [[ -n "${PIXELVERSE_NGROK_URL:-}" ]]; then
+    echo "- ngrok:       ${PIXELVERSE_NGROK_URL%/}/"
+  fi
 }
 
 doctor_service() {
@@ -729,10 +794,14 @@ write_adapter_activation() {
   local bin_dir="$STATE_DIR/bin"
   local activation="$STATE_DIR/activate.sh"
   mkdir -p "$STATE_DIR"
-  cat > "$activation" <<EOF
+cat > "$activation" <<EOF
 # Source this file to make native agent CLI commands observable by Pixelverse.
 # It prepends local shim commands only; it does not modify or overwrite the original CLIs.
-export PIXELVERSE_URL="\${PIXELVERSE_URL:-http://127.0.0.1:${PIXELVERSE_PORT}}"
+case "\${PIXELVERSE_URL:-}" in
+  ""|"http://127.0.0.1:4321"|"http://localhost:4321")
+    export PIXELVERSE_URL="http://127.0.0.1:${PIXELVERSE_PORT}"
+    ;;
+esac
 case ":\${PATH:-}:" in
   *":$bin_dir:"*) ;;
   *) export PATH="$bin_dir:\${PATH:-}" ;;
@@ -751,17 +820,22 @@ EOF
 install_agent_adapter() {
   local target="${1:-${PIXELVERSE_AGENT_KIND:-hermes}}"
   case "$target" in
+    gemini) target="gemini-cli" ;;
+    claude) target="claude-code" ;;
+    antugravity) target="antigravity" ;;
+  esac
+  case "$target" in
     hermes-cli) target="hermes" ;;
-    codex|gemini-cli|claude-code|ollama|hermes|generic|hermes-hook|hermes-plugin|all) ;;
+    codex|gemini-cli|claude-code|antigravity|ollama|hermes|generic|hermes-hook|hermes-plugin|all) ;;
     *)
       echo "Unknown adapter target: $target" >&2
-      echo "Use one of: codex, gemini-cli, claude-code, ollama, hermes, generic, hermes-hook, hermes-plugin, all" >&2
+      echo "Use one of: codex, gemini-cli, claude-code, antigravity, ollama, hermes, generic, hermes-hook, hermes-plugin, all" >&2
       exit 2
       ;;
   esac
 
   if [[ "$target" == "all" ]]; then
-    for kind in codex gemini-cli claude-code ollama hermes; do
+    for kind in codex gemini-cli claude-code antigravity ollama hermes; do
       install_cli_adapter_for_kind "$kind"
     done
     install_codex_project_hooks
@@ -846,12 +920,12 @@ bridge_status() {
   [[ -f "$ROOT/agent_bridges/pixelverse_client.py" ]] && echo "universal client: ok" || echo "universal client: missing"
   [[ -f "$ROOT/agent_bridges/hermes_adapter.py" ]] && echo "Hermes adapter: ok" || echo "Hermes adapter: missing"
   [[ -f "$ROOT/agent_bridges/cli_adapter.py" ]] && echo "generic CLI adapter: ok" || echo "generic CLI adapter: missing"
-  for shim in codex gemini claude ollama hermes; do
+  for shim in codex gemini claude antigravity ollama hermes; do
     [[ -x "$bin_dir/$shim" ]] && echo "$shim shim: $bin_dir/$shim" || echo "$shim shim: not installed"
   done
   echo
   echo "== Current Shell CLI Resolution =="
-  for shim in codex gemini claude ollama hermes; do
+  for shim in codex gemini claude antigravity ollama hermes; do
     local resolved
     resolved="$(command -v "$shim" 2>/dev/null || true)"
     if [[ "$resolved" == "$bin_dir/$shim" ]]; then

@@ -1,0 +1,218 @@
+version: 1
+key: default-office
+name: CLI Pixelverse Default Office
+image: /global_map/default.png
+description: Default auditable global map. Rooms, doors, corridors, states, and furniture semantics are all data-driven from this file.
+bounds: {left: 2, top: 2, width: 96, height: 96}
+corridors:
+  - {key: upper-shared-wall, left: 4, top: 31, width: 92, height: 6}
+  - {key: lower-shared-wall, left: 4, top: 63, width: 92, height: 6}
+  - {key: west-shared-wall, left: 31, top: 6, width: 6, height: 88}
+  - {key: east-shared-wall, left: 61, top: 6, width: 6, height: 88}
+rooms:
+  think_lab:
+    name: Thinking Room
+    icon: lightbulb
+    description: Reasoning, user prompts, approvals, and high-level problem framing.
+    rect: {left: 4, top: 6, width: 30, height: 31}
+    center: {x: 19, y: 20}
+    portal: {x: 19, y: 37}
+    aisle: {x: 19, y: 30}
+    hub: {x: 19, y: 34}
+    patrol: [{x: 12, y: 15}, {x: 26, y: 16}, {x: 19, y: 25}]
+    states: [thinking, awaiting_input]
+    event_hints: [UserPromptSubmit, approval, human_input]
+    furniture:
+      - {type: board, x: 18, y: 16, handles: [thinking, planning]}
+      - {type: bookshelf, x: 14, y: 46, handles: [context, notes]}
+      - {type: chair, x: 30, y: 62, handles: [awaiting_input]}
+      - {type: table, x: 30, y: 78, handles: [review]}
+      - {type: terminal, x: 84, y: 58, handles: [inspect]}
+      - {type: desk, x: 72, y: 18, handles: [reasoning]}
+      - {type: coffee, x: 84, y: 76, handles: [idle_thinking]}
+  blueprint_lab:
+    name: Blueprint Lab
+    icon: map
+    description: Planning, TODO routing, architecture sketches, and task decomposition.
+    rect: {left: 34, top: 6, width: 30, height: 31}
+    center: {x: 49, y: 20}
+    portal: {x: 49, y: 37}
+    aisle: {x: 49, y: 30}
+    hub: {x: 49, y: 34}
+    patrol: [{x: 42, y: 15}, {x: 58, y: 16}, {x: 50, y: 25}]
+    states: [planning]
+    event_hints: [TodoWrite, plan, task_breakdown]
+    furniture:
+      - {type: board, x: 18, y: 18, handles: [planning]}
+      - {type: desk, x: 50, y: 36, handles: [architecture]}
+      - {type: table, x: 72, y: 62, handles: [roadmap]}
+      - {type: chair, x: 16, y: 64, handles: [review]}
+      - {type: terminal, x: 82, y: 28, handles: [diagram]}
+      - {type: cabinet, x: 50, y: 16, handles: [spec]}
+      - {type: board, x: 18, y: 28, handles: [todo]}
+      - {type: coffee, x: 50, y: 78, handles: [planning_pause]}
+  clone_bay:
+    name: Clone Bay
+    icon: dna
+    description: Subagent spawning, collaboration, branch worker visualization, and session handoff.
+    rect: {left: 64, top: 6, width: 32, height: 31}
+    center: {x: 80, y: 20}
+    portal: {x: 80, y: 37}
+    aisle: {x: 80, y: 30}
+    hub: {x: 80, y: 34}
+    patrol: [{x: 73, y: 15}, {x: 89, y: 16}, {x: 81, y: 25}]
+    states: [initializing, collaborating]
+    event_hints: [SessionStart, SubagentStart, SubagentStop, Task]
+    furniture:
+      - {type: portal, x: 20, y: 28, handles: [spawn]}
+      - {type: server, x: 30, y: 70, handles: [subagent]}
+      - {type: portal, x: 50, y: 28, handles: [branch]}
+      - {type: server, x: 16, y: 70, handles: [collaboration]}
+      - {type: terminal, x: 78, y: 62, handles: [handoff]}
+      - {type: desk, x: 78, y: 24, handles: [clone_control]}
+  file_library:
+    name: File Library
+    icon: books
+    description: File discovery and read-only repository inspection.
+    rect: {left: 4, top: 37, width: 30, height: 32}
+    center: {x: 19, y: 53}
+    portal: {x: 12, y: 37}
+    aisle: {x: 12, y: 45}
+    hub: {x: 12, y: 34}
+    patrol: [{x: 12, y: 47}, {x: 26, y: 50}, {x: 19, y: 58}]
+    states: [reading_files]
+    event_hints: [Read, Grep, Glob, LS]
+    furniture:
+      - {type: bookshelf, x: 38, y: 18, handles: [Read]}
+      - {type: bookshelf, x: 76, y: 20, handles: [Grep]}
+      - {type: table, x: 22, y: 76, handles: [review]}
+      - {type: desk, x: 52, y: 36, handles: [search]}
+      - {type: cabinet, x: 78, y: 70, handles: [archive]}
+  code_workbench:
+    name: Code Workbench
+    icon: memo
+    description: File editing, patches, self-healing, and code changes.
+    rect: {left: 34, top: 37, width: 30, height: 32}
+    center: {x: 49, y: 53}
+    portal: {x: 49, y: 69}
+    aisle: {x: 49, y: 62}
+    hub: {x: 49, y: 66}
+    patrol: [{x: 42, y: 47}, {x: 58, y: 49}, {x: 50, y: 58}]
+    states: [editing_files, self_healing]
+    event_hints: [Edit, MultiEdit, Write, apply_patch]
+    furniture:
+      - {type: desk, x: 20, y: 24, handles: [Edit]}
+      - {type: workbench, x: 72, y: 24, handles: [patch]}
+      - {type: chair, x: 24, y: 72, handles: [review]}
+      - {type: terminal, x: 54, y: 48, handles: [test_fix]}
+      - {type: cabinet, x: 82, y: 68, handles: [diff]}
+  terminal_bay:
+    name: Terminal Bay
+    icon: laptop
+    description: Shell commands, local execution, build, test, and process checks.
+    rect: {left: 64, top: 37, width: 32, height: 32}
+    center: {x: 80, y: 53}
+    portal: {x: 80, y: 69}
+    aisle: {x: 80, y: 62}
+    hub: {x: 80, y: 66}
+    patrol: [{x: 73, y: 47}, {x: 89, y: 49}, {x: 81, y: 58}]
+    states: [shell_command, executing]
+    event_hints: [Bash, shell, execute, test]
+    furniture:
+      - {type: terminal, x: 18, y: 24, handles: [Bash]}
+      - {type: terminal, x: 70, y: 24, handles: [test]}
+      - {type: chair, x: 24, y: 72, handles: [watch]}
+      - {type: server, x: 76, y: 70, handles: [service]}
+      - {type: desk, x: 50, y: 46, handles: [logs]}
+  standby_dock:
+    name: Standby Dock
+    icon: bed
+    description: Idle, sleeping, and waiting-for-CLI state.
+    rect: {left: 4, top: 69, width: 24, height: 25}
+    center: {x: 16, y: 82}
+    portal: {x: 16, y: 69}
+    aisle: {x: 16, y: 75}
+    hub: {x: 16, y: 66}
+    patrol: [{x: 10, y: 84}, {x: 16, y: 77}, {x: 22, y: 84}]
+    states: [idle, sleeping]
+    event_hints: [Stop, heartbeat]
+    furniture:
+      - {type: sofa, x: 22, y: 58, handles: [idle]}
+      - {type: coffee, x: 62, y: 46, handles: [sleeping]}
+      - {type: bed, x: 80, y: 64, handles: [standby]}
+      - {type: locker, x: 86, y: 24, handles: [profile]}
+      - {type: table, x: 78, y: 82, handles: [queue]}
+      - {type: chair, x: 24, y: 30, handles: [waiting]}
+      - {type: cabinet, x: 16, y: 26, handles: [config]}
+  response_studio:
+    name: Response Studio
+    icon: envelope
+    description: Final response drafting and user-facing summary.
+    rect: {left: 28, top: 69, width: 24, height: 25}
+    center: {x: 40, y: 82}
+    portal: {x: 40, y: 69}
+    aisle: {x: 40, y: 75}
+    hub: {x: 40, y: 66}
+    patrol: [{x: 33, y: 84}, {x: 39, y: 77}, {x: 45, y: 84}]
+    states: [responding]
+    event_hints: [Stop, response, final]
+    furniture:
+      - {type: desk, x: 18, y: 18, handles: [draft]}
+      - {type: chair, x: 12, y: 32, handles: [review]}
+      - {type: sofa, x: 14, y: 76, handles: [readback]}
+      - {type: terminal, x: 90, y: 34, handles: [format]}
+      - {type: table, x: 50, y: 76, handles: [summary]}
+      - {type: board, x: 88, y: 72, handles: [decision]}
+      - {type: coffee, x: 84, y: 22, handles: [polish]}
+  tool_forge:
+    name: Tool Forge
+    icon: tools
+    description: External tools, MCP, browser, GitHub, skill invocation, and generic tool calls.
+    rect: {left: 52, top: 69, width: 24, height: 25}
+    center: {x: 64, y: 82}
+    portal: {x: 64, y: 69}
+    aisle: {x: 64, y: 75}
+    hub: {x: 64, y: 66}
+    patrol: [{x: 56, y: 84}, {x: 62, y: 77}, {x: 68, y: 84}]
+    states: [invoking_skill, tool_call, browsing, external_tool]
+    event_hints: [WebFetch, WebSearch, browser, MCP, github]
+    furniture:
+      - {type: workbench, x: 20, y: 24, handles: [tool_call]}
+      - {type: terminal, x: 42, y: 74, handles: [MCP]}
+      - {type: server, x: 76, y: 30, handles: [browser]}
+      - {type: chair, x: 20, y: 74, handles: [approval]}
+      - {type: cabinet, x: 82, y: 68, handles: [secrets]}
+      - {type: desk, x: 82, y: 48, handles: [external_tool]}
+      - {type: board, x: 48, y: 36, handles: [skill]}
+  session_archive:
+    name: Session Archive
+    icon: card_index_dividers
+    description: Branch sessions, saved trails, and session history.
+    rect: {left: 76, top: 69, width: 20, height: 25}
+    center: {x: 86, y: 82}
+    portal: {x: 86, y: 69}
+    aisle: {x: 86, y: 75}
+    hub: {x: 86, y: 66}
+    patrol: [{x: 79, y: 84}, {x: 85, y: 77}, {x: 91, y: 84}]
+    states: [branch_session]
+    event_hints: [branch_session, session]
+    furniture:
+      - {type: bookshelf, x: 18, y: 42, handles: [history]}
+      - {type: cabinet, x: 78, y: 70, handles: [archive]}
+      - {type: server, x: 80, y: 34, handles: [session]}
+      - {type: table, x: 50, y: 60, handles: [timeline]}
+      - {type: desk, x: 50, y: 25, handles: [branch]}
+      - {type: chair, x: 50, y: 78, handles: [resume]}
+  offline_corner:
+    name: Offline Corner
+    icon: warning
+    description: Offline, blocked, stale, and failure states. This room is not part of normal cross-room navigation.
+    rect: {left: 4, top: 86, width: 10, height: 8}
+    center: {x: 9, y: 90}
+    portal: {x: 9, y: 86}
+    aisle: {x: 9, y: 88}
+    hub: {x: 9, y: 83}
+    patrol: [{x: 9, y: 90}]
+    states: [offline, blocked]
+    event_hints: [stale, error, blocked]
+    furniture: []

@@ -58,9 +58,9 @@ already-running process cannot be attached retroactively.
 ./run.sh status
 ./run.sh bridge-status
 which codex
-curl -fsS http://localhost:4321/health
+curl -fsS http://localhost:5660/health
 curl -fsS http://localhost:4567/health
-curl -fsS http://localhost:4321/api/world
+curl -fsS http://localhost:5660/api/world
 ./run.sh test-hook
 ```
 

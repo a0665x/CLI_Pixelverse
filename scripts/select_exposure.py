@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tiny arrow-key selector for run.sh."""
+"""Left/right selector for Pixelverse UI exposure mode."""
 
 from __future__ import annotations
 
@@ -9,23 +9,22 @@ import sys
 
 
 OPTIONS = [
-    ("codex", "Codex"),
-    ("gemini-cli", "Gemini CLI"),
-    ("claude-code", "Claude Code"),
-    ("antigravity", "Antigravity"),
-    ("ollama", "Local Ollama models"),
-    ("hermes", "Hermes Agent"),
-    ("generic", "Generic webhook/API agent"),
+    ("localhost", "Localhost only", "Use http://localhost:5660 on this machine."),
+    ("tailscale", "Tailscale", "Expose through host-side tailscale serve when available."),
+    ("ngrok", "ngrok URL", "Display PIXELVERSE_NGROK_URL when it is set."),
 ]
 
 
 def draw(stdscr, selected: int) -> None:
     stdscr.clear()
-    stdscr.addstr(0, 0, "Select agent source with ↑/↓, Enter to start:")
-    for index, (_, label) in enumerate(OPTIONS):
-        marker = ">" if index == selected else " "
+    stdscr.addstr(0, 0, "Select UI exposure mode with ←/→, Enter to start:")
+    x = 0
+    for index, (_, label, _) in enumerate(OPTIONS):
+        text = f" {label} "
         mode = curses.A_REVERSE if index == selected else curses.A_NORMAL
-        stdscr.addstr(index + 2, 0, f"{marker} {label}", mode)
+        stdscr.addstr(2, x, text, mode)
+        x += len(text) + 2
+    stdscr.addstr(4, 0, OPTIONS[selected][2])
     stdscr.refresh()
 
 
@@ -35,9 +34,9 @@ def main(stdscr) -> str:
     while True:
         draw(stdscr, selected)
         key = stdscr.getch()
-        if key in (curses.KEY_UP, ord("k")):
+        if key in (curses.KEY_LEFT, ord("h"), ord("a")):
             selected = (selected - 1) % len(OPTIONS)
-        elif key in (curses.KEY_DOWN, ord("j")):
+        elif key in (curses.KEY_RIGHT, ord("l"), ord("d")):
             selected = (selected + 1) % len(OPTIONS)
         elif key in (10, 13, curses.KEY_ENTER):
             return OPTIONS[selected][0]
@@ -62,15 +61,9 @@ if __name__ == "__main__":
                 os.dup2(original_stdout, 1)
             except OSError:
                 pass
-        for index, (_, label) in enumerate(OPTIONS, start=1):
-            print(f"{index}. {label}", file=sys.stderr)
-        print("Select agent source [1]: ", end="", file=sys.stderr, flush=True)
-        choice = sys.stdin.readline().strip() or "1"
-        try:
-            index = int(choice) - 1
-        except ValueError:
-            index = 0
-        print(OPTIONS[max(0, min(len(OPTIONS) - 1, index))][0])
+        print("Unable to open interactive exposure selector; defaulting to localhost.", file=sys.stderr)
+        print("Set PIXELVERSE_EXPOSURE_MODE=localhost|tailscale|ngrok for non-interactive selection.", file=sys.stderr)
+        print("localhost")
     finally:
         if tty_fd is not None:
             try:

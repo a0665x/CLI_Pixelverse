@@ -8,10 +8,10 @@ thinking, using tools, delegating work, answering, idle, or offline.
 
 The service runs as a Docker Compose app and exposes:
 
-- UI: `http://localhost:4321`
-- Swagger API: `http://localhost:4321/docs`
-- OpenAPI: `http://localhost:4321/openapi.json`
-- World snapshot: `http://localhost:4321/api/world`
+- UI: `http://localhost:5660`
+- Swagger API: `http://localhost:5660/docs`
+- OpenAPI: `http://localhost:5660/openapi.json`
+- World snapshot: `http://localhost:5660/api/world`
 - Hook bridge: `http://localhost:4567/hook`
 
 ## What It Supports
@@ -26,11 +26,12 @@ CLI_Pixelverse has two integration styles.
    - `codex`
    - `gemini`
    - `claude`
+   - `antigravity`
    - `ollama`
    - `hermes`
    - The shim forwards to the real CLI and mirrors process-level lifecycle events to Pixelverse.
 
-Hermes has an additional hook adapter for gateway lifecycle events. The `4567/hook` relay stays available even when the selected primary agent is Codex, Gemini CLI, Claude Code, Ollama, or generic. In those modes it runs relay-only and does not create a Hermes avatar until a Hermes gateway event arrives. If you use Hermes through OpenWebUI, the Hermes API server also needs a relay patch so its `tool_progress_callback` events are mirrored to Pixelverse.
+Hermes has an additional hook adapter for gateway lifecycle events. The `4567/hook` relay stays available even when the selected primary agent is Codex, Gemini CLI, Claude Code, Antigravity, Ollama, or generic. In those modes it runs relay-only and does not create a Hermes avatar until a Hermes gateway event arrives. If you use Hermes through OpenWebUI, the Hermes API server also needs a relay patch so its `tool_progress_callback` events are mirrored to Pixelverse.
 
 Hermes also installs a user plugin under `~/.hermes/plugins/pixelverse`. That plugin is the important path for direct `hermes chat` sessions because it observes Hermes `pre_llm_call`, `post_llm_call`, `pre_tool_call`, and `post_tool_call` hooks even when your shell is running the original Hermes binary instead of the Pixelverse CLI shim.
 
@@ -39,7 +40,7 @@ The Hermes gateway relay uses its own `PIXELVERSE_BRIDGE_AGENT_ID` identity (def
 ## Beginner Quick Start
 
 Use Codex for the first setup because it currently has the deepest built-in
-project hook integration. Gemini CLI, Claude Code, Ollama, Hermes, and generic
+project hook integration. Gemini CLI, Claude Code, Antigravity, Ollama, Hermes, and generic
 HTTP agents can be attached afterward.
 
 ### Codex First-Time Setup
@@ -79,22 +80,22 @@ Codex process after activation. A Codex process that was already open before
 
 ### Confirm The Connection
 
-Open `http://localhost:4321`, then run:
+Open `http://localhost:5660`, then run:
 
 ```bash
 ./run.sh status
 ./run.sh bridge-status
 which codex
-curl -fsS http://localhost:4321/health
+curl -fsS http://localhost:5660/health
 curl -fsS http://localhost:4567/health
-curl -fsS http://localhost:4321/api/world
+curl -fsS http://localhost:5660/api/world
 ./run.sh test-hook
 ```
 
 Expected results:
 
 - `which codex` returns `<repo>/.pixelverse-service/bin/codex`.
-- `4321/health` reports `"ok": true`.
+- `5660/health` reports `"ok": true`.
 - `4567/health` reports `"ok": true`.
 - `./run.sh test-hook` makes the UI character move through lifecycle rooms.
 - A newly opened Codex session appears as its own CLI-backed agent timeline.
@@ -129,7 +130,7 @@ PIXELVERSE_AGENT_KIND=codex ./run.sh down_up
 Open:
 
 ```text
-http://localhost:4321
+http://localhost:5660
 ```
 
 The UI uses a fixed left operations sidebar on desktop and a full-width agent timeline along the bottom. Use the top-right `Mobile Mode` button on phones; mobile mode keeps the world readable and exposes the left drawer through a compact `>` / `<` edge handle. The world viewport supports mouse drag panning, wheel zoom, and `+ / 1:1 / -` controls.
@@ -186,7 +187,21 @@ hermes chat
 
 Start a new CLI process after activation. Pixelverse cannot retroactively attach to a CLI process that was already running before `source .pixelverse-service/activate.sh`.
 
-While a wrapped CLI process is running, its adapter sends a heartbeat every 15 seconds. This keeps the UI synchronized with long-running Codex, Gemini CLI, Claude Code, Ollama, and Hermes sessions instead of letting the character become stale after the default 45-second timeout. Wrapper heartbeats use `preserve_phase=true`: they refresh liveness without replacing a newer planning, reasoning, or tool route. Gemini CLI, Claude Code, and Ollama currently expose wrapper-level lifecycle only; Codex project hooks and the Hermes plugin/gateway hook add deeper tool-level events.
+While a wrapped CLI process is running, its adapter sends a heartbeat every 15 seconds. This keeps the UI synchronized with long-running Codex, Gemini CLI, Claude Code, Antigravity, Ollama, and Hermes sessions instead of letting the character become stale after the default 45-second timeout. Wrapper heartbeats use `preserve_phase=true`: they refresh liveness without replacing a newer planning, reasoning, or tool route. Gemini CLI, Claude Code, Antigravity, and Ollama currently expose wrapper-level lifecycle only; Codex project hooks and the Hermes plugin/gateway hook add deeper tool-level events.
+
+## Agent Hook Coverage
+
+| Agent brand | Command shim | Native/project hook | Visual fidelity |
+| --- | --- | --- | --- |
+| Codex | `codex`, `pixelverse-codex` | Yes, repo-local `.codex/hooks.json` after `/hooks` trust | High: session, prompt, tool family, subagent start/stop, stop |
+| Gemini CLI | `gemini`, `pixelverse-gemini` | Not currently installed by this repo | Low/medium: process start, heartbeat, complete/error; tools only if Gemini or user emits `/api/event` |
+| Claude Code | `claude`, `pixelverse-claude` | Not currently installed by this repo | Low/medium: process start, heartbeat, complete/error; tools only if Claude or user emits `/api/event` |
+| Antigravity | `antigravity`, `pixelverse-antigravity` | Not currently installed by this repo | Low/medium: process start, heartbeat, complete/error; tools only if Antigravity or user emits `/api/event` |
+| Ollama | `ollama`, `pixelverse-ollama` | No CLI tool hook; model polling when selected | Wrapper lifecycle plus model availability/running status |
+| Hermes | `hermes`, `pixelverse-hermes` | Yes through Hermes plugin/gateway hook when installed | Medium/high depending on direct CLI plugin or gateway/OpenWebUI relay |
+| Generic | HTTP only | External system posts `/api/event` / `/api/heartbeat` | Depends on payload fidelity |
+
+Gemini is treated as the official `gemini` command-line interface. After `source .pixelverse-service/activate.sh`, `gemini` resolves to the Pixelverse shim first, then the shim executes the original official CLI binary.
 
 Each wrapped CLI process gets a separate PID-backed identity such as `codex-cli:12345`. Codex also reads the locally generated, git-ignored `.codex/hooks.json` lifecycle adapter. The first time Codex opens this project, use `/hooks` to review and trust the project hook definition; after that, supported tool, subagent, and explicit `$skill` prompt events are relayed automatically.
 
@@ -205,9 +220,11 @@ The CLI wrapper and Codex project hooks have different responsibilities:
 | `SessionStart` | `SessionStart` | `initializing` | `clone_bay` | New Codex session |
 | `UserPromptSubmit` | `UserPromptSubmit` | `thinking` | `think_lab` | Reading the new request |
 | Prompt contains explicit `$skill` or `/skill` | `skill.invoke` | `invoking_skill` | `tool_forge` | Skill requested explicitly |
-| `PreToolUse` | `tool.started` | `tool_call` or `executing` | `tool_forge` | Tool is running |
-| `PostToolUse` | `tool.completed` | `tool_call` or `executing` | `tool_forge` | Tool completed; session remains active |
-| `SubagentStart` / `SubagentStop` | hook name | `collaborating` | `clone_bay` | Subagent lifecycle changed |
+| `PreToolUse` / `PostToolUse`: Read/Grep/Glob/LS | `tool.started` / `tool.completed` | `reading_files` | `file_library` | File read/search activity |
+| `PreToolUse` / `PostToolUse`: Edit/MultiEdit/Write/apply_patch | `tool.started` / `tool.completed` | `editing_files` | `code_workbench` | File edit/write activity |
+| `PreToolUse` / `PostToolUse`: Bash | `tool.started` / `tool.completed` | `shell_command` | `terminal_bay` | Shell command activity |
+| `PreToolUse` / `PostToolUse`: Web/MCP/GitHub/browser tools | `tool.started` / `tool.completed` | `browsing` / `external_tool` | `tool_forge` | External tool activity |
+| `SubagentStart` / `SubagentStop` | `subagent.started` / `subagent.stopped` plus main collaboration event | `collaborating` | `clone_bay` | Main agent dispatches clones; visual subagents stay in clone bay when idle |
 | `Stop` | `completed` | `idle` | `standby_dock` | Current Codex turn completed |
 | No fresh heartbeat past stale timeout | backend projection | `offline` | `offline_corner` | CLI closed or detached |
 
@@ -221,6 +238,7 @@ If you do not want to modify `PATH`, call the explicit Pixelverse wrapper instea
 ./.pixelverse-service/bin/pixelverse-codex
 ./.pixelverse-service/bin/pixelverse-gemini
 ./.pixelverse-service/bin/pixelverse-claude
+./.pixelverse-service/bin/pixelverse-antigravity
 ./.pixelverse-service/bin/pixelverse-ollama list
 ./.pixelverse-service/bin/pixelverse-hermes chat
 ```
@@ -268,6 +286,7 @@ PIXELVERSE_TEST_HOOK_TARGET=clone_bay ./run.sh test-hook
 PIXELVERSE_AGENT_KIND=codex ./run.sh down_up
 PIXELVERSE_AGENT_KIND=gemini-cli ./run.sh down_up
 PIXELVERSE_AGENT_KIND=claude-code ./run.sh down_up
+PIXELVERSE_AGENT_KIND=antigravity ./run.sh down_up
 PIXELVERSE_AGENT_KIND=ollama ./run.sh down_up
 PIXELVERSE_AGENT_KIND=hermes ./run.sh down_up
 ```
@@ -277,6 +296,7 @@ Supported values:
 - `codex`
 - `gemini-cli`
 - `claude-code`
+- `antigravity`
 - `ollama`
 - `hermes`
 - `generic`
@@ -302,6 +322,7 @@ Short form:
 ./run.sh adapter codex
 ./run.sh adapter gemini-cli
 ./run.sh adapter claude-code
+./run.sh adapter antigravity
 ./run.sh adapter ollama
 ./run.sh adapter hermes
 ./run.sh adapter all
@@ -319,6 +340,7 @@ Install one shim:
 ./run.sh install-adapter codex
 ./run.sh install-adapter gemini-cli
 ./run.sh install-adapter claude-code
+./run.sh install-adapter antigravity
 ./run.sh install-adapter ollama
 ./run.sh install-adapter hermes
 ```
@@ -329,6 +351,7 @@ Use explicit Pixelverse wrapper commands:
 ./.pixelverse-service/bin/pixelverse-codex --version
 ./.pixelverse-service/bin/pixelverse-gemini --help
 ./.pixelverse-service/bin/pixelverse-claude --help
+./.pixelverse-service/bin/pixelverse-antigravity --help
 ./.pixelverse-service/bin/pixelverse-ollama list
 ./.pixelverse-service/bin/pixelverse-hermes chat
 ```
@@ -345,6 +368,7 @@ Then use the CLIs normally:
 codex
 gemini
 claude
+antigravity
 ollama list
 hermes chat
 ```
@@ -355,6 +379,7 @@ The shim searches for the original command by removing `.pixelverse-service/bin`
 PIXELVERSE_CODEX_COMMAND=/absolute/path/to/codex codex
 PIXELVERSE_GEMINI_COMMAND=/absolute/path/to/gemini gemini
 PIXELVERSE_CLAUDE_COMMAND=/absolute/path/to/claude claude
+PIXELVERSE_ANTIGRAVITY_COMMAND=/absolute/path/to/antigravity antigravity
 PIXELVERSE_OLLAMA_COMMAND=/absolute/path/to/ollama ollama list
 PIXELVERSE_HERMES_COMMAND=/absolute/path/to/hermes hermes chat
 ```
@@ -434,7 +459,7 @@ pixelverse_emit_event {
 Safety notes:
 
 - `pixelverse_onboard` defaults to `generic`; choose the actual agent kind explicitly when possible.
-- `codex`, `gemini-cli`, `claude-code`, and `ollama` create repo-local adapter files. `generic` uses the universal HTTP client and intentionally does not install a shell shim.
+- `codex`, `gemini-cli`, `claude-code`, `antigravity`, and `ollama` create repo-local adapter files. `generic` uses the universal HTTP client and intentionally does not install a shell shim.
 - `hermes`, `hermes-hook`, `hermes-plugin`, and `all` may also install files under `~/.hermes/`.
 - The MCP server uses Python standard library code and the existing Pixelverse client, so no MCP SDK package is required.
 
@@ -512,7 +537,7 @@ For OpenWebUI through Hermes API server, Hermes must relay API-server `tool_prog
 Minimal tool event:
 
 ```bash
-curl -X POST http://localhost:4321/api/event \
+curl -X POST http://localhost:5660/api/event \
   -H 'Content-Type: application/json' \
   -d '{"agent_type":"codex","agent":"codex-main","name":"Codex","event":"tool.started","tool_name":"terminal","message":"running a command"}'
 ```
@@ -520,7 +545,7 @@ curl -X POST http://localhost:4321/api/event \
 Start:
 
 ```bash
-curl -X POST http://localhost:4321/api/event \
+curl -X POST http://localhost:5660/api/event \
   -H 'Content-Type: application/json' \
   -d '{"agent_type":"gemini-cli","agent":"gemini-main","name":"Gemini","event":"start","state":"thinking","target_room":"think_lab","message":"planning"}'
 ```
@@ -528,7 +553,7 @@ curl -X POST http://localhost:4321/api/event \
 Complete:
 
 ```bash
-curl -X POST http://localhost:4321/api/event \
+curl -X POST http://localhost:5660/api/event \
   -H 'Content-Type: application/json' \
   -d '{"agent_type":"claude-code","agent":"claude-main","name":"Claude","event":"completed","state":"idle","target_room":"standby_dock","message":"done"}'
 ```
@@ -556,6 +581,25 @@ python3 -m agent_bridges.pixelverse_client complete \
 Explicit `target_room` wins. If omitted, the backend and adapters infer a room from tool or message text.
 
 Each lifecycle phase is a route endpoint. The character stays at that endpoint until the next phase event: `start` routes to `think_lab`; reasoning or planning routes to `blueprint_lab`; `tool.started` and `tool.completed` remain active in the tool room; only an explicit session `completed`, `end`, or `state=idle` event returns the character to `standby_dock`. A `status` event without `state` preserves the current phase.
+
+## Global Map
+
+The visible floorplan and frontend pathfinding are data-driven from:
+
+- `global_map/default.yaml`: rooms, room rectangles, door anchors, corridor rectangles, state routing groups, room purpose, event hints, and default furniture positions.
+- `global_map/default.png`: the auditable floorplan image used as the UI background.
+
+To change the house shape, edit the PNG and YAML together. The important YAML fields are:
+
+- `corridors`: global walkable corridor graph.
+- `rooms.<room>.rect`: room rectangle in 0-100 world coordinates.
+- `rooms.<room>.portal`: exact door threshold.
+- `rooms.<room>.aisle`: room-side door approach point.
+- `rooms.<room>.hub`: corridor-side door approach point.
+- `rooms.<room>.states`: lifecycle states shown in that room.
+- `rooms.<room>.furniture`: default furniture type, position, and event handling hints.
+
+The A* router uses the same loaded YAML data as the UI. Cross-room paths must leave a room through `aisle -> portal -> hub`, travel on `corridors`, then enter the next room through `hub -> portal -> aisle`; non-door wall cuts are rejected.
 
 Common rooms:
 
@@ -612,7 +656,7 @@ If the UI is running but real agents stay idle:
 
 3. Confirm Pixelverse receives events:
    ```bash
-   curl -fsS http://localhost:4321/api/world
+   curl -fsS http://localhost:5660/api/world
    docker logs --tail 80 cli-pixelverse
    ```
 
@@ -657,12 +701,24 @@ Service:
 - `PIXELVERSE_AGENT_KIND`
 - `PIXELVERSE_PORT`
 - `PIXELVERSE_BRIDGE_PORT`
+- `PIXELVERSE_EXPOSURE_MODE` (`localhost`, `tailscale`, or `ngrok`)
+- `PIXELVERSE_TAILSCALE_ENABLE`
+- `PIXELVERSE_TAILSCALE_PORT`
+- `PIXELVERSE_TAILSCALE_URL`
+- `PIXELVERSE_NGROK_URL`
 - `PIXELVERSE_AGENT_ID`
 - `PIXELVERSE_AGENT_NAME`
 - `PIXELVERSE_AGENT_COLOR`
 - `PIXELVERSE_REBUILD`
-- `PIXELVERSE_TAILSCALE_ENABLE`
-- `PIXELVERSE_TAILSCALE_PORT`
+
+UI exposure:
+
+- `./run.sh start` / `./run.sh down_up` asks for an agent source and, in an interactive shell, a UI exposure mode.
+- Agent source uses arrow keys plus Enter. UI exposure uses left/right arrow keys plus Enter; it does not require typing `1`, `2`, or `3`.
+- `localhost` shows `http://localhost:5660`.
+- `tailscale` runs host-side `tailscale serve` when available and exposes the Tailscale URL in the UI.
+- `ngrok` is displayed when `PIXELVERSE_NGROK_URL` is set.
+- The UI header includes an exposure selector and copy button for the active URL.
 
 CLI adapters:
 
@@ -670,6 +726,7 @@ CLI adapters:
 - `PIXELVERSE_CODEX_COMMAND`
 - `PIXELVERSE_GEMINI_COMMAND`
 - `PIXELVERSE_CLAUDE_COMMAND`
+- `PIXELVERSE_ANTIGRAVITY_COMMAND`
 - `PIXELVERSE_OLLAMA_COMMAND`
 - `PIXELVERSE_HERMES_COMMAND`
 - `PIXELVERSE_HEARTBEAT_SECONDS`

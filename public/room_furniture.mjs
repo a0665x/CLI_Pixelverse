@@ -1,4 +1,4 @@
-import { ROOM_LAYOUTS } from './house_layout.mjs';
+import { DEFAULT_ROOM_PROP_POSITIONS_FROM_MAP, ROOM_LAYOUTS } from './house_layout.mjs';
 
 export const DEFAULT_ROOM_PROP_POSITIONS = {
   think_lab: [
@@ -20,6 +20,27 @@ export const DEFAULT_ROOM_PROP_POSITIONS = {
     { x: 18, y: 28 },
     { x: 50, y: 78 },
   ],
+  file_library: [
+    { x: 38, y: 18 },
+    { x: 76, y: 20 },
+    { x: 22, y: 76 },
+    { x: 52, y: 36 },
+    { x: 78, y: 70 },
+  ],
+  code_workbench: [
+    { x: 20, y: 24 },
+    { x: 72, y: 24 },
+    { x: 24, y: 72 },
+    { x: 54, y: 48 },
+    { x: 82, y: 68 },
+  ],
+  terminal_bay: [
+    { x: 18, y: 24 },
+    { x: 70, y: 24 },
+    { x: 24, y: 72 },
+    { x: 76, y: 70 },
+    { x: 50, y: 46 },
+  ],
   tool_forge: [
     { x: 20, y: 24 },
     { x: 42, y: 74 },
@@ -31,11 +52,11 @@ export const DEFAULT_ROOM_PROP_POSITIONS = {
   ],
   response_studio: [
     { x: 18, y: 18 },
-    { x: 26, y: 32 },
-    { x: 30, y: 72 },
-    { x: 78, y: 34 },
+    { x: 12, y: 32 },
+    { x: 14, y: 76 },
+    { x: 90, y: 34 },
     { x: 50, y: 76 },
-    { x: 72, y: 72 },
+    { x: 88, y: 72 },
     { x: 84, y: 22 },
   ],
   standby_dock: [
@@ -66,6 +87,12 @@ export const DEFAULT_ROOM_PROP_POSITIONS = {
 };
 
 export const ROOM_PROP_POSITIONS = DEFAULT_ROOM_PROP_POSITIONS;
+
+function defaultRoomPropPositions(roomKey) {
+  return DEFAULT_ROOM_PROP_POSITIONS_FROM_MAP[roomKey]?.length
+    ? DEFAULT_ROOM_PROP_POSITIONS_FROM_MAP[roomKey]
+    : (DEFAULT_ROOM_PROP_POSITIONS[roomKey] || []);
+}
 
 let roomPropOverrides = {};
 
@@ -123,7 +150,7 @@ export function setFurnitureLayoutOverrides(overrides = {}) {
   const next = {};
   Object.entries(overrides || {}).forEach(([roomKey, positions]) => {
     if (!ROOM_LAYOUTS[roomKey] || roomKey === 'offline_corner' || !Array.isArray(positions)) return;
-    const defaults = DEFAULT_ROOM_PROP_POSITIONS[roomKey] || [];
+    const defaults = defaultRoomPropPositions(roomKey);
     next[roomKey] = positions.map((pos, index) => sanitizePosition(pos, defaults[index] || { x: 50, y: 50 }, roomKey));
   });
   roomPropOverrides = next;
@@ -139,12 +166,12 @@ export function getFurnitureLayoutOverrides() {
 }
 
 export function getRoomPropPositions(roomKey) {
-  const defaults = DEFAULT_ROOM_PROP_POSITIONS[roomKey] || [];
+  const defaults = defaultRoomPropPositions(roomKey);
   const overrides = roomPropOverrides[roomKey] || [];
   return defaults.map((fallback, index) => sanitizePosition(overrides[index], fallback, roomKey));
 }
 
-export function exportFurnitureLayout(roomKeys = Object.keys(DEFAULT_ROOM_PROP_POSITIONS)) {
+export function exportFurnitureLayout(roomKeys = Object.keys(ROOM_LAYOUTS).filter((roomKey) => roomKey !== 'offline_corner')) {
   return Object.fromEntries(roomKeys.map((roomKey) => [roomKey, getRoomPropPositions(roomKey)]));
 }
 

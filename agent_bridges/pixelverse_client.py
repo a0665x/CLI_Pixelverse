@@ -13,14 +13,25 @@ from dataclasses import dataclass
 from typing import Any
 
 
-DEFAULT_BASE_URL = os.getenv("PIXELVERSE_URL", "http://127.0.0.1:4321").rstrip("/")
+LEGACY_DEFAULT_URLS = {"http://127.0.0.1:4321", "http://localhost:4321"}
+
+
+def normalize_base_url(value: str | None) -> str:
+    url = (value or "http://127.0.0.1:5660").rstrip("/")
+    return "http://127.0.0.1:5660" if url in LEGACY_DEFAULT_URLS else url
+
+
+DEFAULT_BASE_URL = normalize_base_url(os.getenv("PIXELVERSE_URL"))
 
 ROOM_BY_TOKEN = [
     (("delegate_task", "delegate", "clone", "subagent", "分身", "派遣"), "clone_bay"),
     (("session_search", "archive", "history", "session", "memory", "歷史", "記憶"), "session_archive"),
-    (("patch", "write", "terminal", "execute", "browser", "修改", "寫入", "終端機"), "tool_forge"),
+    (("edit", "multiedit", "patch", "write", "apply_patch", "修改", "寫入", "編輯"), "code_workbench"),
+    (("bash", "terminal", "execute", "shell", "exec_command", "終端機", "指令"), "terminal_bay"),
+    (("read", "grep", "glob", "ls", "search_files", "read_file", "搜尋", "讀取"), "file_library"),
+    (("browser", "webfetch", "websearch", "mcp__", "github_", "工具"), "tool_forge"),
     (("reply", "response", "draft", "回覆", "輸出"), "response_studio"),
-    (("plan", "spec", "search", "read", "map", "research", "規劃", "搜尋", "讀取"), "blueprint_lab"),
+    (("plan", "spec", "map", "research", "todo", "規劃"), "blueprint_lab"),
 ]
 
 
@@ -45,7 +56,7 @@ class PixelverseClient:
     timeout: float = 4.0
 
     def __post_init__(self) -> None:
-        self.base_url = self.base_url.rstrip("/")
+        self.base_url = normalize_base_url(self.base_url)
 
     def _post(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
         url = f"{self.base_url}{path}"

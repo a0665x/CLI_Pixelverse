@@ -10,15 +10,16 @@ import sys
 import threading
 
 try:
-    from .pixelverse_client import PixelverseClient, infer_target_room
+    from .pixelverse_client import PixelverseClient, infer_target_room, normalize_base_url
 except ImportError:  # pragma: no cover - direct script execution fallback
-    from pixelverse_client import PixelverseClient, infer_target_room
+    from pixelverse_client import PixelverseClient, infer_target_room, normalize_base_url
 
 
 DEFAULT_COLORS = {
     "codex": "#2563eb",
     "gemini-cli": "#16a34a",
     "claude-code": "#d97706",
+    "antigravity": "#7c3aed",
     "ollama": "#0f766e",
     "hermes": "#8b5cf6",
     "generic": "#64748b",
@@ -28,6 +29,7 @@ DEFAULT_NAMES = {
     "codex": "Codex CLI",
     "gemini-cli": "Gemini CLI",
     "claude-code": "Claude Code",
+    "antigravity": "Antigravity",
     "ollama": "Ollama",
     "hermes": "Hermes CLI",
     "generic": "Generic Agent",
@@ -86,7 +88,7 @@ def build_parser() -> argparse.ArgumentParser:
             "events to Pixelverse. Put the wrapped command after --."
         )
     )
-    parser.add_argument("--base-url", default=os.getenv("PIXELVERSE_URL", "http://127.0.0.1:4321"))
+    parser.add_argument("--base-url", default=normalize_base_url(os.getenv("PIXELVERSE_URL")))
     parser.add_argument("--agent-type", default=os.getenv("PIXELVERSE_AGENT_TYPE", "generic"))
     parser.add_argument("--agent", default=os.getenv("PIXELVERSE_AGENT_ID"))
     parser.add_argument("--instance-name", default=os.getenv("PIXELVERSE_INSTANCE_NAME"))

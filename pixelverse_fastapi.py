@@ -20,13 +20,16 @@ from pixelverse_server import (
     AGENT_KIND,
     INDEX_HTML,
     PUBLIC_DIR,
+    ROOT,
     PORT,
     WORLD,
     classify_room,
+    exposure_snapshot,
     load_furniture_layout,
     normalize_furniture_layout,
     normalize_state,
     save_furniture_layout,
+    save_exposure_mode,
 )
 
 
@@ -73,8 +76,12 @@ class FurnitureLayoutPayload(BaseModel):
     layout: dict[str, list[dict[str, Any]]] = Field(default_factory=dict, description="Furniture overrides keyed by origin room, including current room placement.")
 
 
+class ExposurePayload(BaseModel):
+    mode: str = Field("localhost", description="localhost, tailscale, or ngrok.")
+
+
 class GenericAgentEvent(BaseModel):
-    agent_type: str = Field("generic", description="codex, gemini-cli, claude-code, ollama, hermes, or generic.")
+    agent_type: str = Field("generic", description="codex, gemini-cli, claude-code, antigravity, ollama, hermes, or generic.")
     agent: str = Field("main-agent", description="Stable agent id.")
     name: str | None = Field(None, description="Display name.")
     event: str = Field("status", description="start, thought, tool.started, tool.completed, end, error, status.")
@@ -92,7 +99,7 @@ class GenericAgentEvent(BaseModel):
 app = FastAPI(
     title="CLI_Pixelverse Agent Visualizer",
     description=(
-        "World-first pixel UI for Codex, Gemini CLI, Claude Code, Hermes, "
+        "World-first pixel UI for Codex, Gemini CLI, Claude Code, Antigravity, Hermes, "
         "or any agent that can send heartbeat/action events."
     ),
     version="0.2.0",
@@ -113,6 +120,7 @@ class NoCacheStaticFiles(StaticFiles):
 
 
 app.mount("/assets", NoCacheStaticFiles(directory=PUBLIC_DIR / "assets"), name="assets")
+app.mount("/global_map", NoCacheStaticFiles(directory=ROOT / "global_map"), name="global_map")
 
 
 @app.get("/", include_in_schema=False)
@@ -128,6 +136,7 @@ def health() -> dict[str, Any]:
         "service": "pixelverse-fastapi",
         "port": PORT,
         "agent_kind": AGENT_KIND,
+        "exposure": exposure_snapshot(),
         "sources": _source_summary(snapshot),
     }
 
@@ -145,6 +154,17 @@ def get_sources() -> dict[str, Any]:
         "sources": _source_summary(snapshot),
         "stats": snapshot.get("stats", {}),
     }
+
+
+@app.get("/api/exposure", tags=["service"])
+def get_exposure() -> dict[str, Any]:
+    return exposure_snapshot()
+
+
+@app.post("/api/exposure", tags=["service"])
+def update_exposure(payload: ExposurePayload) -> dict[str, Any]:
+    save_exposure_mode(payload.mode)
+    return exposure_snapshot()
 
 
 @app.get("/api/agents", tags=["world"])
@@ -325,7 +345,7 @@ def _target_room_for_event(data: dict[str, Any], state: str, task: str | None) -
     if state in {"offline", "blocked"}:
         return "offline_corner"
     if state == "self_healing":
-        return "tool_forge"
+        return "code_workbench"
     if state in {"awaiting_input", "sleeping"}:
         return "standby_dock"
     if state == "initializing":
@@ -371,6 +391,7 @@ def _default_agent_name(agent_type: str) -> str:
         "codex": "Codex",
         "gemini-cli": "Gemini CLI",
         "claude-code": "Claude Code",
+        "antigravity": "Antigravity",
         "ollama": "Ollama",
         "hermes": "Hermes",
     }
@@ -382,6 +403,7 @@ def _default_agent_color(agent_type: str) -> str:
         "codex": "#10b981",
         "gemini-cli": "#3b82f6",
         "claude-code": "#f97316",
+        "antigravity": "#7c3aed",
         "ollama": "#111827",
         "hermes": "#8b5cf6",
     }

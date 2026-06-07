@@ -44,6 +44,27 @@ const ROOM_THEMES = {
     accentColor: 'rgba(110,231,249,0.2)',
     propScale: 1,
   },
+  file_library: {
+    floorTile: tile(145),
+    floorSize: '24px 24px',
+    wallTile: tile(150),
+    accentColor: 'rgba(96,165,250,0.18)',
+    propScale: 1,
+  },
+  code_workbench: {
+    floorTile: tile(128),
+    floorSize: '24px 24px',
+    wallTile: tile(149),
+    accentColor: 'rgba(74,222,128,0.18)',
+    propScale: 1,
+  },
+  terminal_bay: {
+    floorTile: tile(82),
+    floorSize: '24px 24px',
+    wallTile: tile(148),
+    accentColor: 'rgba(251,191,36,0.18)',
+    propScale: 1,
+  },
   tool_forge: {
     floorTile: tile(128),
     floorSize: '24px 24px',
@@ -138,6 +159,51 @@ const ROOM_LAYOUTS = {
     floorAccents: [
       { key: 'route-rug', tile: tile(128), left: 20, top: 58, width: 58, height: 16, opacity: 0.5 },
       { key: 'scan-lane', tile: tile(82), left: 60, top: 16, width: 18, height: 42, opacity: 0.42 },
+    ],
+  },
+  file_library: {
+    semanticZones: [
+      { key: 'grep-shelves', labelKey: 'archiveCabinet', kind: 'archive', tile: tile(124), left: 8, top: 14, width: 22, height: 44, opacity: 0.78 },
+      { key: 'read-desk', labelKey: 'readingDesk', kind: 'read', tile: tile(152), left: 36, top: 32, width: 28, height: 18, opacity: 0.82 },
+      { key: 'index-console', labelKey: 'scannerConsole', kind: 'scan', tile: tile(167), left: 68, top: 16, width: 18, height: 24, opacity: 0.78 },
+    ],
+    wallSegments: [
+      { key: 'north-files', tile: tile(124), left: 8, top: 6, width: 34, height: 10, opacity: 0.74 },
+      { key: 'east-cabinet', tile: tile(250), left: 84, top: 28, width: 8, height: 34, opacity: 0.72 },
+    ],
+    floorAccents: [
+      { key: 'search-lane', tile: tile(145), left: 22, top: 58, width: 56, height: 14, opacity: 0.48 },
+      { key: 'read-rug', tile: tile(83), left: 34, top: 24, width: 34, height: 20, opacity: 0.4 },
+    ],
+  },
+  code_workbench: {
+    semanticZones: [
+      { key: 'edit-bench', labelKey: 'workbench', kind: 'edit', tile: tile(163), left: 14, top: 28, width: 34, height: 20, opacity: 0.84 },
+      { key: 'patch-board', labelKey: 'thoughtBoard', kind: 'patch', tile: tile(149), left: 56, top: 12, width: 24, height: 18, opacity: 0.8 },
+      { key: 'write-console', labelKey: 'terminalRig', kind: 'write', tile: tile(167), left: 60, top: 54, width: 20, height: 18, opacity: 0.8 },
+    ],
+    wallSegments: [
+      { key: 'north-bench', tile: tile(163), left: 12, top: 6, width: 28, height: 10, opacity: 0.74 },
+      { key: 'east-board', tile: tile(149), left: 84, top: 20, width: 8, height: 28, opacity: 0.72 },
+    ],
+    floorAccents: [
+      { key: 'diff-lane', tile: tile(128), left: 18, top: 58, width: 58, height: 14, opacity: 0.5 },
+      { key: 'patch-pad', tile: tile(82), left: 44, top: 20, width: 18, height: 42, opacity: 0.38 },
+    ],
+  },
+  terminal_bay: {
+    semanticZones: [
+      { key: 'bash-console', labelKey: 'terminalRig', kind: 'terminal', tile: tile(167), left: 16, top: 18, width: 24, height: 22, opacity: 0.84 },
+      { key: 'process-rack', labelKey: 'buildServer', kind: 'server', tile: tile(251), left: 58, top: 14, width: 20, height: 28, opacity: 0.8 },
+      { key: 'log-table', labelKey: 'timelineTable', kind: 'logs', tile: tile(162), left: 30, top: 58, width: 34, height: 16, opacity: 0.78 },
+    ],
+    wallSegments: [
+      { key: 'north-terminals', tile: tile(167), left: 8, top: 6, width: 34, height: 10, opacity: 0.74 },
+      { key: 'east-server', tile: tile(251), left: 84, top: 22, width: 8, height: 34, opacity: 0.72 },
+    ],
+    floorAccents: [
+      { key: 'shell-lane', tile: tile(82), left: 18, top: 48, width: 60, height: 14, opacity: 0.48 },
+      { key: 'power-pad', tile: tile(145), left: 52, top: 18, width: 18, height: 42, opacity: 0.4 },
     ],
   },
   tool_forge: {

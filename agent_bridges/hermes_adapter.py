@@ -10,9 +10,9 @@ import subprocess
 import sys
 
 try:
-    from .pixelverse_client import PixelverseClient
+    from .pixelverse_client import PixelverseClient, normalize_base_url
 except ImportError:  # pragma: no cover - direct script execution fallback
-    from pixelverse_client import PixelverseClient
+    from pixelverse_client import PixelverseClient, normalize_base_url
 
 
 def safe_emit(label: str, fn) -> None:
@@ -29,7 +29,7 @@ def build_parser() -> argparse.ArgumentParser:
             "to Pixelverse. Put the wrapped command after --."
         )
     )
-    parser.add_argument("--base-url", default=os.getenv("PIXELVERSE_URL", "http://127.0.0.1:4321"))
+    parser.add_argument("--base-url", default=normalize_base_url(os.getenv("PIXELVERSE_URL")))
     parser.add_argument("--agent", default=os.getenv("PIXELVERSE_HERMES_AGENT_ID", "hermes-cli-main"))
     parser.add_argument("--name", default=os.getenv("PIXELVERSE_HERMES_AGENT_NAME", "Hermes CLI"))
     parser.add_argument("--color", default=os.getenv("PIXELVERSE_HERMES_AGENT_COLOR", "#8b5cf6"))

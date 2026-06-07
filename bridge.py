@@ -25,7 +25,7 @@ def env(name: str, default: str) -> str:
     return os.getenv(name, default)
 
 DEFAULT_CONFIG = {
-    "server": env("PIXELVERSE_URL", "http://localhost:4321"),
+    "server": env("PIXELVERSE_URL", "http://localhost:5660"),
     "agent_id": env("PIXELVERSE_AGENT_ID", "hermes-1"),
     "agent_name": env("PIXELVERSE_AGENT_NAME", "Hermes Agent"),
     "agent_color": env("PIXELVERSE_AGENT_COLOR", "#CD7F32"),

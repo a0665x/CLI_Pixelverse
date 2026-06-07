@@ -16,11 +16,14 @@ if str(ROOT) not in sys.path:
 from agent_bridges.pixelverse_client import PixelverseClient  # noqa: E402
 
 
-AGENT_KINDS = ["codex", "gemini-cli", "claude-code", "ollama", "hermes", "generic"]
+AGENT_KINDS = ["codex", "gemini-cli", "claude-code", "antigravity", "ollama", "hermes", "generic"]
 ADAPTER_TARGETS = [*AGENT_KINDS, "all", "hermes-hook", "hermes-plugin"]
 ROOMS = [
     "think_lab",
     "blueprint_lab",
+    "file_library",
+    "code_workbench",
+    "terminal_bay",
     "tool_forge",
     "response_studio",
     "standby_dock",
@@ -71,7 +74,7 @@ class PixelverseMCP:
         if agent_type not in AGENT_KINDS:
             raise ValueError(f"unsupported agent_type: {agent_type}")
         client = PixelverseClient(
-            base_url=str(arguments.get("base_url") or "http://127.0.0.1:4321"),
+            base_url=str(arguments.get("base_url") or "http://127.0.0.1:5660"),
             agent_type=agent_type,
             agent=str(arguments.get("agent") or f"{agent_type}-main"),
             name=arguments.get("name"),
@@ -150,7 +153,7 @@ class PixelverseMCP:
                 "inputSchema": {
                     "type": "object",
                     "properties": {
-                        "base_url": {"type": "string", "default": "http://127.0.0.1:4321"},
+                        "base_url": {"type": "string", "default": "http://127.0.0.1:5660"},
                         "agent_type": {"type": "string", "enum": AGENT_KINDS, "default": "generic"},
                         "agent": {"type": "string"},
                         "name": {"type": "string"},

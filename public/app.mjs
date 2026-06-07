@@ -35,11 +35,12 @@ import {
   patrolPoint,
   refreshFurnitureBlockers,
   shouldPatrol,
+  snapToWalkable,
 } from './world_motion.mjs';
 import { getAgentPose, INTERACTION_OBJECT_ICONS, selectInteractionTarget } from './agent_pose.mjs';
 import { buildAgentDialog, buildAgentSpeech } from './agent_dialog.mjs';
 import { clampCameraOffset, centeredCamera, clampZoom, nextDraggedOffset, nextZoomState } from './ui_state.mjs';
-import { HOUSE_DOORS, ROOM_LAYOUTS, ROOM_STATE_GROUPS } from './house_layout.mjs';
+import { CORRIDOR_RECTS, GLOBAL_MAP, HOUSE_DOORS, loadGlobalMap, roomMapCopy, ROOM_LAYOUTS, ROOM_STATE_GROUPS } from './house_layout.mjs';
 import { hookStateRoutes } from './hook_state_map.mjs';
 import { deriveAgentEventVisual } from './main_agent_events.mjs';
 import { getAppleDogDoorSprite, getAppleDogPropSprite, getAppleDogRoomTheme } from './appledog_assets.mjs';
@@ -71,9 +72,22 @@ const ROOM_ACTIVITY_TARGETS = {
     planning: [{ x: 28, y: 56 }, { x: 50, y: 18 }, { x: 74, y: 56 }],
     working: [{ x: 78, y: 26 }, { x: 18, y: 56 }, { x: 52, y: 62 }],
   },
+  file_library: {
+    reading_files: [{ x: 28, y: 58 }, { x: 52, y: 18 }, { x: 74, y: 52 }],
+    working: [{ x: 28, y: 58 }, { x: 74, y: 52 }, { x: 52, y: 18 }],
+  },
+  code_workbench: {
+    editing_files: [{ x: 26, y: 58 }, { x: 50, y: 22 }, { x: 74, y: 58 }],
+    working: [{ x: 26, y: 58 }, { x: 74, y: 58 }, { x: 50, y: 22 }],
+  },
+  terminal_bay: {
+    shell_command: [{ x: 24, y: 58 }, { x: 52, y: 22 }, { x: 74, y: 58 }],
+    executing: [{ x: 24, y: 58 }, { x: 74, y: 58 }, { x: 52, y: 22 }],
+  },
   tool_forge: {
+    external_tool: [{ x: 24, y: 58 }, { x: 66, y: 56 }, { x: 54, y: 20 }],
+    browsing: [{ x: 48, y: 36 }, { x: 24, y: 58 }, { x: 78, y: 18 }],
     working: [{ x: 24, y: 58 }, { x: 66, y: 56 }, { x: 54, y: 20 }],
-    planning: [{ x: 48, y: 36 }, { x: 24, y: 58 }, { x: 78, y: 18 }],
   },
   response_studio: {
     working: [{ x: 24, y: 58 }, { x: 74, y: 56 }, { x: 46, y: 56 }],
@@ -126,6 +140,10 @@ const dom = {
   cancelFurnitureButton: document.getElementById('cancel-furniture-btn'),
   eventSummary: document.getElementById('event-summary'),
   events: document.getElementById('events'),
+  exposureLabel: document.getElementById('exposure-label'),
+  exposureSelect: document.getElementById('exposure-select'),
+  exposureUrl: document.getElementById('exposure-url'),
+  copyExposureButton: document.getElementById('copy-exposure-btn'),
   editFurnitureButton: document.getElementById('edit-furniture-btn'),
   furnitureEditBanner: document.getElementById('furniture-edit-banner'),
   furnitureEditDirtyLabel: document.getElementById('furniture-edit-dirty-label'),
@@ -178,6 +196,7 @@ const dom = {
 
 const agentViews = new Map();
 let currentSnapshot = null;
+let currentExposure = null;
 let selectedAgentId = null;
 let pollTimer = null;
 let patrolTimer = null;
@@ -211,6 +230,9 @@ let furnitureToastTimer = null;
 let selectedFurnitureProp = null;
 let furnitureSnapStep = resolveSnapStep(false);
 let lastFurnitureCollisionAt = 0;
+const forcedOpenDoorRooms = new Set();
+const proximityOpenDoorRooms = new Set();
+const DOOR_OPEN_DISTANCE = 5.6;
 
 const short = (text = '', max = 42) => text && text.length > max ? `${text.slice(0, max - 1)}…` : (text || '');
 
@@ -301,8 +323,19 @@ function getDecorByRoom() {
   return Object.fromEntries(
     Object.keys(ROOM_LAYOUTS)
       .filter((roomKey) => roomKey !== 'offline_corner')
-      .map((roomKey) => [roomKey, getRoomDecor(roomKey, currentLocale)]),
+      .map((roomKey) => [roomKey, roomDecorFor(roomKey)]),
   );
+}
+
+function roomDecorFor(roomKey) {
+  const localized = getRoomDecor(roomKey, currentLocale);
+  if (localized.length) return localized;
+  return (roomMapCopy(roomKey).furniture || []).map((item) => ({
+    type: item.type || 'table',
+    label: item.label || item.type || 'prop',
+    labelKey: item.type || 'prop',
+    handles: item.handles || [],
+  }));
 }
 
 function furnitureChangeCount(layout = currentLayoutSnapshot(), baseline = furnitureSavedLayout || {}) {
@@ -580,7 +613,7 @@ function activityTarget(agent, patrolIndex = 0) {
   const points = room.patrol || [room.center];
   const fallback = points.length ? points[patrolIndex % points.length] : (room.center || { x: agent.x || 0, y: agent.y || 0 });
   if (patrolIndex > 0) return fallback;
-  const roomDecor = getRoomDecor(roomKey, currentLocale);
+  const roomDecor = roomDecorFor(roomKey);
   const decorByRoom = getDecorByRoom();
   const layout = roomDecorLayout(roomKey, roomDecor, decorByRoom);
   const decor = layout.map((item) => item.prop);
@@ -785,6 +818,7 @@ function applyStaticCopy() {
   setText('summary-subagent-label', copy.subagentsVisible);
   setText('summary-session-label', copy.sessionsVisible);
   setText('language-label', copy.languageLabel);
+  setText('exposure-label', copy.exposureLabel || 'URL');
   setText('core-wing-label', copy.coreWing);
   setText('clone-wing-label', copy.cloneWing);
   setText('legend-title', copy.worldLegend);
@@ -810,10 +844,77 @@ function applyStaticCopy() {
   }
   renderDistricts();
   repaintAgents();
+  renderExposure();
+}
+
+function exposureModeLabel(mode) {
+  const copy = strings();
+  return (copy.exposureModes && copy.exposureModes[mode]) || mode;
+}
+
+function renderExposure() {
+  if (!dom.exposureSelect || !dom.exposureUrl || !currentExposure) return;
+  const activeMode = currentExposure.active_mode || 'localhost';
+  dom.exposureSelect.innerHTML = (currentExposure.options || []).map((option) => {
+    const disabled = option.available ? '' : ' disabled';
+    const selected = option.mode === activeMode ? ' selected' : '';
+    const label = exposureModeLabel(option.mode);
+    return `<option value="${option.mode}"${disabled}${selected}>${label}${option.available ? '' : ' unavailable'}</option>`;
+  }).join('');
+  dom.exposureUrl.textContent = currentExposure.active_url || '';
+  dom.exposureUrl.title = currentExposure.active_url || '';
+  if (dom.copyExposureButton) {
+    dom.copyExposureButton.disabled = !currentExposure.active_url;
+    dom.copyExposureButton.title = `${strings().copyUrl || 'Copy URL'}: ${currentExposure.active_url || ''}`;
+  }
+}
+
+async function loadExposure() {
+  try {
+    const response = await fetch('/api/exposure', { cache: 'no-store' });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    currentExposure = await response.json();
+    renderExposure();
+  } catch (err) {
+    currentExposure = {
+      active_mode: 'localhost',
+      active_url: window.location.origin,
+      options: [{ mode: 'localhost', label: 'Localhost', url: window.location.origin, available: true }],
+    };
+    renderExposure();
+  }
+}
+
+async function setExposureMode(mode) {
+  try {
+    const response = await fetch('/api/exposure', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode }),
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    currentExposure = await response.json();
+    renderExposure();
+  } catch (err) {
+    dom.exposureUrl.textContent = `${strings().exposureFailed || 'Exposure update failed'}: ${err.message}`;
+  }
+}
+
+async function copyExposureUrl() {
+  const url = currentExposure?.active_url || '';
+  if (!url) return;
+  try {
+    await navigator.clipboard.writeText(url);
+    dom.copyExposureButton.textContent = '✓';
+    window.setTimeout(() => { if (dom.copyExposureButton) dom.copyExposureButton.textContent = '📋'; }, 900);
+  } catch {
+    window.prompt(strings().copyUrlPrompt || 'Copy URL', url);
+  }
 }
 
 function renderDistricts() {
   const copy = strings();
+  syncGlobalMapDom();
   document.querySelectorAll('.district').forEach((district) => {
     const roomKey = district.dataset.room;
     const layoutRect = ROOM_LAYOUTS[roomKey] || ROOM_LAYOUTS.standby_dock;
@@ -821,7 +922,11 @@ function renderDistricts() {
     district.style.top = `${layoutRect.top}%`;
     district.style.width = `${layoutRect.width}%`;
     district.style.height = `${layoutRect.height}%`;
-    const room = getRoomCopy(roomKey, currentLocale);
+    const localizedRoom = getRoomCopy(roomKey, currentLocale);
+    const metadata = roomMapCopy(roomKey);
+    const room = localizedRoom.name === copy.unknownRoom
+      ? { name: metadata.name || roomKey, subtitle: metadata.description || '' }
+      : localizedRoom;
     const roomTheme = getAppleDogRoomTheme(roomKey) || getKenneyRoomTheme(roomKey);
     const layout = getKenneyRoomLayout(roomKey);
     district.style.setProperty('--district-floor-tile', `url("${roomTheme.floorTile}")`);
@@ -834,7 +939,7 @@ function renderDistricts() {
     const labelEl = district.querySelector('.district-label');
     if (labelEl) {
       const stateLabels = (ROOM_STATE_GROUPS[roomKey] || []).map((state) => `<span>${stateText(state)}</span>`).join('');
-      labelEl.innerHTML = `<span>${roomKey === 'think_lab' ? '💡' : roomKey === 'blueprint_lab' ? '🗺️' : roomKey === 'tool_forge' ? '🛠️' : roomKey === 'response_studio' ? '📨' : roomKey === 'standby_dock' ? '🛏️' : roomKey === 'clone_bay' ? '🧬' : '🗂️'}</span><div><strong>${room.name}</strong><div class="district-subtitle">${room.subtitle}</div><div class="district-state-tags">${stateLabels}</div></div>`;
+      labelEl.innerHTML = `<span>${roomIcon(roomKey)}</span><div><strong>${room.name}</strong><div class="district-subtitle">${room.subtitle}</div><div class="district-state-tags">${stateLabels}</div></div>`;
     }
 
     const floorAccentLayer = district.querySelector('.district-floor-accents');
@@ -864,7 +969,7 @@ function renderDistricts() {
       `).join('');
     }
 
-    const propLayout = roomDecorLayout(roomKey, getRoomDecor(roomKey, currentLocale), getDecorByRoom());
+    const propLayout = roomDecorLayout(roomKey, roomDecorFor(roomKey), getDecorByRoom());
     district.classList.toggle('editing', furnitureEditMode);
     const selectedKey = selectedFurnitureKey();
     const selectedInRoom = selectedFurnitureProp && selectedFurnitureProp.roomKey === roomKey;
@@ -921,6 +1026,86 @@ function renderDistricts() {
   });
 }
 
+function roomIcon(roomKey) {
+  const icons = {
+    bed: '🛏️',
+    books: '📚',
+    card_index_dividers: '🗂️',
+    dna: '🧬',
+    envelope: '📨',
+    laptop: '💻',
+    lightbulb: '💡',
+    map: '🗺️',
+    memo: '📝',
+    tools: '🛠️',
+    warning: '⚠️',
+  };
+  const fixed = {
+    think_lab: '💡',
+    blueprint_lab: '🗺️',
+    file_library: '📚',
+    code_workbench: '📝',
+    terminal_bay: '💻',
+    tool_forge: '🛠️',
+    response_studio: '📨',
+    standby_dock: '🛏️',
+    clone_bay: '🧬',
+    session_archive: '🗂️',
+    offline_corner: '⚠️',
+  };
+  return icons[roomMapCopy(roomKey).icon] || fixed[roomKey] || '🗂️';
+}
+
+function syncGlobalMapDom() {
+  const shell = document.querySelector('.house-shell');
+  const officeShell = document.querySelector('.office-shell');
+  if (!shell || !officeShell) return;
+  if (GLOBAL_MAP.image) {
+    shell.style.setProperty('--global-map-image', `url("${GLOBAL_MAP.image}")`);
+    shell.classList.add('has-global-map-image');
+  }
+
+  const pathLayer = dom.pathLayer;
+  const agentsLayer = dom.agentsLayer;
+  document.querySelectorAll('.house-corridor').forEach((node) => node.remove());
+  CORRIDOR_RECTS.forEach((rect) => {
+    const node = document.createElement('div');
+    node.className = 'house-corridor';
+    node.dataset.corridor = rect.key || '';
+    node.style.left = `${rect.left}%`;
+    node.style.top = `${rect.top}%`;
+    node.style.width = `${rect.width}%`;
+    node.style.height = `${rect.height}%`;
+    node.style.opacity = GLOBAL_MAP.image ? '0' : '1';
+    shell.insertBefore(node, officeShell);
+  });
+  HOUSE_DOORS.forEach((door) => {
+    if (!officeShell.querySelector(`.room-door[data-room="${door.room}"]`)) {
+      const node = document.createElement('div');
+      node.className = 'room-door';
+      node.dataset.room = door.room;
+      officeShell.appendChild(node);
+    }
+  });
+  document.querySelectorAll('.room-door').forEach((door) => {
+    if (!HOUSE_DOORS.some((item) => item.room === door.dataset.room)) door.remove();
+  });
+
+  Object.keys(ROOM_LAYOUTS).forEach((roomKey) => {
+    if (roomKey === 'offline_corner') return;
+    if (shell.querySelector(`.district[data-room="${roomKey}"]`)) return;
+    const district = document.createElement('div');
+    district.className = 'district';
+    district.dataset.room = roomKey;
+    district.innerHTML = '<div class="district-label"></div><div class="district-floor-accents"></div><div class="district-semantics"></div><div class="district-walls"></div><div class="district-props"></div>';
+    shell.insertBefore(district, pathLayer || agentsLayer || null);
+  });
+  document.querySelectorAll('.district').forEach((district) => {
+    if (!ROOM_LAYOUTS[district.dataset.room]) district.remove();
+  });
+  refreshDoorOpenStates();
+}
+
 function renderHookStateTable() {
   if (!dom.hookStateTable) return;
   const copy = strings();
@@ -937,9 +1122,33 @@ function setRouteDoorsOpen(roomKeys = [], open = false) {
   roomKeys
     .filter(Boolean)
     .forEach((roomKey) => {
-      const door = document.querySelector(`.room-door[data-room="${roomKey}"]`);
-      door?.classList.toggle('open', open);
+      if (open) forcedOpenDoorRooms.add(roomKey);
+      else forcedOpenDoorRooms.delete(roomKey);
     });
+  refreshDoorOpenStates();
+}
+
+function distanceToDoor(view, doorConfig) {
+  const room = ROOM_LAYOUTS[doorConfig.room];
+  if (!room) return Infinity;
+  const candidates = [room.portal, room.aisle, room.hub].filter(Boolean);
+  return Math.min(...candidates.map((point) => Math.hypot((view.currentX || 0) - point.x, (view.currentY || 0) - point.y)));
+}
+
+function refreshDoorProximity() {
+  proximityOpenDoorRooms.clear();
+  HOUSE_DOORS.forEach((door) => {
+    const close = Array.from(agentViews.values()).some((view) => distanceToDoor(view, door) <= DOOR_OPEN_DISTANCE);
+    if (close) proximityOpenDoorRooms.add(door.room);
+  });
+}
+
+function refreshDoorOpenStates() {
+  refreshDoorProximity();
+  document.querySelectorAll('.room-door').forEach((door) => {
+    const roomKey = door.dataset.room;
+    door.classList.toggle('open', forcedOpenDoorRooms.has(roomKey) || proximityOpenDoorRooms.has(roomKey));
+  });
 }
 
 function renderInspector(agent) {
@@ -1165,6 +1374,7 @@ function updateAgentPosition(view, x, y) {
   view.currentY = y;
   view.el.style.left = `${x}%`;
   view.el.style.top = `${y}%`;
+  refreshDoorOpenStates();
 }
 
 function clearWalkFrameTimer(view) {
@@ -1266,7 +1476,17 @@ function maybeMoveAgent(view, agent, targetX, targetY, roomKey, options = {}) {
     return;
   }
   const fromRoomKey = options.fromRoomKey || view.data.room_key || roomKey;
+  const safeTarget = snapToWalkable({ x: targetX, y: targetY });
+  targetX = safeTarget.x;
+  targetY = safeTarget.y;
   const route = buildRoute({ x: view.currentX, y: view.currentY }, { x: targetX, y: targetY }, fromRoomKey, roomKey);
+  const targetDelta = Math.hypot(targetX - view.currentX, targetY - view.currentY);
+  const routeBlocked = route.length < 2 && targetDelta > 0.2;
+  if (routeBlocked) {
+    view.data = { ...agent, x: view.currentX, y: view.currentY, room_key: fromRoomKey };
+    decorateAgent(view);
+    return;
+  }
   const noMove = route.length < 2 || route.every((item, idx) => idx === 0 || (Math.abs(item.x - route[idx - 1].x) < 0.2 && Math.abs(item.y - route[idx - 1].y) < 0.2));
   view.data = { ...agent, x: targetX, y: targetY, room_key: roomKey };
   if (Object.hasOwn(options, 'interactionTarget')) view.interactionTarget = options.interactionTarget;
@@ -1396,7 +1616,7 @@ function applyDraftPosition(originRoomKey, index, x, y, options = {}) {
   const roomPositions = (furnitureDraft[originRoomKey] || getRoomPropPositions(originRoomKey)).map((item) => ({ ...item }));
   const nextX = normalizePercent(x, { step: options.step || furnitureSnapStep });
   const nextY = normalizePercent(y, { step: options.step || furnitureSnapStep });
-  if (positionOverlapsFurniture(roomKey, getRoomDecor(roomKey, currentLocale), index, { x: nextX, y: nextY }, roomPositions, {
+  if (positionOverlapsFurniture(roomKey, roomDecorFor(roomKey), index, { x: nextX, y: nextY }, roomPositions, {
     originRoomKey,
     decorByRoom: getDecorByRoom(),
   })) {
@@ -2004,6 +2224,12 @@ dom.languageSelect?.addEventListener('change', (event) => {
   setLocale(event.target.value);
 });
 
+dom.exposureSelect?.addEventListener('change', (event) => {
+  setExposureMode(event.target.value);
+});
+
+dom.copyExposureButton?.addEventListener('click', copyExposureUrl);
+
 dom.mobileModeButton?.addEventListener('click', () => {
   mobileMode = !mobileMode;
   if (mobileMode) sidebarOpen = false;
@@ -2056,15 +2282,27 @@ function adjustRefreshInterval(deltaMs) {
 dom.refreshSlowerButton?.addEventListener('click', () => adjustRefreshInterval(100));
 dom.refreshFasterButton?.addEventListener('click', () => adjustRefreshInterval(-100));
 
-populateLocaleSelect();
-applyStaticCopy();
-updateRefreshController();
-setupDraggablePanels();
-setupResizablePanels();
-setupCameraPan();
-setupFurnitureEditor();
-startLiveUiTicker();
-restartTimelineTimer();
-connectRealtime();
-if (patrolTimer) clearInterval(patrolTimer);
-patrolTimer = window.setInterval(patrolActiveAgents, 1500);
+async function initializeApp() {
+  try {
+    await loadGlobalMap();
+  } catch (err) {
+    console.warn('[pixelverse] using fallback global map:', err);
+  }
+  populateLocaleSelect();
+  applyStaticCopy();
+  syncGlobalMapDom();
+  refreshFurnitureBlockers();
+  loadExposure();
+  updateRefreshController();
+  setupDraggablePanels();
+  setupResizablePanels();
+  setupCameraPan();
+  setupFurnitureEditor();
+  startLiveUiTicker();
+  restartTimelineTimer();
+  connectRealtime();
+  if (patrolTimer) clearInterval(patrolTimer);
+  patrolTimer = window.setInterval(patrolActiveAgents, 1500);
+}
+
+initializeApp();

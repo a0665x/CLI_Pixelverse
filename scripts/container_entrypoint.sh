@@ -3,7 +3,7 @@ set -euo pipefail
 
 PIXELVERSE_AGENT_KIND="${PIXELVERSE_AGENT_KIND:-generic}"
 PIXELVERSE_HOST="${PIXELVERSE_HOST:-0.0.0.0}"
-PIXELVERSE_PORT="${PIXELVERSE_PORT:-4321}"
+PIXELVERSE_PORT="${PIXELVERSE_PORT:-5660}"
 BRIDGE_PORT="${PIXELVERSE_BRIDGE_PORT:-4567}"
 
 cleanup() {
@@ -37,7 +37,7 @@ case "$PIXELVERSE_AGENT_KIND" in
       --notify-cmd "${PIXELVERSE_NOTIFY_CMD:-henry-notify}" \
       --no-speak &
     ;;
-  codex|gemini-cli|claude-code|ollama|generic)
+  codex|gemini-cli|claude-code|antigravity|ollama|generic)
     python3 /app/bridge.py \
       --server "http://127.0.0.1:${PIXELVERSE_PORT}" \
       --agent "${PIXELVERSE_BRIDGE_AGENT_ID:-henry-main}" \

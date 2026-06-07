@@ -13,9 +13,13 @@ test('hook state table routes every lifecycle condition to a visible room catego
   }
 });
 
-test('tool forge groups active execution states', () => {
+test('hook rooms group fine-grained active tool states', () => {
+  assert.deepEqual(ROOM_STATE_GROUPS.file_library, ['reading_files']);
+  assert.deepEqual(ROOM_STATE_GROUPS.code_workbench, ['editing_files', 'self_healing']);
+  assert.deepEqual(ROOM_STATE_GROUPS.terminal_bay, ['shell_command', 'executing']);
   assert.deepEqual(
     ROOM_STATE_GROUPS.tool_forge,
-    ['invoking_skill', 'tool_call', 'executing', 'self_healing', 'blocked'],
+    ['invoking_skill', 'tool_call', 'browsing', 'external_tool'],
   );
+  assert.deepEqual(ROOM_STATE_GROUPS.offline_corner, ['offline', 'blocked']);
 });

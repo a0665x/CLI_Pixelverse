@@ -10,7 +10,7 @@ import urllib.request
 from typing import Any
 
 
-PIXELVERSE_URL = os.getenv("PIXELVERSE_URL", "http://127.0.0.1:4321").rstrip("/")
+PIXELVERSE_URL = os.getenv("PIXELVERSE_URL", "http://127.0.0.1:5660").rstrip("/")
 AGENT_ID = os.getenv("PIXELVERSE_HERMES_AGENT_ID", "hermes-cli")
 AGENT_NAME = os.getenv("PIXELVERSE_HERMES_AGENT_NAME", "Hermes CLI")
 AGENT_COLOR = os.getenv("PIXELVERSE_HERMES_AGENT_COLOR", "#8b5cf6")

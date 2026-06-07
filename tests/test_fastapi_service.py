@@ -133,10 +133,10 @@ def test_fastapi_lifecycle_stays_active_until_explicit_session_completion(monkey
 
     assert emit("start", message="Analyzing request")["room_key"] == "think_lab"
     assert emit("planning", message="Reviewing project files")["room_key"] == "blueprint_lab"
-    assert emit("tool.started", tool_name="patch", message="Updating code")["room_key"] == "tool_forge"
+    assert emit("tool.started", tool_name="patch", message="Updating code")["room_key"] == "code_workbench"
     tool_done = emit("tool.completed", tool_name="patch", message="Updated code")
     assert tool_done["state"] == "working"
-    assert tool_done["room_key"] == "tool_forge"
+    assert tool_done["room_key"] == "code_workbench"
 
     pixelverse_fastapi.heartbeat(pixelverse_fastapi.HeartbeatPayload(
         agent="codex-main",
@@ -146,7 +146,7 @@ def test_fastapi_lifecycle_stays_active_until_explicit_session_completion(monkey
         preserve_phase=True,
     ))
     after_heartbeat = next(item for item in pixelverse_fastapi.get_world()["agents"] if item["agent"] == "codex-main")
-    assert after_heartbeat["room_key"] == "tool_forge"
+    assert after_heartbeat["room_key"] == "code_workbench"
 
     status = emit("status", message="Inspecting results")
     assert status["state"] == "working"
@@ -155,6 +155,51 @@ def test_fastapi_lifecycle_stays_active_until_explicit_session_completion(monkey
     completed = emit("completed", message="Session completed")
     assert completed["state"] == "idle"
     assert completed["room_key"] == "standby_dock"
+
+
+def test_fastapi_counts_and_keeps_local_subagents_in_clone_bay(monkeypatch):
+    monkeypatch.setenv("PIXELVERSE_AGENT_KIND", "codex")
+    monkeypatch.setenv("PIXELVERSE_HERMES_ENABLE", "0")
+
+    import pixelverse_server
+    import pixelverse_fastapi
+
+    importlib.reload(pixelverse_server)
+    pixelverse_fastapi = importlib.reload(pixelverse_fastapi)
+
+    pixelverse_fastapi.generic_event(pixelverse_fastapi.GenericAgentEvent(
+        agent_type="codex",
+        agent="codex-subagent:child-1",
+        name="Macro Research",
+        event="subagent.started",
+        state="working",
+        message="整理總體經濟新聞框架",
+        role="subagent",
+        target_room="clone_bay",
+    ))
+    active_world = pixelverse_fastapi.get_world()
+    active = next(item for item in active_world["agents"] if item["agent"] == "codex-subagent:child-1")
+    assert active["role"] == "subagent"
+    assert active["state"] == "working"
+    assert active["room_key"] == "clone_bay"
+    assert active_world["stats"]["subagent_count"] == 1
+
+    pixelverse_fastapi.generic_event(pixelverse_fastapi.GenericAgentEvent(
+        agent_type="codex",
+        agent="codex-subagent:child-1",
+        name="Macro Research",
+        event="subagent.stopped",
+        state="idle",
+        message="Completed macro framework",
+        role="subagent",
+        target_room="clone_bay",
+    ))
+    stopped_world = pixelverse_fastapi.get_world()
+    stopped = next(item for item in stopped_world["agents"] if item["agent"] == "codex-subagent:child-1")
+    assert stopped["role"] == "subagent"
+    assert stopped["state"] == "idle"
+    assert stopped["room_key"] == "clone_bay"
+    assert stopped_world["stats"]["subagent_count"] == 1
 
 
 def test_fastapi_only_deletes_offline_local_agents(monkeypatch):

@@ -28,12 +28,18 @@ import httpx
 
 ROOT = Path(__file__).resolve().parent
 PUBLIC_DIR = ROOT / "public"
+GLOBAL_MAP_DIR = ROOT / "global_map"
 INDEX_HTML = PUBLIC_DIR / "index.html"
 RUNTIME_DIR = Path(os.getenv("PIXELVERSE_RUNTIME_DIR", str(ROOT / "runtime"))).expanduser()
 RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
 FURNITURE_LAYOUT_FILE = RUNTIME_DIR / "furniture_layout_overrides.json"
+EXPOSURE_STATE_FILE = RUNTIME_DIR / "exposure_state.json"
 HOST = os.getenv("PIXELVERSE_HOST", "0.0.0.0")
-PORT = int(os.getenv("PIXELVERSE_PORT", "4321"))
+PORT = int(os.getenv("PIXELVERSE_PORT", "5660"))
+PUBLIC_HOST_PORT = int(os.getenv("PIXELVERSE_PUBLIC_PORT", str(PORT)))
+TAILSCALE_URL = os.getenv("PIXELVERSE_TAILSCALE_URL", "").strip()
+NGROK_URL = os.getenv("PIXELVERSE_NGROK_URL", "").strip()
+EXPOSURE_MODE = os.getenv("PIXELVERSE_EXPOSURE_MODE", "localhost").strip().lower() or "localhost"
 AGENT_KIND = os.getenv("PIXELVERSE_AGENT_KIND", "hermes").strip().lower() or "hermes"
 STALE_AFTER_SECONDS = int(os.getenv("PIXELVERSE_STALE_AFTER", "45"))
 IDLE_DECAY_SECONDS = int(os.getenv("PIXELVERSE_IDLE_DECAY", "12"))
@@ -63,9 +69,22 @@ HERMES_SOURCE_ENABLED = env_flag(os.getenv("PIXELVERSE_HERMES_ENABLE", "auto"), 
 TOOL_DISPLAY: dict[str, dict[str, str]] = {
     "search_files": {"label": "搜尋檔案", "icon": "🔎"},
     "read_file": {"label": "讀取檔案", "icon": "📜"},
+    "Read": {"label": "讀取檔案", "icon": "📜"},
+    "Grep": {"label": "搜尋內容", "icon": "🔎"},
+    "Glob": {"label": "搜尋路徑", "icon": "🧭"},
+    "LS": {"label": "列出檔案", "icon": "📁"},
     "write_file": {"label": "寫入檔案", "icon": "✍️"},
+    "Write": {"label": "寫入檔案", "icon": "✍️"},
+    "Edit": {"label": "編輯檔案", "icon": "📝"},
+    "MultiEdit": {"label": "批次編輯", "icon": "🧩"},
+    "apply_patch": {"label": "套用 patch", "icon": "🩹"},
     "patch": {"label": "修改檔案", "icon": "🩹"},
     "terminal": {"label": "終端機操作", "icon": "💻"},
+    "Bash": {"label": "Bash 指令", "icon": "💻"},
+    "WebFetch": {"label": "抓取網頁", "icon": "🌐"},
+    "WebSearch": {"label": "網路搜尋", "icon": "🔎"},
+    "TodoWrite": {"label": "更新任務板", "icon": "📝"},
+    "Task": {"label": "派出分身", "icon": "🧬"},
     "browser_navigate": {"label": "打開網頁", "icon": "🧭"},
     "browser_click": {"label": "點擊網頁", "icon": "🖱️"},
     "browser_type": {"label": "填寫表單", "icon": "⌨️"},
@@ -97,6 +116,11 @@ PIXEL_STATE_LABELS = {
     "idle": "待命",
     "thinking": "思考",
     "planning": "規劃",
+    "reading_files": "讀檔 / 搜尋",
+    "editing_files": "編輯 / 寫檔",
+    "shell_command": "終端指令",
+    "browsing": "網頁 / 瀏覽",
+    "external_tool": "外部工具",
     "collaborating": "分身討論",
     "invoking_skill": "技能調用",
     "tool_call": "工具調用",
@@ -137,7 +161,10 @@ ROOM_DISPLAY = {
     "standby_dock": {"label": "待命站", "icon": "🛏️"},
     "think_lab": {"label": "思考室", "icon": "💡"},
     "blueprint_lab": {"label": "藍圖規劃研究室", "icon": "🗺️"},
-    "tool_forge": {"label": "工具鍛造間", "icon": "🛠️"},
+    "file_library": {"label": "檔案索引館", "icon": "📚"},
+    "code_workbench": {"label": "程式編修台", "icon": "📝"},
+    "terminal_bay": {"label": "終端機灣", "icon": "💻"},
+    "tool_forge": {"label": "外部工具中控室", "icon": "🛠️"},
     "response_studio": {"label": "回覆工坊", "icon": "📨"},
     "clone_bay": {"label": "分身工位區", "icon": "🧬"},
     "session_archive": {"label": "工作階段檔案庫", "icon": "🗂️"},
@@ -216,6 +243,68 @@ def save_furniture_layout(layout: Any) -> dict[str, list[dict[str, Any]]]:
     return normalized
 
 
+def normalize_exposure_mode(mode: str | None) -> str:
+    value = (mode or "localhost").strip().lower()
+    return value if value in {"localhost", "tailscale", "ngrok"} else "localhost"
+
+
+def localhost_url() -> str:
+    return f"http://localhost:{PUBLIC_HOST_PORT}"
+
+
+def load_exposure_mode() -> str:
+    if EXPOSURE_STATE_FILE.exists():
+        try:
+            data = json.loads(EXPOSURE_STATE_FILE.read_text(encoding="utf-8"))
+            return normalize_exposure_mode(data.get("mode"))
+        except Exception:
+            pass
+    return normalize_exposure_mode(EXPOSURE_MODE)
+
+
+def save_exposure_mode(mode: str | None) -> str:
+    normalized = normalize_exposure_mode(mode)
+    EXPOSURE_STATE_FILE.write_text(json.dumps({"mode": normalized}, ensure_ascii=False, indent=2), encoding="utf-8")
+    return normalized
+
+
+def exposure_snapshot() -> dict[str, Any]:
+    options = {
+        "localhost": {
+            "mode": "localhost",
+            "label": "Localhost",
+            "url": localhost_url(),
+            "available": True,
+        },
+        "tailscale": {
+            "mode": "tailscale",
+            "label": "Tailscale",
+            "url": TAILSCALE_URL,
+            "available": bool(TAILSCALE_URL),
+        },
+        "ngrok": {
+            "mode": "ngrok",
+            "label": "ngrok",
+            "url": NGROK_URL,
+            "available": bool(NGROK_URL),
+        },
+    }
+    active_mode = load_exposure_mode()
+    active = options.get(active_mode) or options["localhost"]
+    if not active.get("available"):
+        active = options["localhost"]
+        active_mode = "localhost"
+    return {
+        "active_mode": active_mode,
+        "active_url": active["url"],
+        "options": list(options.values()),
+        "notes": {
+            "tailscale": "Requires host-side tailscale serve to be active.",
+            "ngrok": "Set PIXELVERSE_NGROK_URL to show a public ngrok URL.",
+        },
+    }
+
+
 def humanize_tool_name(tool_name: str | None) -> dict[str, str]:
     name = (tool_name or "").strip()
     if not name:
@@ -245,9 +334,131 @@ def humanize_task_summary(task: str | None) -> str:
     return trim_text(str(task), 60) or "待命"
 
 
+FILE_READ_TOOLS = {
+    "read",
+    "grep",
+    "glob",
+    "ls",
+    "read_file",
+    "search_files",
+    "list_files",
+    "find",
+    "rg",
+}
+
+FILE_EDIT_TOOLS = {
+    "edit",
+    "multiedit",
+    "write",
+    "write_file",
+    "patch",
+    "apply_patch",
+    "replace",
+}
+
+SHELL_TOOLS = {
+    "bash",
+    "terminal",
+    "execute",
+    "execute_code",
+    "exec_command",
+    "shell",
+    "run_command",
+}
+
+WEB_TOOLS = {
+    "webfetch",
+    "websearch",
+    "browser_navigate",
+    "browser_snapshot",
+    "browser_click",
+    "browser_type",
+}
+
+COLLAB_TOOLS = {"task", "delegate_task", "subagent", "spawn_agent"}
+SESSION_TOOLS = {"session_search", "history", "memory"}
+PLANNING_TOOLS = {"todowrite", "todo", "update_plan"}
+
+
+def normalize_tool_token(tool_name: str | None) -> str:
+    text = str(tool_name or "").strip()
+    if not text:
+        return ""
+    if text.startswith("mcp__"):
+        return text.lower()
+    return text.rsplit(".", 1)[-1].replace("-", "_").lower()
+
+
+def tool_activity(tool_name: str | None) -> str | None:
+    token = normalize_tool_token(tool_name)
+    if not token:
+        return None
+    if token.startswith("mcp__") or token.startswith("github_"):
+        return "external_tool"
+    if token.startswith("browser_") or token in WEB_TOOLS:
+        return "browsing"
+    if token in FILE_READ_TOOLS:
+        return "reading_files"
+    if token in FILE_EDIT_TOOLS:
+        return "editing_files"
+    if token in SHELL_TOOLS:
+        return "shell_command"
+    if token in COLLAB_TOOLS:
+        return "collaborating"
+    if token in SESSION_TOOLS:
+        return "session_memory"
+    if token in PLANNING_TOOLS:
+        return "planning"
+    return None
+
+
+def activity_room(activity: str | None) -> str | None:
+    return {
+        "reading_files": "file_library",
+        "editing_files": "code_workbench",
+        "shell_command": "terminal_bay",
+        "browsing": "tool_forge",
+        "external_tool": "tool_forge",
+        "collaborating": "clone_bay",
+        "session_memory": "session_archive",
+        "planning": "blueprint_lab",
+    }.get(activity or "")
+
+
+def infer_activity_from_action(action: dict[str, Any] | None = None, task: str | None = None) -> str | None:
+    action = action or {}
+    candidates: list[str | None] = [
+        action.get("tool_name"),
+        *(action.get("tool_names") or []),
+    ]
+    if task:
+        candidates.extend(part.strip() for part in str(task).split(","))
+    found: set[str] = set()
+    for candidate in candidates:
+        activity = tool_activity(candidate)
+        if activity:
+            found.add(activity)
+    for activity in (
+        "collaborating",
+        "session_memory",
+        "editing_files",
+        "shell_command",
+        "reading_files",
+        "browsing",
+        "external_tool",
+        "planning",
+    ):
+        if activity in found:
+            return activity
+    return None
+
+
 def normalize_state(state: str | None) -> str:
     raw = (state or "idle").lower()
-    if raw in {"running", "working", "busy", "collaborating", "invoking_skill", "tool_call", "executing", "coding", "responding"}:
+    if raw in {
+        "running", "working", "busy", "collaborating", "invoking_skill", "tool_call", "executing", "coding",
+        "responding", "reading_files", "editing_files", "shell_command", "browsing", "external_tool",
+    }:
         return "working"
     if raw in {"thinking"}:
         return "thinking"
@@ -286,6 +497,9 @@ def infer_pixel_state(state: str | None, task: str | None = None, action: dict[s
     ).lower()
     if raw_state in PIXEL_STATE_LABELS and raw_state != "working":
         return raw_state
+    activity = infer_activity_from_action(action, task)
+    if activity in {"reading_files", "editing_files", "shell_command", "browsing", "external_tool"}:
+        return activity
     if _contains_any(text, ("awaiting_input", "human_input", "approval", "confirm", "等待輸入", "確認")):
         return "awaiting_input"
     if _contains_any(text, ("self_heal", "recover", "traceback", "修復", "自癒")):
@@ -302,6 +516,16 @@ def infer_pixel_state(state: str | None, task: str | None = None, action: dict[s
         return "invoking_skill"
     if _contains_any(text, ("respond", "reply", "stream", "draft", "回覆", "輸出")):
         return "responding"
+    if _contains_any(text, ("edit", "write", "patch", "coding", "code", "修改", "寫入", "編輯")):
+        return "editing_files"
+    if _contains_any(text, ("bash", "execute", "terminal", "shell", "執行", "終端機", "指令")):
+        return "shell_command"
+    if _contains_any(text, ("read_file", "search_files", "grep", "glob", "ls", "讀取", "搜尋")):
+        return "reading_files"
+    if _contains_any(text, ("browser", "webfetch", "websearch", "網頁", "瀏覽")):
+        return "browsing"
+    if _contains_any(text, ("mcp__", "github_", "外部工具")):
+        return "external_tool"
     if _contains_any(text, ("execute", "coding", "code", "terminal", "patch", "write_file", "執行", "代碼", "終端機", "修改")):
         return "executing"
     if action.get("tool_name") or action.get("tool_names") or _contains_any(text, ("tool", "mcp", "browser", "read_file", "search_files", "工具")):
@@ -322,10 +546,11 @@ def classify_room(
     text = (task or "").lower()
     hint = (room_hint or "").strip()
     pixel_state = infer_pixel_state(state, task)
+    activity = infer_activity_from_action(None, task)
     if normalized in {"offline", "blocked"}:
         key = "offline_corner"
     elif normalized == "self_healing":
-        key = "tool_forge"
+        key = "code_workbench"
     elif normalized in {"awaiting_input", "sleeping"}:
         key = "standby_dock"
     elif normalized == "initializing":
@@ -338,10 +563,14 @@ def classify_room(
         key = "session_archive"
     elif raw_state == "collaborating":
         key = "clone_bay"
+    elif raw_state in {"reading_files", "editing_files", "shell_command", "browsing", "external_tool"}:
+        key = activity_room(raw_state) or "tool_forge"
     elif raw_state in {"invoking_skill", "tool_call", "executing", "coding"}:
         key = "tool_forge"
     elif raw_state == "responding":
         key = "response_studio"
+    elif pixel_state in {"reading_files", "editing_files", "shell_command", "browsing", "external_tool"}:
+        key = activity_room(pixel_state) or "tool_forge"
     elif normalized == "planning":
         key = "blueprint_lab"
     elif normalized == "thinking":
@@ -352,9 +581,17 @@ def classify_room(
         key = "clone_bay"
     elif any(token in text for token in ("session_search", "archive", "history", "session", "memory", "檔案庫", "歷史", "記憶")):
         key = "session_archive"
-    elif any(token in text for token in ("patch", "write", "terminal", "execute", "browser", "修改", "寫入", "終端機", "工具")):
+    elif activity:
+        key = activity_room(activity) or "tool_forge"
+    elif any(token in text for token in ("edit", "patch", "write", "修改", "寫入", "編輯")):
+        key = "code_workbench"
+    elif any(token in text for token in ("bash", "terminal", "execute", "shell", "終端機", "指令")):
+        key = "terminal_bay"
+    elif any(token in text for token in ("browser", "webfetch", "websearch", "mcp__", "github_", "工具")):
         key = "tool_forge"
-    elif any(token in text for token in ("plan", "spec", "search", "read", "map", "research", "規劃", "搜尋", "讀取", "藍圖")):
+    elif any(token in text for token in ("read", "grep", "glob", "ls", "search", "搜尋", "讀取")):
+        key = "file_library"
+    elif any(token in text for token in ("plan", "spec", "map", "research", "規劃", "藍圖")):
         key = "blueprint_lab"
     elif normalized == "working":
         key = "response_studio"
@@ -402,13 +639,16 @@ def summarize_action_task(action_type: str, message: str | None, action: dict[st
 
 def build_main_agent_position(room_key: str) -> tuple[int, int]:
     positions = {
-        "think_lab": (18, 27),
-        "blueprint_lab": (44, 27),
-        "clone_bay": (76, 27),
-        "tool_forge": (64, 72),
-        "response_studio": (42, 72),
-        "standby_dock": (18, 72),
-        "session_archive": (84, 72),
+        "think_lab": (19, 20),
+        "blueprint_lab": (49, 20),
+        "file_library": (19, 53),
+        "clone_bay": (80, 20),
+        "response_studio": (40, 82),
+        "code_workbench": (49, 53),
+        "terminal_bay": (80, 53),
+        "tool_forge": (64, 82),
+        "standby_dock": (16, 82),
+        "session_archive": (86, 82),
         "offline_corner": (9, 90),
     }
     return positions.get(room_key, positions["standby_dock"])
@@ -741,6 +981,8 @@ class WorldState:
         local_agents = self.snapshot_local_agents()
         hermes = HERMES_SOURCE.get_snapshot()
         ollama = OLLAMA_SOURCE.get_snapshot()
+        local_subagent_count = sum(1 for item in local_agents if item.get("role") == "subagent")
+        local_branch_session_count = sum(1 for item in local_agents if item.get("role") == "branch_session")
         merged_agents = merge_agents(
             local_agents,
             hermes.get("subagent_agents", []),
@@ -759,8 +1001,8 @@ class WorldState:
             "stats": {
                 "agent_count": len(merged_agents),
                 "local_agent_count": len(local_agents),
-                "subagent_count": len(hermes.get("subagent_agents", [])),
-                "branch_session_count": len(hermes.get("session_agents", [])),
+                "subagent_count": local_subagent_count + len(hermes.get("subagent_agents", [])),
+                "branch_session_count": local_branch_session_count + len(hermes.get("session_agents", [])),
                 "ollama_model_count": len(ollama.get("model_agents", [])),
                 "active_session_count": hermes.get("active_session_count", 0),
                 "stale_after_seconds": STALE_AFTER_SECONDS,
@@ -1473,6 +1715,8 @@ class PixelverseHandler(BaseHTTPRequestHandler):
             content_type = "image/svg+xml"
         elif path.suffix == ".json":
             content_type = "application/json; charset=utf-8"
+        elif path.suffix in {".yaml", ".yml"}:
+            content_type = "application/yaml; charset=utf-8"
         payload = path.read_bytes()
         self.send_response(200)
         self.send_header("Content-Type", content_type or "application/octet-stream")
@@ -1487,6 +1731,11 @@ class PixelverseHandler(BaseHTTPRequestHandler):
             self._send_text(INDEX_HTML.read_text())
             return
         if parsed.path.startswith("/") and "." in parsed.path.rsplit("/", 1)[-1]:
+            if parsed.path.startswith("/global_map/"):
+                requested = (GLOBAL_MAP_DIR / parsed.path.removeprefix("/global_map/")).resolve()
+                if GLOBAL_MAP_DIR in requested.parents or requested == GLOBAL_MAP_DIR:
+                    self._send_file(requested)
+                    return
             requested = (PUBLIC_DIR / parsed.path.lstrip("/")).resolve()
             if PUBLIC_DIR in requested.parents or requested == PUBLIC_DIR:
                 self._send_file(requested)

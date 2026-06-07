@@ -6,6 +6,9 @@ import { getKenneyRoomLayout } from '../public/kenney_assets.mjs';
 const REQUIRED_ROOMS = [
   'think_lab',
   'blueprint_lab',
+  'file_library',
+  'code_workbench',
+  'terminal_bay',
   'tool_forge',
   'response_studio',
   'standby_dock',

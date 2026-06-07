@@ -140,9 +140,11 @@ def test_classify_room_routes_thinking_and_planning_states():
     assert classify_room("thinking", "drafting response")["room_key"] == "think_lab"
     assert classify_room("planning", "draft spec")["room_key"] == "blueprint_lab"
     assert classify_room("idle", "search_files, read_file")["room_key"] == "standby_dock"
-    assert classify_room("working", "search_files, read_file")["room_key"] == "blueprint_lab"
-    assert classify_room("working", "patch")["room_key"] == "tool_forge"
-    assert classify_room("working", "read_file, patch, write_file")["room_key"] == "tool_forge"
+    assert classify_room("working", "search_files, read_file")["room_key"] == "file_library"
+    assert classify_room("working", "patch")["room_key"] == "code_workbench"
+    assert classify_room("working", "read_file, patch, write_file")["room_key"] == "code_workbench"
+    assert classify_room("working", "Bash")["room_key"] == "terminal_bay"
+    assert classify_room("working", "mcp__filesystem__read")["room_key"] == "tool_forge"
     assert classify_room("working", "delegate_task")["room_key"] == "clone_bay"
     assert classify_room("working", "session_search, history")["room_key"] == "session_archive"
 
@@ -173,10 +175,13 @@ def test_infer_state_from_text_detects_planning_and_idle():
 
 def test_pixel_state_mapping_preserves_fine_grained_ui_meaning():
     assert infer_pixel_state("tool_call", "read_file") == "tool_call"
+    assert infer_pixel_state("working", "Read") == "reading_files"
+    assert infer_pixel_state("working", "Edit") == "editing_files"
+    assert infer_pixel_state("working", "Bash") == "shell_command"
     assert infer_pixel_state("working", "delegate_task to subagent") == "collaborating"
     assert infer_pixel_state("working", "repair traceback") == "self_healing"
     assert classify_room("blocked", "API exception")["room_key"] == "offline_corner"
-    assert classify_room("self_healing", "repair traceback")["room_key"] == "tool_forge"
+    assert classify_room("self_healing", "repair traceback")["room_key"] == "code_workbench"
 
 def test_world_state_exposes_instance_pid_and_pixel_state():
     world = WorldState()
