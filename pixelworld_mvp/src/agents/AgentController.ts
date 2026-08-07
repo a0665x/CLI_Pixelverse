@@ -53,14 +53,15 @@ export class AgentController {
   dispatch(event: AgentWorldEvent, assignment: StationAssignment, route: BehaviorRoute, onArrive?: () => void): boolean {
     const path = findPath(this.grid, this.tilePosition(), assignment.point);
     if (!path) return false;
+    const retargeting = this.moving;
     this.actions.stop();
     this.currentEvent = event;
     this.currentRoute = route;
     this.currentAssignment = assignment;
     this.currentPath = path;
     this.arriveCallback = onArrive;
-    this.follower.setPath(path);
-    this.moving = path.length > 1;
+    this.follower.setPath(path, { preservePosition: retargeting });
+    this.moving = retargeting || path.length > 1;
     if (!this.moving) this.arrive();
     return true;
   }

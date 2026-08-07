@@ -2,6 +2,7 @@ import type { Facing, GridPoint } from '../world/types';
 
 export interface PixelPoint { x: number; y: number }
 export interface FollowerSnapshot { position: PixelPoint; facing: Facing; moving: boolean; arrived: boolean }
+export interface SetPathOptions { preservePosition?: boolean }
 
 export class PathFollower {
   private waypoints: PixelPoint[] = [];
@@ -11,13 +12,13 @@ export class PathFollower {
 
   constructor(private readonly tileSize: number, private readonly speedPixelsPerSecond: number) {}
 
-  setPath(path: GridPoint[]): void {
+  setPath(path: GridPoint[], options: SetPathOptions = {}): void {
     this.waypoints = path.map((point) => ({
       x: point.x * this.tileSize + this.tileSize / 2,
       y: point.y * this.tileSize + this.tileSize / 2,
     }));
-    if (this.waypoints.length > 0) this.position = { ...this.waypoints[0]! };
-    this.index = Math.min(1, this.waypoints.length);
+    if (!options.preservePosition && this.waypoints.length > 0) this.position = { ...this.waypoints[0]! };
+    this.index = options.preservePosition ? 0 : Math.min(1, this.waypoints.length);
   }
 
   update(deltaMs: number): FollowerSnapshot {

@@ -20,4 +20,21 @@ describe('PathFollower', () => {
     follower.setPath([{ x: 1, y: 1 }, { x: 1, y: 2 }]);
     expect(follower.update(100).facing).toBe('down');
   });
+
+  it('preserves its exact pixel position when retargeted mid-segment', () => {
+    const follower = new PathFollower(16, 32);
+    follower.setPath([{ x: 1, y: 1 }, { x: 2, y: 1 }]);
+    expect(follower.update(0).position).toEqual({ x: 24, y: 24 });
+
+    const midSegment = follower.update(187.5);
+    expect(midSegment.position).toEqual({ x: 30, y: 24 });
+
+    follower.setPath([{ x: 1, y: 1 }, { x: 1, y: 2 }], { preservePosition: true });
+    expect(follower.update(0).position).toEqual(midSegment.position);
+
+    const snapshots = Array.from({ length: 10 }, () => follower.update(100));
+    expect(snapshots.every(({ position }) => position.y === 24 || position.x === 24)).toBe(true);
+    expect(snapshots.at(-1)).toMatchObject({ position: { x: 24, y: 40 }, arrived: true });
+    expect(Math.max(...snapshots.map((snapshot) => snapshot.position.x))).toBeLessThan(40);
+  });
 });
