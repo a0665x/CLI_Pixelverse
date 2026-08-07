@@ -41,6 +41,8 @@ export class PathFollower {
         this.position = { ...target };
         this.index += 1;
         distanceLeft -= distance;
+        const next = this.waypoints[this.index];
+        if (next && (dx !== 0) !== (next.x - this.position.x !== 0)) distanceLeft = 0;
       } else {
         const ratio = distanceLeft / distance;
         this.position = { x: this.position.x + dx * ratio, y: this.position.y + dy * ratio };

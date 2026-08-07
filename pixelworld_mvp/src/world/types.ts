@@ -1,7 +1,8 @@
-export type WorldEventKind =
-  | 'session_start' | 'think' | 'plan' | 'read' | 'edit' | 'tool' | 'web'
-  | 'clone' | 'respond' | 'await' | 'blocked' | 'self_heal' | 'idle'
-  | 'offline' | 'heartbeat' | 'unknown';
+export const WORLD_EVENT_KINDS = [
+  'session_start', 'think', 'plan', 'read', 'edit', 'tool', 'web', 'clone',
+  'respond', 'await', 'blocked', 'self_heal', 'idle', 'offline', 'heartbeat', 'unknown',
+] as const;
+export type WorldEventKind = (typeof WORLD_EVENT_KINDS)[number];
 
 export type AgentAction =
   | 'arrive' | 'ponder' | 'plan' | 'read' | 'type' | 'terminal' | 'signal'

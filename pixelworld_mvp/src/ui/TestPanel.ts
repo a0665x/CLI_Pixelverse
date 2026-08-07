@@ -19,15 +19,29 @@ const DEBUG_LAYERS: Array<[DebugLayerName, string]> = [
 const mountedPanels = new WeakMap<HTMLElement, TestPanel>();
 
 export const initialPanelExpanded = (viewportWidth: number): boolean => viewportWidth >= 940;
+export const PANEL_LAYOUT = Object.freeze({ headerClass: 'panel-header', controlsId: 'test-panel-controls', headerHeight: 44, controlsPadding: 10 });
+
+interface PanelBreakpointQuery {
+  readonly matches: boolean;
+  addEventListener(type: 'change', listener: (event: { matches: boolean }) => void): void;
+  removeEventListener(type: 'change', listener: (event: { matches: boolean }) => void): void;
+}
+
+export function bindPanelBreakpoint(query: PanelBreakpointQuery, setExpanded: (expanded: boolean) => void): () => void {
+  const listener = (event: { matches: boolean }) => setExpanded(event.matches);
+  setExpanded(query.matches);
+  query.addEventListener('change', listener);
+  return () => query.removeEventListener('change', listener);
+}
 
 export class TestPanel {
   private readonly roster = document.createElement('select');
   private readonly log = document.createElement('ol');
   private unsubscribe: (() => void) | undefined;
+  private unsubscribeBreakpoint: (() => void) | undefined;
   private destroyed = false;
 
   constructor(private readonly root: HTMLElement, private readonly world: WorldScene) {
-    root.dataset.expanded = String(initialPanelExpanded(window.innerWidth));
     root.replaceChildren();
     const title = document.createElement('h1');
     title.id = 'test-panel-title';
@@ -35,18 +49,21 @@ export class TestPanel {
     const toggle = document.createElement('button');
     toggle.type = 'button';
     toggle.className = 'panel-toggle';
-    toggle.textContent = root.dataset.expanded === 'true' ? '收合面板' : '展開面板';
-    toggle.setAttribute('aria-expanded', root.dataset.expanded);
-    toggle.setAttribute('aria-controls', 'test-panel-controls');
-    toggle.addEventListener('click', () => {
-      const expanded = root.dataset.expanded !== 'true';
+    toggle.setAttribute('aria-controls', PANEL_LAYOUT.controlsId);
+    const setExpanded = (expanded: boolean) => {
       root.dataset.expanded = String(expanded);
       toggle.textContent = expanded ? '收合面板' : '展開面板';
       toggle.setAttribute('aria-expanded', String(expanded));
+    };
+    this.unsubscribeBreakpoint = bindPanelBreakpoint(window.matchMedia('(min-width: 940px)'), setExpanded);
+    toggle.addEventListener('click', () => {
+      const expanded = root.dataset.expanded !== 'true';
+      setExpanded(expanded);
     });
 
     const controls = document.createElement('div');
-    controls.id = 'test-panel-controls';
+    controls.id = PANEL_LAYOUT.controlsId;
+    controls.style.padding = `${PANEL_LAYOUT.controlsPadding}px`;
     const rosterLabel = document.createElement('label');
     rosterLabel.htmlFor = 'agent-selector';
     rosterLabel.textContent = 'Selected Agent';
@@ -93,7 +110,11 @@ export class TestPanel {
     this.log.setAttribute('aria-live', 'polite');
     controls.append(rosterLabel, this.roster, actions, debug, reset, this.log);
     root.setAttribute('aria-labelledby', title.id);
-    root.append(title, toggle, controls);
+    const header = document.createElement('div');
+    header.className = PANEL_LAYOUT.headerClass;
+    header.style.height = `${PANEL_LAYOUT.headerHeight}px`;
+    header.append(title, toggle);
+    root.append(header, controls);
     this.refreshRoster();
     this.unsubscribe = world.onRosterChanged(() => this.refreshRoster());
   }
@@ -103,6 +124,8 @@ export class TestPanel {
     this.destroyed = true;
     this.unsubscribe?.();
     this.unsubscribe = undefined;
+    this.unsubscribeBreakpoint?.();
+    this.unsubscribeBreakpoint = undefined;
     if (mountedPanels.get(this.root) === this) mountedPanels.delete(this.root);
     this.root.replaceChildren();
   }

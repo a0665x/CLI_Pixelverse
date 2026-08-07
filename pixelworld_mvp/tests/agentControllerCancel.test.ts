@@ -15,7 +15,7 @@ describe('AgentController cancellation', () => {
   beforeEach(() => vi.resetModules());
 
   it('freezes at the exact pixel, clears route state, and preserves the next dispatch origin', async () => {
-    const sprite = chain({ x: 0, y: 0 });
+    const sprite = chain({ x: 0, y: 0 }) as ReturnType<typeof chain> & { x: number; y: number };
     const icon = chain({ x: 0, y: 0 });
     const scene = {
       add: { image: vi.fn((x: number, y: number) => { sprite.x = x; sprite.y = y; return sprite; }), text: vi.fn(() => icon) },
@@ -25,23 +25,34 @@ describe('AgentController cancellation', () => {
     const agent = new AgentController(scene as never, 'main', 'main', WORLD_DEFINITION.spawn, NavigationGrid.fromWorld(WORLD_DEFINITION));
     const event = { eventId: 'a', timestamp: 1, source: 'demo' as const, agentId: 'main', agentRole: 'main' as const, kind: 'edit' as const, phase: 'working', activityLabel: 'work' };
     const route = { destinationId: 'queue-plaza', preserveLocation: false, action: 'queue' as const, bubblePolicy: 'persistent' as const, bubbleText: 'wait', priority: 1 };
-    const first = { agentId: 'main', stationId: 'queue-plaza', anchorId: 'a', point: { x: 21, y: 11 }, facing: 'right' as const, action: 'queue' as const, kind: 'interaction' as const };
+    const first = { agentId: 'main', stationId: 'queue-plaza', anchorId: 'a', point: { x: 20, y: 12 }, facing: 'down' as const, action: 'queue' as const, kind: 'interaction' as const };
     const staleArrival = vi.fn();
     expect(agent.dispatch(event, first, route, staleArrival)).toBe(true);
     agent.update(100);
-    const frozen = { x: sprite.x, y: sprite.y };
+    const logical = { x: sprite.x, y: sprite.y };
+    agent.applyRenderOffset(6);
+    sprite.y -= 1;
+    vi.spyOn(agent.actions, 'stop')
+      .mockImplementationOnce(() => { sprite.y += 1; })
+      .mockImplementation(() => undefined);
     agent.cancel();
-    expect({ x: sprite.x, y: sprite.y }).toEqual(frozen);
+    expect({ x: sprite.x, y: sprite.y }).toEqual(logical);
     expect(agent).toMatchObject({ currentPath: [] });
     expect(agent.currentEvent).toBeUndefined();
     expect(agent.currentRoute).toBeUndefined();
     expect(agent.currentAssignment).toBeUndefined();
 
-    const second = { ...first, anchorId: 'b', point: { x: 20, y: 12 }, facing: 'down' as const };
+    const second = { ...first, anchorId: 'b', point: { x: 21, y: 12 }, facing: 'right' as const };
     expect(agent.dispatch({ ...event, eventId: 'b' }, second, route)).toBe(true);
     agent.update(0);
-    expect({ x: sprite.x, y: sprite.y }).toEqual(frozen);
-    agent.update(2_000);
+    expect({ x: sprite.x, y: sprite.y }).toEqual(logical);
+    let previous = { ...logical };
+    for (let index = 0; index < 20; index += 1) {
+      agent.update(100);
+      const current = { x: sprite.x, y: sprite.y };
+      expect(current.x === previous.x || current.y === previous.y).toBe(true);
+      previous = current;
+    }
     expect(staleArrival).not.toHaveBeenCalled();
   });
 });

@@ -71,6 +71,8 @@ export class AgentController {
   heartbeat(): void { this.actions.pulse(); }
 
   cancel(): void {
+    this.actions.stop();
+    this.clearRenderOffset();
     const frozen = { x: this.sprite.x, y: this.sprite.y };
     this.arriveCallback = undefined;
     this.moving = false;
@@ -78,7 +80,6 @@ export class AgentController {
     delete this.currentEvent;
     delete this.currentRoute;
     delete this.currentAssignment;
-    this.actions.stop();
     this.sprite.setPosition(frozen.x, frozen.y);
     this.follower.setPosition(frozen);
     this.preservePositionOnNextDispatch = true;

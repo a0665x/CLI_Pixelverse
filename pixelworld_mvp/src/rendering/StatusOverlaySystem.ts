@@ -9,6 +9,14 @@ interface AgentOverlay {
   bubbleExpiresAt: number;
 }
 
+export type StatusFailureReason = 'station-full' | 'no-path' | 'clone-queue' | 'agent-cap';
+const FAILURE_COPY: Record<StatusFailureReason, string> = {
+  'station-full': '⚠ 工作區已滿',
+  'no-path': '⚠ 無法抵達',
+  'clone-queue': '⚠ Clone 工作位已滿',
+  'agent-cap': '⚠ Agent 已達上限',
+};
+
 export class StatusOverlaySystem {
   private readonly overlays = new Map<string, AgentOverlay>();
   private readonly activities = new Map<string, AgentActivity>();
@@ -64,11 +72,16 @@ export class StatusOverlaySystem {
     this.refreshBuildings();
   }
 
-  showError(agent: AgentController, message: string): void {
+  showError(agent: AgentController, reason: StatusFailureReason): void {
     this.attachAgent(agent);
     const overlay = this.overlays.get(agent.agentId)!;
+    const message = FAILURE_COPY[reason];
+    const prefix = agent.role === 'main' ? 'main' : agent.agentId;
+    this.activities.delete(agent.agentId);
+    overlay.chip.setText(`${prefix} · ${message}`);
     overlay.bubble.setText(message).setVisible(true);
     overlay.bubbleExpiresAt = Number.POSITIVE_INFINITY;
+    this.refreshBuildings();
   }
 
   update(agents: AgentController[]): void {

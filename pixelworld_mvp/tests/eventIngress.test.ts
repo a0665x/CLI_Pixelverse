@@ -45,4 +45,16 @@ describe('EventIngress', () => {
     expect(() => ingress.ingest(input)).not.toThrow();
     expect(ingress.ingest(input)).toEqual({ accepted: false, reason: 'invalid-event' });
   });
+
+  it('trims accepted identity and display fields before deduplication', () => {
+    const ingress = new EventIngress();
+    const result = ingress.ingest({
+      ...valid,
+      eventId: '  evt-trim  ', agentId: ' main ', phase: ' working ', activityLabel: ' 修改程式 ', toolName: ' bash ',
+    });
+    expect(result).toMatchObject({ accepted: true, event: {
+      eventId: 'evt-trim', agentId: 'main', phase: 'working', activityLabel: '修改程式', toolName: 'bash',
+    } });
+    expect(ingress.ingest({ ...valid, eventId: 'evt-trim' })).toEqual({ accepted: false, reason: 'duplicate-event' });
+  });
 });

@@ -47,11 +47,32 @@ describe('WorldScene clone reservations', () => {
     const { scene, agents } = harness({ kind: 'queue' });
     expect(scene.dispatchWorldEvent(event('q', 'main'))).toEqual({ ok: false, reason: 'clone-queue' });
     expect(agents.get('main')!.dispatch).not.toHaveBeenCalled();
+    expect((scene as unknown as { statusOverlay: { showError: ReturnType<typeof vi.fn> } }).statusOverlay.showError)
+      .toHaveBeenCalledWith(agents.get('main'), 'clone-queue');
   });
 
   it('rejects clones at the main-plus-ten cap', () => {
-    const { scene } = harness({ size: 11 });
+    const { scene, agents } = harness({ size: 11 });
     expect(scene.dispatchWorldEvent(event('cap', 'main'))).toEqual({ ok: false, reason: 'agent-cap' });
+    expect((scene as unknown as { statusOverlay: { showError: ReturnType<typeof vi.fn> } }).statusOverlay.showError)
+      .toHaveBeenCalledWith(agents.get('main'), 'agent-cap');
+  });
+
+  it('publishes station-full and no-path failures to the overlay', () => {
+    const stationFull = harness();
+    stationFull.allocator.assign.mockReturnValueOnce({ ok: false, reason: 'station-full' } as never);
+    expect(stationFull.scene.dispatchWorldEvent(event('full', 'main', 'edit'))).toEqual({ ok: false, reason: 'station-full' });
+    expect((stationFull.scene as unknown as { statusOverlay: { showError: ReturnType<typeof vi.fn> } }).statusOverlay.showError)
+      .toHaveBeenCalledWith(stationFull.agents.get('main'), 'station-full');
+
+    const noPath = harness();
+    noPath.agents.get('main')!.dispatch.mockReturnValueOnce(false);
+    noPath.allocator.assign.mockReturnValueOnce({ ok: true, assignment: {
+      agentId: 'main', stationId: 'dispatch-pad', anchorId: 'blocked', point: { x: 34, y: 8 }, facing: 'up', action: 'dispatch', kind: 'interaction',
+    } } as never).mockReturnValueOnce({ ok: false, reason: 'station-full' } as never);
+    expect(noPath.scene.dispatchWorldEvent(event('path', 'main', 'edit'))).toEqual({ ok: false, reason: 'no-path' });
+    expect((noPath.scene as unknown as { statusOverlay: { showError: ReturnType<typeof vi.fn> } }).statusOverlay.showError)
+      .toHaveBeenCalledWith(noPath.agents.get('main'), 'no-path');
   });
 
   it('counts concurrent pending clones against capacity', () => {

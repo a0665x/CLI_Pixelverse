@@ -1,5 +1,5 @@
 import { routeEvent } from './behaviorRouter';
-import type { AgentWorldEvent, BehaviorRoute, WorldEventKind } from '../world/types';
+import { WORLD_EVENT_KINDS, type AgentWorldEvent, type BehaviorRoute, type WorldEventKind } from '../world/types';
 
 export type IngressResult =
   | { accepted: true; event: AgentWorldEvent; route: BehaviorRoute }
@@ -11,7 +11,7 @@ export function sanitizeDisplayDetail(value: string | undefined): string | undef
   return clean || undefined;
 }
 
-const KINDS: readonly WorldEventKind[] = ['session_start', 'think', 'plan', 'read', 'edit', 'tool', 'web', 'clone', 'respond', 'await', 'blocked', 'self_heal', 'idle', 'offline', 'heartbeat', 'unknown'];
+const KINDS = new Set<WorldEventKind>(WORLD_EVENT_KINDS);
 const isNonBlank = (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0;
 
 function isValid(event: unknown): event is AgentWorldEvent {
@@ -21,7 +21,7 @@ function isValid(event: unknown): event is AgentWorldEvent {
     && isNonBlank(value.activityLabel) && Number.isFinite(value.timestamp)
     && (value.source === 'demo' || value.source === 'hook')
     && (value.agentRole === 'main' || value.agentRole === 'subagent')
-    && typeof value.kind === 'string' && KINDS.includes(value.kind as WorldEventKind)
+    && typeof value.kind === 'string' && KINDS.has(value.kind as WorldEventKind)
     && (value.detail === undefined || typeof value.detail === 'string')
     && (value.toolName === undefined || typeof value.toolName === 'string');
 }
@@ -31,12 +31,22 @@ export class EventIngress {
 
   ingest(input: unknown): IngressResult {
     if (!isValid(input)) return { accepted: false, reason: 'invalid-event' };
-    if (this.seen.has(input.eventId)) return { accepted: false, reason: 'duplicate-event' };
-    this.seen.add(input.eventId);
+    const eventId = input.eventId.trim();
+    if (this.seen.has(eventId)) return { accepted: false, reason: 'duplicate-event' };
+    this.seen.add(eventId);
 
     const detail = sanitizeDisplayDetail(input.detail);
-    const { detail: _discarded, ...withoutDetail } = input;
-    const event: AgentWorldEvent = detail === undefined ? withoutDetail : { ...withoutDetail, detail };
+    const toolName = input.toolName?.trim() || undefined;
+    const { detail: _discardedDetail, toolName: _discardedTool, ...withoutOptional } = input;
+    const event: AgentWorldEvent = {
+      ...withoutOptional,
+      eventId,
+      agentId: input.agentId.trim(),
+      phase: input.phase.trim(),
+      activityLabel: input.activityLabel.trim(),
+      ...(detail === undefined ? {} : { detail }),
+      ...(toolName === undefined ? {} : { toolName }),
+    };
     return { accepted: true, event, route: routeEvent(event) };
   }
 }

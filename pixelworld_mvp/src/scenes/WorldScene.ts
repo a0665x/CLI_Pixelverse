@@ -91,11 +91,11 @@ export class WorldScene extends Phaser.Scene {
       return { ok: false, reason: 'unknown-event' };
     }
 
-    const previous = this.allocator.assignmentFor(event.agentId);
     this.releasePendingClone(event.agentId);
     if (event.kind === 'clone' && !this.agents.canCreateSubagent(this.pendingCloneAgents.size)) {
       agent.cancel();
       this.allocator.releaseAgent(event.agentId);
+      this.statusOverlay.showError(agent, 'agent-cap');
       return { ok: false, reason: 'agent-cap' };
     }
     const excluded = new Set<string>();
@@ -107,13 +107,14 @@ export class WorldScene extends Phaser.Scene {
         this.allocator.releaseAgent(event.agentId);
         const reason = triedAnchor ? 'no-path' : allocation.reason;
         this.lastError = reason;
-        this.statusOverlay.showError(agent, reason === 'no-path' ? '⚠ 無法抵達' : '⚠ 工作區已滿');
+        this.statusOverlay.showError(agent, reason === 'no-path' ? 'no-path' : 'station-full');
         return { ok: false, reason };
       }
       triedAnchor = true;
       if (event.kind === 'clone' && allocation.assignment.kind === 'queue') {
         agent.cancel();
         this.allocator.releaseAgent(event.agentId);
+        this.statusOverlay.showError(agent, 'clone-queue');
         return { ok: false, reason: 'clone-queue' };
       }
       const effectiveRoute = allocation.assignment.kind === 'queue'

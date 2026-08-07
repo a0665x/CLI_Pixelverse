@@ -6,11 +6,13 @@ body { display: grid; place-items: center; }
 #game-root { min-width: 0; min-height: 0; display: grid; place-items: center; background: #13251b; image-rendering: pixelated; }
 #game-root canvas { max-width: 100%; max-height: 100%; image-rendering: pixelated; }
 #test-panel-root { overflow: auto; border: 1px solid #41604c; border-radius: 8px; background: #14241a; }
-#test-panel-root { max-height: 44px; }
+#test-panel-root { max-height: 46px; }
 #test-panel-root[data-expanded='true'] { max-height: 45vh; }
 #test-panel-root[data-expanded='false'] #test-panel-controls { display: none; }
-#test-panel-root { padding: 10px; color: #eaf3e8; }
-#test-panel-root h1 { margin: 0 0 8px; font-size: 14px; }
+#test-panel-root { padding: 0; color: #eaf3e8; }
+.panel-header { height: 44px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 6px 10px; }
+#test-panel-controls { padding: 10px; }
+#test-panel-root h1 { margin: 0; font-size: 14px; }
 #test-panel-root button, #test-panel-root select { min-height: 30px; border: 1px solid #52735d; border-radius: 4px; color: #edf8ee; background: #203528; font: inherit; }
 #test-panel-root button { cursor: pointer; touch-action: manipulation; }
 #test-panel-root button:disabled, #test-panel-root select:disabled { cursor: not-allowed; opacity: 0.5; }
@@ -18,7 +20,7 @@ body { display: grid; place-items: center; }
 #test-panel-root button:focus-visible, #test-panel-root select:focus-visible, #test-panel-root input:focus-visible { outline: 2px solid #8dd9a4; outline-offset: 2px; }
 #test-panel-root select { width: 100%; margin: 4px 0 8px; }
 #test-panel-root label { display: block; font-size: 11px; }
-.panel-toggle { width: 100%; }
+.panel-toggle { width: auto; }
 .panel-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 #test-panel-root fieldset { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin: 10px 0; border-color: #41604c; font-size: 11px; }
 .event-log { min-height: 80px; margin: 10px 0 0; padding-left: 20px; color: #bcd4c1; font-size: 10px; }
@@ -30,5 +32,5 @@ body { display: grid; place-items: center; }
 }
 @media (min-width: 940px) {
   #app-shell { grid-template-columns: minmax(0, 1fr) 264px; }
-  #test-panel-root, #test-panel-root[data-expanded='true'] { max-height: none; }
+  #test-panel-root[data-expanded='true'] { max-height: none; }
 }
