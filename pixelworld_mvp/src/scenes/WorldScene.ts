@@ -1,10 +1,14 @@
 import Phaser from 'phaser';
+import { AgentRegistry } from '../agents/AgentRegistry';
+import { EventIngress } from '../events/eventIngress';
 import { TILE_SIZE, WORLD_PIXELS } from '../game/constants';
 import { emitWorldReady } from '../game/worldReady';
 import { NavigationGrid } from '../navigation/navigationGrid';
 import { ensureAssetFallbacks, preloadVillageAssets, PROP_ASSETS } from '../rendering/assetManifest';
 import { createVillageTextures } from '../rendering/createVillageTextures';
 import { clearRenderedForegrounds } from '../rendering/renderedForegrounds';
+import { StationAllocator } from '../stations/stationAllocator';
+import type { AgentWorldEvent } from '../world/types';
 import { WORLD_DEFINITION } from '../world/worldDefinition';
 import { validateWorld } from '../world/validateWorld';
 
@@ -18,12 +22,19 @@ export class WorldScene extends Phaser.Scene {
   readonly worldDefinition = WORLD_DEFINITION;
   readonly navigationGrid = NavigationGrid.fromWorld(WORLD_DEFINITION);
   readonly renderedForegrounds: RenderedForeground[] = [];
+  private ingress = new EventIngress();
+  private allocator = new StationAllocator(WORLD_DEFINITION.stations);
+  private agents!: AgentRegistry;
+  private readonly listeners = new Set<() => void>();
+  private lastError = '';
 
   constructor() { super('world'); }
   preload(): void { preloadVillageAssets(this); }
 
   create(): void {
     clearRenderedForegrounds(this.renderedForegrounds);
+    this.ingress = new EventIngress();
+    this.allocator = new StationAllocator(this.worldDefinition.stations);
     const errors = validateWorld(this.worldDefinition);
     if (errors.length > 0) throw new Error(`Invalid world definition:\n${errors.join('\n')}`);
     ensureAssetFallbacks(this);
@@ -33,7 +44,66 @@ export class WorldScene extends Phaser.Scene {
     this.renderBuildings();
     this.renderScenery();
     this.renderWorkProps();
+    this.agents = new AgentRegistry(this, this.navigationGrid, this.worldDefinition.spawn);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.cleanupAgents, this);
     emitWorldReady(this.game.events, this);
+  }
+
+  update(_time: number, delta: number): void { this.agents?.update(delta); }
+
+  dispatchWorldEvent(event: AgentWorldEvent): { ok: boolean; reason?: string } {
+    const result = this.ingress.ingest(event);
+    if (!result.accepted) return { ok: false, reason: result.reason };
+    const agent = this.agents?.get(event.agentId);
+    if (!agent) return { ok: false, reason: 'unknown-agent' };
+    if (result.route.preserveLocation) {
+      if (event.kind === 'heartbeat') {
+        agent.heartbeat();
+        return { ok: true };
+      }
+      return { ok: false, reason: 'unknown-event' };
+    }
+
+    const previous = this.allocator.assignmentFor(event.agentId);
+    const excluded = new Set<string>();
+    let triedAnchor = false;
+    while (true) {
+      const allocation = this.allocator.assign(event.agentId, result.route.destinationId!, excluded);
+      if (!allocation.ok) {
+        if (previous) this.allocator.restore(previous); else this.allocator.releaseAgent(event.agentId);
+        const reason = triedAnchor ? 'no-path' : allocation.reason;
+        this.lastError = reason;
+        return { ok: false, reason };
+      }
+      triedAnchor = true;
+      const effectiveRoute = allocation.assignment.kind === 'queue'
+        ? { ...result.route, action: 'queue' as const, bubblePolicy: 'persistent' as const, bubbleText: '等待工作位', priority: 80 }
+        : result.route;
+      const onArrive = event.kind === 'clone' && allocation.assignment.kind === 'interaction'
+        ? () => {
+          if (this.agents?.createSubagent(allocation.assignment.point)) this.notifyRoster();
+        }
+        : undefined;
+      if (agent.dispatch(result.event, allocation.assignment, effectiveRoute, onArrive)) return { ok: true };
+      excluded.add(allocation.assignment.anchorId);
+      this.allocator.releaseAgent(event.agentId);
+    }
+  }
+
+  agentList(): Array<{ id: string; role: 'main' | 'subagent' }> {
+    return this.agents?.all().map((agent) => ({ id: agent.agentId, role: agent.role })) ?? [];
+  }
+
+  selectAgent(agentId: string): boolean { return this.agents?.select(agentId) ?? false; }
+  selectedAgentId(): string { return this.agents.selected().agentId; }
+  selectedAgent(): import('../agents/AgentController').AgentController { return this.agents.selected(); }
+  onRosterChanged(listener: () => void): () => void { this.listeners.add(listener); return () => this.listeners.delete(listener); }
+
+  private notifyRoster(): void { this.listeners.forEach((listener) => listener()); }
+
+  private cleanupAgents(): void {
+    this.agents?.destroy();
+    this.listeners.clear();
   }
 
   private renderTerrain(): void {
