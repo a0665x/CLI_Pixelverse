@@ -13,6 +13,8 @@ export type StationAssignmentResult =
   | { ok: true; assignment: StationAssignment }
   | { ok: false; reason: 'unknown-station' | 'station-full' };
 
+const pointKey = (point: GridPoint) => `${point.x},${point.y}`;
+
 export class StationAllocator {
   private readonly stations = new Map<string, StationDefinition>();
   private readonly byAgent = new Map<string, StationAssignment>();
@@ -28,11 +30,10 @@ export class StationAllocator {
   ): StationAssignmentResult {
     const station = this.stations.get(stationId);
     if (!station) return { ok: false, reason: 'unknown-station' };
-    this.releaseAgent(agentId);
-    const occupied = new Set([...this.byAgent.values()].map((item) => item.anchorId));
+    const { anchorIds, pointKeys } = this.occupiedByOtherAgents(agentId);
     const slot = station.interactionSlots.find((item) => {
       const anchorId = `${stationId}:${item.id}`;
-      return !occupied.has(anchorId) && !excludedAnchorIds.has(anchorId);
+      return !anchorIds.has(anchorId) && !pointKeys.has(pointKey(item.point)) && !excludedAnchorIds.has(anchorId);
     });
     if (slot) {
       const assignment: StationAssignment = {
@@ -44,7 +45,8 @@ export class StationAllocator {
     }
     const queueIndex = station.queueAnchors.findIndex((_, index) => {
       const anchorId = `${stationId}:queue-${index}`;
-      return !occupied.has(anchorId) && !excludedAnchorIds.has(anchorId);
+      const point = station.queueAnchors[index]!;
+      return !anchorIds.has(anchorId) && !pointKeys.has(pointKey(point)) && !excludedAnchorIds.has(anchorId);
     });
     if (queueIndex < 0) return { ok: false, reason: 'station-full' };
     const point = station.queueAnchors[queueIndex]!;
@@ -58,6 +60,19 @@ export class StationAllocator {
 
   releaseAgent(agentId: string): void { this.byAgent.delete(agentId); }
   assignmentFor(agentId: string): StationAssignment | undefined { return this.byAgent.get(agentId); }
-  restore(assignment: StationAssignment): void { this.byAgent.set(assignment.agentId, assignment); }
+  restore(assignment: StationAssignment): boolean {
+    const { anchorIds, pointKeys } = this.occupiedByOtherAgents(assignment.agentId);
+    if (anchorIds.has(assignment.anchorId) || pointKeys.has(pointKey(assignment.point))) return false;
+    this.byAgent.set(assignment.agentId, assignment);
+    return true;
+  }
   assignments(): readonly StationAssignment[] { return [...this.byAgent.values()]; }
+
+  private occupiedByOtherAgents(agentId: string): { anchorIds: Set<string>; pointKeys: Set<string> } {
+    const assignments = [...this.byAgent.values()].filter((item) => item.agentId !== agentId);
+    return {
+      anchorIds: new Set(assignments.map((item) => item.anchorId)),
+      pointKeys: new Set(assignments.map((item) => pointKey(item.point))),
+    };
+  }
 }

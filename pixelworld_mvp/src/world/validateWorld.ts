@@ -6,6 +6,11 @@ const inside = (point: GridPoint, world: WorldDefinition) =>
 const blocked = (point: GridPoint, rect: GridRect) =>
   point.x >= rect.x && point.y >= rect.y &&
   point.x < rect.x + rect.width && point.y < rect.y + rect.height;
+const validRect = (rect: GridRect, world: WorldDefinition) =>
+  [rect.x, rect.y, rect.width, rect.height].every(Number.isFinite) &&
+  [rect.x, rect.y, rect.width, rect.height].every(Number.isInteger) &&
+  rect.width > 0 && rect.height > 0 && rect.x >= 0 && rect.y >= 0 &&
+  rect.x + rect.width <= world.width && rect.y + rect.height <= world.height;
 
 export function validateWorld(world: WorldDefinition): string[] {
   const errors: string[] = [];
@@ -15,8 +20,7 @@ export function validateWorld(world: WorldDefinition): string[] {
   if (world.width !== 40 || world.height !== 22) errors.push('world must be 40x22 tiles');
   if (!inside(world.spawn, world)) errors.push('spawn is outside the world');
   world.obstacleRects.forEach((rect, index) => {
-    if (rect.width <= 0 || rect.height <= 0 || rect.x < 0 || rect.y < 0 ||
-        rect.x + rect.width > world.width || rect.y + rect.height > world.height) {
+    if (!validRect(rect, world)) {
       errors.push(`invalid obstacle rectangle: ${index}`);
     }
   });

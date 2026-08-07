@@ -30,4 +30,41 @@ describe('StationAllocator', () => {
     expect(second.ok).toBe(true);
     if (first.ok && second.ok) expect(second.assignment.anchorId).not.toBe(first.assignment.anchorId);
   });
+
+  it('preserves an Agent assignment when a target station is full or unknown', () => {
+    const allocator = new StationAllocator(WORLD_DEFINITION.stations);
+    const first = allocator.assign('main', 'editing-desk');
+    const lounge = WORLD_DEFINITION.stations.find((item) => item.id === 'lounge')!;
+
+    Array.from({ length: lounge.interactionSlots.length + lounge.queueAnchors.length }, (_, index) =>
+      allocator.assign(`lounge-${index}`, lounge.id),
+    );
+
+    expect(allocator.assign('main', lounge.id)).toEqual({ ok: false, reason: 'station-full' });
+    expect(allocator.assignmentFor('main')).toEqual(first.ok ? first.assignment : undefined);
+    expect(allocator.assign('main', 'missing-station')).toEqual({ ok: false, reason: 'unknown-station' });
+    expect(allocator.assignmentFor('main')).toEqual(first.ok ? first.assignment : undefined);
+  });
+
+  it('does not allocate the same physical point from different stations', () => {
+    const point = { x: 4, y: 4 };
+    const allocator = new StationAllocator([
+      { id: 'alpha', zoneId: 'zone', approachAnchors: [point], interactionSlots: [{ id: 'slot', point, facing: 'down', action: 'arrive' }], queueAnchors: [] },
+      { id: 'beta', zoneId: 'zone', approachAnchors: [point], interactionSlots: [{ id: 'slot', point, facing: 'down', action: 'arrive' }], queueAnchors: [] },
+    ]);
+
+    expect(allocator.assign('first', 'alpha').ok).toBe(true);
+    expect(allocator.assign('second', 'beta')).toEqual({ ok: false, reason: 'station-full' });
+  });
+
+  it('restores only when its anchor and physical point are available', () => {
+    const allocator = new StationAllocator(WORLD_DEFINITION.stations);
+    const first = allocator.assign('first', 'editing-desk');
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+
+    expect(allocator.restore({ ...first.assignment, agentId: 'second' })).toBe(false);
+    expect(allocator.assignmentFor('second')).toBeUndefined();
+    expect(allocator.assignmentFor('first')).toEqual(first.assignment);
+  });
 });
