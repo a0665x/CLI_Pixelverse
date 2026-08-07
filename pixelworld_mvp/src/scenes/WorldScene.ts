@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { WORLD_PIXELS } from '../game/constants';
+import { emitWorldReady } from '../game/worldReady';
 
 export class WorldScene extends Phaser.Scene {
   constructor() {
@@ -16,5 +17,6 @@ export class WorldScene extends Phaser.Scene {
       fontFamily: 'monospace',
       fontSize: '12px',
     });
+    emitWorldReady(this.game.events, this);
   }
 }
