@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { WorldScene } from '../scenes/WorldScene';
 import { WORLD_PIXELS, integerScaleFor } from './constants';
+import { subscribeWorldReady } from './worldReady';
 
 export function buildGameConfig(
   parent: string,
@@ -24,7 +25,9 @@ export function buildGameConfig(
     },
     callbacks: {
       postBoot: (game) => {
-        if (onWorldReady) game.events.once('world-ready', onWorldReady);
+        const unsubscribeWorldReady = onWorldReady
+          ? subscribeWorldReady<WorldScene>(game.events, onWorldReady)
+          : () => undefined;
         const root = document.getElementById(parent);
         if (!root) throw new Error(`Missing #${parent}`);
         const resize = () => {
@@ -34,7 +37,10 @@ export function buildGameConfig(
         };
         const observer = new ResizeObserver(resize);
         observer.observe(root);
-        game.events.once(Phaser.Core.Events.DESTROY, () => observer.disconnect());
+        game.events.once(Phaser.Core.Events.DESTROY, () => {
+          observer.disconnect();
+          unsubscribeWorldReady();
+        });
         resize();
       },
     },

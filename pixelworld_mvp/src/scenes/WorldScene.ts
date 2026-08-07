@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { AgentRegistry } from '../agents/AgentRegistry';
+import { DebugOverlay, type DebugLayerName } from '../debug/DebugOverlay';
 import { EventIngress } from '../events/eventIngress';
 import { TILE_SIZE, WORLD_PIXELS } from '../game/constants';
 import { emitWorldReady } from '../game/worldReady';
@@ -11,7 +12,8 @@ import { DepthOcclusionSystem } from '../rendering/DepthOcclusionSystem';
 import { clearRenderedForegrounds } from '../rendering/renderedForegrounds';
 import { StatusOverlaySystem } from '../rendering/StatusOverlaySystem';
 import { StationAllocator } from '../stations/stationAllocator';
-import type { AgentWorldEvent } from '../world/types';
+import { createDemoEvent } from '../ui/demoEvents';
+import type { AgentWorldEvent, WorldEventKind } from '../world/types';
 import { WORLD_DEFINITION } from '../world/worldDefinition';
 import { validateWorld } from '../world/validateWorld';
 
@@ -30,6 +32,9 @@ export class WorldScene extends Phaser.Scene {
   private agents!: AgentRegistry;
   private depthSystem!: DepthOcclusionSystem;
   private statusOverlay!: StatusOverlaySystem;
+  private debugOverlay!: DebugOverlay;
+  private demoSequence = 1;
+  private sceneReady = false;
   private readonly listeners = new Set<() => void>();
   private lastError = '';
 
@@ -37,9 +42,11 @@ export class WorldScene extends Phaser.Scene {
   preload(): void { preloadVillageAssets(this); }
 
   create(): void {
+    this.sceneReady = false;
     clearRenderedForegrounds(this.renderedForegrounds);
     this.ingress = new EventIngress();
     this.allocator = new StationAllocator(this.worldDefinition.stations);
+    this.demoSequence = 1;
     const errors = validateWorld(this.worldDefinition);
     if (errors.length > 0) throw new Error(`Invalid world definition:\n${errors.join('\n')}`);
     ensureAssetFallbacks(this);
@@ -53,7 +60,10 @@ export class WorldScene extends Phaser.Scene {
     this.statusOverlay = new StatusOverlaySystem(this, this.worldDefinition.buildings);
     this.agents.all().forEach((agent) => this.statusOverlay.attachAgent(agent));
     this.depthSystem = new DepthOcclusionSystem(this, this.renderedForegrounds, () => this.agents.all());
+    this.debugOverlay = new DebugOverlay(this, this.navigationGrid, this.worldDefinition, () => this.agents.all());
+    this.agents.all().forEach((agent) => this.bindAgentSelection(agent));
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.cleanupAgents, this);
+    this.sceneReady = true;
     emitWorldReady(this.game.events, this);
   }
 
@@ -61,6 +71,7 @@ export class WorldScene extends Phaser.Scene {
     this.agents?.update(delta);
     if (this.depthSystem && this.agents) this.depthSystem.update(this.agents.selected());
     this.statusOverlay?.update(this.agents.all());
+    this.debugOverlay?.update();
   }
 
   dispatchWorldEvent(event: AgentWorldEvent): { ok: boolean; reason?: string } {
@@ -97,6 +108,7 @@ export class WorldScene extends Phaser.Scene {
           const subagent = this.agents?.createSubagent(allocation.assignment.point);
           if (subagent) {
             this.statusOverlay.attachAgent(subagent);
+            this.bindAgentSelection(subagent);
             this.notifyRoster();
           }
         }
@@ -112,17 +124,44 @@ export class WorldScene extends Phaser.Scene {
   }
 
   agentList(): Array<{ id: string; role: 'main' | 'subagent' }> {
+    if (!this.sceneReady) return [];
     return this.agents?.all().map((agent) => ({ id: agent.agentId, role: agent.role })) ?? [];
   }
 
-  selectAgent(agentId: string): boolean { return this.agents?.select(agentId) ?? false; }
-  selectedAgentId(): string { return this.agents.selected().agentId; }
+  dispatchDemo(kind: WorldEventKind): { ok: boolean; reason?: string } {
+    if (!this.sceneReady) return { ok: false, reason: 'scene-not-ready' };
+    const selected = this.agents?.selected();
+    if (!selected) return { ok: false, reason: 'scene-not-ready' };
+    return this.dispatchWorldEvent(createDemoEvent(
+      kind,
+      { id: selected.agentId, role: selected.role },
+      this.demoSequence++,
+    ));
+  }
+
+  setDebugLayer(name: DebugLayerName, visible: boolean): void {
+    if (this.sceneReady) this.debugOverlay?.setVisible(name, visible);
+  }
+
+  selectAgent(agentId: string): boolean {
+    if (!this.sceneReady) return false;
+    const selected = this.agents?.select(agentId) ?? false;
+    if (selected) this.notifyRoster();
+    return selected;
+  }
+
+  selectedAgentId(): string { return this.sceneReady ? (this.agents?.selected()?.agentId ?? '') : ''; }
   selectedAgent(): import('../agents/AgentController').AgentController { return this.agents.selected(); }
   onRosterChanged(listener: () => void): () => void { this.listeners.add(listener); return () => this.listeners.delete(listener); }
 
   private notifyRoster(): void { this.listeners.forEach((listener) => listener()); }
 
+  private bindAgentSelection(agent: import('../agents/AgentController').AgentController): void {
+    agent.sprite.setInteractive({ useHandCursor: true }).on('pointerdown', () => this.selectAgent(agent.agentId));
+  }
+
   private cleanupAgents(): void {
+    this.sceneReady = false;
     this.statusOverlay?.destroy();
     this.agents?.destroy();
     this.listeners.clear();

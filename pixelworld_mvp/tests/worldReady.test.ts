@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { emitWorldReady } from '../src/game/worldReady';
+import { emitWorldReady, subscribeWorldReady } from '../src/game/worldReady';
 
 class EventBus {
   private listener: ((world: unknown) => void) | undefined;
@@ -10,6 +10,14 @@ class EventBus {
 
   emit(event: string, world: unknown): void {
     if (event === 'world-ready') this.listener?.(world);
+  }
+
+  on(event: string, listener: (world: unknown) => void): void {
+    if (event === 'world-ready') this.listener = listener;
+  }
+
+  off(event: string, listener: (world: unknown) => void): void {
+    if (event === 'world-ready' && this.listener === listener) this.listener = undefined;
   }
 }
 
@@ -26,5 +34,20 @@ describe('world-ready event', () => {
     emitWorldReady(events, world);
 
     expect(received).toBe(world);
+  });
+
+  it('delivers replacement scene instances until unsubscribed', () => {
+    const events = new EventBus();
+    const received: unknown[] = [];
+    const unsubscribe = subscribeWorldReady(events, (world) => received.push(world));
+    const first = { scene: 'first' };
+    const restarted = { scene: 'restarted' };
+
+    emitWorldReady(events, first);
+    emitWorldReady(events, restarted);
+    unsubscribe();
+    emitWorldReady(events, { scene: 'stale' });
+
+    expect(received).toEqual([first, restarted]);
   });
 });
