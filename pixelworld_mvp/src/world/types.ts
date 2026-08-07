@@ -37,6 +37,12 @@ export interface BehaviorRoute {
 }
 
 export interface GridRect { x: number; y: number; width: number; height: number }
+export interface WorldTree { id: string; trunk: GridPoint }
+export interface WorldScenery {
+  trees: WorldTree[];
+  pond: GridRect;
+  flowerBeds: GridRect[];
+}
 export interface WorldBuilding { id: string; label: string; bounds: GridRect; labelAnchor: GridPoint }
 export interface WorldZone { id: string; label: string; bounds: GridRect }
 export interface InteractionSlot {
@@ -60,6 +66,7 @@ export interface WorldDefinition {
   spawn: GridPoint;
   buildings: WorldBuilding[];
   zones: WorldZone[];
+  scenery: WorldScenery;
   obstacleRects: GridRect[];
   stations: StationDefinition[];
 }

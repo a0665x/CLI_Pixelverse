@@ -1,0 +1,8 @@
+Modern Interior Tileset by AppleDog
+Author: Apple Dog
+Source: https://apple-dog.itch.io/modern-tileset-by-appledog
+
+Author terms shown on itch.io comments:
+"Free to use in commercial/non-commercial projects, just put my nickname in credits."
+
+This project uses cropped furniture sprites from the 32x32 tileset for the Pixelverse room visualization.
