@@ -31,8 +31,10 @@ export const PROP_ASSETS = {
   server: '/assets/kenney/Tiles/tile_0251.png',
   crate: '/assets/kenney/Tiles/tile_0254.png',
   appleTerminal: '/assets/appledog/terminal.png',
+  appleSmallTerminal: '/assets/appledog/small-terminal.png',
   appleDesk: '/assets/appledog/office-table.png',
   appleSofa: '/assets/appledog/lounge-sofa.png',
+  applePlant: '/assets/appledog/plant.png',
 } as const;
 
 const tilePath = (number: number) => `/assets/kenney/Tiles/tile_${String(number).padStart(4, '0')}.png`;

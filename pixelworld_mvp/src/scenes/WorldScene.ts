@@ -4,6 +4,7 @@ import { emitWorldReady } from '../game/worldReady';
 import { NavigationGrid } from '../navigation/navigationGrid';
 import { ensureAssetFallbacks, preloadVillageAssets, PROP_ASSETS } from '../rendering/assetManifest';
 import { createVillageTextures } from '../rendering/createVillageTextures';
+import { clearRenderedForegrounds } from '../rendering/renderedForegrounds';
 import { WORLD_DEFINITION } from '../world/worldDefinition';
 import { validateWorld } from '../world/validateWorld';
 
@@ -22,6 +23,7 @@ export class WorldScene extends Phaser.Scene {
   preload(): void { preloadVillageAssets(this); }
 
   create(): void {
+    clearRenderedForegrounds(this.renderedForegrounds);
     const errors = validateWorld(this.worldDefinition);
     if (errors.length > 0) throw new Error(`Invalid world definition:\n${errors.join('\n')}`);
     ensureAssetFallbacks(this);
