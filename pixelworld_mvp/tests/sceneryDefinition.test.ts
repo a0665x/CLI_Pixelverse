@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { NavigationGrid } from '../src/navigation/navigationGrid';
+import { zoneLabelDefinitions } from '../src/rendering/zoneLabels';
 import { WORLD_DEFINITION } from '../src/world/worldDefinition';
 
 describe('village scenery definition', () => {
@@ -19,5 +20,15 @@ describe('village scenery definition', () => {
     expect(grid.isWalkable({ x: 3, y: 13 })).toBe(false);
     expect(grid.isWalkable({ x: 18, y: 7 })).toBe(false);
     expect(grid.isWalkable({ x: 20, y: 17 })).toBe(false);
+  });
+
+  it('exposes every outdoor zone as a deterministic readable label', () => {
+    expect(zoneLabelDefinitions(WORLD_DEFINITION.zones)).toEqual(
+      WORLD_DEFINITION.zones.map((zone) => ({
+        id: zone.id,
+        label: zone.label,
+        anchor: { x: zone.bounds.x + zone.bounds.width / 2, y: zone.bounds.y + 0.25 },
+      })),
+    );
   });
 });

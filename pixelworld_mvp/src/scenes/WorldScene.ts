@@ -11,6 +11,7 @@ import { createVillageTextures } from '../rendering/createVillageTextures';
 import { DepthOcclusionSystem } from '../rendering/DepthOcclusionSystem';
 import { clearRenderedForegrounds } from '../rendering/renderedForegrounds';
 import { StatusOverlaySystem } from '../rendering/StatusOverlaySystem';
+import { zoneLabelDefinitions } from '../rendering/zoneLabels';
 import { StationAllocator } from '../stations/stationAllocator';
 import { createDemoEvent } from '../ui/demoEvents';
 import type { AgentWorldEvent, WorldEventKind } from '../world/types';
@@ -53,6 +54,7 @@ export class WorldScene extends Phaser.Scene {
     createVillageTextures(this);
     this.cameras.main.setBounds(0, 0, WORLD_PIXELS.width, WORLD_PIXELS.height).setRoundPixels(true);
     this.renderTerrain();
+    this.renderZoneLabels();
     this.renderBuildings();
     this.renderScenery();
     this.renderWorkProps();
@@ -200,6 +202,18 @@ export class WorldScene extends Phaser.Scene {
       });
       this.add.text(building.labelAnchor.x * TILE_SIZE, building.labelAnchor.y * TILE_SIZE, building.label, { fontFamily: 'monospace', fontSize: '8px', color: '#fff4cf', backgroundColor: '#203126', padding: { x: 3, y: 2 } }).setOrigin(0.5, 0).setDepth(10_000);
     });
+  }
+
+  private renderZoneLabels(): void {
+    for (const zone of zoneLabelDefinitions(this.worldDefinition.zones)) {
+      this.add.text(zone.anchor.x * TILE_SIZE, zone.anchor.y * TILE_SIZE, zone.label, {
+        fontFamily: 'monospace',
+        fontSize: '7px',
+        color: '#eef8dc',
+        backgroundColor: '#294531cc',
+        padding: { x: 3, y: 1 },
+      }).setOrigin(0.5, 0).setDepth(9_000);
+    }
   }
 
   private renderScenery(): void {
