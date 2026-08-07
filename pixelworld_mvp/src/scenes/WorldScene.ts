@@ -6,6 +6,7 @@ import { emitWorldReady } from '../game/worldReady';
 import { NavigationGrid } from '../navigation/navigationGrid';
 import { ensureAssetFallbacks, preloadVillageAssets, PROP_ASSETS } from '../rendering/assetManifest';
 import { createVillageTextures } from '../rendering/createVillageTextures';
+import { DepthOcclusionSystem } from '../rendering/DepthOcclusionSystem';
 import { clearRenderedForegrounds } from '../rendering/renderedForegrounds';
 import { StationAllocator } from '../stations/stationAllocator';
 import type { AgentWorldEvent } from '../world/types';
@@ -25,6 +26,7 @@ export class WorldScene extends Phaser.Scene {
   private ingress = new EventIngress();
   private allocator = new StationAllocator(WORLD_DEFINITION.stations);
   private agents!: AgentRegistry;
+  private depthSystem!: DepthOcclusionSystem;
   private readonly listeners = new Set<() => void>();
   private lastError = '';
 
@@ -45,11 +47,15 @@ export class WorldScene extends Phaser.Scene {
     this.renderScenery();
     this.renderWorkProps();
     this.agents = new AgentRegistry(this, this.navigationGrid, this.worldDefinition.spawn);
+    this.depthSystem = new DepthOcclusionSystem(this, this.renderedForegrounds, () => this.agents.all());
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.cleanupAgents, this);
     emitWorldReady(this.game.events, this);
   }
 
-  update(_time: number, delta: number): void { this.agents?.update(delta); }
+  update(_time: number, delta: number): void {
+    this.agents?.update(delta);
+    if (this.depthSystem && this.agents) this.depthSystem.update(this.agents.selected());
+  }
 
   dispatchWorldEvent(event: AgentWorldEvent): { ok: boolean; reason?: string } {
     const result = this.ingress.ingest(event);
@@ -120,7 +126,10 @@ export class WorldScene extends Phaser.Scene {
     this.worldDefinition.buildings.forEach((building, index) => {
       const { x, y, width, height } = building.bounds;
       this.add.rectangle(x * TILE_SIZE, y * TILE_SIZE, width * TILE_SIZE, height * TILE_SIZE, palettes[index]!).setOrigin(0).setDepth((y + height) * TILE_SIZE - 2);
-      this.add.rectangle(x * TILE_SIZE - 4, y * TILE_SIZE - 8, width * TILE_SIZE + 8, 28, 0x343b4f).setOrigin(0).setDepth((y + height) * TILE_SIZE);
+      const roof = this.add.rectangle(x * TILE_SIZE - 4, y * TILE_SIZE - 8, width * TILE_SIZE + 8, 28, 0x343b4f)
+        .setOrigin(0)
+        .setDepth((y + height) * TILE_SIZE);
+      this.renderedForegrounds.push({ object: roof as unknown as RenderedForeground['object'], bounds: roof.getBounds(), baselineY: (y + height) * TILE_SIZE });
       this.add.rectangle((x + Math.floor(width / 2)) * TILE_SIZE - 6, (y + height) * TILE_SIZE - 18, 12, 18, 0x5a3828).setOrigin(0).setDepth((y + height) * TILE_SIZE - 1);
       this.add.text(building.labelAnchor.x * TILE_SIZE, building.labelAnchor.y * TILE_SIZE, building.label, { fontFamily: 'monospace', fontSize: '8px', color: '#fff4cf', backgroundColor: '#203126', padding: { x: 3, y: 2 } }).setOrigin(0.5, 0).setDepth(10_000);
     });
