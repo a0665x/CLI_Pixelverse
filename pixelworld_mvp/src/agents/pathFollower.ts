@@ -12,6 +12,10 @@ export class PathFollower {
 
   constructor(private readonly tileSize: number, private readonly speedPixelsPerSecond: number) {}
 
+  setPosition(position: PixelPoint): void {
+    this.position = { ...position };
+  }
+
   setPath(path: GridPoint[], options: SetPathOptions = {}): void {
     this.waypoints = path.map((point) => ({
       x: point.x * this.tileSize + this.tileSize / 2,

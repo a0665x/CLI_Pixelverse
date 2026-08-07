@@ -21,6 +21,7 @@ export class AgentController {
   private moving = false;
   private arriveCallback: (() => void) | undefined;
   private renderOffsetX = 0;
+  private preservePositionOnNextDispatch = false;
 
   constructor(
     scene: Phaser.Scene,
@@ -53,15 +54,16 @@ export class AgentController {
   dispatch(event: AgentWorldEvent, assignment: StationAssignment, route: BehaviorRoute, onArrive?: () => void): boolean {
     const path = findPath(this.grid, this.tilePosition(), assignment.point);
     if (!path) return false;
-    const retargeting = this.moving;
+    const preservePosition = this.moving || this.preservePositionOnNextDispatch;
     this.actions.stop();
     this.currentEvent = event;
     this.currentRoute = route;
     this.currentAssignment = assignment;
     this.currentPath = path;
     this.arriveCallback = onArrive;
-    this.follower.setPath(path, { preservePosition: retargeting });
-    this.moving = retargeting || path.length > 1;
+    this.follower.setPath(path, { preservePosition });
+    this.preservePositionOnNextDispatch = false;
+    this.moving = preservePosition || path.length > 1;
     if (!this.moving) this.arrive();
     return true;
   }
@@ -69,11 +71,17 @@ export class AgentController {
   heartbeat(): void { this.actions.pulse(); }
 
   cancel(): void {
+    const frozen = { x: this.sprite.x, y: this.sprite.y };
     this.arriveCallback = undefined;
     this.moving = false;
     this.currentPath = [];
+    delete this.currentEvent;
+    delete this.currentRoute;
     delete this.currentAssignment;
     this.actions.stop();
+    this.sprite.setPosition(frozen.x, frozen.y);
+    this.follower.setPosition(frozen);
+    this.preservePositionOnNextDispatch = true;
   }
 
   update(deltaMs: number): void {
@@ -90,6 +98,7 @@ export class AgentController {
     this.arriveCallback = undefined;
     this.moving = false;
     this.currentPath = [];
+    this.preservePositionOnNextDispatch = false;
     this.clearRenderOffset();
     this.actions.destroy();
     this.sprite.destroy();

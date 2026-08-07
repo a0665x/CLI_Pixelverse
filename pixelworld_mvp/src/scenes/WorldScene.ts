@@ -35,6 +35,7 @@ export class WorldScene extends Phaser.Scene {
   private statusOverlay!: StatusOverlaySystem;
   private debugOverlay!: DebugOverlay;
   private demoSequence = 1;
+  private readonly pendingCloneAgents = new Set<string>();
   private sceneReady = false;
   private readonly listeners = new Set<() => void>();
   private lastError = '';
@@ -48,6 +49,7 @@ export class WorldScene extends Phaser.Scene {
     this.ingress = new EventIngress();
     this.allocator = new StationAllocator(this.worldDefinition.stations);
     this.demoSequence = 1;
+    this.pendingCloneAgents.clear();
     const errors = validateWorld(this.worldDefinition);
     if (errors.length > 0) throw new Error(`Invalid world definition:\n${errors.join('\n')}`);
     ensureAssetFallbacks(this);
@@ -90,7 +92,8 @@ export class WorldScene extends Phaser.Scene {
     }
 
     const previous = this.allocator.assignmentFor(event.agentId);
-    if (event.kind === 'clone' && !this.agents.canCreateSubagent()) {
+    this.releasePendingClone(event.agentId);
+    if (event.kind === 'clone' && !this.agents.canCreateSubagent(this.pendingCloneAgents.size)) {
       agent.cancel();
       this.allocator.releaseAgent(event.agentId);
       return { ok: false, reason: 'agent-cap' };
@@ -116,8 +119,11 @@ export class WorldScene extends Phaser.Scene {
       const effectiveRoute = allocation.assignment.kind === 'queue'
         ? { ...result.route, action: 'queue' as const, bubblePolicy: 'persistent' as const, bubbleText: '等待工作位', priority: 80 }
         : result.route;
-      const onArrive = event.kind === 'clone' && allocation.assignment.kind === 'interaction'
+      const reservesClone = event.kind === 'clone' && allocation.assignment.kind === 'interaction';
+      if (reservesClone) this.pendingCloneAgents.add(event.agentId);
+      const onArrive = reservesClone
         ? () => {
+          this.releasePendingClone(event.agentId);
           const subagent = this.agents?.createSubagent(allocation.assignment.point);
           if (subagent) {
             this.statusOverlay.attachAgent(subagent);
@@ -131,6 +137,7 @@ export class WorldScene extends Phaser.Scene {
         this.statusOverlay.publish(agent, result.event, effectiveRoute, station?.buildingId);
         return { ok: true };
       }
+      if (reservesClone) this.releasePendingClone(event.agentId);
       excluded.add(allocation.assignment.anchorId);
       this.allocator.releaseAgent(event.agentId);
     }
@@ -169,6 +176,8 @@ export class WorldScene extends Phaser.Scene {
 
   private notifyRoster(): void { this.listeners.forEach((listener) => listener()); }
 
+  private releasePendingClone(agentId: string): void { this.pendingCloneAgents.delete(agentId); }
+
   private bindAgentSelection(agent: import('../agents/AgentController').AgentController): void {
     agent.sprite.setInteractive({ useHandCursor: true }).on('pointerdown', () => this.selectAgent(agent.agentId));
   }
@@ -177,6 +186,7 @@ export class WorldScene extends Phaser.Scene {
     this.sceneReady = false;
     this.statusOverlay?.destroy();
     this.agents?.destroy();
+    this.pendingCloneAgents.clear();
     this.listeners.clear();
   }
 

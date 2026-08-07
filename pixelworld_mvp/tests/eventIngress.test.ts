@@ -26,4 +26,23 @@ describe('EventIngress', () => {
     expect(sanitizeDisplayDetail(valid.detail)).toBe('scriptsecret/script long line');
     expect(sanitizeDisplayDetail('x'.repeat(100))).toHaveLength(80);
   });
+
+  it.each([
+    null,
+    42,
+    { ...valid, eventId: null },
+    { ...valid, agentId: 7 },
+    { ...valid, phase: null },
+    { ...valid, activityLabel: 9 },
+    { ...valid, timestamp: 'now' },
+    { ...valid, source: 'socket' },
+    { ...valid, agentRole: 'worker' },
+    { ...valid, kind: 'explode' },
+    { ...valid, detail: 123 },
+    { ...valid, toolName: { name: 'bash' } },
+  ])('rejects malformed runtime input without throwing: %#', (input) => {
+    const ingress = new EventIngress();
+    expect(() => ingress.ingest(input)).not.toThrow();
+    expect(ingress.ingest(input)).toEqual({ accepted: false, reason: 'invalid-event' });
+  });
 });

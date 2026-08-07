@@ -24,7 +24,7 @@ export class AgentRegistry {
     return agent;
   }
 
-  canCreateSubagent(): boolean { return this.agents.size < MAX_SUBAGENTS + 1; }
+  canCreateSubagent(reserved = 0): boolean { return this.agents.size + reserved < MAX_SUBAGENTS + 1; }
 
   get(agentId: string): AgentController | undefined { return this.agents.get(agentId); }
   all(): AgentController[] { return [...this.agents.values()]; }

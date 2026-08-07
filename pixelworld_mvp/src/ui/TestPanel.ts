@@ -18,6 +18,8 @@ const DEBUG_LAYERS: Array<[DebugLayerName, string]> = [
 ];
 const mountedPanels = new WeakMap<HTMLElement, TestPanel>();
 
+export const initialPanelExpanded = (viewportWidth: number): boolean => viewportWidth >= 940;
+
 export class TestPanel {
   private readonly roster = document.createElement('select');
   private readonly log = document.createElement('ol');
@@ -25,7 +27,7 @@ export class TestPanel {
   private destroyed = false;
 
   constructor(private readonly root: HTMLElement, private readonly world: WorldScene) {
-    root.dataset.expanded = window.matchMedia('(min-width: 940px)').matches ? 'true' : 'false';
+    root.dataset.expanded = String(initialPanelExpanded(window.innerWidth));
     root.replaceChildren();
     const title = document.createElement('h1');
     title.id = 'test-panel-title';
