@@ -25,7 +25,7 @@ export class TestPanel {
   private destroyed = false;
 
   constructor(private readonly root: HTMLElement, private readonly world: WorldScene) {
-    root.dataset.expanded = 'true';
+    root.dataset.expanded = window.matchMedia('(min-width: 940px)').matches ? 'true' : 'false';
     root.replaceChildren();
     const title = document.createElement('h1');
     title.id = 'test-panel-title';
@@ -33,8 +33,8 @@ export class TestPanel {
     const toggle = document.createElement('button');
     toggle.type = 'button';
     toggle.className = 'panel-toggle';
-    toggle.textContent = '收合面板';
-    toggle.setAttribute('aria-expanded', 'true');
+    toggle.textContent = root.dataset.expanded === 'true' ? '收合面板' : '展開面板';
+    toggle.setAttribute('aria-expanded', root.dataset.expanded);
     toggle.setAttribute('aria-controls', 'test-panel-controls');
     toggle.addEventListener('click', () => {
       const expanded = root.dataset.expanded !== 'true';

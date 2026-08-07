@@ -90,18 +90,29 @@ export class WorldScene extends Phaser.Scene {
     }
 
     const previous = this.allocator.assignmentFor(event.agentId);
+    if (event.kind === 'clone' && !this.agents.canCreateSubagent()) {
+      agent.cancel();
+      this.allocator.releaseAgent(event.agentId);
+      return { ok: false, reason: 'agent-cap' };
+    }
     const excluded = new Set<string>();
     let triedAnchor = false;
     while (true) {
       const allocation = this.allocator.assign(event.agentId, result.route.destinationId!, excluded);
       if (!allocation.ok) {
-        if (previous) this.allocator.restore(previous); else this.allocator.releaseAgent(event.agentId);
+        agent.cancel();
+        this.allocator.releaseAgent(event.agentId);
         const reason = triedAnchor ? 'no-path' : allocation.reason;
         this.lastError = reason;
         this.statusOverlay.showError(agent, reason === 'no-path' ? '⚠ 無法抵達' : '⚠ 工作區已滿');
         return { ok: false, reason };
       }
       triedAnchor = true;
+      if (event.kind === 'clone' && allocation.assignment.kind === 'queue') {
+        agent.cancel();
+        this.allocator.releaseAgent(event.agentId);
+        return { ok: false, reason: 'clone-queue' };
+      }
       const effectiveRoute = allocation.assignment.kind === 'queue'
         ? { ...result.route, action: 'queue' as const, bubblePolicy: 'persistent' as const, bubbleText: '等待工作位', priority: 80 }
         : result.route;

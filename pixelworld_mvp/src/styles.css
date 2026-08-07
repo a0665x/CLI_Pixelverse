@@ -8,6 +8,7 @@ body { display: grid; place-items: center; }
 #test-panel-root { overflow: auto; border: 1px solid #41604c; border-radius: 8px; background: #14241a; }
 #test-panel-root { max-height: 44px; }
 #test-panel-root[data-expanded='true'] { max-height: 45vh; }
+#test-panel-root[data-expanded='false'] #test-panel-controls { display: none; }
 #test-panel-root { padding: 10px; color: #eaf3e8; }
 #test-panel-root h1 { margin: 0 0 8px; font-size: 14px; }
 #test-panel-root button, #test-panel-root select { min-height: 30px; border: 1px solid #52735d; border-radius: 4px; color: #edf8ee; background: #203528; font: inherit; }

@@ -68,6 +68,14 @@ export class AgentController {
 
   heartbeat(): void { this.actions.pulse(); }
 
+  cancel(): void {
+    this.arriveCallback = undefined;
+    this.moving = false;
+    this.currentPath = [];
+    delete this.currentAssignment;
+    this.actions.stop();
+  }
+
   update(deltaMs: number): void {
     if (this.moving) {
       const snapshot = this.follower.update(deltaMs);
