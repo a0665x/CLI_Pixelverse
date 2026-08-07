@@ -35,3 +35,31 @@ export interface BehaviorRoute {
   bubbleText: string;
   priority: number;
 }
+
+export interface GridRect { x: number; y: number; width: number; height: number }
+export interface WorldBuilding { id: string; label: string; bounds: GridRect; labelAnchor: GridPoint }
+export interface WorldZone { id: string; label: string; bounds: GridRect }
+export interface InteractionSlot {
+  id: string;
+  point: GridPoint;
+  facing: Facing;
+  action: AgentAction;
+}
+export interface StationDefinition {
+  id: string;
+  zoneId: string;
+  buildingId?: string;
+  approachAnchors: GridPoint[];
+  interactionSlots: InteractionSlot[];
+  queueAnchors: GridPoint[];
+  interiorSceneId?: string;
+}
+export interface WorldDefinition {
+  width: number;
+  height: number;
+  spawn: GridPoint;
+  buildings: WorldBuilding[];
+  zones: WorldZone[];
+  obstacleRects: GridRect[];
+  stations: StationDefinition[];
+}

@@ -1,0 +1,61 @@
+import type { AgentAction, Facing, GridPoint, StationDefinition, WorldDefinition } from './types';
+
+const slot = (id: string, x: number, y: number, facing: Facing, action: AgentAction) => ({
+  id, point: { x, y }, facing, action,
+});
+const station = (
+  id: string,
+  zoneId: string,
+  slots: ReturnType<typeof slot>[],
+  queue: GridPoint[] = [],
+  buildingId?: string,
+): StationDefinition => ({
+  id,
+  zoneId,
+  ...(buildingId ? { buildingId, interiorSceneId: `${buildingId}-interior` } : {}),
+  approachAnchors: slots.map((item) => item.point),
+  interactionSlots: slots,
+  queueAnchors: queue,
+});
+
+export const WORLD_DEFINITION: WorldDefinition = {
+  width: 40,
+  height: 22,
+  spawn: { x: 20, y: 11 },
+  buildings: [
+    { id: 'knowledge-hall', label: 'Knowledge & Planning Hall', bounds: { x: 2, y: 2, width: 9, height: 5 }, labelAnchor: { x: 6, y: 1 } },
+    { id: 'build-workshop', label: 'Build Workshop', bounds: { x: 15, y: 2, width: 10, height: 5 }, labelAnchor: { x: 20, y: 1 } },
+    { id: 'signal-station', label: 'Collaboration & Signal Station', bounds: { x: 29, y: 2, width: 9, height: 5 }, labelAnchor: { x: 33, y: 1 } },
+  ],
+  zones: [
+    { id: 'arrival-zone', label: 'Arrival / Queue Plaza', bounds: { x: 14, y: 9, width: 12, height: 5 } },
+    { id: 'thinking-zone', label: 'Thinking Garden', bounds: { x: 2, y: 10, width: 10, height: 8 } },
+    { id: 'lounge-zone', label: 'Lounge Lawn', bounds: { x: 14, y: 16, width: 12, height: 4 } },
+    { id: 'repair-zone', label: 'Repair Corner', bounds: { x: 31, y: 11, width: 7, height: 7 } },
+  ],
+  obstacleRects: [
+    { x: 2, y: 2, width: 9, height: 5 },
+    { x: 15, y: 2, width: 10, height: 5 },
+    { x: 29, y: 2, width: 9, height: 5 },
+    { x: 27, y: 14, width: 4, height: 3 },
+    { x: 3, y: 12, width: 2, height: 4 },
+    { x: 0, y: 0, width: 40, height: 1 },
+    { x: 0, y: 21, width: 40, height: 1 },
+    { x: 0, y: 1, width: 1, height: 20 },
+    { x: 39, y: 1, width: 1, height: 20 },
+  ],
+  stations: [
+    station('arrival', 'arrival-zone', [slot('arrival-1', 20, 11, 'down', 'arrive')]),
+    station('thinking-garden', 'thinking-zone', [slot('think-1', 7, 14, 'down', 'ponder'), slot('think-2', 9, 13, 'left', 'ponder')], [{ x: 10, y: 15 }]),
+    station('planning-board', 'knowledge-hall', [slot('plan-1', 5, 8, 'up', 'plan'), slot('plan-2', 6, 8, 'up', 'plan')], [{ x: 4, y: 8 }], 'knowledge-hall'),
+    station('reading-desk', 'knowledge-hall', [slot('read-1', 8, 8, 'up', 'read'), slot('read-2', 9, 8, 'up', 'read')], [{ x: 10, y: 8 }], 'knowledge-hall'),
+    station('editing-desk', 'build-workshop', [slot('edit-1', 18, 8, 'up', 'type'), slot('edit-2', 19, 8, 'up', 'type')], [{ x: 17, y: 8 }, { x: 20, y: 8 }], 'build-workshop'),
+    station('terminal-rack', 'build-workshop', [slot('tool-1', 22, 8, 'up', 'terminal'), slot('tool-2', 23, 8, 'up', 'terminal')], [{ x: 21, y: 8 }], 'build-workshop'),
+    station('signal-console', 'signal-station', [slot('signal-1', 31, 8, 'up', 'signal'), slot('signal-2', 32, 8, 'up', 'signal')], [{ x: 30, y: 8 }], 'signal-station'),
+    station('dispatch-pad', 'signal-station', [slot('dispatch-1', 34, 8, 'up', 'dispatch'), slot('dispatch-2', 35, 8, 'up', 'dispatch')], [{ x: 36, y: 8 }], 'signal-station'),
+    station('response-desk', 'signal-station', [slot('response-1', 29, 8, 'up', 'respond'), slot('response-2', 30, 8, 'up', 'respond')], [{ x: 28, y: 8 }], 'signal-station'),
+    station('queue-plaza', 'arrival-zone', [slot('queue-1', 16, 12, 'right', 'queue'), slot('queue-2', 17, 12, 'right', 'queue'), slot('queue-3', 18, 12, 'right', 'queue')], [{ x: 19, y: 12 }, { x: 20, y: 12 }]),
+    station('repair-bench', 'repair-zone', [slot('repair-1', 33, 14, 'right', 'repair'), slot('repair-2', 33, 15, 'right', 'repair')], [{ x: 32, y: 14 }, { x: 32, y: 15 }]),
+    station('lounge', 'lounge-zone', [slot('lounge-1', 19, 18, 'down', 'rest'), slot('lounge-2', 21, 18, 'down', 'rest'), slot('lounge-3', 23, 18, 'down', 'rest')], [{ x: 18, y: 18 }, { x: 24, y: 18 }]),
+  ],
+};
