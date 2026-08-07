@@ -21,6 +21,12 @@ export class DepthOcclusionSystem {
 
   update(selected: AgentController): void {
     this.agents().forEach((agent, index) => agent.sprite.setDepth(depthFromFootY(agent.sprite.y, index + 1)));
+    const activeForegrounds = new Set(this.foregrounds);
+    for (const foreground of this.coveredSince.keys()) {
+      if (activeForegrounds.has(foreground)) continue;
+      foreground.object.setAlpha(1);
+      this.coveredSince.delete(foreground);
+    }
     const now = this.scene.time.now;
     const selectedBounds = selected.sprite.getBounds();
     for (const foreground of this.foregrounds) {
