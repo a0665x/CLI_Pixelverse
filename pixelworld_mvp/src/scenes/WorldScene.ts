@@ -9,6 +9,7 @@ import { buildingEaveGeometry } from '../rendering/buildingForeground';
 import { createVillageTextures } from '../rendering/createVillageTextures';
 import { DepthOcclusionSystem } from '../rendering/DepthOcclusionSystem';
 import { clearRenderedForegrounds } from '../rendering/renderedForegrounds';
+import { StatusOverlaySystem } from '../rendering/StatusOverlaySystem';
 import { StationAllocator } from '../stations/stationAllocator';
 import type { AgentWorldEvent } from '../world/types';
 import { WORLD_DEFINITION } from '../world/worldDefinition';
@@ -28,6 +29,7 @@ export class WorldScene extends Phaser.Scene {
   private allocator = new StationAllocator(WORLD_DEFINITION.stations);
   private agents!: AgentRegistry;
   private depthSystem!: DepthOcclusionSystem;
+  private statusOverlay!: StatusOverlaySystem;
   private readonly listeners = new Set<() => void>();
   private lastError = '';
 
@@ -48,6 +50,8 @@ export class WorldScene extends Phaser.Scene {
     this.renderScenery();
     this.renderWorkProps();
     this.agents = new AgentRegistry(this, this.navigationGrid, this.worldDefinition.spawn);
+    this.statusOverlay = new StatusOverlaySystem(this, this.worldDefinition.buildings);
+    this.agents.all().forEach((agent) => this.statusOverlay.attachAgent(agent));
     this.depthSystem = new DepthOcclusionSystem(this, this.renderedForegrounds, () => this.agents.all());
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.cleanupAgents, this);
     emitWorldReady(this.game.events, this);
@@ -56,6 +60,7 @@ export class WorldScene extends Phaser.Scene {
   update(_time: number, delta: number): void {
     this.agents?.update(delta);
     if (this.depthSystem && this.agents) this.depthSystem.update(this.agents.selected());
+    this.statusOverlay?.update(this.agents.all());
   }
 
   dispatchWorldEvent(event: AgentWorldEvent): { ok: boolean; reason?: string } {
@@ -80,6 +85,7 @@ export class WorldScene extends Phaser.Scene {
         if (previous) this.allocator.restore(previous); else this.allocator.releaseAgent(event.agentId);
         const reason = triedAnchor ? 'no-path' : allocation.reason;
         this.lastError = reason;
+        this.statusOverlay.showError(agent, reason === 'no-path' ? '⚠ 無法抵達' : '⚠ 工作區已滿');
         return { ok: false, reason };
       }
       triedAnchor = true;
@@ -88,10 +94,18 @@ export class WorldScene extends Phaser.Scene {
         : result.route;
       const onArrive = event.kind === 'clone' && allocation.assignment.kind === 'interaction'
         ? () => {
-          if (this.agents?.createSubagent(allocation.assignment.point)) this.notifyRoster();
+          const subagent = this.agents?.createSubagent(allocation.assignment.point);
+          if (subagent) {
+            this.statusOverlay.attachAgent(subagent);
+            this.notifyRoster();
+          }
         }
         : undefined;
-      if (agent.dispatch(result.event, allocation.assignment, effectiveRoute, onArrive)) return { ok: true };
+      if (agent.dispatch(result.event, allocation.assignment, effectiveRoute, onArrive)) {
+        const station = this.worldDefinition.stations.find((item) => item.id === result.route.destinationId);
+        this.statusOverlay.publish(agent, result.event, effectiveRoute, station?.buildingId);
+        return { ok: true };
+      }
       excluded.add(allocation.assignment.anchorId);
       this.allocator.releaseAgent(event.agentId);
     }
@@ -109,6 +123,7 @@ export class WorldScene extends Phaser.Scene {
   private notifyRoster(): void { this.listeners.forEach((listener) => listener()); }
 
   private cleanupAgents(): void {
+    this.statusOverlay?.destroy();
     this.agents?.destroy();
     this.listeners.clear();
   }
