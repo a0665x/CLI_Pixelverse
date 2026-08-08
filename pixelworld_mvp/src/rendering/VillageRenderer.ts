@@ -35,10 +35,12 @@ export interface AtlasTileCommand {
   depth: number;
   scale?: number;
   flipX?: boolean;
+  tint?: number;
   originX?: number;
   originY?: number;
   buildingId?: string;
   buildingRole?: 'roof' | 'wall' | 'door' | 'door-frame' | 'threshold' | 'signboard';
+  sceneryRole?: 'river' | 'bridge' | 'crop' | 'pasture' | 'fence' | 'prop';
   foregroundKind?: VillageForegroundKind;
   foregroundGroup?: string;
 }
@@ -56,12 +58,20 @@ export interface VillageRenderPlan {
   roadTiles: GridPoint[];
   buildingTiles: AtlasTileCommand[];
   foregrounds: PlannedForeground[];
+  hitRegions: Array<{ buildingId: string; bounds: PixelRect }>;
+}
+
+export interface BuildingHitRegion {
+  buildingId: string;
+  bounds: Phaser.Geom.Rectangle;
+  object: Phaser.GameObjects.Zone;
 }
 
 export interface RenderedVillage {
   foregrounds: RenderedForeground[];
   roadTiles: GridPoint[];
   buildingTiles: AtlasTileCommand[];
+  hitRegions: BuildingHitRegion[];
 }
 
 const tilePosition = (point: GridPoint) => ({ x: point.x * TILE_SIZE, y: point.y * TILE_SIZE });
@@ -105,7 +115,7 @@ function buildingCommands(building: WorldBuilding): {
   tiles: AtlasTileCommand[];
   foregrounds: PlannedForeground[];
 } {
-  const style = BUILDING_REGION_SETS[building.id];
+  const style = BUILDING_REGION_SETS[building.themeId];
   if (!style) throw new Error(`[pixelworld] missing Puny building regions for ${building.id}`);
   const frontY = (building.bounds.y + building.bounds.height) * TILE_SIZE;
   const geometry = buildingForegroundGeometry(building, TILE_SIZE);
@@ -133,6 +143,7 @@ function buildingCommands(building: WorldBuilding): {
           foregroundKind: 'roof',
           foregroundGroup: roofGroup,
           flipX: localX === building.bounds.width - 1,
+          tint: style.tint,
         },
       ));
     }
@@ -151,6 +162,7 @@ function buildingCommands(building: WorldBuilding): {
           buildingId: building.id,
           buildingRole: isDoor ? 'door' : 'wall',
           flipX: localX === building.bounds.width - 1,
+          tint: style.tint,
         },
       ));
     }
@@ -166,6 +178,7 @@ function buildingCommands(building: WorldBuilding): {
       buildingRole: 'door-frame',
       foregroundKind: 'door-frame',
       foregroundGroup: doorGroup,
+      tint: style.tint,
     }),
     tileCommand(
       'signboards', style.signboard,
@@ -183,12 +196,19 @@ function buildingCommands(building: WorldBuilding): {
   };
 }
 
-function pondRegion(x: number, y: number, width: number, height: number): PunyRegionName {
-  const horizontal = x === 0 ? 'Left' : x === width - 1 ? 'Right' : '';
-  if (y === 0) return horizontal ? (`waterTop${horizontal}`) as PunyRegionName : 'waterEdgeTop';
-  if (y === height - 1) return horizontal ? (`waterBottom${horizontal}`) as PunyRegionName : 'waterEdgeBottom';
-  if (horizontal === 'Left') return 'waterEdgeLeft';
-  if (horizontal === 'Right') return 'waterEdgeRight';
+function waterRegion(point: GridPoint, water: Set<string>): PunyRegionName {
+  const left = water.has(`${point.x - 1},${point.y}`);
+  const right = water.has(`${point.x + 1},${point.y}`);
+  const up = water.has(`${point.x},${point.y - 1}`);
+  const down = water.has(`${point.x},${point.y + 1}`);
+  if (!up && !left) return 'waterTopLeft';
+  if (!up && !right) return 'waterTopRight';
+  if (!down && !left) return 'waterBottomLeft';
+  if (!down && !right) return 'waterBottomRight';
+  if (!up) return 'waterEdgeTop';
+  if (!down) return 'waterEdgeBottom';
+  if (!left) return 'waterEdgeLeft';
+  if (!right) return 'waterEdgeRight';
   return 'waterCenter';
 }
 
@@ -208,22 +228,35 @@ export function buildVillageRenderPlan(world: WorldDefinition): VillageRenderPla
   const plazaSet = new Set(world.terrain.filter(({ kind }) => kind === 'plaza').flatMap(pointsInArea).map(gridKey));
   uniqueRoadTiles.forEach((point) => commands.push(tileCommand('roads', roadRegion(point, roadSet, plazaSet), point, -900)));
 
-  const pond = world.scenery.pond;
-  for (let y = 0; y < pond.height; y += 1) {
-    for (let x = 0; x < pond.width; x += 1) {
-      commands.push(tileCommand(
-        'waterAndDecorations',
-        pondRegion(x, y, pond.width, pond.height),
-        { x: pond.x + x, y: pond.y + y },
-        -800,
+  const riverPoints = [...new Map(world.scenery.river
+    .flatMap((bounds) => pointsInArea({ kind: 'grass', cost: 1, bounds }))
+    .map((point) => [gridKey(point), point])).values()];
+  const riverSet = new Set(riverPoints.map(gridKey));
+  riverPoints.forEach((point) => commands.push(tileCommand(
+    'waterAndDecorations', waterRegion(point, riverSet), point, -800, { sceneryRole: 'river' },
+  )));
+  for (const pasture of world.scenery.pastures) {
+    for (const point of pointsInArea({ kind: 'grass', cost: 2, bounds: pasture })) {
+      if ((point.x + point.y) % 3 === 0) commands.push(tileCommand(
+        'waterAndDecorations', 'grassFlowers', point, -805, { sceneryRole: 'pasture' },
       ));
+    }
+  }
+  for (const field of world.scenery.cropFields) {
+    for (const point of pointsInArea({ kind: 'grass', cost: 2, bounds: field })) {
+      commands.push(tileCommand('waterAndDecorations', 'flowerPink', point, -790, { sceneryRole: 'crop' }));
     }
   }
   for (const bed of world.scenery.flowerBeds) {
     for (let y = bed.y; y < bed.y + bed.height; y += 1) {
       for (let x = bed.x; x < bed.x + bed.width; x += 1) {
-        commands.push(tileCommand('waterAndDecorations', 'flowerPink', { x, y }, -790));
+        commands.push(tileCommand('waterAndDecorations', 'flowerPink', { x, y }, -790, { sceneryRole: 'prop' }));
       }
+    }
+  }
+  for (const bridge of world.scenery.bridges) {
+    for (const point of pointsInArea({ kind: 'road', cost: 1, bounds: bridge })) {
+      commands.push(tileCommand('waterAndDecorations', 'brownWall', point, -760, { sceneryRole: 'bridge' }));
     }
   }
 
@@ -256,12 +289,12 @@ export function buildVillageRenderPlan(world: WorldDefinition): VillageRenderPla
 
   // The obstacle border doubles as a compact GBA-style village fence.
   for (let x = 0; x < world.width; x += 1) {
-    commands.push(tileCommand('waterAndDecorations', 'fence', { x, y: 0 }, -780));
-    if (x < 18 || x > 21) commands.push(tileCommand('waterAndDecorations', 'fence', { x, y: world.height - 1 }, -780));
+    commands.push(tileCommand('waterAndDecorations', 'fence', { x, y: 0 }, -780, { sceneryRole: 'fence' }));
+    if (x < 18 || x > 21) commands.push(tileCommand('waterAndDecorations', 'fence', { x, y: world.height - 1 }, -780, { sceneryRole: 'fence' }));
   }
   for (let y = 1; y < world.height - 1; y += 1) {
-    commands.push(tileCommand('waterAndDecorations', 'fence', { x: 0, y }, -780));
-    commands.push(tileCommand('waterAndDecorations', 'fence', { x: world.width - 1, y }, -780));
+    commands.push(tileCommand('waterAndDecorations', 'fence', { x: 0, y }, -780, { sceneryRole: 'fence' }));
+    commands.push(tileCommand('waterAndDecorations', 'fence', { x: world.width - 1, y }, -780, { sceneryRole: 'fence' }));
   }
 
   const buildingTiles: AtlasTileCommand[] = [];
@@ -273,13 +306,29 @@ export function buildVillageRenderPlan(world: WorldDefinition): VillageRenderPla
   commands.push(...buildingTiles);
 
   commands.push(
-    tileCommand('trunksAndWorkZones', 'signboard', { x: 10, y: 14 }, 14 * TILE_SIZE + 12),
-    tileCommand('trunksAndWorkZones', 'bench', { x: 20, y: 17 }, 17 * TILE_SIZE + 12),
-    tileCommand('trunksAndWorkZones', 'supplyCrate', { x: 34, y: 14 }, 14 * TILE_SIZE + 12),
-    tileCommand('waterAndDecorations', 'rock', { x: 36, y: 18 }, -770),
+    tileCommand('trunksAndWorkZones', 'signboard', { x: 8, y: 7 }, 7 * TILE_SIZE + 12, { sceneryRole: 'prop' }),
+    tileCommand('trunksAndWorkZones', 'bench', { x: 13, y: 12 }, 12 * TILE_SIZE + 12, { sceneryRole: 'prop' }),
+    tileCommand('trunksAndWorkZones', 'bench', { x: 16, y: 12 }, 12 * TILE_SIZE + 12, { sceneryRole: 'prop' }),
+    tileCommand('trunksAndWorkZones', 'supplyCrate', { x: 24, y: 7 }, 7 * TILE_SIZE + 12, { sceneryRole: 'prop' }),
+    tileCommand('trunksAndWorkZones', 'supplyCrate', { x: 37, y: 17 }, 17 * TILE_SIZE + 12, { sceneryRole: 'prop' }),
+    tileCommand('waterAndDecorations', 'rock', { x: 21, y: 18 }, -770, { sceneryRole: 'prop' }),
   );
 
-  return { commands, roadTiles: uniqueRoadTiles, buildingTiles, foregrounds };
+  return {
+    commands,
+    roadTiles: uniqueRoadTiles,
+    buildingTiles,
+    foregrounds,
+    hitRegions: world.buildings.map((building) => ({
+      buildingId: building.id,
+      bounds: {
+        x: building.bounds.x * TILE_SIZE,
+        y: building.bounds.y * TILE_SIZE,
+        width: building.bounds.width * TILE_SIZE,
+        height: building.bounds.height * TILE_SIZE,
+      },
+    })),
+  };
 }
 
 export class VillageRenderer {
@@ -298,6 +347,7 @@ export class VillageRenderer {
         .setDepth(command.depth);
       if (command.scale) image.setScale(command.scale);
       if (command.flipX) image.setFlipX(true);
+      if (command.tint) image.setTint(command.tint);
       if (!command.foregroundGroup) continue;
       const group = groupedImages.get(command.foregroundGroup) ?? [];
       group.push(image);
@@ -326,6 +376,13 @@ export class VillageRenderer {
         kind: foreground.kind,
       };
     });
-    return { foregrounds, roadTiles: plan.roadTiles, buildingTiles: plan.buildingTiles };
+    const hitRegions = plan.hitRegions.map(({ buildingId, bounds }): BuildingHitRegion => ({
+      buildingId,
+      bounds: { ...bounds } as Phaser.Geom.Rectangle,
+      object: this.scene.add.zone(bounds.x, bounds.y, bounds.width, bounds.height)
+        .setOrigin(0, 0)
+        .setInteractive({ useHandCursor: true }),
+    }));
+    return { foregrounds, roadTiles: plan.roadTiles, buildingTiles: plan.buildingTiles, hitRegions };
   }
 }

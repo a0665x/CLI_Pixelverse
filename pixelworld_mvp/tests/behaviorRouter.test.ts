@@ -15,16 +15,19 @@ const event = (kind: WorldEventKind): AgentWorldEvent => ({
 
 describe('routeEvent', () => {
   it.each([
-    ['think', 'planning-board', 'ponder'],
-    ['plan', 'planning-board', 'plan'],
-    ['read', 'reading-desk', 'read'],
-    ['edit', 'editing-desk', 'type'],
-    ['tool', 'signal-console', 'terminal'],
-    ['web', 'signal-console', 'signal'],
-    ['clone', 'dispatch-pad', 'dispatch'],
-    ['await', 'queue-plaza', 'queue'],
-    ['blocked', 'repair-bench', 'repair'],
-    ['idle', 'lounge', 'rest'],
+    ['think', 'research-plan', 'ponder'],
+    ['plan', 'research-plan', 'plan'],
+    ['read', 'research-read', 'read'],
+    ['edit', 'maker-edit', 'type'],
+    ['tool', 'maker-tool', 'terminal'],
+    ['web', 'research-web', 'signal'],
+    ['clone', 'dispatch-pod', 'dispatch'],
+    ['respond', 'response-radio', 'respond'],
+    ['await', 'queue-benches', 'queue'],
+    ['blocked', 'blocked-apron', 'repair'],
+    ['self_heal', 'maker-heal', 'repair'],
+    ['idle', 'rest-sofa', 'rest'],
+    ['offline', 'rest-bed', 'offline'],
   ] as const)('maps %s to %s/%s', (kind, destinationId, action) => {
     expect(routeEvent(event(kind))).toMatchObject({ destinationId, action });
   });

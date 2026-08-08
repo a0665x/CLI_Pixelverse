@@ -20,7 +20,7 @@ describe('StatusOverlaySystem failure transitions', () => {
     const created: ReturnType<typeof textObject>[] = [];
     const scene = { time: { now: 100 }, add: { text: vi.fn(() => { const text = textObject(); created.push(text); return text; }) } };
     const overlay = new StatusOverlaySystem(scene as never, [{
-      id: 'build', label: 'Build', bounds: { x: 0, y: 0, width: 1, height: 1 }, labelAnchor: { x: 0, y: 0 },
+      id: 'build', label: 'Build', themeId: 'maker-workshop', bounds: { x: 0, y: 0, width: 1, height: 1 }, labelAnchor: { x: 0, y: 0 },
       entrance: { outside: { x: 0, y: 1 }, threshold: { x: 0, y: 0 }, entryFacing: 'up', exitFacing: 'down' },
     }]);
     const agent = {
@@ -44,7 +44,7 @@ describe('StatusOverlaySystem failure transitions', () => {
     const created: ReturnType<typeof textObject>[] = [];
     const scene = { time: { now: 100 }, add: { text: vi.fn(() => { const text = textObject(); created.push(text); return text; }) } };
     const overlay = new StatusOverlaySystem(scene as never, [{
-      id: 'build', label: 'Build', bounds: { x: 0, y: 0, width: 1, height: 1 }, labelAnchor: { x: 0, y: 0 },
+      id: 'build', label: 'Build', themeId: 'maker-workshop', bounds: { x: 0, y: 0, width: 1, height: 1 }, labelAnchor: { x: 0, y: 0 },
       entrance: { outside: { x: 0, y: 1 }, threshold: { x: 0, y: 0 }, entryFacing: 'up', exitFacing: 'down' },
     }]);
     const agent = { agentId: 'main', role: 'main', sprite: { x: 8, y: 8 }, presence: () => ({ kind: 'outside' }) } as AgentController;

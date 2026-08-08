@@ -19,20 +19,35 @@ class FakeImage {
   }
   setDepth(depth: number): this { this.depth = depth; return this; }
   setFlipX(flipX: boolean): this { this.flipX = flipX; return this; }
+  setTint(_tint: number): this { return this; }
   setAlpha(alpha: number): this { this.alpha = alpha; return this; }
   getBounds() { return { x: this.x, y: this.y, width: this.width, height: this.height }; }
 }
 
+class FakeZone {
+  interactive = false;
+  constructor(readonly x: number, readonly y: number, readonly width: number, readonly height: number) {}
+  setOrigin(_x: number, _y = _x): this { return this; }
+  setInteractive(): this { this.interactive = true; return this; }
+}
+
 const fakeScene = () => {
   const images: FakeImage[] = [];
+  const zones: FakeZone[] = [];
   return {
     images,
+    zones,
     scene: {
       add: {
         image: (x: number, y: number, texture: string, frame?: number) => {
           const image = new FakeImage(x, y, texture, frame);
           images.push(image);
           return image;
+        },
+        zone: (x: number, y: number, width: number, height: number) => {
+          const zone = new FakeZone(x, y, width, height);
+          zones.push(zone);
+          return zone;
         },
       },
     },
@@ -50,8 +65,9 @@ describe('Puny village renderer contracts', () => {
     }
   });
 
-  it('covers each logical building bound with native atlas cells instead of scaled house motifs', () => {
+  it('builds four compact native-scale houses with distinct theme signatures', () => {
     const plan = buildVillageRenderPlan(WORLD_DEFINITION);
+    const signatures = new Set<string>();
     for (const building of WORLD_DEFINITION.buildings) {
       const tiles = plan.buildingTiles.filter(({ buildingId }) => buildingId === building.id);
       const shell = tiles.filter(({ buildingRole }) => ['roof', 'wall', 'door'].includes(buildingRole ?? ''));
@@ -66,7 +82,12 @@ describe('Puny village renderer contracts', () => {
       expect(shell).toHaveLength(building.bounds.width * building.bounds.height);
       expect(tiles.every(({ scale }) => scale === undefined), building.id).toBe(true);
       expect(tiles.every(({ x, y }) => x % TILE_SIZE === 0 && y % TILE_SIZE === 0), building.id).toBe(true);
+      expect(building.bounds.width).toBeGreaterThanOrEqual(4);
+      expect(building.bounds.width).toBeLessThanOrEqual(6);
+      signatures.add(tiles.filter(({ buildingRole }) => buildingRole === 'roof').map(({ region, tint }) => `${region}:${tint ?? 0}`).join('|'));
     }
+    expect(signatures.size).toBe(4);
+    expect(plan.hitRegions.map(({ buildingId }) => buildingId)).toEqual(WORLD_DEFINITION.buildings.map(({ id }) => id));
   });
 
   it('separates static facade cells from roof and door-frame foreground groups', () => {
@@ -104,6 +125,8 @@ describe('Puny village renderer contracts', () => {
     expect(roofs).toHaveLength(WORLD_DEFINITION.buildings.length);
     expect(doors).toHaveLength(WORLD_DEFINITION.buildings.length);
     expect(canopies).toHaveLength(WORLD_DEFINITION.scenery.trees.length);
+    expect(rendered.hitRegions).toHaveLength(4);
+    expect(rendered.hitRegions.every(({ object }) => (object as unknown as FakeZone).interactive)).toBe(true);
     for (const [index, building] of WORLD_DEFINITION.buildings.entries()) {
       expect(roofs[index]!.bounds).toEqual({
         x: building.bounds.x * TILE_SIZE,
@@ -142,15 +165,24 @@ describe('Puny village renderer contracts', () => {
     expect([...new Set(roads.map(({ region }) => region))]).toEqual(expect.arrayContaining([
       'dirtHorizontal', 'dirtVertical', 'dirtJunction', 'dirtPlaza',
     ]));
-    expect(roads.find(({ x, y }) => x === 2 * TILE_SIZE && y === 8 * TILE_SIZE)?.region).toBe('dirtHorizontal');
-    expect(roads.find(({ x, y }) => x === 11 * TILE_SIZE && y === 10 * TILE_SIZE)?.region).toBe('dirtVertical');
-    expect(roads.find(({ x, y }) => x === 11 * TILE_SIZE && y === 8 * TILE_SIZE)?.region).toBe('dirtJunction');
+    expect(roads.find(({ x, y }) => x === 21 * TILE_SIZE && y === 8 * TILE_SIZE)?.region).toBe('dirtHorizontal');
+    expect(roads.find(({ x, y }) => x === 10 * TILE_SIZE && y === 15 * TILE_SIZE)?.region).toBe('dirtVertical');
+    expect(roads.find(({ x, y }) => x === 10 * TILE_SIZE && y === 8 * TILE_SIZE)?.region).toBe('dirtJunction');
+  });
+
+  it('renders winding water, two bridges, crops, pasture, and farm details from world data', () => {
+    const plan = buildVillageRenderPlan(WORLD_DEFINITION);
+    const roles = plan.commands.map(({ sceneryRole }) => sceneryRole);
+    expect(roles.filter((role) => role === 'bridge')).toHaveLength(6);
+    expect(roles).toContain('river');
+    expect(roles).toContain('crop');
+    expect(roles).toContain('pasture');
   });
 
   it('emits only atlas commands in concrete cross-layer depth families', () => {
     const plan = buildVillageRenderPlan(WORLD_DEFINITION);
     const commandsAt = (layer: string) => plan.commands.filter((command) => command.layer === layer);
-    const knowledge = plan.buildingTiles.filter(({ buildingId }) => buildingId === 'knowledge-hall');
+    const research = plan.buildingTiles.filter(({ buildingId }) => buildingId === 'research-library');
 
     expect(plan.commands.every(({ primitive }) => primitive === 'atlas')).toBe(true);
     expect(new Set(plan.commands.map(({ layer }) => layer))).toEqual(new Set([
@@ -159,10 +191,10 @@ describe('Puny village renderer contracts', () => {
     ]));
     expect(new Set(commandsAt('grass').map(({ depth }) => depth))).toEqual(new Set([-1_000]));
     expect(new Set(commandsAt('roads').map(({ depth }) => depth))).toEqual(new Set([-900]));
-    expect(new Set(knowledge.filter(({ buildingRole }) => buildingRole === 'wall').map(({ depth }) => depth))).toEqual(new Set([-700]));
-    expect(new Set(knowledge.filter(({ buildingRole }) => buildingRole === 'roof').map(({ depth }) => depth))).toEqual(new Set([80]));
-    expect(knowledge.find(({ buildingRole }) => buildingRole === 'door-frame')?.depth).toBe(112);
-    expect(knowledge.find(({ buildingRole }) => buildingRole === 'signboard')?.depth).toBe(113);
+    expect(new Set(research.filter(({ buildingRole }) => buildingRole === 'wall').map(({ depth }) => depth))).toEqual(new Set([-700]));
+    expect(new Set(research.filter(({ buildingRole }) => buildingRole === 'roof').map(({ depth }) => depth))).toEqual(new Set([80]));
+    expect(research.find(({ buildingRole }) => buildingRole === 'door-frame')?.depth).toBe(112);
+    expect(research.find(({ buildingRole }) => buildingRole === 'signboard')?.depth).toBe(113);
   });
 
   it('renders the diagnostic atlas texture without invalid frame lookups when Puny is missing', () => {

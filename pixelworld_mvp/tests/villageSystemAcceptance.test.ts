@@ -38,49 +38,54 @@ const indexOfPoint = (points: GridPoint[], target: GridPoint) =>
 describe('complete GBA village hook workflow', () => {
   const grid = NavigationGrid.fromWorld(WORLD_DEFINITION);
 
-  it('enters Build Workshop for edit, then exits its door and uses the road to Signal Station for tool', () => {
+  it('enters Maker Workshop for edit, then exits its door and crosses the north bridge for web research', () => {
     const edit = assignment('edit');
     const editPlan = planAgentTravel(WORLD_DEFINITION, { kind: 'outside' }, edit.assignment);
-    const workshop = building('build-workshop');
+    const workshop = building('maker-workshop');
     expect(editPlan).toMatchObject({
       waypoints: [workshop.entrance.outside, workshop.entrance.threshold],
       destinationBuilding: { buildingId: workshop.id, threshold: workshop.entrance.threshold },
     });
 
-    const tool = assignment('tool');
-    const toolPlan = planAgentTravel(WORLD_DEFINITION, inside(workshop.id), tool.assignment);
-    const signal = building('signal-station');
-    expect(toolPlan.waypoints).toEqual([
-      workshop.entrance.outside, signal.entrance.outside, signal.entrance.threshold,
+    const web = assignment('web');
+    const webPlan = planAgentTravel(WORLD_DEFINITION, inside(workshop.id), web.assignment);
+    const research = building('research-library');
+    expect(webPlan.waypoints).toEqual([
+      workshop.entrance.outside, research.entrance.outside, research.entrance.threshold,
     ]);
-    const path = findPathVia(grid, workshop.entrance.threshold, toolPlan.waypoints)!;
-    expect(indexOfPoint(path, workshop.entrance.outside)).toBeLessThan(indexOfPoint(path, signal.entrance.outside));
-    expect(indexOfPoint(path, signal.entrance.outside)).toBeLessThan(indexOfPoint(path, signal.entrance.threshold));
-    expect(path.some(({ y, x }) => y === 8 && x > workshop.entrance.outside.x && x < signal.entrance.outside.x)).toBe(true);
+    const path = findPathVia(grid, workshop.entrance.threshold, webPlan.waypoints)!;
+    expect(indexOfPoint(path, workshop.entrance.outside)).toBeLessThan(indexOfPoint(path, research.entrance.outside));
+    expect(indexOfPoint(path, research.entrance.outside)).toBeLessThan(indexOfPoint(path, research.entrance.threshold));
+    expect(path.some(({ y, x }) => y === 8 && x >= 18 && x <= 20)).toBe(true);
   });
 
-  it('routes think through Knowledge Hall and exits buildings for outdoor idle/blocked hooks', () => {
+  it('routes think through Research Library, idle to Rest Cabin, and blocked to the outdoor apron', () => {
     const think = assignment('think');
-    const knowledge = building('knowledge-hall');
-    const signal = building('signal-station');
-    const thinkPlan = planAgentTravel(WORLD_DEFINITION, inside(signal.id), think.assignment);
+    const research = building('research-library');
+    const collaboration = building('collaboration-barn');
+    const thinkPlan = planAgentTravel(WORLD_DEFINITION, inside(collaboration.id), think.assignment);
     expect(thinkPlan.waypoints).toEqual([
-      signal.entrance.outside, knowledge.entrance.outside, knowledge.entrance.threshold,
+      collaboration.entrance.outside, research.entrance.outside, research.entrance.threshold,
     ]);
 
-    for (const kind of ['idle', 'blocked'] as const) {
-      const next = assignment(kind);
-      const plan = planAgentTravel(WORLD_DEFINITION, inside(knowledge.id), next.assignment);
-      expect(plan.destinationBuilding).toBeUndefined();
-      expect(plan.waypoints[0]).toEqual(knowledge.entrance.outside);
-      expect(plan.waypoints.at(-1)).toEqual(next.assignment.point);
-      expect(findPathVia(grid, knowledge.entrance.threshold, plan.waypoints)).not.toBeNull();
-    }
+    const idle = assignment('idle');
+    const rest = building('rest-cabin');
+    expect(planAgentTravel(WORLD_DEFINITION, inside(research.id), idle.assignment)).toMatchObject({
+      waypoints: [research.entrance.outside, rest.entrance.outside, rest.entrance.threshold],
+      destinationBuilding: { buildingId: rest.id },
+    });
+
+    const blocked = assignment('blocked');
+    const blockedPlan = planAgentTravel(WORLD_DEFINITION, inside(research.id), blocked.assignment);
+    expect(blockedPlan.destinationBuilding).toBeUndefined();
+    expect(blockedPlan.waypoints[0]).toEqual(research.entrance.outside);
+    expect(blockedPlan.waypoints.at(-1)).toEqual(blocked.assignment.point);
+    expect(findPathVia(grid, research.entrance.threshold, blockedPlan.waypoints)).not.toBeNull();
   });
 
-  it('keeps clone inside Signal Station and heartbeat at the current presence', () => {
+  it('keeps clone inside Collaboration Barn and heartbeat at the current presence', () => {
     const clone = assignment('clone');
-    const signal = building('signal-station');
+    const signal = building('collaboration-barn');
     expect(planAgentTravel(WORLD_DEFINITION, { kind: 'outside' }, clone.assignment)).toMatchObject({
       waypoints: [signal.entrance.outside, signal.entrance.threshold],
       destinationBuilding: { buildingId: signal.id },

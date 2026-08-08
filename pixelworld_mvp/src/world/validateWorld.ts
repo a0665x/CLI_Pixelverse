@@ -1,4 +1,5 @@
 import type { GridPoint, GridRect, TerrainArea, WorldDefinition } from './types';
+import { INTERIOR_DEFINITIONS } from './interiorDefinitions';
 
 const inside = (point: GridPoint, world: WorldDefinition) =>
   Number.isInteger(point.x) && Number.isInteger(point.y) &&
@@ -17,12 +18,17 @@ const pointsIn = (rect: GridRect): GridPoint[] => Array.from(
   (_, index) => ({ x: rect.x + (index % rect.width), y: rect.y + Math.floor(index / rect.width) }),
 );
 const terrainContains = (areas: TerrainArea[], point: GridPoint) => areas.some((area) => blocked(point, area.bounds));
+const rectGap = (first: GridRect, second: GridRect) => ({
+  x: Math.max(first.x - (second.x + second.width), second.x - (first.x + first.width), 0),
+  y: Math.max(first.y - (second.y + second.height), second.y - (first.y + first.height), 0),
+});
 
 export function validateWorld(world: WorldDefinition): string[] {
   const errors: string[] = [];
   const ids = new Set<string>();
   const locationIds = new Set([...world.zones.map((item) => item.id), ...world.buildings.map((item) => item.id)]);
   const buildingIds = new Set(world.buildings.map((item) => item.id));
+  const bridgeKeys = new Set(world.scenery.bridges.flatMap(pointsIn).map(key));
   if (world.width !== 40 || world.height !== 22) errors.push('world must be 40x22 tiles');
   if (!inside(world.spawn, world)) errors.push('spawn is outside the world');
   const terrainPoints = new Set<string>();
@@ -46,11 +52,15 @@ export function validateWorld(world: WorldDefinition): string[] {
     if (!inside(point, world)) errors.push(`walkable override outside world: ${key(point)}`);
     if (walkableOverrides.has(key(point))) errors.push(`duplicate walkable override: ${key(point)}`);
     walkableOverrides.add(key(point));
-    if (world.obstacleRects.some((rect) => blocked(point, rect))) errors.push(`walkable override blocked: ${key(point)}`);
+    if (world.obstacleRects.some((rect) => blocked(point, rect)) && !bridgeKeys.has(key(point))) {
+      errors.push(`walkable override blocked: ${key(point)}`);
+    }
   }
   const entrancePoints = new Set<string>();
   for (const building of world.buildings) {
     if (!validRect(building.bounds, world)) errors.push(`invalid building bounds: ${building.id}`);
+    if (building.bounds.width < 4 || building.bounds.width > 6) errors.push(`building width out of range: ${building.id}`);
+    if (!INTERIOR_DEFINITIONS[building.themeId]) errors.push(`missing interior theme: ${building.themeId}`);
     const entrance = building.entrance;
     if (!entrance) {
       errors.push(`missing entrance: ${building.id}`);
@@ -73,9 +83,34 @@ export function validateWorld(world: WorldDefinition): string[] {
       entrancePoints.add(key(point));
     }
   }
+  for (let firstIndex = 0; firstIndex < world.buildings.length; firstIndex += 1) {
+    for (let secondIndex = firstIndex + 1; secondIndex < world.buildings.length; secondIndex += 1) {
+      const first = world.buildings[firstIndex]!;
+      const second = world.buildings[secondIndex]!;
+      const gap = rectGap(first.bounds, second.bounds);
+      if (gap.x < 4 && gap.y < 4) errors.push(`buildings too close: ${first.id},${second.id}`);
+    }
+  }
+  for (const [index, rect] of [
+    ...world.scenery.river,
+    ...world.scenery.bridges,
+    ...world.scenery.pastures,
+    ...world.scenery.cropFields,
+    ...world.scenery.flowerBeds,
+  ].entries()) {
+    if (!validRect(rect, world)) errors.push(`invalid scenery rectangle: ${index}`);
+  }
+  for (const animal of world.scenery.animals) {
+    if (!validRect(animal.patrolBounds, world) || !blocked(animal.start, animal.patrolBounds)) {
+      errors.push(`invalid animal patrol: ${animal.id}`);
+    }
+    if (!Number.isFinite(animal.speed) || animal.speed <= 0) errors.push(`invalid animal speed: ${animal.id}`);
+  }
   for (const area of world.terrain.filter((item) => item.kind === 'road' || item.kind === 'plaza')) {
     for (const point of pointsIn(area.bounds)) {
-      if (world.obstacleRects.some((rect) => blocked(point, rect))) errors.push(`blocked outdoor terrain: ${key(point)}`);
+      if (world.obstacleRects.some((rect) => blocked(point, rect)) && !walkableOverrides.has(key(point))) {
+        errors.push(`blocked outdoor terrain: ${key(point)}`);
+      }
     }
   }
   for (const station of world.stations) {
@@ -94,6 +129,18 @@ export function validateWorld(world: WorldDefinition): string[] {
       if (!inside(point, world)) errors.push(`station point outside world: ${station.id}@${point.x},${point.y}`);
       if (!station.buildingId && world.obstacleRects.some((rect) => blocked(point, rect))) {
         errors.push(`station point blocked: ${station.id}@${point.x},${point.y}`);
+      }
+    }
+  }
+  for (const building of world.buildings) {
+    const interior = INTERIOR_DEFINITIONS[building.themeId];
+    if (!interior) continue;
+    const actions = new Set(world.stations
+      .filter((station) => station.buildingId === building.id)
+      .flatMap((station) => station.interactionSlots.map((item) => item.action)));
+    for (const action of actions) {
+      if (!interior.furniture.some((item) => item.supportedActions.includes(action))) {
+        errors.push(`missing furniture action: ${building.id}@${action}`);
       }
     }
   }

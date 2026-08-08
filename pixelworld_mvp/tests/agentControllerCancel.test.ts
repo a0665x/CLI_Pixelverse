@@ -31,8 +31,8 @@ describe('AgentController cancellation', () => {
       0,
     );
     const event = { eventId: 'a', timestamp: 1, source: 'demo' as const, agentId: 'main', agentRole: 'main' as const, kind: 'edit' as const, phase: 'working', activityLabel: 'work' };
-    const route = { destinationId: 'queue-plaza', preserveLocation: false, action: 'queue' as const, bubblePolicy: 'persistent' as const, bubbleText: 'wait', priority: 1 };
-    const first = { agentId: 'main', stationId: 'queue-plaza', anchorId: 'a', point: { x: 20, y: 12 }, facing: 'down' as const, action: 'queue' as const, kind: 'interaction' as const };
+    const route = { destinationId: 'queue-benches', preserveLocation: false, action: 'queue' as const, bubblePolicy: 'persistent' as const, bubbleText: 'wait', priority: 1 };
+    const first = { agentId: 'main', stationId: 'queue-benches', anchorId: 'a', point: { x: 16, y: 12 }, facing: 'down' as const, action: 'queue' as const, kind: 'interaction' as const };
     const staleArrival = vi.fn();
     expect(agent.dispatch(event, first, route, staleArrival)).toBe(true);
     agent.update(100);
@@ -50,7 +50,7 @@ describe('AgentController cancellation', () => {
     expect(agent.currentRoute).toBeUndefined();
     expect(agent.currentAssignment).toBeUndefined();
 
-    const second = { ...first, anchorId: 'b', point: { x: 21, y: 12 }, facing: 'right' as const };
+    const second = { ...first, anchorId: 'b', point: { x: 17, y: 12 }, facing: 'right' as const };
     expect(agent.dispatch({ ...event, eventId: 'b' }, second, route)).toBe(true);
     agent.update(0);
     expect({ x: sprite.x, y: sprite.y }).toEqual(logical);

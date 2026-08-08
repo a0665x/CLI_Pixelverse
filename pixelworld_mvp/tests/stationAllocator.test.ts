@@ -5,7 +5,7 @@ import { WORLD_DEFINITION } from '../src/world/worldDefinition';
 describe('StationAllocator', () => {
   it('uses unique interaction slots, then queue anchors, then reports full', () => {
     const allocator = new StationAllocator(WORLD_DEFINITION.stations);
-    const station = WORLD_DEFINITION.stations.find((item) => item.id === 'editing-desk')!;
+    const station = WORLD_DEFINITION.stations.find((item) => item.id === 'maker-edit')!;
     const capacity = station.interactionSlots.length + station.queueAnchors.length;
     const results = Array.from({ length: capacity }, (_, index) => allocator.assign(`a-${index}`, station.id));
     expect(results.every((result) => result.ok)).toBe(true);
@@ -15,26 +15,26 @@ describe('StationAllocator', () => {
 
   it('releases an old slot when an Agent changes station', () => {
     const allocator = new StationAllocator(WORLD_DEFINITION.stations);
-    const first = allocator.assign('main', 'editing-desk');
+    const first = allocator.assign('main', 'maker-edit');
     expect(first.ok).toBe(true);
-    expect(allocator.assign('main', 'lounge').ok).toBe(true);
+    expect(allocator.assign('main', 'rest-sofa').ok).toBe(true);
     expect(allocator.assignments().filter((item) => item.agentId === 'main')).toHaveLength(1);
   });
 
   it('skips an unreachable anchor supplied by the route dispatcher', () => {
     const allocator = new StationAllocator(WORLD_DEFINITION.stations);
-    const first = allocator.assign('main', 'editing-desk');
+    const first = allocator.assign('main', 'maker-edit');
     expect(first.ok).toBe(true);
     const excluded = new Set(first.ok ? [first.assignment.anchorId] : []);
-    const second = allocator.assign('main', 'editing-desk', excluded);
+    const second = allocator.assign('main', 'maker-edit', excluded);
     expect(second.ok).toBe(true);
     if (first.ok && second.ok) expect(second.assignment.anchorId).not.toBe(first.assignment.anchorId);
   });
 
   it('preserves an Agent assignment when a target station is full or unknown', () => {
     const allocator = new StationAllocator(WORLD_DEFINITION.stations);
-    const first = allocator.assign('main', 'editing-desk');
-    const lounge = WORLD_DEFINITION.stations.find((item) => item.id === 'lounge')!;
+    const first = allocator.assign('main', 'maker-edit');
+    const lounge = WORLD_DEFINITION.stations.find((item) => item.id === 'rest-sofa')!;
 
     Array.from({ length: lounge.interactionSlots.length + lounge.queueAnchors.length }, (_, index) =>
       allocator.assign(`lounge-${index}`, lounge.id),
@@ -59,7 +59,7 @@ describe('StationAllocator', () => {
 
   it('restores only when its anchor and physical point are available', () => {
     const allocator = new StationAllocator(WORLD_DEFINITION.stations);
-    const first = allocator.assign('first', 'editing-desk');
+    const first = allocator.assign('first', 'maker-edit');
     expect(first.ok).toBe(true);
     if (!first.ok) return;
 

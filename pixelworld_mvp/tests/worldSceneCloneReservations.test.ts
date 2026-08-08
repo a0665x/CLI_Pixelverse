@@ -43,17 +43,17 @@ function harness(options: {
   const allocator = {
     assignmentFor: vi.fn(), releaseAgent: vi.fn(),
     assign: vi.fn((agentId: string, stationId: string) => ({ ok: true, assignment: {
-      agentId, stationId, anchorId: `anchor-${sequence++}`, point: stationId === 'dispatch-pad' ? { x: 34, y: 8 } : { x: 18, y: 8 }, facing: 'up', action: 'dispatch', kind: options.kind ?? 'interaction',
+      agentId, stationId, anchorId: `anchor-${sequence++}`, point: stationId === 'dispatch-pod' ? { x: 33, y: 18 } : { x: 26, y: 7 }, facing: 'up', action: 'dispatch', kind: options.kind ?? 'interaction',
     } })),
   };
   const scene = Object.assign(Object.create(WorldScene.prototype), {
     ingress: new EventIngress(), allocator, agents: registry, pendingCloneAgents: new Set<string>(),
     statusOverlay: { publish: vi.fn(), setPresence: vi.fn(), showError: vi.fn(), attachAgent: vi.fn(), destroy: vi.fn() },
     worldDefinition: {
-      stations: [{ id: 'dispatch-pad', buildingId: 'signal-station' }, { id: 'editing-desk', buildingId: 'build-workshop' }],
+      stations: [{ id: 'dispatch-pod', buildingId: 'collaboration-barn' }, { id: 'maker-edit', buildingId: 'maker-workshop' }],
       buildings: [
-        { id: 'signal-station', entrance: { outside: { x: 33, y: 7 }, threshold: { x: 33, y: 6 } } },
-        { id: 'build-workshop', entrance: { outside: { x: 20, y: 7 }, threshold: { x: 20, y: 6 } } },
+        { id: 'collaboration-barn', entrance: { outside: { x: 34, y: 18 }, threshold: { x: 34, y: 17 } } },
+        { id: 'maker-workshop', entrance: { outside: { x: 28, y: 7 }, threshold: { x: 28, y: 6 } } },
       ],
     },
     bindAgentSelection: vi.fn(), notifyRoster: vi.fn(), listeners: new Set(),
@@ -67,10 +67,10 @@ describe('WorldScene clone reservations', () => {
     const padded = { ...event('normalized', 'main', 'edit'), agentId: ' main ' };
 
     expect(scene.dispatchWorldEvent(padded)).toEqual({ ok: true });
-    expect(allocator.assign).toHaveBeenCalledWith('main', 'editing-desk', expect.any(Set));
+    expect(allocator.assign).toHaveBeenCalledWith('main', 'maker-edit', expect.any(Set));
     expect(agents.get('main')!.dispatch).toHaveBeenCalledWith(
       expect.objectContaining({ agentId: 'main' }), expect.objectContaining({ agentId: 'main' }), expect.any(Object), expect.any(Function),
-      expect.objectContaining({ waypoints: [{ x: 20, y: 7 }, { x: 20, y: 6 }] }),
+      expect.objectContaining({ waypoints: [{ x: 28, y: 7 }, { x: 28, y: 6 }] }),
     );
     expect((scene as unknown as { statusOverlay: { publish: ReturnType<typeof vi.fn> } }).statusOverlay.publish)
       .toHaveBeenCalledWith(agents.get('main'), expect.objectContaining({ agentId: 'main' }), expect.any(Object));
@@ -101,7 +101,7 @@ describe('WorldScene clone reservations', () => {
     const noPath = harness();
     noPath.agents.get('main')!.dispatch.mockReturnValueOnce(false);
     noPath.allocator.assign.mockReturnValueOnce({ ok: true, assignment: {
-      agentId: 'main', stationId: 'dispatch-pad', anchorId: 'blocked', point: { x: 34, y: 8 }, facing: 'up', action: 'dispatch', kind: 'interaction',
+      agentId: 'main', stationId: 'dispatch-pod', anchorId: 'blocked', point: { x: 33, y: 18 }, facing: 'up', action: 'dispatch', kind: 'interaction',
     } } as never).mockReturnValueOnce({ ok: false, reason: 'station-full' } as never);
     expect(noPath.scene.dispatchWorldEvent(event('path', 'main', 'edit'))).toEqual({ ok: false, reason: 'no-path' });
     expect((noPath.scene as unknown as { statusOverlay: { showError: ReturnType<typeof vi.fn> } }).statusOverlay.showError)
@@ -125,7 +125,7 @@ describe('WorldScene clone reservations', () => {
     const { scene, callbacks, registry, clone, cloneSprite } = harness({ size: 10 });
     expect(scene.dispatchWorldEvent(event('one', 'main'))).toEqual({ ok: true });
     callbacks.get('main')?.();
-    expect(registry.createSubagent).toHaveBeenCalledWith({ x: 33, y: 7 });
+    expect(registry.createSubagent).toHaveBeenCalledWith({ x: 34, y: 18 });
     expect(cloneSprite.setVisible).toHaveBeenCalledWith(true);
     expect((scene as unknown as { statusOverlay: { attachAgent: ReturnType<typeof vi.fn> } }).statusOverlay.attachAgent)
       .toHaveBeenCalledWith(clone);
@@ -142,13 +142,13 @@ describe('WorldScene clone reservations', () => {
 
     expect(overlay.publish).toHaveBeenCalledTimes(1);
     expect(overlay.setPresence).toHaveBeenCalledTimes(1);
-    expect(overlay.setPresence).toHaveBeenCalledWith('main', 'build-workshop');
+    expect(overlay.setPresence).toHaveBeenCalledWith('main', 'maker-workshop');
     expect(overlay.publish.mock.invocationCallOrder[0]).toBeLessThan(overlay.setPresence.mock.invocationCallOrder[0]!);
   });
 
   it('clears old building occupancy only after a successful real departure', () => {
     const { scene } = harness({ initialPresence: {
-      kind: 'inside', buildingId: 'signal-station', threshold: { x: 33, y: 6 },
+      kind: 'inside', buildingId: 'collaboration-barn', threshold: { x: 34, y: 17 },
     } });
     const overlay = (scene as unknown as { statusOverlay: {
       publish: ReturnType<typeof vi.fn>; setPresence: ReturnType<typeof vi.fn>;
@@ -162,12 +162,12 @@ describe('WorldScene clone reservations', () => {
 
   it('preserves inside occupancy when planning fails or work stays in the same building', () => {
     const failed = harness({ initialPresence: {
-      kind: 'inside', buildingId: 'signal-station', threshold: { x: 33, y: 6 },
+      kind: 'inside', buildingId: 'collaboration-barn', threshold: { x: 34, y: 17 },
     } });
     failed.agents.get('main')!.dispatch.mockReturnValueOnce(false);
     failed.allocator.assign
       .mockReturnValueOnce({ ok: true, assignment: {
-        agentId: 'main', stationId: 'editing-desk', anchorId: 'blocked', point: { x: 18, y: 8 },
+        agentId: 'main', stationId: 'maker-edit', anchorId: 'blocked', point: { x: 26, y: 7 },
         facing: 'up', action: 'type', kind: 'interaction',
       } } as never)
       .mockReturnValueOnce({ ok: false, reason: 'station-full' } as never);
@@ -176,7 +176,7 @@ describe('WorldScene clone reservations', () => {
       .not.toHaveBeenCalled();
 
     const same = harness({ initialPresence: {
-      kind: 'inside', buildingId: 'build-workshop', threshold: { x: 20, y: 6 },
+      kind: 'inside', buildingId: 'maker-workshop', threshold: { x: 28, y: 6 },
     } });
     expect(same.scene.dispatchWorldEvent(event('same-room', 'main', 'edit'))).toEqual({ ok: true });
     expect(same.agents.get('main')!.dispatch).toHaveBeenCalledWith(

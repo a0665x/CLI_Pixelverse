@@ -34,7 +34,7 @@ describe('four-direction A*', () => {
   });
 
   it('returns a one-point path when start equals goal', () => {
-    expect(findPath(grid, { x: 20, y: 11 }, { x: 20, y: 11 })).toEqual([{ x: 20, y: 11 }]);
+    expect(findPath(grid, { x: 15, y: 11 }, { x: 15, y: 11 })).toEqual([{ x: 15, y: 11 }]);
   });
 
   it('prefers a longer road route over a shorter grass shortcut', () => {
@@ -44,7 +44,7 @@ describe('four-direction A*', () => {
       spawn: { x: 0, y: 1 },
       buildings: [],
       zones: [],
-      scenery: { trees: [], pond: { x: 0, y: 0, width: 0, height: 0 }, flowerBeds: [] },
+      scenery: { trees: [], river: [], bridges: [], pastures: [], cropFields: [], flowerBeds: [], animals: [] },
       terrain: [
         { kind: 'road', bounds: { x: 0, y: 0, width: 5, height: 1 }, cost: 1 },
         { kind: 'grass', bounds: { x: 0, y: 1, width: 5, height: 1 }, cost: 5 },
@@ -66,9 +66,9 @@ describe('four-direction A*', () => {
     const grid = NavigationGrid.fromWorld(WORLD_DEFINITION);
 
     expect(grid.costAt({ x: 1, y: 1 })).toBe(5);
-    expect(grid.costAt({ x: 20, y: 11 })).toBe(1);
-    expect(grid.costAt({ x: 7, y: 14 })).toBe(2);
-    expect(grid.costAt({ x: 6, y: 6 })).toBe(5);
+    expect(grid.costAt({ x: 15, y: 11 })).toBe(1);
+    expect(grid.costAt({ x: 17, y: 15 })).toBe(5);
+    expect(grid.costAt({ x: 5, y: 6 })).toBe(5);
     expect(grid.costAt({ x: 3, y: 3 })).toBeUndefined();
     expect(grid.costAt({ x: -1, y: 1 })).toBeUndefined();
   });
@@ -80,7 +80,7 @@ describe('four-direction A*', () => {
       spawn: { x: 0, y: 1 },
       buildings: [],
       zones: [],
-      scenery: { trees: [], pond: { x: 0, y: 0, width: 0, height: 0 }, flowerBeds: [] },
+      scenery: { trees: [], river: [], bridges: [], pastures: [], cropFields: [], flowerBeds: [], animals: [] },
       terrain: [{ kind: 'road', bounds: { x: 0, y: 1, width: 3, height: 1 }, cost: 1 }],
       obstacleRects: [{ x: 1, y: 0, width: 1, height: 3 }],
       walkableOverrides: [{ x: 1, y: 1 }],

@@ -128,9 +128,9 @@ export class WorldScene extends Phaser.Scene {
         }
         if (reservesClone) {
           this.releasePendingClone(normalizedEvent.agentId);
-          const signalStation = this.worldDefinition.buildings.find((building) => building.id === 'signal-station');
-          const subagent = signalStation
-            ? this.agents?.createSubagent(signalStation.entrance.outside)
+          const collaborationBarn = this.worldDefinition.buildings.find((building) => building.id === 'collaboration-barn');
+          const subagent = collaborationBarn
+            ? this.agents?.createSubagent(collaborationBarn.entrance.outside)
             : undefined;
           if (subagent) {
             subagent.sprite.setVisible(true);

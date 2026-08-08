@@ -47,14 +47,52 @@ export interface BuildingEntrance {
   exitFacing: 'down';
 }
 export interface WorldTree { id: string; trunk: GridPoint }
+export type BuildingThemeId = 'rest-cabin' | 'research-library' | 'maker-workshop' | 'collaboration-barn';
+export type FurnitureKind =
+  | 'sofa' | 'television' | 'bed' | 'bookcase' | 'computer' | 'map-table'
+  | 'planning-board' | 'reading-desk' | 'workbench' | 'tool-wall' | 'repair-table'
+  | 'dispatch-pod' | 'radio-console' | 'response-desk' | 'meeting-table' | 'decor';
+export type ActivityIconKind =
+  | 'rest' | 'offline' | 'think' | 'plan' | 'read' | 'web' | 'edit'
+  | 'tool' | 'repair' | 'clone' | 'respond' | 'generic';
+export interface FurnitureDefinition {
+  id: string;
+  kind: FurnitureKind;
+  point: GridPoint;
+  facing: Facing;
+  supportedActions: AgentAction[];
+  icon: ActivityIconKind;
+}
+export interface InteriorDefinition {
+  id: BuildingThemeId;
+  label: string;
+  width: number;
+  height: number;
+  floor: 'wood' | 'tile';
+  wall: 'cream' | 'blue' | 'brick' | 'green';
+  furniture: FurnitureDefinition[];
+  overflow: GridPoint[];
+}
+export interface AmbientAnimalDefinition {
+  id: string;
+  species: 'cow' | 'sheep' | 'chicken' | 'pig';
+  patrolBounds: GridRect;
+  start: GridPoint;
+  speed: number;
+}
 export interface WorldScenery {
   trees: WorldTree[];
-  pond: GridRect;
+  river: GridRect[];
+  bridges: GridRect[];
+  pastures: GridRect[];
+  cropFields: GridRect[];
   flowerBeds: GridRect[];
+  animals: AmbientAnimalDefinition[];
 }
 export interface WorldBuilding {
   id: string;
   label: string;
+  themeId: BuildingThemeId;
   bounds: GridRect;
   labelAnchor: GridPoint;
   entrance: BuildingEntrance;

@@ -109,32 +109,41 @@ export interface BuildingRegionSet {
   door: PunyRegionName;
   doorFrame: PunyRegionName;
   signboard: PunyRegionName;
+  tint: number;
 }
 
 export const BUILDING_REGION_SETS: Record<string, BuildingRegionSet> = {
-  'knowledge-hall': {
+  'rest-cabin': {
     roofTopCorner: 'brownRoofTopCorner', roofTop: 'brownRoofTop',
     roofMiddleCorner: 'brownRoofMiddleCorner', roofMiddle: 'brownRoofMiddle',
     roofEaveCorner: 'brownRoofEaveCorner', roofEave: 'brownRoofEave',
     wallCorner: 'brownWallCorner', wall: 'brownWall',
     door: 'brownDoor', doorFrame: 'brownDoorFrame',
-    signboard: 'signboard',
+    signboard: 'signboard', tint: 0xffe6b8,
   },
-  'build-workshop': {
+  'research-library': {
     roofTopCorner: 'tealRoofTopCorner', roofTop: 'tealRoofTop',
     roofMiddleCorner: 'tealRoofMiddleCorner', roofMiddle: 'tealRoofMiddle',
     roofEaveCorner: 'tealRoofEaveCorner', roofEave: 'tealRoofEave',
     wallCorner: 'tealWallCorner', wall: 'tealWall',
     door: 'tealDoor', doorFrame: 'tealDoorFrame',
-    signboard: 'signboard',
+    signboard: 'signboard', tint: 0xc7e7ff,
   },
-  'signal-station': {
+  'maker-workshop': {
     roofTopCorner: 'redRoofTopCorner', roofTop: 'redRoofTop',
     roofMiddleCorner: 'redRoofMiddleCorner', roofMiddle: 'redRoofMiddle',
     roofEaveCorner: 'redRoofEaveCorner', roofEave: 'redRoofEave',
     wallCorner: 'redWallCorner', wall: 'redWall',
     door: 'redDoor', doorFrame: 'redDoorFrame',
-    signboard: 'signboard',
+    signboard: 'signboard', tint: 0xffc8a8,
+  },
+  'collaboration-barn': {
+    roofTopCorner: 'tealRoofTopCorner', roofTop: 'tealRoofTop',
+    roofMiddleCorner: 'tealRoofMiddleCorner', roofMiddle: 'tealRoofMiddle',
+    roofEaveCorner: 'tealRoofEaveCorner', roofEave: 'tealRoofEave',
+    wallCorner: 'brownWallCorner', wall: 'brownWall',
+    door: 'brownDoor', doorFrame: 'brownDoorFrame',
+    signboard: 'signboard', tint: 0xbfe2a2,
   },
 };
 

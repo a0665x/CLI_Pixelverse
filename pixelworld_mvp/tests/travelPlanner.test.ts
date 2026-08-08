@@ -15,32 +15,32 @@ const inside = (buildingId: string, x: number, y: number): AgentPresence => ({
 
 describe('planAgentTravel', () => {
   it('routes an outside Agent through the destination building door', () => {
-    expect(planAgentTravel(WORLD_DEFINITION, { kind: 'outside' }, assignment('planning-board', 5, 8))).toEqual({
-      waypoints: [{ x: 6, y: 7 }, { x: 6, y: 6 }],
-      destinationBuilding: { buildingId: 'knowledge-hall', threshold: { x: 6, y: 6 } },
+    expect(planAgentTravel(WORLD_DEFINITION, { kind: 'outside' }, assignment('research-plan', 4, 7))).toEqual({
+      waypoints: [{ x: 5, y: 7 }, { x: 5, y: 6 }],
+      destinationBuilding: { buildingId: 'research-library', threshold: { x: 5, y: 6 } },
       stayInside: false,
     });
   });
 
   it('routes from one building door to another building door', () => {
-    expect(planAgentTravel(WORLD_DEFINITION, inside('knowledge-hall', 6, 6), assignment('editing-desk', 18, 8))).toEqual({
-      waypoints: [{ x: 6, y: 7 }, { x: 20, y: 7 }, { x: 20, y: 6 }],
-      destinationBuilding: { buildingId: 'build-workshop', threshold: { x: 20, y: 6 } },
+    expect(planAgentTravel(WORLD_DEFINITION, inside('research-library', 5, 6), assignment('maker-edit', 26, 7))).toEqual({
+      waypoints: [{ x: 5, y: 7 }, { x: 28, y: 7 }, { x: 28, y: 6 }],
+      destinationBuilding: { buildingId: 'maker-workshop', threshold: { x: 28, y: 6 } },
       stayInside: false,
     });
   });
 
   it('routes from a building door to an outdoor assignment point', () => {
-    expect(planAgentTravel(WORLD_DEFINITION, inside('knowledge-hall', 6, 6), assignment('arrival', 20, 11))).toEqual({
-      waypoints: [{ x: 6, y: 7 }, { x: 20, y: 11 }],
+    expect(planAgentTravel(WORLD_DEFINITION, inside('research-library', 5, 6), assignment('arrival', 15, 11))).toEqual({
+      waypoints: [{ x: 5, y: 7 }, { x: 15, y: 11 }],
       stayInside: false,
     });
   });
 
   it('keeps an Agent inside when changing stations in the same building', () => {
-    expect(planAgentTravel(WORLD_DEFINITION, inside('knowledge-hall', 6, 6), assignment('reading-desk', 8, 8))).toEqual({
+    expect(planAgentTravel(WORLD_DEFINITION, inside('research-library', 5, 6), assignment('research-read', 6, 7))).toEqual({
       waypoints: [],
-      destinationBuilding: { buildingId: 'knowledge-hall', threshold: { x: 6, y: 6 } },
+      destinationBuilding: { buildingId: 'research-library', threshold: { x: 5, y: 6 } },
       stayInside: true,
     });
   });

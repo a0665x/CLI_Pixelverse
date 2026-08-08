@@ -5,7 +5,7 @@ import { validateWorld } from '../src/world/validateWorld';
 const key = ({ x, y }: { x: number; y: number }) => `${x},${y}`;
 
 describe('village entrances and terrain', () => {
-  it('connects every north-side building to the outdoor road network', () => {
+  it('connects every dispersed house front door to the outdoor road network', () => {
     const outdoorTerrain = new Set(
       WORLD_DEFINITION.terrain
         .filter((area) => area.kind === 'road' || area.kind === 'plaza')
