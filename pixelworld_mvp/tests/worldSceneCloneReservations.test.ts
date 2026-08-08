@@ -43,6 +43,19 @@ function harness(options: { size?: number; kind?: 'interaction' | 'queue' } = {}
 }
 
 describe('WorldScene clone reservations', () => {
+  it('uses the normalized Agent id throughout accepted dispatch', () => {
+    const { scene, agents, allocator } = harness();
+    const padded = { ...event('normalized', 'main', 'edit'), agentId: ' main ' };
+
+    expect(scene.dispatchWorldEvent(padded)).toEqual({ ok: true });
+    expect(allocator.assign).toHaveBeenCalledWith('main', 'editing-desk', expect.any(Set));
+    expect(agents.get('main')!.dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({ agentId: 'main' }), expect.objectContaining({ agentId: 'main' }), expect.any(Object), undefined,
+    );
+    expect((scene as unknown as { statusOverlay: { publish: ReturnType<typeof vi.fn> } }).statusOverlay.publish)
+      .toHaveBeenCalledWith(agents.get('main'), expect.objectContaining({ agentId: 'main' }), expect.any(Object), undefined);
+  });
+
   it('rejects queued clones without dispatching', () => {
     const { scene, agents } = harness({ kind: 'queue' });
     expect(scene.dispatchWorldEvent(event('q', 'main'))).toEqual({ ok: false, reason: 'clone-queue' });

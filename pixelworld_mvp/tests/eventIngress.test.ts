@@ -57,4 +57,11 @@ describe('EventIngress', () => {
     } });
     expect(ingress.ingest({ ...valid, eventId: 'evt-trim' })).toEqual({ accepted: false, reason: 'duplicate-event' });
   });
+
+  it('drops unknown input properties from the normalized event', () => {
+    const result = new EventIngress().ingest({ ...valid, unexpectedSecret: 'do-not-forward' });
+    expect(result.accepted).toBe(true);
+    if (!result.accepted) return;
+    expect(result.event).not.toHaveProperty('unexpectedSecret');
+  });
 });

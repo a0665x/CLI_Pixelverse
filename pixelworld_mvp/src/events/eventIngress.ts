@@ -37,11 +37,13 @@ export class EventIngress {
 
     const detail = sanitizeDisplayDetail(input.detail);
     const toolName = input.toolName?.trim() || undefined;
-    const { detail: _discardedDetail, toolName: _discardedTool, ...withoutOptional } = input;
     const event: AgentWorldEvent = {
-      ...withoutOptional,
       eventId,
+      timestamp: input.timestamp,
+      source: input.source,
       agentId: input.agentId.trim(),
+      agentRole: input.agentRole,
+      kind: input.kind,
       phase: input.phase.trim(),
       activityLabel: input.activityLabel.trim(),
       ...(detail === undefined ? {} : { detail }),

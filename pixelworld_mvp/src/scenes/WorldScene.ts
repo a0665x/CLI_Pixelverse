@@ -81,50 +81,51 @@ export class WorldScene extends Phaser.Scene {
   dispatchWorldEvent(event: AgentWorldEvent): { ok: boolean; reason?: string } {
     const result = this.ingress.ingest(event);
     if (!result.accepted) return { ok: false, reason: result.reason };
-    const agent = this.agents?.get(event.agentId);
+    const normalizedEvent = result.event;
+    const agent = this.agents?.get(normalizedEvent.agentId);
     if (!agent) return { ok: false, reason: 'unknown-agent' };
     if (result.route.preserveLocation) {
-      if (event.kind === 'heartbeat') {
+      if (normalizedEvent.kind === 'heartbeat') {
         agent.heartbeat();
         return { ok: true };
       }
       return { ok: false, reason: 'unknown-event' };
     }
 
-    this.releasePendingClone(event.agentId);
-    if (event.kind === 'clone' && !this.agents.canCreateSubagent(this.pendingCloneAgents.size)) {
+    this.releasePendingClone(normalizedEvent.agentId);
+    if (normalizedEvent.kind === 'clone' && !this.agents.canCreateSubagent(this.pendingCloneAgents.size)) {
       agent.cancel();
-      this.allocator.releaseAgent(event.agentId);
+      this.allocator.releaseAgent(normalizedEvent.agentId);
       this.statusOverlay.showError(agent, 'agent-cap');
       return { ok: false, reason: 'agent-cap' };
     }
     const excluded = new Set<string>();
     let triedAnchor = false;
     while (true) {
-      const allocation = this.allocator.assign(event.agentId, result.route.destinationId!, excluded);
+      const allocation = this.allocator.assign(normalizedEvent.agentId, result.route.destinationId!, excluded);
       if (!allocation.ok) {
         agent.cancel();
-        this.allocator.releaseAgent(event.agentId);
+        this.allocator.releaseAgent(normalizedEvent.agentId);
         const reason = triedAnchor ? 'no-path' : allocation.reason;
         this.lastError = reason;
         this.statusOverlay.showError(agent, reason === 'no-path' ? 'no-path' : 'station-full');
         return { ok: false, reason };
       }
       triedAnchor = true;
-      if (event.kind === 'clone' && allocation.assignment.kind === 'queue') {
+      if (normalizedEvent.kind === 'clone' && allocation.assignment.kind === 'queue') {
         agent.cancel();
-        this.allocator.releaseAgent(event.agentId);
+        this.allocator.releaseAgent(normalizedEvent.agentId);
         this.statusOverlay.showError(agent, 'clone-queue');
         return { ok: false, reason: 'clone-queue' };
       }
       const effectiveRoute = allocation.assignment.kind === 'queue'
         ? { ...result.route, action: 'queue' as const, bubblePolicy: 'persistent' as const, bubbleText: '等待工作位', priority: 80 }
         : result.route;
-      const reservesClone = event.kind === 'clone' && allocation.assignment.kind === 'interaction';
-      if (reservesClone) this.pendingCloneAgents.add(event.agentId);
+      const reservesClone = normalizedEvent.kind === 'clone' && allocation.assignment.kind === 'interaction';
+      if (reservesClone) this.pendingCloneAgents.add(normalizedEvent.agentId);
       const onArrive = reservesClone
         ? () => {
-          this.releasePendingClone(event.agentId);
+          this.releasePendingClone(normalizedEvent.agentId);
           const subagent = this.agents?.createSubagent(allocation.assignment.point);
           if (subagent) {
             this.statusOverlay.attachAgent(subagent);
@@ -133,14 +134,14 @@ export class WorldScene extends Phaser.Scene {
           }
         }
         : undefined;
-      if (agent.dispatch(result.event, allocation.assignment, effectiveRoute, onArrive)) {
+      if (agent.dispatch(normalizedEvent, allocation.assignment, effectiveRoute, onArrive)) {
         const station = this.worldDefinition.stations.find((item) => item.id === result.route.destinationId);
-        this.statusOverlay.publish(agent, result.event, effectiveRoute, station?.buildingId);
+        this.statusOverlay.publish(agent, normalizedEvent, effectiveRoute, station?.buildingId);
         return { ok: true };
       }
-      if (reservesClone) this.releasePendingClone(event.agentId);
+      if (reservesClone) this.releasePendingClone(normalizedEvent.agentId);
       excluded.add(allocation.assignment.anchorId);
-      this.allocator.releaseAgent(event.agentId);
+      this.allocator.releaseAgent(normalizedEvent.agentId);
     }
   }
 
