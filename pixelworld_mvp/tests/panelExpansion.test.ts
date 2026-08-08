@@ -2,9 +2,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { bindPanelBreakpoint, initialPanelExpanded, PANEL_LAYOUT } from '../src/ui/TestPanel';
 
 describe('initialPanelExpanded', () => {
-  it('starts collapsed at 840px and expanded at 940px', () => {
+  it('starts collapsed at both compact and desktop widths so the fixed village dominates', () => {
     expect(initialPanelExpanded(840)).toBe(false);
-    expect(initialPanelExpanded(940)).toBe(true);
+    expect(initialPanelExpanded(940)).toBe(false);
+    expect(initialPanelExpanded(1280)).toBe(false);
   });
 
   it('tracks a 1280 to 840 breakpoint transition and removes the listener on cleanup', () => {
@@ -18,7 +19,7 @@ describe('initialPanelExpanded', () => {
     const cleanup = bindPanelBreakpoint(query, (expanded) => states.push(expanded));
     listener?.({ matches: false });
     cleanup();
-    expect(states).toEqual([true, false]);
+    expect(states).toEqual([false, false]);
     expect(query.removeEventListener).toHaveBeenCalledWith('change', expect.any(Function));
   });
 

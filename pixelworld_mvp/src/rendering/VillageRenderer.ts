@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { TILE_SIZE } from '../game/constants';
 import type { GridPoint, TerrainArea, WorldBuilding, WorldDefinition } from '../world/types';
-import { WORLD_ATLAS } from './assetManifest';
+import { WORLD_ATLAS, WORLD_ATLAS_FALLBACK_KEY } from './assetManifest';
 import {
   BUILDING_REGION_SETS,
   punyFrameIndex,
@@ -9,6 +9,7 @@ import {
 } from './punyVillageAtlas';
 import {
   buildingForegroundGeometry,
+  type PixelRect,
   type RenderedForeground,
   type VillageForegroundKind,
 } from './buildingForeground';
@@ -33,16 +34,20 @@ export interface AtlasTileCommand {
   y: number;
   depth: number;
   scale?: number;
+  flipX?: boolean;
   originX?: number;
   originY?: number;
   buildingId?: string;
+  buildingRole?: 'roof' | 'wall' | 'door' | 'door-frame' | 'threshold' | 'signboard';
   foregroundKind?: VillageForegroundKind;
+  foregroundGroup?: string;
 }
 
 export interface PlannedForeground {
   kind: VillageForegroundKind;
+  groupId: string;
   buildingId?: string;
-  tile: GridPoint;
+  bounds: PixelRect;
   baselineY: number;
 }
 
@@ -69,6 +74,22 @@ function pointsInArea(area: TerrainArea): GridPoint[] {
   return points;
 }
 
+const gridKey = ({ x, y }: GridPoint): string => `${x},${y}`;
+
+function roadRegion(point: GridPoint, roads: Set<string>, plazas: Set<string>): PunyRegionName {
+  if (plazas.has(gridKey(point))) return 'dirtPlaza';
+  const left = roads.has(`${point.x - 1},${point.y}`);
+  const right = roads.has(`${point.x + 1},${point.y}`);
+  const up = roads.has(`${point.x},${point.y - 1}`);
+  const down = roads.has(`${point.x},${point.y + 1}`);
+  const horizontal = left || right;
+  const vertical = up || down;
+  if (horizontal && vertical) return 'dirtJunction';
+  if (horizontal) return left && right ? 'dirtHorizontal' : left ? 'dirtHorizontalRight' : 'dirtHorizontalLeft';
+  if (vertical) return up && down ? 'dirtVertical' : up ? 'dirtVerticalBottom' : 'dirtVerticalTop';
+  return 'dirtCenter';
+}
+
 function tileCommand(
   layer: VillageLayerName,
   region: PunyRegionName,
@@ -87,40 +108,77 @@ function buildingCommands(building: WorldBuilding): {
   const style = BUILDING_REGION_SETS[building.id];
   if (!style) throw new Error(`[pixelworld] missing Puny building regions for ${building.id}`);
   const frontY = (building.bounds.y + building.bounds.height) * TILE_SIZE;
-  const centerX = building.entrance.threshold.x * TILE_SIZE + TILE_SIZE / 2;
-  const roofBaseline = buildingForegroundGeometry(building, TILE_SIZE).find(({ kind }) => kind === 'roof')!.baselineY;
-  const doorBaseline = buildingForegroundGeometry(building, TILE_SIZE).find(({ kind }) => kind === 'door-frame')!.baselineY;
-  const common = {
-    layer: 'foregrounds' as const,
-    primitive: 'atlas' as const,
-    originX: 0.5,
-    originY: 1,
-    scale: 4,
-    depth: roofBaseline,
-    buildingId: building.id,
-    foregroundKind: 'roof' as const,
-  };
-  const tiles: AtlasTileCommand[] = [
-    { ...common, region: style.roof, x: centerX - 44, y: frontY },
-    { ...common, region: style.door, x: centerX, y: frontY },
-    { ...common, region: style.facade, x: centerX + 44, y: frontY },
-    tileCommand('wallsAndThresholds', 'doorThreshold', building.entrance.threshold, -690, { buildingId: building.id }),
-    {
-      primitive: 'atlas', layer: 'foregrounds', region: style.doorFrame,
-      x: centerX, y: frontY, originX: 0.5, originY: 1, scale: 2,
-      depth: doorBaseline, buildingId: building.id, foregroundKind: 'door-frame',
-    },
-    {
-      primitive: 'atlas', layer: 'signboards', region: style.signboard,
-      x: centerX + 24, y: frontY - 8, originX: 0.5, originY: 1,
-      depth: doorBaseline + 1, buildingId: building.id,
-    },
-  ];
+  const geometry = buildingForegroundGeometry(building, TILE_SIZE);
+  const roofGeometry = geometry.find(({ kind }) => kind === 'roof')!;
+  const doorGeometry = geometry.find(({ kind }) => kind === 'door-frame')!;
+  const roofGroup = `roof:${building.id}`;
+  const doorGroup = `door:${building.id}`;
+  const tiles: AtlasTileCommand[] = [];
+  const roofRows = [
+    [style.roofTopCorner, style.roofTop],
+    [style.roofMiddleCorner, style.roofMiddle],
+    [style.roofEaveCorner, style.roofEave],
+  ] as const;
+
+  roofRows.forEach(([corner, fill], localY) => {
+    for (let localX = 0; localX < building.bounds.width; localX += 1) {
+      const edge = localX === 0 || localX === building.bounds.width - 1;
+      tiles.push(tileCommand(
+        'foregrounds', edge ? corner : fill,
+        { x: building.bounds.x + localX, y: building.bounds.y + localY },
+        roofGeometry.baselineY,
+        {
+          buildingId: building.id,
+          buildingRole: 'roof',
+          foregroundKind: 'roof',
+          foregroundGroup: roofGroup,
+          flipX: localX === building.bounds.width - 1,
+        },
+      ));
+    }
+  });
+
+  for (let localY = 3; localY < building.bounds.height; localY += 1) {
+    for (let localX = 0; localX < building.bounds.width; localX += 1) {
+      const point = { x: building.bounds.x + localX, y: building.bounds.y + localY };
+      const isDoor = point.x === building.entrance.threshold.x && point.y === building.entrance.threshold.y;
+      const edge = localX === 0 || localX === building.bounds.width - 1;
+      tiles.push(tileCommand(
+        'wallsAndThresholds', isDoor ? style.door : edge ? style.wallCorner : style.wall,
+        point,
+        isDoor ? -699 : -700,
+        {
+          buildingId: building.id,
+          buildingRole: isDoor ? 'door' : 'wall',
+          flipX: localX === building.bounds.width - 1,
+        },
+      ));
+    }
+  }
+
+  tiles.push(
+    tileCommand('wallsAndThresholds', 'doorThreshold', building.entrance.threshold, -710, {
+      buildingId: building.id,
+      buildingRole: 'threshold',
+    }),
+    tileCommand('foregrounds', style.doorFrame, building.entrance.threshold, doorGeometry.baselineY, {
+      buildingId: building.id,
+      buildingRole: 'door-frame',
+      foregroundKind: 'door-frame',
+      foregroundGroup: doorGroup,
+    }),
+    tileCommand(
+      'signboards', style.signboard,
+      { x: building.bounds.x + building.bounds.width - 2, y: building.bounds.y + 3 },
+      frontY + 1,
+      { buildingId: building.id, buildingRole: 'signboard' },
+    ),
+  );
   return {
     tiles,
     foregrounds: [
-      { kind: 'roof', buildingId: building.id, tile: { ...building.entrance.threshold }, baselineY: roofBaseline },
-      { kind: 'door-frame', buildingId: building.id, tile: { ...building.entrance.threshold }, baselineY: doorBaseline },
+      { kind: 'roof', groupId: roofGroup, buildingId: building.id, bounds: roofGeometry.bounds, baselineY: roofGeometry.baselineY },
+      { kind: 'door-frame', groupId: doorGroup, buildingId: building.id, bounds: doorGeometry.bounds, baselineY: doorGeometry.baselineY },
     ],
   };
 }
@@ -146,7 +204,9 @@ export function buildVillageRenderPlan(world: WorldDefinition): VillageRenderPla
     .filter(({ kind }) => kind === 'road' || kind === 'plaza')
     .flatMap(pointsInArea);
   const uniqueRoadTiles = [...new Map(roadTiles.map((point) => [`${point.x},${point.y}`, point])).values()];
-  uniqueRoadTiles.forEach((point) => commands.push(tileCommand('roads', 'dirtCenter', point, -900)));
+  const roadSet = new Set(uniqueRoadTiles.map(gridKey));
+  const plazaSet = new Set(world.terrain.filter(({ kind }) => kind === 'plaza').flatMap(pointsInArea).map(gridKey));
+  uniqueRoadTiles.forEach((point) => commands.push(tileCommand('roads', roadRegion(point, roadSet, plazaSet), point, -900)));
 
   const pond = world.scenery.pond;
   for (let y = 0; y < pond.height; y += 1) {
@@ -170,17 +230,28 @@ export function buildVillageRenderPlan(world: WorldDefinition): VillageRenderPla
   const foregrounds: PlannedForeground[] = [];
   for (const tree of world.scenery.trees) {
     const footY = (tree.trunk.y + 1) * TILE_SIZE;
+    const canopyGroup = `canopy:${tree.id}`;
     const canopyRegions = ['treeCanopyLeft', 'treeCanopy', 'treeCanopyRight'] as const;
     const trunkRegions = ['treeTrunkLeft', 'treeTrunk', 'treeTrunkRight'] as const;
     canopyRegions.forEach((region, index) => commands.push(tileCommand(
       'foregrounds', region, { x: tree.trunk.x + index - 1, y: tree.trunk.y - 1 }, footY,
-      { foregroundKind: 'canopy' },
+      { foregroundKind: 'canopy', foregroundGroup: canopyGroup },
     )));
     trunkRegions.forEach((region, index) => commands.push(tileCommand(
       'foregrounds', region, { x: tree.trunk.x + index - 1, y: tree.trunk.y }, footY,
-      { foregroundKind: 'canopy' },
+      { foregroundKind: 'canopy', foregroundGroup: canopyGroup },
     )));
-    foregrounds.push({ kind: 'canopy', tile: { ...tree.trunk }, baselineY: footY });
+    foregrounds.push({
+      kind: 'canopy',
+      groupId: canopyGroup,
+      bounds: {
+        x: (tree.trunk.x - 1) * TILE_SIZE,
+        y: (tree.trunk.y - 1) * TILE_SIZE,
+        width: 3 * TILE_SIZE,
+        height: 2 * TILE_SIZE,
+      },
+      baselineY: footY,
+    });
   }
 
   // The obstacle border doubles as a compact GBA-style village fence.
@@ -212,25 +283,49 @@ export function buildVillageRenderPlan(world: WorldDefinition): VillageRenderPla
 }
 
 export class VillageRenderer {
-  constructor(private readonly scene: Phaser.Scene) {}
+  constructor(
+    private readonly scene: Phaser.Scene,
+    private readonly atlasTextureKey: string = WORLD_ATLAS.key,
+  ) {}
 
   render(world: WorldDefinition): RenderedVillage {
     const plan = buildVillageRenderPlan(world);
-    const foregrounds: RenderedForeground[] = [];
+    const groupedImages = new Map<string, Phaser.GameObjects.Image[]>();
     for (const command of plan.commands) {
-      const image = this.scene.add.image(command.x, command.y, WORLD_ATLAS.key, punyFrameIndex(command.region))
-        .setOrigin(command.originX ?? 0, command.originY ?? 0)
+      const frame = this.atlasTextureKey === WORLD_ATLAS_FALLBACK_KEY ? undefined : punyFrameIndex(command.region);
+      const image = this.scene.add.image(command.x, command.y, this.atlasTextureKey, frame)
+        .setOrigin(0, 0)
         .setDepth(command.depth);
       if (command.scale) image.setScale(command.scale);
-      if (command.foregroundKind) {
-        foregrounds.push({
-          object: image,
-          bounds: image.getBounds(),
-          baselineY: command.depth,
-          kind: command.foregroundKind,
-        });
-      }
+      if (command.flipX) image.setFlipX(true);
+      if (!command.foregroundGroup) continue;
+      const group = groupedImages.get(command.foregroundGroup) ?? [];
+      group.push(image);
+      groupedImages.set(command.foregroundGroup, group);
     }
+    const foregrounds = plan.foregrounds.map((foreground): RenderedForeground => {
+      const children = groupedImages.get(foreground.groupId) ?? [];
+      const groupObject: RenderedForeground['object'] = {
+        alpha: 1,
+        depth: foreground.baselineY,
+        setAlpha(alpha: number) {
+          groupObject.alpha = alpha;
+          children.forEach((child) => child.setAlpha(alpha));
+          return groupObject;
+        },
+        setDepth(depth: number) {
+          groupObject.depth = depth;
+          children.forEach((child) => child.setDepth(depth));
+          return groupObject;
+        },
+      };
+      return {
+        object: groupObject,
+        bounds: { ...foreground.bounds } as Phaser.Geom.Rectangle,
+        baselineY: foreground.baselineY,
+        kind: foreground.kind,
+      };
+    });
     return { foregrounds, roadTiles: plan.roadTiles, buildingTiles: plan.buildingTiles };
   }
 }

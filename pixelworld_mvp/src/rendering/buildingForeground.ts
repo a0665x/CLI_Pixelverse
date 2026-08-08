@@ -8,8 +8,14 @@ export interface ForegroundGeometry {
   bounds: PixelRect;
   baselineY: number;
 }
+export interface ForegroundRenderable {
+  alpha: number;
+  depth: number;
+  setAlpha(alpha: number): ForegroundRenderable;
+  setDepth(depth: number): ForegroundRenderable;
+}
 export interface RenderedForeground {
-  object: Phaser.GameObjects.GameObject & Phaser.GameObjects.Components.Alpha & Phaser.GameObjects.Components.Depth;
+  object: ForegroundRenderable;
   bounds: Phaser.Geom.Rectangle;
   baselineY: number;
   kind?: VillageForegroundKind;
@@ -17,7 +23,6 @@ export interface RenderedForeground {
 
 export function buildingForegroundGeometry(building: WorldBuilding, tileSize: number): ForegroundGeometry[] {
   const frontY = (building.bounds.y + building.bounds.height) * tileSize;
-  const thresholdCenterX = building.entrance.threshold.x * tileSize + tileSize / 2;
   return [
     {
       kind: 'roof',
@@ -25,17 +30,17 @@ export function buildingForegroundGeometry(building: WorldBuilding, tileSize: nu
         x: building.bounds.x * tileSize,
         y: building.bounds.y * tileSize,
         width: building.bounds.width * tileSize,
-        height: (building.bounds.height - 1) * tileSize,
+        height: 3 * tileSize,
       },
-      baselineY: frontY - tileSize,
+      baselineY: (building.bounds.y + 3) * tileSize,
     },
     {
       kind: 'door-frame',
       bounds: {
-        x: thresholdCenterX - tileSize,
-        y: frontY - tileSize * 2,
-        width: tileSize * 2,
-        height: tileSize * 2,
+        x: building.entrance.threshold.x * tileSize,
+        y: building.entrance.threshold.y * tileSize,
+        width: tileSize,
+        height: tileSize,
       },
       baselineY: frontY,
     },

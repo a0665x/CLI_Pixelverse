@@ -28,6 +28,14 @@ export const PUNY_REGIONS = {
   dirtEdgeRight: region(6, 1),
   dirtEdgeTop: region(5, 0),
   dirtEdgeBottom: region(5, 2),
+  dirtHorizontal: region(5, 3),
+  dirtHorizontalLeft: region(4, 3),
+  dirtHorizontalRight: region(6, 3),
+  dirtVertical: region(3, 1),
+  dirtVerticalTop: region(3, 0),
+  dirtVerticalBottom: region(3, 2),
+  dirtJunction: region(5, 1),
+  dirtPlaza: region(7, 1),
   doorThreshold: region(5, 1),
 
   waterTopLeft: region(1, 10),
@@ -49,27 +57,55 @@ export const PUNY_REGIONS = {
   flowerPink: region(1, 28),
   rock: region(12, 6),
   fence: region(12, 4),
-  signboard: region(4, 30),
-  bench: region(4, 31),
+  signboard: region(8, 31),
+  bench: region(7, 31),
   supplyCrate: region(2, 29),
-  doorFrame: region(11, 30),
 
-  houseBrownRoof: region(5, 27),
-  houseBrownFacade: region(5, 28),
-  houseBrownDoor: region(8, 29),
-  houseTealRoof: region(5, 33),
-  houseTealFacade: region(5, 34),
-  houseTealDoor: region(8, 36),
-  houseRedRoof: region(15, 33),
-  houseRedFacade: region(15, 34),
-  houseRedDoor: region(18, 36),
+  brownRoofTopCorner: region(4, 26),
+  brownRoofTop: region(5, 26),
+  brownRoofMiddleCorner: region(4, 27),
+  brownRoofMiddle: region(5, 27),
+  brownRoofEaveCorner: region(4, 28),
+  brownRoofEave: region(5, 28),
+  brownWallCorner: region(7, 29),
+  brownWall: region(4, 29),
+  brownDoor: region(5, 30),
+  brownDoorFrame: region(4, 30),
+
+  tealRoofTopCorner: region(4, 33),
+  tealRoofTop: region(5, 33),
+  tealRoofMiddleCorner: region(4, 34),
+  tealRoofMiddle: region(5, 34),
+  tealRoofEaveCorner: region(4, 35),
+  tealRoofEave: region(5, 35),
+  tealWallCorner: region(7, 36),
+  tealWall: region(4, 36),
+  tealDoor: region(5, 37),
+  tealDoorFrame: region(4, 37),
+
+  redRoofTopCorner: region(14, 33),
+  redRoofTop: region(15, 33),
+  redRoofMiddleCorner: region(14, 34),
+  redRoofMiddle: region(15, 34),
+  redRoofEaveCorner: region(14, 35),
+  redRoofEave: region(15, 35),
+  redWallCorner: region(17, 36),
+  redWall: region(14, 36),
+  redDoor: region(15, 37),
+  redDoorFrame: region(14, 37),
 } as const satisfies Record<string, PunyAtlasRegion>;
 
 export type PunyRegionName = keyof typeof PUNY_REGIONS;
 
 export interface BuildingRegionSet {
-  roof: PunyRegionName;
-  facade: PunyRegionName;
+  roofTopCorner: PunyRegionName;
+  roofTop: PunyRegionName;
+  roofMiddleCorner: PunyRegionName;
+  roofMiddle: PunyRegionName;
+  roofEaveCorner: PunyRegionName;
+  roofEave: PunyRegionName;
+  wallCorner: PunyRegionName;
+  wall: PunyRegionName;
   door: PunyRegionName;
   doorFrame: PunyRegionName;
   signboard: PunyRegionName;
@@ -77,24 +113,27 @@ export interface BuildingRegionSet {
 
 export const BUILDING_REGION_SETS: Record<string, BuildingRegionSet> = {
   'knowledge-hall': {
-    roof: 'houseBrownRoof',
-    facade: 'houseBrownFacade',
-    door: 'houseBrownDoor',
-    doorFrame: 'doorFrame',
+    roofTopCorner: 'brownRoofTopCorner', roofTop: 'brownRoofTop',
+    roofMiddleCorner: 'brownRoofMiddleCorner', roofMiddle: 'brownRoofMiddle',
+    roofEaveCorner: 'brownRoofEaveCorner', roofEave: 'brownRoofEave',
+    wallCorner: 'brownWallCorner', wall: 'brownWall',
+    door: 'brownDoor', doorFrame: 'brownDoorFrame',
     signboard: 'signboard',
   },
   'build-workshop': {
-    roof: 'houseTealRoof',
-    facade: 'houseTealFacade',
-    door: 'houseTealDoor',
-    doorFrame: 'doorFrame',
+    roofTopCorner: 'tealRoofTopCorner', roofTop: 'tealRoofTop',
+    roofMiddleCorner: 'tealRoofMiddleCorner', roofMiddle: 'tealRoofMiddle',
+    roofEaveCorner: 'tealRoofEaveCorner', roofEave: 'tealRoofEave',
+    wallCorner: 'tealWallCorner', wall: 'tealWall',
+    door: 'tealDoor', doorFrame: 'tealDoorFrame',
     signboard: 'signboard',
   },
   'signal-station': {
-    roof: 'houseRedRoof',
-    facade: 'houseRedFacade',
-    door: 'houseRedDoor',
-    doorFrame: 'doorFrame',
+    roofTopCorner: 'redRoofTopCorner', roofTop: 'redRoofTop',
+    roofMiddleCorner: 'redRoofMiddleCorner', roofMiddle: 'redRoofMiddle',
+    roofEaveCorner: 'redRoofEaveCorner', roofEave: 'redRoofEave',
+    wallCorner: 'redWallCorner', wall: 'redWall',
+    door: 'redDoor', doorFrame: 'redDoorFrame',
     signboard: 'signboard',
   },
 };

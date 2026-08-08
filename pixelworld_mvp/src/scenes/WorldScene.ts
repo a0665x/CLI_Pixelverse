@@ -6,7 +6,7 @@ import { WORLD_PIXELS } from '../game/constants';
 import { emitWorldReady } from '../game/worldReady';
 import { NavigationGrid } from '../navigation/navigationGrid';
 import { planAgentTravel } from '../navigation/travelPlanner';
-import { preloadVillageAssets } from '../rendering/assetManifest';
+import { ensureWorldAtlasTexture, preloadVillageAssets } from '../rendering/assetManifest';
 import type { RenderedForeground } from '../rendering/buildingForeground';
 import { DepthOcclusionSystem } from '../rendering/DepthOcclusionSystem';
 import { clearRenderedForegrounds } from '../rendering/renderedForegrounds';
@@ -49,7 +49,7 @@ export class WorldScene extends Phaser.Scene {
     const errors = validateWorld(this.worldDefinition);
     if (errors.length > 0) throw new Error(`Invalid world definition:\n${errors.join('\n')}`);
     this.cameras.main.setBounds(0, 0, WORLD_PIXELS.width, WORLD_PIXELS.height).setRoundPixels(true);
-    const village = new VillageRenderer(this).render(this.worldDefinition);
+    const village = new VillageRenderer(this, ensureWorldAtlasTexture(this)).render(this.worldDefinition);
     this.renderedForegrounds.push(...village.foregrounds);
     this.agents = new AgentRegistry(this, this.navigationGrid, this.worldDefinition.spawn);
     this.statusOverlay = new StatusOverlaySystem(this, this.worldDefinition.buildings);

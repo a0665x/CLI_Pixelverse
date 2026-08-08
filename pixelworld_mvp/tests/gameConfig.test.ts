@@ -14,9 +14,11 @@ describe('fixed village game config', () => {
     expect(integerScaleFor(839, 479)).toBe(1);
   });
 
-  it('uses the one-column layout until the 640px game and desktop panel fit together', () => {
-    expect(styles).toContain('@media (min-width: 940px)');
-    expect(styles).toContain('grid-template-columns: 1fr;');
-    expect(styles).toContain('grid-template-columns: minmax(0, 1fr) 264px;');
+  it('lets the canvas own the viewport while the collapsible panel floats above it', () => {
+    expect(styles).toContain('#app-shell { position: relative; width: 100vw; height: 100vh; }');
+    expect(styles).toContain('#game-root { width: 100%; height: 100%;');
+    expect(styles).toContain('#test-panel-root { position: absolute;');
+    expect(styles).not.toContain('grid-template-columns: minmax(0, 1fr) 264px;');
+    expect(styles).not.toContain('max-width: 100%');
   });
 });

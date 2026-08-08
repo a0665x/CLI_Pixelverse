@@ -1,5 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
-import { AGENT_ATLAS, AGENT_SKINS, agentFrameIndex, preloadVillageAssets, PROP_ASSETS, WORLD_ATLAS, villageAssetEntries } from '../src/rendering/assetManifest';
+import {
+  AGENT_ATLAS,
+  AGENT_SKINS,
+  WORLD_ATLAS,
+  WORLD_ATLAS_FALLBACK_KEY,
+  agentFrameIndex,
+  ensureWorldAtlasTexture,
+  preloadVillageAssets,
+} from '../src/rendering/assetManifest';
 
 describe('village asset manifest', () => {
   it('uses only the curated CC0 world and agent sprite sheets', () => {
@@ -28,7 +36,7 @@ describe('village asset manifest', () => {
     expect(spritesheet).toHaveBeenCalledWith('ninja-blue', '/assets/ninja-adventure/ninja-blue.png', { frameWidth: 16, frameHeight: 16 });
     expect(spritesheet).toHaveBeenCalledWith('samurai-blue', '/assets/ninja-adventure/samurai-blue.png', { frameWidth: 16, frameHeight: 16 });
     expect(spritesheet).toHaveBeenCalledWith('samurai-green', '/assets/ninja-adventure/samurai-green.png', { frameWidth: 16, frameHeight: 16 });
-    expect(image).toHaveBeenCalledTimes(villageAssetEntries().length);
+    expect(image).not.toHaveBeenCalled();
   });
 
   it('maps each facing and skin row to the expected four-column frame', () => {
@@ -39,23 +47,34 @@ describe('village asset manifest', () => {
     expect(agentFrameIndex(AGENT_SKINS.main, 'right', AGENT_SKINS.main.walkRows[1])).toBe(7);
   });
 
-  it('provides a unique preload key and copied path for every AppleDog prop', () => {
-    expect(PROP_ASSETS).toMatchObject({
-      appleTerminal: '/assets/appledog/terminal.png',
-      appleSmallTerminal: '/assets/appledog/small-terminal.png',
-      appleDesk: '/assets/appledog/office-table.png',
-      appleSofa: '/assets/appledog/lounge-sofa.png',
-      applePlant: '/assets/appledog/plant.png',
-    });
+  it('installs and reports an explicit diagnostic texture when the Puny atlas is missing', () => {
+    const generateTexture = vi.fn();
+    const graphics = {
+      fillStyle: vi.fn().mockReturnThis(),
+      fillRect: vi.fn().mockReturnThis(),
+      lineStyle: vi.fn().mockReturnThis(),
+      lineBetween: vi.fn().mockReturnThis(),
+      generateTexture,
+      destroy: vi.fn(),
+    };
+    const scene = {
+      textures: { exists: vi.fn(() => false) },
+      make: { graphics: vi.fn(() => graphics) },
+    };
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
 
-    const entries = villageAssetEntries();
-    expect(new Set(entries.map(([key]) => key)).size).toBe(entries.length);
-    expect(entries).toEqual(expect.arrayContaining([
-      ['prop-appleTerminal', '/assets/appledog/terminal.png'],
-      ['prop-appleSmallTerminal', '/assets/appledog/small-terminal.png'],
-      ['prop-appleDesk', '/assets/appledog/office-table.png'],
-      ['prop-appleSofa', '/assets/appledog/lounge-sofa.png'],
-      ['prop-applePlant', '/assets/appledog/plant.png'],
-    ]));
+    expect(ensureWorldAtlasTexture(scene as never)).toBe(WORLD_ATLAS_FALLBACK_KEY);
+    expect(generateTexture).toHaveBeenCalledWith(WORLD_ATLAS_FALLBACK_KEY, 16, 16);
+    expect(error).toHaveBeenCalledWith(expect.stringContaining('missing essential Puny atlas'));
+    error.mockRestore();
+  });
+
+  it('uses the loaded Puny atlas without creating a fallback', () => {
+    const scene = {
+      textures: { exists: vi.fn((key: string) => key === WORLD_ATLAS.key) },
+      make: { graphics: vi.fn() },
+    };
+    expect(ensureWorldAtlasTexture(scene as never)).toBe(WORLD_ATLAS.key);
+    expect(scene.make.graphics).not.toHaveBeenCalled();
   });
 });

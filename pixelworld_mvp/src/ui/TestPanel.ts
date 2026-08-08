@@ -18,7 +18,7 @@ const DEBUG_LAYERS: Array<[DebugLayerName, string]> = [
 ];
 const mountedPanels = new WeakMap<HTMLElement, TestPanel>();
 
-export const initialPanelExpanded = (viewportWidth: number): boolean => viewportWidth >= 940;
+export const initialPanelExpanded = (_viewportWidth: number): boolean => false;
 export const PANEL_LAYOUT = Object.freeze({ headerClass: 'panel-header', controlsId: 'test-panel-controls', headerHeight: 44, controlsPadding: 10 });
 
 interface PanelBreakpointQuery {
@@ -28,8 +28,8 @@ interface PanelBreakpointQuery {
 }
 
 export function bindPanelBreakpoint(query: PanelBreakpointQuery, setExpanded: (expanded: boolean) => void): () => void {
-  const listener = (event: { matches: boolean }) => setExpanded(event.matches);
-  setExpanded(query.matches);
+  const listener = (_event: { matches: boolean }) => setExpanded(false);
+  setExpanded(false);
   query.addEventListener('change', listener);
   return () => query.removeEventListener('change', listener);
 }

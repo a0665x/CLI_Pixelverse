@@ -1,13 +1,12 @@
 :root { color-scheme: dark; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 * { box-sizing: border-box; }
 html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #111d16; }
-body { display: grid; place-items: center; }
-#app-shell { display: grid; grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) auto; gap: 10px; width: min(100vw, 1280px); height: min(100vh, 720px); padding: 10px; }
-#game-root { min-width: 0; min-height: 0; display: grid; place-items: center; overflow: hidden; background: #213722; border: 2px solid #6f9b4b; box-shadow: 0 0 0 2px #263d25, 0 8px 24px #07100aaa; image-rendering: pixelated; }
-#game-root canvas { max-width: 100%; max-height: 100%; image-rendering: pixelated; image-rendering: crisp-edges; }
-#test-panel-root { overflow: auto; border: 2px solid #765a32; border-radius: 4px; background: #243a27; box-shadow: 0 3px 0 #111d16; }
+#app-shell { position: relative; width: 100vw; height: 100vh; }
+#game-root { width: 100%; height: 100%; min-width: 0; min-height: 0; display: grid; place-items: center; overflow: hidden; background: #213722; image-rendering: pixelated; }
+#game-root canvas { image-rendering: pixelated; image-rendering: crisp-edges; }
+#test-panel-root { position: absolute; right: 10px; bottom: 10px; z-index: 20; width: 264px; overflow: auto; border: 2px solid #765a32; border-radius: 4px; background: #243a27; box-shadow: 0 3px 0 #111d16; }
 #test-panel-root { max-height: 46px; }
-#test-panel-root[data-expanded='true'] { max-height: 45vh; }
+#test-panel-root[data-expanded='true'] { max-height: calc(100vh - 20px); }
 #test-panel-root[data-expanded='false'] #test-panel-controls { display: none; }
 #test-panel-root { padding: 0; color: #fff2c2; }
 .panel-header { height: 44px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 6px 10px; }
@@ -26,11 +25,8 @@ body { display: grid; place-items: center; }
 .event-log { min-height: 80px; margin: 10px 0 0; padding-left: 20px; color: #bcd4c1; font-size: 10px; }
 .event-error { color: #ffadad; }
 .event-success { color: #bcd4c1; }
-@media (max-width: 939px) {
+@media (max-width: 600px) {
+  #test-panel-root { right: 6px; bottom: 6px; width: min(264px, calc(100vw - 12px)); }
   #test-panel-root[data-expanded='false'] { overflow: hidden; }
   #test-panel-root[data-expanded='false'] #test-panel-controls { display: none; }
-}
-@media (min-width: 940px) {
-  #app-shell { grid-template-columns: minmax(0, 1fr) 264px; }
-  #test-panel-root[data-expanded='true'] { max-height: none; }
 }
