@@ -27,6 +27,24 @@ export const AGENT_ATLAS = {
   branch: { key: 'samurai-green', path: '/assets/ninja-adventure/samurai-green.png', frameWidth: 16, frameHeight: 16 },
 } as const satisfies Record<string, SpriteSheetAsset>;
 
+export const ANIMAL_ASSETS = {
+  cow: { key: 'animal-cow', path: '/assets/kenney/tiny-farm/cow.png', frameWidth: 16, frameHeight: 16 },
+  sheep: { key: 'animal-sheep', path: '/assets/kenney/tiny-farm/sheep.png', frameWidth: 16, frameHeight: 16 },
+  chicken: { key: 'animal-chicken', path: '/assets/kenney/tiny-farm/chicken.png', frameWidth: 16, frameHeight: 16 },
+  pig: { key: 'animal-pig', path: '/assets/ninja-adventure/pig.png', frameWidth: 16, frameHeight: 16 },
+} as const satisfies Record<string, SpriteSheetAsset>;
+
+export const INTERIOR_ASSETS = {
+  sofa: { key: 'interior-sofa', path: '/assets/kenney/roguelike-rpg/sofa.png', frameWidth: 16, frameHeight: 16 },
+  bed: { key: 'interior-bed', path: '/assets/kenney/roguelike-rpg/bed.png', frameWidth: 16, frameHeight: 16 },
+  bookcase: { key: 'interior-bookcase', path: '/assets/kenney/roguelike-rpg/bookcase.png', frameWidth: 16, frameHeight: 16 },
+  table: { key: 'interior-table', path: '/assets/kenney/roguelike-rpg/table.png', frameWidth: 16, frameHeight: 16 },
+  workbench: { key: 'interior-workbench', path: '/assets/kenney/roguelike-rpg/workbench.png', frameWidth: 16, frameHeight: 16 },
+  television: { key: 'interior-television', path: '/assets/kenney/modern-city/television.png', frameWidth: 16, frameHeight: 16 },
+  computer: { key: 'interior-computer', path: '/assets/kenney/modern-city/computer.png', frameWidth: 16, frameHeight: 16 },
+  radio: { key: 'interior-radio', path: '/assets/kenney/modern-city/radio.png', frameWidth: 16, frameHeight: 16 },
+} as const satisfies Record<string, SpriteSheetAsset>;
+
 export const AGENT_SKINS = {
   main: { sheet: AGENT_ATLAS.main.key, idleRow: 0, walkRows: [0, 1, 2, 3] },
   subagent: { sheet: AGENT_ATLAS.subagent.key, idleRow: 0, walkRows: [0, 1, 2, 3] },
@@ -43,6 +61,9 @@ export function agentFrameIndex(skin: AgentSkin, facing: Facing, row: number = s
 export function preloadVillageAssets(scene: Phaser.Scene): void {
   [WORLD_ATLAS, ...Object.values(AGENT_ATLAS)].forEach((asset) => {
     scene.load.spritesheet(asset.key, asset.path, { frameWidth: asset.frameWidth, frameHeight: asset.frameHeight });
+  });
+  [...Object.values(ANIMAL_ASSETS), ...Object.values(INTERIOR_ASSETS)].forEach((asset) => {
+    scene.load.image(asset.key, asset.path);
   });
 }
 
