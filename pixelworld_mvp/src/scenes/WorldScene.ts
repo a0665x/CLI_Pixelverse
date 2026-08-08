@@ -10,6 +10,7 @@ import { planAgentTravel } from '../navigation/travelPlanner';
 import { ensureWorldAtlasTexture, preloadVillageAssets } from '../rendering/assetManifest';
 import type { RenderedForeground } from '../rendering/buildingForeground';
 import { DepthOcclusionSystem } from '../rendering/DepthOcclusionSystem';
+import { AmbientAnimalSystem } from '../rendering/AmbientAnimalSystem';
 import { clearRenderedForegrounds } from '../rendering/renderedForegrounds';
 import { StatusOverlaySystem } from '../rendering/StatusOverlaySystem';
 import { VillageRenderer } from '../rendering/VillageRenderer';
@@ -29,6 +30,7 @@ export class WorldScene extends Phaser.Scene {
   private allocator = new StationAllocator(WORLD_DEFINITION.stations);
   private agents!: AgentRegistry;
   private depthSystem!: DepthOcclusionSystem;
+  private animalSystem: AmbientAnimalSystem | undefined;
   private statusOverlay!: StatusOverlaySystem;
   private debugOverlay!: DebugOverlay;
   private demoSequence = 1;
@@ -52,6 +54,7 @@ export class WorldScene extends Phaser.Scene {
     this.cameras.main.setBounds(0, 0, WORLD_PIXELS.width, WORLD_PIXELS.height).setRoundPixels(true);
     const village = new VillageRenderer(this, ensureWorldAtlasTexture(this)).render(this.worldDefinition);
     this.renderedForegrounds.push(...village.foregrounds);
+    this.animalSystem = new AmbientAnimalSystem(this, this.worldDefinition.scenery.animals);
     this.agents = new AgentRegistry(this, this.navigationGrid, this.worldDefinition.spawn);
     this.statusOverlay = new StatusOverlaySystem(this, this.worldDefinition.buildings);
     this.agents.all().forEach((agent) => this.statusOverlay.attachAgent(agent));
@@ -65,6 +68,7 @@ export class WorldScene extends Phaser.Scene {
 
   update(_time: number, delta: number): void {
     this.agents?.update(delta);
+    this.animalSystem?.update(delta);
     if (this.depthSystem && this.agents) this.depthSystem.update(this.agents.selected());
     this.statusOverlay?.update(this.agents.all());
     this.debugOverlay?.update();
@@ -206,6 +210,8 @@ export class WorldScene extends Phaser.Scene {
   private cleanupAgents(): void {
     this.sceneReady = false;
     this.statusOverlay?.destroy();
+    this.animalSystem?.destroy();
+    this.animalSystem = undefined;
     this.agents?.destroy();
     this.pendingCloneAgents.clear();
     this.listeners.clear();
