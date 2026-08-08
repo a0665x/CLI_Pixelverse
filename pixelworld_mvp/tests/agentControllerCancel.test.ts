@@ -23,12 +23,19 @@ describe('AgentController cancellation', () => {
     };
     const { AgentController } = await import('../src/agents/AgentController');
     const agent = new AgentController(scene as never, 'main', 'main', WORLD_DEFINITION.spawn, NavigationGrid.fromWorld(WORLD_DEFINITION));
+    expect(scene.add.image).toHaveBeenLastCalledWith(
+      expect.any(Number),
+      expect.any(Number),
+      'ninja-blue',
+      0,
+    );
     const event = { eventId: 'a', timestamp: 1, source: 'demo' as const, agentId: 'main', agentRole: 'main' as const, kind: 'edit' as const, phase: 'working', activityLabel: 'work' };
     const route = { destinationId: 'queue-plaza', preserveLocation: false, action: 'queue' as const, bubblePolicy: 'persistent' as const, bubbleText: 'wait', priority: 1 };
     const first = { agentId: 'main', stationId: 'queue-plaza', anchorId: 'a', point: { x: 20, y: 12 }, facing: 'down' as const, action: 'queue' as const, kind: 'interaction' as const };
     const staleArrival = vi.fn();
     expect(agent.dispatch(event, first, route, staleArrival)).toBe(true);
     agent.update(100);
+    expect(sprite.setTexture).toHaveBeenLastCalledWith('ninja-blue', 4);
     const logical = { x: sprite.x, y: sprite.y };
     agent.applyRenderOffset(6);
     sprite.y -= 1;

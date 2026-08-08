@@ -12,8 +12,6 @@ export interface AgentSkin {
   sheet: string;
   idleRow: 0;
   walkRows: readonly [0, 1, 2, 3];
-  idle: Record<Facing, string>;
-  active: Record<Facing, string>;
 }
 
 export const WORLD_ATLAS: SpriteSheetAsset = {
@@ -29,19 +27,18 @@ export const AGENT_ATLAS = {
   branch: { key: 'samurai-green', path: '/assets/ninja-adventure/samurai-green.png', frameWidth: 16, frameHeight: 16 },
 } as const satisfies Record<string, SpriteSheetAsset>;
 
-const legacyTextureSet = (prefix: string, idle: number[], active: number[]): Pick<AgentSkin, 'idle' | 'active'> => {
-  const directions: Facing[] = ['left', 'down', 'up', 'right'];
-  return {
-    idle: Object.fromEntries(directions.map((direction, index) => [direction, `${prefix}-idle-${direction}-${idle[index]}`])) as Record<Facing, string>,
-    active: Object.fromEntries(directions.map((direction, index) => [direction, `${prefix}-active-${direction}-${active[index]}`])) as Record<Facing, string>,
-  };
-};
-
 export const AGENT_SKINS = {
-  main: { sheet: AGENT_ATLAS.main.key, idleRow: 0, walkRows: [0, 1, 2, 3], ...legacyTextureSet('main', [212, 213, 214, 215], [239, 240, 241, 242]) },
-  subagent: { sheet: AGENT_ATLAS.subagent.key, idleRow: 0, walkRows: [0, 1, 2, 3], ...legacyTextureSet('subagent', [131, 132, 133, 134], [158, 159, 160, 161]) },
-  branch: { sheet: AGENT_ATLAS.branch.key, idleRow: 0, walkRows: [0, 1, 2, 3], ...legacyTextureSet('branch', [77, 78, 79, 80], [104, 105, 106, 107]) },
+  main: { sheet: AGENT_ATLAS.main.key, idleRow: 0, walkRows: [0, 1, 2, 3] },
+  subagent: { sheet: AGENT_ATLAS.subagent.key, idleRow: 0, walkRows: [0, 1, 2, 3] },
+  branch: { sheet: AGENT_ATLAS.branch.key, idleRow: 0, walkRows: [0, 1, 2, 3] },
 } as const satisfies Record<string, AgentSkin>;
+
+const FACING_FRAME_COLUMNS: Record<Facing, number> = { down: 0, up: 1, left: 2, right: 3 };
+const AGENT_FRAME_COLUMNS = 4;
+
+export function agentFrameIndex(skin: AgentSkin, facing: Facing, row: number = skin.idleRow): number {
+  return row * AGENT_FRAME_COLUMNS + FACING_FRAME_COLUMNS[facing];
+}
 
 export const PROP_ASSETS = {
   bookshelf: '/assets/kenney/Tiles/tile_0124.png',

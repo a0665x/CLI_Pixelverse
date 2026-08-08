@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { AGENT_ATLAS, PROP_ASSETS, WORLD_ATLAS, villageAssetEntries } from '../src/rendering/assetManifest';
+import { describe, expect, it, vi } from 'vitest';
+import { AGENT_ATLAS, AGENT_SKINS, agentFrameIndex, preloadVillageAssets, PROP_ASSETS, WORLD_ATLAS, villageAssetEntries } from '../src/rendering/assetManifest';
 
 describe('village asset manifest', () => {
   it('uses only the curated CC0 world and agent sprite sheets', () => {
@@ -15,6 +15,28 @@ describe('village asset manifest', () => {
       expect(sheet).toMatchObject({ frameWidth: 16, frameHeight: 16 });
       expect(sheet.path).not.toMatch(/pokemon|essentials|ruby|sapphire|rip/i);
     }
+  });
+
+  it('loads every curated sheet as 16 by 16 spritesheet frames', () => {
+    const spritesheet = vi.fn();
+    const image = vi.fn();
+
+    preloadVillageAssets({ load: { spritesheet, image } } as never);
+
+    expect(spritesheet).toHaveBeenCalledTimes(4);
+    expect(spritesheet).toHaveBeenCalledWith('puny-world', '/assets/puny-world/punyworld-overworld-tileset.png', { frameWidth: 16, frameHeight: 16 });
+    expect(spritesheet).toHaveBeenCalledWith('ninja-blue', '/assets/ninja-adventure/ninja-blue.png', { frameWidth: 16, frameHeight: 16 });
+    expect(spritesheet).toHaveBeenCalledWith('samurai-blue', '/assets/ninja-adventure/samurai-blue.png', { frameWidth: 16, frameHeight: 16 });
+    expect(spritesheet).toHaveBeenCalledWith('samurai-green', '/assets/ninja-adventure/samurai-green.png', { frameWidth: 16, frameHeight: 16 });
+    expect(image).toHaveBeenCalledTimes(villageAssetEntries().length);
+  });
+
+  it('maps each facing and skin row to the expected four-column frame', () => {
+    expect(agentFrameIndex(AGENT_SKINS.main, 'down')).toBe(0);
+    expect(agentFrameIndex(AGENT_SKINS.main, 'up')).toBe(1);
+    expect(agentFrameIndex(AGENT_SKINS.main, 'left')).toBe(2);
+    expect(agentFrameIndex(AGENT_SKINS.main, 'right')).toBe(3);
+    expect(agentFrameIndex(AGENT_SKINS.main, 'right', AGENT_SKINS.main.walkRows[1])).toBe(7);
   });
 
   it('provides a unique preload key and copied path for every AppleDog prop', () => {

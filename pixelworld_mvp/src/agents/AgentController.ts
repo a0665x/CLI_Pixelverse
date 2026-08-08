@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { TILE_SIZE } from '../game/constants';
 import { findPath } from '../navigation/aStar';
 import { NavigationGrid } from '../navigation/navigationGrid';
-import { AGENT_SKINS, type AgentSkin } from '../rendering/assetManifest';
+import { AGENT_SKINS, agentFrameIndex, type AgentSkin } from '../rendering/assetManifest';
 import type { StationAssignment } from '../stations/stationAllocator';
 import type { AgentWorldEvent, BehaviorRoute, Facing, GridPoint } from '../world/types';
 import { ActionController } from './ActionController';
@@ -32,7 +32,12 @@ export class AgentController {
     private readonly skin: AgentSkin = role === 'main' ? AGENT_SKINS.main : AGENT_SKINS.subagent,
   ) {
     this.role = role;
-    this.sprite = scene.add.image(spawn.x * TILE_SIZE + TILE_SIZE / 2, spawn.y * TILE_SIZE + TILE_SIZE / 2, this.skin.idle.down).setOrigin(0.5, 0.82);
+    this.sprite = scene.add.image(
+      spawn.x * TILE_SIZE + TILE_SIZE / 2,
+      spawn.y * TILE_SIZE + TILE_SIZE / 2,
+      this.skin.sheet,
+      agentFrameIndex(this.skin, this.facing),
+    ).setOrigin(0.5, 0.82);
     this.actions = new ActionController(scene, this.sprite);
   }
 
@@ -89,7 +94,10 @@ export class AgentController {
     if (this.moving) {
       const snapshot = this.follower.update(deltaMs);
       this.facing = snapshot.facing;
-      this.sprite.setPosition(snapshot.position.x, snapshot.position.y).setTexture(this.skin.active[this.facing]);
+      this.sprite.setPosition(snapshot.position.x, snapshot.position.y).setTexture(
+        this.skin.sheet,
+        agentFrameIndex(this.skin, this.facing, this.skin.walkRows[1]),
+      );
       if (snapshot.arrived) this.arrive();
     }
     this.actions.update();
@@ -108,7 +116,7 @@ export class AgentController {
   private arrive(): void {
     this.moving = false;
     this.currentPath = [];
-    this.sprite.setTexture(this.skin.idle[this.currentAssignment?.facing ?? this.facing]);
+    this.sprite.setTexture(this.skin.sheet, agentFrameIndex(this.skin, this.currentAssignment?.facing ?? this.facing));
     const action = this.currentAssignment?.kind === 'queue'
       ? 'queue'
       : (this.currentRoute?.action ?? this.currentAssignment?.action ?? 'arrive');
