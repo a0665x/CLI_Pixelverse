@@ -11,6 +11,7 @@ import { ensureWorldAtlasTexture, preloadVillageAssets } from '../rendering/asse
 import type { RenderedForeground } from '../rendering/buildingForeground';
 import { DepthOcclusionSystem } from '../rendering/DepthOcclusionSystem';
 import { AmbientAnimalSystem } from '../rendering/AmbientAnimalSystem';
+import { InteriorCutawaySystem } from '../rendering/InteriorCutawaySystem';
 import { clearRenderedForegrounds } from '../rendering/renderedForegrounds';
 import { StatusOverlaySystem } from '../rendering/StatusOverlaySystem';
 import { VillageRenderer } from '../rendering/VillageRenderer';
@@ -31,6 +32,7 @@ export class WorldScene extends Phaser.Scene {
   private agents!: AgentRegistry;
   private depthSystem!: DepthOcclusionSystem;
   private animalSystem: AmbientAnimalSystem | undefined;
+  private cutawaySystem: InteriorCutawaySystem | undefined;
   private statusOverlay!: StatusOverlaySystem;
   private debugOverlay!: DebugOverlay;
   private demoSequence = 1;
@@ -56,6 +58,10 @@ export class WorldScene extends Phaser.Scene {
     this.renderedForegrounds.push(...village.foregrounds);
     this.animalSystem = new AmbientAnimalSystem(this, this.worldDefinition.scenery.animals);
     this.agents = new AgentRegistry(this, this.navigationGrid, this.worldDefinition.spawn);
+    this.cutawaySystem = new InteriorCutawaySystem(this, this.worldDefinition);
+    village.hitRegions.forEach(({ buildingId, object }) => {
+      object.on('pointerdown', () => this.cutawaySystem?.open(buildingId));
+    });
     this.statusOverlay = new StatusOverlaySystem(this, this.worldDefinition.buildings);
     this.agents.all().forEach((agent) => this.statusOverlay.attachAgent(agent));
     this.depthSystem = new DepthOcclusionSystem(this, this.renderedForegrounds, () => this.agents.all());
@@ -71,6 +77,7 @@ export class WorldScene extends Phaser.Scene {
     this.animalSystem?.update(delta);
     if (this.depthSystem && this.agents) this.depthSystem.update(this.agents.selected());
     this.statusOverlay?.update(this.agents.all());
+    this.cutawaySystem?.update(this.agents.all().map((agent) => agent.interiorSnapshot()));
     this.debugOverlay?.update();
   }
 
@@ -212,6 +219,8 @@ export class WorldScene extends Phaser.Scene {
     this.statusOverlay?.destroy();
     this.animalSystem?.destroy();
     this.animalSystem = undefined;
+    this.cutawaySystem?.destroy();
+    this.cutawaySystem = undefined;
     this.agents?.destroy();
     this.pendingCloneAgents.clear();
     this.listeners.clear();
