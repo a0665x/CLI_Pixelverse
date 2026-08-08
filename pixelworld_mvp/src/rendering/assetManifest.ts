@@ -1,22 +1,47 @@
 import type Phaser from 'phaser';
 import type { Facing } from '../world/types';
 
-type DirectionTextures = Record<Facing, string>;
-export interface AgentSkin { idle: DirectionTextures; active: DirectionTextures }
+export interface SpriteSheetAsset {
+  key: string;
+  path: string;
+  frameWidth: number;
+  frameHeight: number;
+}
 
-const textureSet = (prefix: string, idle: number[], active: number[]): AgentSkin => {
+export interface AgentSkin {
+  sheet: string;
+  idleRow: 0;
+  walkRows: readonly [0, 1, 2, 3];
+  idle: Record<Facing, string>;
+  active: Record<Facing, string>;
+}
+
+export const WORLD_ATLAS: SpriteSheetAsset = {
+  key: 'puny-world',
+  path: '/assets/puny-world/punyworld-overworld-tileset.png',
+  frameWidth: 16,
+  frameHeight: 16,
+};
+
+export const AGENT_ATLAS = {
+  main: { key: 'ninja-blue', path: '/assets/ninja-adventure/ninja-blue.png', frameWidth: 16, frameHeight: 16 },
+  subagent: { key: 'samurai-blue', path: '/assets/ninja-adventure/samurai-blue.png', frameWidth: 16, frameHeight: 16 },
+  branch: { key: 'samurai-green', path: '/assets/ninja-adventure/samurai-green.png', frameWidth: 16, frameHeight: 16 },
+} as const satisfies Record<string, SpriteSheetAsset>;
+
+const legacyTextureSet = (prefix: string, idle: number[], active: number[]): Pick<AgentSkin, 'idle' | 'active'> => {
   const directions: Facing[] = ['left', 'down', 'up', 'right'];
   return {
-    idle: Object.fromEntries(directions.map((direction, index) => [direction, `${prefix}-idle-${direction}-${idle[index]}`])) as DirectionTextures,
-    active: Object.fromEntries(directions.map((direction, index) => [direction, `${prefix}-active-${direction}-${active[index]}`])) as DirectionTextures,
+    idle: Object.fromEntries(directions.map((direction, index) => [direction, `${prefix}-idle-${direction}-${idle[index]}`])) as Record<Facing, string>,
+    active: Object.fromEntries(directions.map((direction, index) => [direction, `${prefix}-active-${direction}-${active[index]}`])) as Record<Facing, string>,
   };
 };
 
 export const AGENT_SKINS = {
-  main: textureSet('main', [212, 213, 214, 215], [239, 240, 241, 242]),
-  subagent: textureSet('subagent', [131, 132, 133, 134], [158, 159, 160, 161]),
-  branch: textureSet('branch', [77, 78, 79, 80], [104, 105, 106, 107]),
-} as const;
+  main: { sheet: AGENT_ATLAS.main.key, idleRow: 0, walkRows: [0, 1, 2, 3], ...legacyTextureSet('main', [212, 213, 214, 215], [239, 240, 241, 242]) },
+  subagent: { sheet: AGENT_ATLAS.subagent.key, idleRow: 0, walkRows: [0, 1, 2, 3], ...legacyTextureSet('subagent', [131, 132, 133, 134], [158, 159, 160, 161]) },
+  branch: { sheet: AGENT_ATLAS.branch.key, idleRow: 0, walkRows: [0, 1, 2, 3], ...legacyTextureSet('branch', [77, 78, 79, 80], [104, 105, 106, 107]) },
+} as const satisfies Record<string, AgentSkin>;
 
 export const PROP_ASSETS = {
   bookshelf: '/assets/kenney/Tiles/tile_0124.png',
@@ -37,23 +62,14 @@ export const PROP_ASSETS = {
   applePlant: '/assets/appledog/plant.png',
 } as const;
 
-const tilePath = (number: number) => `/assets/kenney/Tiles/tile_${String(number).padStart(4, '0')}.png`;
-
 export function villageAssetEntries(): Array<[string, string]> {
-  const entries: Array<[string, string]> = [];
-  for (const skin of Object.values(AGENT_SKINS)) {
-    for (const group of [skin.idle, skin.active]) {
-      for (const key of Object.values(group)) {
-        const number = Number(key.slice(key.lastIndexOf('-') + 1));
-        entries.push([key, tilePath(number)]);
-      }
-    }
-  }
-  for (const [key, path] of Object.entries(PROP_ASSETS)) entries.push([`prop-${key}`, path]);
-  return entries;
+  return Object.entries(PROP_ASSETS).map(([key, path]) => [`prop-${key}`, path]);
 }
 
 export function preloadVillageAssets(scene: Phaser.Scene): void {
+  [WORLD_ATLAS, ...Object.values(AGENT_ATLAS)].forEach((asset) => {
+    scene.load.spritesheet(asset.key, asset.path, { frameWidth: asset.frameWidth, frameHeight: asset.frameHeight });
+  });
   villageAssetEntries().forEach(([key, path]) => scene.load.image(key, path));
 }
 
