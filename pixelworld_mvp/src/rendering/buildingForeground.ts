@@ -1,19 +1,43 @@
-import type { GridRect } from '../world/types';
+import type Phaser from 'phaser';
+import type { WorldBuilding } from '../world/types';
 
-interface PixelRect { x: number; y: number; width: number; height: number }
-export interface BuildingEaveGeometry { bounds: PixelRect; baselineY: number }
+export interface PixelRect { x: number; y: number; width: number; height: number }
+export type VillageForegroundKind = 'roof' | 'canopy' | 'door-frame';
+export interface ForegroundGeometry {
+  kind: Extract<VillageForegroundKind, 'roof' | 'door-frame'>;
+  bounds: PixelRect;
+  baselineY: number;
+}
+export interface RenderedForeground {
+  object: Phaser.GameObjects.GameObject & Phaser.GameObjects.Components.Alpha & Phaser.GameObjects.Components.Depth;
+  bounds: Phaser.Geom.Rectangle;
+  baselineY: number;
+  kind?: VillageForegroundKind;
+}
 
-const EAVE_HEIGHT = 28;
-
-export function buildingEaveGeometry(buildingBounds: GridRect, tileSize: number): BuildingEaveGeometry {
-  const y = (buildingBounds.y + buildingBounds.height) * tileSize;
-  return {
-    bounds: {
-      x: buildingBounds.x * tileSize,
-      y,
-      width: buildingBounds.width * tileSize,
-      height: EAVE_HEIGHT,
+export function buildingForegroundGeometry(building: WorldBuilding, tileSize: number): ForegroundGeometry[] {
+  const frontY = (building.bounds.y + building.bounds.height) * tileSize;
+  const thresholdCenterX = building.entrance.threshold.x * tileSize + tileSize / 2;
+  return [
+    {
+      kind: 'roof',
+      bounds: {
+        x: building.bounds.x * tileSize,
+        y: building.bounds.y * tileSize,
+        width: building.bounds.width * tileSize,
+        height: (building.bounds.height - 1) * tileSize,
+      },
+      baselineY: frontY - tileSize,
     },
-    baselineY: y + EAVE_HEIGHT,
-  };
+    {
+      kind: 'door-frame',
+      bounds: {
+        x: thresholdCenterX - tileSize,
+        y: frontY - tileSize * 2,
+        width: tileSize * 2,
+        height: tileSize * 2,
+      },
+      baselineY: frontY,
+    },
+  ];
 }

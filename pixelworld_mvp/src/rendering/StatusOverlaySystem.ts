@@ -25,7 +25,7 @@ export class StatusOverlaySystem {
   constructor(private readonly scene: Phaser.Scene, buildings: WorldBuilding[]) {
     for (const building of buildings) {
       const badge = scene.add.text(building.labelAnchor.x * 16, building.labelAnchor.y * 16 + 11, '', {
-        fontFamily: 'monospace', fontSize: '8px', color: '#f7f2d0', backgroundColor: '#263c2d', padding: { x: 3, y: 2 },
+        fontFamily: 'monospace', fontSize: '8px', color: '#fff2ba', backgroundColor: '#3b2a1ddd', padding: { x: 3, y: 2 },
       }).setOrigin(0.5, 0).setDepth(20_001).setVisible(false);
       this.buildingBadges.set(building.id, badge);
     }
@@ -34,10 +34,10 @@ export class StatusOverlaySystem {
   attachAgent(agent: AgentController): void {
     if (this.overlays.has(agent.agentId)) return;
     const chip = this.scene.add.text(agent.sprite.x, agent.sprite.y - 16, agent.role === 'main' ? 'main · idle' : agent.agentId, {
-      fontFamily: 'monospace', fontSize: agent.role === 'main' ? '8px' : '7px', color: '#ffffff', backgroundColor: '#17281ddd', padding: { x: 3, y: 1 },
+      fontFamily: 'monospace', fontSize: agent.role === 'main' ? '8px' : '7px', color: '#fff5c7', backgroundColor: '#27452ddd', padding: { x: 3, y: 1 },
     }).setOrigin(0.5, 1).setDepth(20_000);
     const bubble = this.scene.add.text(agent.sprite.x, agent.sprite.y - 34, '', {
-      fontFamily: 'monospace', fontSize: '8px', color: '#203126', backgroundColor: '#fff8d6', padding: { x: 4, y: 3 },
+      fontFamily: 'monospace', fontSize: '8px', color: '#29351e', backgroundColor: '#fff0badd', padding: { x: 4, y: 3 },
     }).setOrigin(0.5, 1).setDepth(20_002).setVisible(false);
     this.overlays.set(agent.agentId, { chip, bubble, bubbleExpiresAt: 0 });
   }

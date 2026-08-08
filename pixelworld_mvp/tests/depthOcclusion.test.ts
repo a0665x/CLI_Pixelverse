@@ -7,6 +7,7 @@ import type { RenderedForeground } from '../src/scenes/WorldScene';
 interface FakeSprite {
   y: number;
   depth: number;
+  visible: boolean;
   bounds: { x: number; y: number; width: number; height: number };
   setDepth(depth: number): FakeSprite;
   getBounds(): FakeSprite['bounds'];
@@ -15,6 +16,7 @@ interface FakeSprite {
 const sprite = (y: number, bounds: FakeSprite['bounds']): FakeSprite => ({
   y,
   depth: 0,
+  visible: true,
   bounds,
   setDepth(depth) { this.depth = depth; return this; },
   getBounds() { return this.bounds; },
@@ -128,5 +130,22 @@ describe('depth and foreground occlusion', () => {
     expect(oldForeground.object.alpha).toBe(1);
     expect(replacementSprite.depth).toBe(200.001);
     expect(replacementForeground.object.alpha).toBe(1);
+  });
+
+  it('never fades the village for a selected Agent hidden inside a building', () => {
+    const now = { value: 500 };
+    const selectedSprite = sprite(40, { x: 20, y: 20, width: 12, height: 20 });
+    const selected = agent(selectedSprite);
+    const covered = foreground({ x: 10, y: 10, width: 48, height: 48 }, 58);
+    const depthSystem = system(now, [covered.entry], () => [selected]);
+
+    depthSystem.update(selected);
+    now.value = 1_000;
+    depthSystem.update(selected);
+    expect(covered.object.alpha).toBe(0.6);
+
+    selectedSprite.visible = false;
+    depthSystem.update(selected);
+    expect(covered.object.alpha).toBe(1);
   });
 });

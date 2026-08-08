@@ -1,6 +1,6 @@
 import type Phaser from 'phaser';
 import type { AgentController } from '../agents/AgentController';
-import type { RenderedForeground } from '../scenes/WorldScene';
+import type { RenderedForeground } from './buildingForeground';
 
 export const depthFromFootY = (footY: number, tieBreaker: number): number =>
   Math.round(footY) + tieBreaker / 1000;
@@ -20,12 +20,19 @@ export class DepthOcclusionSystem {
   constructor(private readonly scene: Phaser.Scene, private readonly foregrounds: RenderedForeground[], private readonly agents: () => AgentController[]) {}
 
   update(selected: AgentController): void {
-    this.agents().forEach((agent, index) => agent.sprite.setDepth(depthFromFootY(agent.sprite.y, index + 1)));
+    this.agents().forEach((agent, index) => {
+      if (agent.sprite.visible) agent.sprite.setDepth(depthFromFootY(agent.sprite.y, index + 1));
+    });
     const activeForegrounds = new Set(this.foregrounds);
     for (const foreground of this.coveredSince.keys()) {
       if (activeForegrounds.has(foreground)) continue;
       foreground.object.setAlpha(1);
       this.coveredSince.delete(foreground);
+    }
+    if (!selected.sprite.visible) {
+      for (const foreground of this.foregrounds) foreground.object.setAlpha(1);
+      this.coveredSince.clear();
+      return;
     }
     const now = this.scene.time.now;
     const selectedBounds = selected.sprite.getBounds();

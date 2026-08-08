@@ -1,35 +1,31 @@
 import { describe, expect, it } from 'vitest';
 import { TILE_SIZE } from '../src/game/constants';
-import { buildingEaveGeometry } from '../src/rendering/buildingForeground';
+import { buildingForegroundGeometry } from '../src/rendering/buildingForeground';
 import { shouldFadeForeground } from '../src/rendering/DepthOcclusionSystem';
 import { WORLD_DEFINITION } from '../src/world/worldDefinition';
 
 describe('building foreground geometry', () => {
-  it('covers every reachable exterior approach with a visible front eave', () => {
+  it('creates one roof and one real door-frame foreground per building', () => {
     for (const building of WORLD_DEFINITION.buildings) {
-      const eave = buildingEaveGeometry(building.bounds, TILE_SIZE);
-      const approaches = WORLD_DEFINITION.stations
-        .filter((station) => station.buildingId === building.id)
-        .flatMap((station) => station.approachAnchors);
-
-      expect(approaches.length).toBeGreaterThan(0);
-      for (const point of approaches) {
-        const footY = point.y * TILE_SIZE + TILE_SIZE / 2;
-        const agentBounds = {
-          x: point.x * TILE_SIZE + 1,
-          y: footY - 14,
-          width: TILE_SIZE - 2,
-          height: 14,
-        };
-        expect(shouldFadeForeground(agentBounds, eave.bounds, footY, eave.baselineY), `${building.id}@${point.x},${point.y}`).toBe(true);
-      }
+      const geometry = buildingForegroundGeometry(building, TILE_SIZE);
+      expect(geometry.map(({ kind }) => kind)).toEqual(['roof', 'door-frame']);
+      const door = geometry.find(({ kind }) => kind === 'door-frame')!;
+      const thresholdCenter = {
+        x: building.entrance.threshold.x * TILE_SIZE + TILE_SIZE / 2,
+        y: building.entrance.threshold.y * TILE_SIZE + TILE_SIZE / 2,
+      };
+      expect(thresholdCenter.x).toBeGreaterThanOrEqual(door.bounds.x);
+      expect(thresholdCenter.x).toBeLessThanOrEqual(door.bounds.x + door.bounds.width);
+      expect(thresholdCenter.y).toBeGreaterThanOrEqual(door.bounds.y);
+      expect(thresholdCenter.y).toBeLessThanOrEqual(door.bounds.y + door.bounds.height);
+      expect(door.baselineY).toBeGreaterThan(thresholdCenter.y);
     }
   });
 
-  it('places the eave at the building front with matching bounds and baseline', () => {
-    expect(buildingEaveGeometry({ x: 2, y: 2, width: 9, height: 5 }, 16)).toEqual({
-      bounds: { x: 32, y: 112, width: 144, height: 28 },
-      baselineY: 140,
-    });
+  it('uses roof bounds that can occlude an Agent standing behind the facade', () => {
+    const building = WORLD_DEFINITION.buildings[0]!;
+    const roof = buildingForegroundGeometry(building, TILE_SIZE)[0]!;
+    const agentBounds = { x: roof.bounds.x + 16, y: roof.bounds.y + 16, width: 12, height: 14 };
+    expect(shouldFadeForeground(agentBounds, roof.bounds, roof.bounds.y + 30, roof.baselineY)).toBe(true);
   });
 });
