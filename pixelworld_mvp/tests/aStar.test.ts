@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { findPath } from '../src/navigation/aStar';
+import { findPath, findPathVia } from '../src/navigation/aStar';
 import { NavigationGrid } from '../src/navigation/navigationGrid';
+import type { WorldDefinition } from '../src/world/types';
 import { WORLD_DEFINITION } from '../src/world/worldDefinition';
 
 describe('four-direction A*', () => {
@@ -34,5 +35,51 @@ describe('four-direction A*', () => {
 
   it('returns a one-point path when start equals goal', () => {
     expect(findPath(grid, { x: 20, y: 11 }, { x: 20, y: 11 })).toEqual([{ x: 20, y: 11 }]);
+  });
+
+  it('prefers a longer road route over a shorter grass shortcut', () => {
+    const world: WorldDefinition = {
+      width: 5,
+      height: 3,
+      spawn: { x: 0, y: 1 },
+      buildings: [],
+      zones: [],
+      scenery: { trees: [], pond: { x: 0, y: 0, width: 0, height: 0 }, flowerBeds: [] },
+      terrain: [
+        { kind: 'road', bounds: { x: 0, y: 0, width: 5, height: 1 }, cost: 1 },
+        { kind: 'grass', bounds: { x: 0, y: 1, width: 5, height: 1 }, cost: 5 },
+      ],
+      obstacleRects: [{ x: 0, y: 2, width: 5, height: 1 }],
+      walkableOverrides: [],
+      stations: [],
+    };
+
+    const path = findPath(NavigationGrid.fromWorld(world), { x: 0, y: 1 }, { x: 4, y: 1 });
+
+    expect(path).toEqual([
+      { x: 0, y: 1 }, { x: 0, y: 0 }, { x: 1, y: 0 }, { x: 2, y: 0 },
+      { x: 3, y: 0 }, { x: 4, y: 0 }, { x: 4, y: 1 },
+    ]);
+  });
+
+  it('uses terrain costs and reopens declared walkable overrides', () => {
+    const grid = NavigationGrid.fromWorld(WORLD_DEFINITION);
+
+    expect(grid.costAt({ x: 1, y: 1 })).toBe(5);
+    expect(grid.costAt({ x: 20, y: 11 })).toBe(1);
+    expect(grid.costAt({ x: 7, y: 14 })).toBe(2);
+    expect(grid.costAt({ x: 6, y: 6 })).toBe(5);
+    expect(grid.costAt({ x: 3, y: 3 })).toBeUndefined();
+    expect(grid.costAt({ x: -1, y: 1 })).toBeUndefined();
+  });
+
+  it('concatenates routes through each waypoint without duplicate junctions', () => {
+    const path = findPathVia(grid, { x: 6, y: 7 }, [{ x: 6, y: 8 }, { x: 7, y: 8 }]);
+
+    expect(path).toEqual([{ x: 6, y: 7 }, { x: 6, y: 8 }, { x: 7, y: 8 }]);
+  });
+
+  it('returns null when any waypoint segment is impossible', () => {
+    expect(findPathVia(grid, { x: 6, y: 7 }, [{ x: 3, y: 3 }])).toBeNull();
   });
 });

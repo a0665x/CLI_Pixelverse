@@ -37,9 +37,10 @@ export function findPath(grid: NavigationGrid, start: GridPoint, goal: GridPoint
 
     for (const direction of DIRECTIONS) {
       const neighbor = { x: current.x + direction.x, y: current.y + direction.y };
-      if (!grid.isWalkable(neighbor)) continue;
+      const neighborCost = grid.costAt(neighbor);
+      if (neighborCost === undefined) continue;
       const neighborKey = key(neighbor);
-      const tentative = gScore.get(currentKey)! + 1;
+      const tentative = gScore.get(currentKey)! + neighborCost;
       if (tentative >= (gScore.get(neighborKey) ?? Number.POSITIVE_INFINITY)) continue;
       cameFrom.set(neighborKey, currentKey);
       points.set(neighborKey, neighbor);
@@ -49,4 +50,16 @@ export function findPath(grid: NavigationGrid, start: GridPoint, goal: GridPoint
     }
   }
   return null;
+}
+
+export function findPathVia(grid: NavigationGrid, start: GridPoint, waypoints: readonly GridPoint[]): GridPoint[] | null {
+  const path = [start];
+  let segmentStart = start;
+  for (const waypoint of waypoints) {
+    const segment = findPath(grid, segmentStart, waypoint);
+    if (!segment) return null;
+    path.push(...segment.slice(1));
+    segmentStart = waypoint;
+  }
+  return path;
 }

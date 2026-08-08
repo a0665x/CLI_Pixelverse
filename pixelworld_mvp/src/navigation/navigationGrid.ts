@@ -7,6 +7,7 @@ export class NavigationGrid {
     readonly width: number,
     readonly height: number,
     private readonly blocked: Set<string>,
+    private readonly terrainCosts: Map<string, number>,
   ) {}
 
   static fromWorld(world: WorldDefinition): NavigationGrid {
@@ -16,13 +17,28 @@ export class NavigationGrid {
         for (let x = rect.x; x < rect.x + rect.width; x += 1) blocked.add(`${x},${y}`);
       }
     }
-    return new NavigationGrid(world.width, world.height, blocked);
+    for (const point of world.walkableOverrides) blocked.delete(key(point));
+
+    const terrainCosts = new Map<string, number>();
+    for (const area of world.terrain) {
+      for (let y = area.bounds.y; y < area.bounds.y + area.bounds.height; y += 1) {
+        for (let x = area.bounds.x; x < area.bounds.x + area.bounds.width; x += 1) {
+          terrainCosts.set(`${x},${y}`, area.cost);
+        }
+      }
+    }
+    return new NavigationGrid(world.width, world.height, blocked, terrainCosts);
   }
 
   isWalkable(point: GridPoint): boolean {
     return Number.isInteger(point.x) && Number.isInteger(point.y) &&
       point.x >= 0 && point.y >= 0 && point.x < this.width && point.y < this.height &&
       !this.blocked.has(key(point));
+  }
+
+  costAt(point: GridPoint): number | undefined {
+    if (!this.isWalkable(point)) return undefined;
+    return this.terrainCosts.get(key(point)) ?? 5;
   }
 
   blockedPoints(): GridPoint[] {
