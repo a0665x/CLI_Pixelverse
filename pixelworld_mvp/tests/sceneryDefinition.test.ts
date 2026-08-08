@@ -22,6 +22,27 @@ describe('village scenery definition', () => {
     expect(grid.isWalkable({ x: 20, y: 17 })).toBe(false);
   });
 
+  it('keeps scenery obstacles clear of roads, plazas, and front doors', () => {
+    const terrainPoints = new Set(
+      WORLD_DEFINITION.terrain
+        .filter((area) => area.kind === 'road' || area.kind === 'plaza')
+        .flatMap((area) => Array.from(
+          { length: area.bounds.width * area.bounds.height },
+          (_, index) => `${area.bounds.x + (index % area.bounds.width)},${area.bounds.y + Math.floor(index / area.bounds.width)}`,
+        )),
+    );
+    const entrances = new Set(WORLD_DEFINITION.buildings.flatMap((building) => [
+      `${building.entrance.outside.x},${building.entrance.outside.y}`,
+      `${building.entrance.threshold.x},${building.entrance.threshold.y}`,
+    ]));
+    const blocked = NavigationGrid.fromWorld(WORLD_DEFINITION).blockedPoints();
+
+    for (const point of blocked) {
+      expect(terrainPoints.has(`${point.x},${point.y}`)).toBe(false);
+      expect(entrances.has(`${point.x},${point.y}`)).toBe(false);
+    }
+  });
+
   it('exposes every outdoor zone as a deterministic readable label', () => {
     expect(zoneLabelDefinitions(WORLD_DEFINITION.zones)).toEqual(
       WORLD_DEFINITION.zones.map((zone) => ({

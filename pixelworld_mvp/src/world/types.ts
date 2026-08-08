@@ -38,13 +38,27 @@ export interface BehaviorRoute {
 }
 
 export interface GridRect { x: number; y: number; width: number; height: number }
+export type TerrainKind = 'road' | 'plaza' | 'grass';
+export interface TerrainArea { kind: TerrainKind; bounds: GridRect; cost: number }
+export interface BuildingEntrance {
+  outside: GridPoint;
+  threshold: GridPoint;
+  entryFacing: 'up';
+  exitFacing: 'down';
+}
 export interface WorldTree { id: string; trunk: GridPoint }
 export interface WorldScenery {
   trees: WorldTree[];
   pond: GridRect;
   flowerBeds: GridRect[];
 }
-export interface WorldBuilding { id: string; label: string; bounds: GridRect; labelAnchor: GridPoint }
+export interface WorldBuilding {
+  id: string;
+  label: string;
+  bounds: GridRect;
+  labelAnchor: GridPoint;
+  entrance: BuildingEntrance;
+}
 export interface WorldZone { id: string; label: string; bounds: GridRect }
 export interface InteractionSlot {
   id: string;
@@ -68,6 +82,8 @@ export interface WorldDefinition {
   buildings: WorldBuilding[];
   zones: WorldZone[];
   scenery: WorldScenery;
+  terrain: TerrainArea[];
   obstacleRects: GridRect[];
+  walkableOverrides: GridPoint[];
   stations: StationDefinition[];
 }
