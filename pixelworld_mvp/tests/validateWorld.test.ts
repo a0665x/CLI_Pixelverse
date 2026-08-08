@@ -26,4 +26,31 @@ describe('WORLD_DEFINITION', () => {
 
     expect(validateWorld(world)).toContain('invalid obstacle rectangle: 0');
   });
+
+  it.each(['approachAnchors', 'queueAnchors'] as const)(
+    'rejects a blocked building station %s',
+    (pointList) => {
+      const world = structuredClone(WORLD_DEFINITION);
+      const station = world.stations.find((item) => item.id === 'planning-board')!;
+      station[pointList] = [{ x: 2, y: 2 }];
+
+      expect(validateWorld(world)).toContain('station point blocked: planning-board@2,2');
+    },
+  );
+
+  it('allows a blocked but in-bounds building interaction slot as logical capacity', () => {
+    const world = structuredClone(WORLD_DEFINITION);
+    const station = world.stations.find((item) => item.id === 'planning-board')!;
+    station.interactionSlots[0]!.point = { x: 2, y: 2 };
+
+    expect(validateWorld(world)).toEqual([]);
+  });
+
+  it('still rejects an out-of-bounds building interaction slot', () => {
+    const world = structuredClone(WORLD_DEFINITION);
+    const station = world.stations.find((item) => item.id === 'planning-board')!;
+    station.interactionSlots[0]!.point = { x: -1, y: 2 };
+
+    expect(validateWorld(world)).toContain('station point outside world: planning-board@-1,2');
+  });
 });

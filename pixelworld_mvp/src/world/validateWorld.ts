@@ -84,7 +84,13 @@ export function validateWorld(world: WorldDefinition): string[] {
     if (!locationIds.has(station.zoneId)) errors.push(`unknown station zone: ${station.id}@${station.zoneId}`);
     if (station.buildingId && !buildingIds.has(station.buildingId)) errors.push(`unknown station building: ${station.id}@${station.buildingId}`);
     if (station.interactionSlots.length === 0) errors.push(`station has no slots: ${station.id}`);
-    for (const point of [...station.approachAnchors, ...station.interactionSlots.map((item) => item.point), ...station.queueAnchors]) {
+    for (const point of [...station.approachAnchors, ...station.queueAnchors]) {
+      if (!inside(point, world)) errors.push(`station point outside world: ${station.id}@${point.x},${point.y}`);
+      if (world.obstacleRects.some((rect) => blocked(point, rect))) {
+        errors.push(`station point blocked: ${station.id}@${point.x},${point.y}`);
+      }
+    }
+    for (const { point } of station.interactionSlots) {
       if (!inside(point, world)) errors.push(`station point outside world: ${station.id}@${point.x},${point.y}`);
       if (!station.buildingId && world.obstacleRects.some((rect) => blocked(point, rect))) {
         errors.push(`station point blocked: ${station.id}@${point.x},${point.y}`);
