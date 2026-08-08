@@ -15,11 +15,11 @@ const event = (kind: WorldEventKind): AgentWorldEvent => ({
 
 describe('routeEvent', () => {
   it.each([
-    ['think', 'thinking-garden', 'ponder'],
+    ['think', 'planning-board', 'ponder'],
     ['plan', 'planning-board', 'plan'],
     ['read', 'reading-desk', 'read'],
     ['edit', 'editing-desk', 'type'],
-    ['tool', 'terminal-rack', 'terminal'],
+    ['tool', 'signal-console', 'terminal'],
     ['web', 'signal-console', 'signal'],
     ['clone', 'dispatch-pad', 'dispatch'],
     ['await', 'queue-plaza', 'queue'],

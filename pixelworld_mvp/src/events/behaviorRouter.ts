@@ -2,11 +2,11 @@ import type { AgentWorldEvent, BehaviorRoute, WorldEventKind } from '../world/ty
 
 const ROUTES: Record<WorldEventKind, BehaviorRoute> = {
   session_start: { destinationId: 'arrival', preserveLocation: false, action: 'arrive', bubblePolicy: 'transient', bubbleText: '開始工作', priority: 20 },
-  think: { destinationId: 'thinking-garden', preserveLocation: false, action: 'ponder', bubblePolicy: 'transient', bubbleText: '正在思考', priority: 30 },
+  think: { destinationId: 'planning-board', preserveLocation: false, action: 'ponder', bubblePolicy: 'transient', bubbleText: '正在思考', priority: 30 },
   plan: { destinationId: 'planning-board', preserveLocation: false, action: 'plan', bubblePolicy: 'transient', bubbleText: '整理計畫', priority: 35 },
   read: { destinationId: 'reading-desk', preserveLocation: false, action: 'read', bubblePolicy: 'transient', bubbleText: '查閱檔案', priority: 35 },
   edit: { destinationId: 'editing-desk', preserveLocation: false, action: 'type', bubblePolicy: 'transient', bubbleText: '修改程式', priority: 40 },
-  tool: { destinationId: 'terminal-rack', preserveLocation: false, action: 'terminal', bubblePolicy: 'transient', bubbleText: '使用工具', priority: 45 },
+  tool: { destinationId: 'signal-console', preserveLocation: false, action: 'terminal', bubblePolicy: 'transient', bubbleText: '使用工具', priority: 45 },
   web: { destinationId: 'signal-console', preserveLocation: false, action: 'signal', bubblePolicy: 'transient', bubbleText: '連接外部服務', priority: 45 },
   clone: { destinationId: 'dispatch-pad', preserveLocation: false, action: 'dispatch', bubblePolicy: 'transient', bubbleText: '建立 Subagent', priority: 50 },
   respond: { destinationId: 'response-desk', preserveLocation: false, action: 'respond', bubblePolicy: 'transient', bubbleText: '傳送結果', priority: 40 },

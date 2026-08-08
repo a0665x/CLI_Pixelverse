@@ -73,6 +73,28 @@ describe('four-direction A*', () => {
     expect(grid.costAt({ x: -1, y: 1 })).toBeUndefined();
   });
 
+  it('reopens a walkable override located inside an actual obstacle', () => {
+    const world: WorldDefinition = {
+      width: 3,
+      height: 3,
+      spawn: { x: 0, y: 1 },
+      buildings: [],
+      zones: [],
+      scenery: { trees: [], pond: { x: 0, y: 0, width: 0, height: 0 }, flowerBeds: [] },
+      terrain: [{ kind: 'road', bounds: { x: 0, y: 1, width: 3, height: 1 }, cost: 1 }],
+      obstacleRects: [{ x: 1, y: 0, width: 1, height: 3 }],
+      walkableOverrides: [{ x: 1, y: 1 }],
+      stations: [],
+    };
+    const overrideGrid = NavigationGrid.fromWorld(world);
+
+    expect(overrideGrid.isWalkable({ x: 1, y: 1 })).toBe(true);
+    expect(overrideGrid.costAt({ x: 1, y: 1 })).toBe(1);
+    expect(findPath(overrideGrid, { x: 0, y: 1 }, { x: 2, y: 1 })).toEqual([
+      { x: 0, y: 1 }, { x: 1, y: 1 }, { x: 2, y: 1 },
+    ]);
+  });
+
   it('concatenates routes through each waypoint without duplicate junctions', () => {
     const path = findPathVia(grid, { x: 6, y: 7 }, [{ x: 6, y: 8 }, { x: 7, y: 8 }]);
 

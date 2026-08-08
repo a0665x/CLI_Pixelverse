@@ -1,6 +1,7 @@
 import type { DebugLayerName } from '../debug/DebugOverlay';
+import type { AgentPresence } from '../agents/agentPresence';
 import type { WorldScene } from '../scenes/WorldScene';
-import type { WorldEventKind } from '../world/types';
+import type { WorldBuilding, WorldEventKind } from '../world/types';
 
 const ACTIONS: Array<[WorldEventKind, string]> = [
   ['session_start', 'Session Start'], ['think', 'Thinking'], ['plan', 'Planning'],
@@ -17,6 +18,12 @@ const DEBUG_LAYERS: Array<[DebugLayerName, string]> = [
   ['depth', 'Foot-depth lines'],
 ];
 const mountedPanels = new WeakMap<HTMLElement, TestPanel>();
+
+export function formatAgentPresence(presence: AgentPresence, buildings: readonly WorldBuilding[]): string {
+  if (presence.kind === 'outside') return 'Outdoor';
+  const building = buildings.find(({ id }) => id === presence.buildingId);
+  return `Inside ${building?.label ?? presence.buildingId}`;
+}
 
 export const initialPanelExpanded = (_viewportWidth: number): boolean => false;
 export const PANEL_LAYOUT = Object.freeze({ headerClass: 'panel-header', controlsId: 'test-panel-controls', headerHeight: 44, controlsPadding: 10 });
@@ -36,9 +43,11 @@ export function bindPanelBreakpoint(query: PanelBreakpointQuery, setExpanded: (e
 
 export class TestPanel {
   private readonly roster = document.createElement('select');
+  private readonly presence = document.createElement('output');
   private readonly log = document.createElement('ol');
   private unsubscribe: (() => void) | undefined;
   private unsubscribeBreakpoint: (() => void) | undefined;
+  private presenceTimer: number | undefined;
   private destroyed = false;
 
   constructor(private readonly root: HTMLElement, private readonly world: WorldScene) {
@@ -71,7 +80,11 @@ export class TestPanel {
     this.roster.setAttribute('aria-label', 'Select Agent');
     this.roster.addEventListener('change', () => {
       if (!world.selectAgent(this.roster.value)) this.record(this.roster.value || 'Agent', 'select', 'unknown-agent');
+      this.refreshPresence();
     });
+    this.presence.className = 'agent-presence';
+    this.presence.setAttribute('aria-label', 'Selected Agent presence');
+    this.presence.setAttribute('aria-live', 'polite');
 
     const actions = document.createElement('div');
     actions.className = 'panel-grid';
@@ -108,7 +121,7 @@ export class TestPanel {
     this.log.className = 'event-log';
     this.log.setAttribute('aria-label', 'Action feedback');
     this.log.setAttribute('aria-live', 'polite');
-    controls.append(rosterLabel, this.roster, actions, debug, reset, this.log);
+    controls.append(rosterLabel, this.roster, this.presence, actions, debug, reset, this.log);
     root.setAttribute('aria-labelledby', title.id);
     const header = document.createElement('div');
     header.className = PANEL_LAYOUT.headerClass;
@@ -117,6 +130,7 @@ export class TestPanel {
     root.append(header, controls);
     this.refreshRoster();
     this.unsubscribe = world.onRosterChanged(() => this.refreshRoster());
+    this.presenceTimer = window.setInterval(() => this.refreshPresence(), 250);
   }
 
   destroy(): void {
@@ -126,6 +140,8 @@ export class TestPanel {
     this.unsubscribe = undefined;
     this.unsubscribeBreakpoint?.();
     this.unsubscribeBreakpoint = undefined;
+    if (this.presenceTimer !== undefined) window.clearInterval(this.presenceTimer);
+    this.presenceTimer = undefined;
     if (mountedPanels.get(this.root) === this) mountedPanels.delete(this.root);
     this.root.replaceChildren();
   }
@@ -135,6 +151,7 @@ export class TestPanel {
     const agentId = this.world.selectedAgentId() || 'No selected Agent';
     const result = this.world.dispatchDemo(kind);
     this.record(agentId, kind, result.ok ? undefined : (result.reason ?? 'dispatch-failed'));
+    this.refreshPresence();
   }
 
   private record(agentId: string, action: string, reason?: string): void {
@@ -156,6 +173,7 @@ export class TestPanel {
       option.selected = true;
       this.roster.replaceChildren(option);
       this.roster.disabled = true;
+      this.presence.textContent = 'No Agent';
       return;
     }
     this.roster.disabled = false;
@@ -166,6 +184,14 @@ export class TestPanel {
       option.selected = agent.id === selected;
       return option;
     }));
+    this.refreshPresence();
+  }
+
+  private refreshPresence(): void {
+    if (this.destroyed || this.roster.disabled) return;
+    const presence = this.world.selectedAgentPresence();
+    this.presence.value = formatAgentPresence(presence, this.world.worldDefinition.buildings);
+    this.presence.dataset.location = presence.kind;
   }
 }
 

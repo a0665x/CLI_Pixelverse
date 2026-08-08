@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { EventIngress } from '../src/events/eventIngress';
 import { WorldScene } from '../src/scenes/WorldScene';
+import type { AgentPresence } from '../src/agents/agentPresence';
 
 vi.mock('phaser', () => ({ default: {
   Scene: class {},
@@ -13,13 +14,18 @@ const event = (eventId: string, agentId: string, kind: 'clone' | 'edit' = 'clone
   kind, phase: 'working', activityLabel: kind,
 });
 
-function harness(options: { size?: number; kind?: 'interaction' | 'queue'; synchronousArrival?: boolean } = {}) {
+function harness(options: {
+  size?: number;
+  kind?: 'interaction' | 'queue';
+  synchronousArrival?: boolean;
+  initialPresence?: AgentPresence;
+} = {}) {
   const callbacks = new Map<string, (() => void) | undefined>();
   const cloneSprite = { setVisible: vi.fn().mockReturnThis() };
   const clone = { agentId: 'subagent-2', sprite: cloneSprite };
   const makeAgent = (id: string) => ({
     agentId: id, role: id === 'main' ? 'main' : 'subagent', cancel: vi.fn(), heartbeat: vi.fn(),
-    presence: vi.fn(() => ({ kind: 'outside' as const })),
+    presence: vi.fn(() => options.initialPresence ?? ({ kind: 'outside' as const })),
     dispatch: vi.fn((_event, _assignment, _route, callback) => {
       callbacks.set(id, callback);
       if (options.synchronousArrival) callback?.();
@@ -138,5 +144,58 @@ describe('WorldScene clone reservations', () => {
     expect(overlay.setPresence).toHaveBeenCalledTimes(1);
     expect(overlay.setPresence).toHaveBeenCalledWith('main', 'build-workshop');
     expect(overlay.publish.mock.invocationCallOrder[0]).toBeLessThan(overlay.setPresence.mock.invocationCallOrder[0]!);
+  });
+
+  it('clears old building occupancy only after a successful real departure', () => {
+    const { scene } = harness({ initialPresence: {
+      kind: 'inside', buildingId: 'signal-station', threshold: { x: 33, y: 6 },
+    } });
+    const overlay = (scene as unknown as { statusOverlay: {
+      publish: ReturnType<typeof vi.fn>; setPresence: ReturnType<typeof vi.fn>;
+    } }).statusOverlay;
+
+    expect(scene.dispatchWorldEvent(event('leave-signal', 'main', 'edit'))).toEqual({ ok: true });
+
+    expect(overlay.setPresence).toHaveBeenCalledWith('main');
+    expect(overlay.setPresence.mock.invocationCallOrder[0]).toBeLessThan(overlay.publish.mock.invocationCallOrder[0]!);
+  });
+
+  it('preserves inside occupancy when planning fails or work stays in the same building', () => {
+    const failed = harness({ initialPresence: {
+      kind: 'inside', buildingId: 'signal-station', threshold: { x: 33, y: 6 },
+    } });
+    failed.agents.get('main')!.dispatch.mockReturnValueOnce(false);
+    failed.allocator.assign
+      .mockReturnValueOnce({ ok: true, assignment: {
+        agentId: 'main', stationId: 'editing-desk', anchorId: 'blocked', point: { x: 18, y: 8 },
+        facing: 'up', action: 'type', kind: 'interaction',
+      } } as never)
+      .mockReturnValueOnce({ ok: false, reason: 'station-full' } as never);
+    expect(failed.scene.dispatchWorldEvent(event('failed-leave', 'main', 'edit'))).toEqual({ ok: false, reason: 'no-path' });
+    expect((failed.scene as unknown as { statusOverlay: { setPresence: ReturnType<typeof vi.fn> } }).statusOverlay.setPresence)
+      .not.toHaveBeenCalled();
+
+    const same = harness({ initialPresence: {
+      kind: 'inside', buildingId: 'build-workshop', threshold: { x: 20, y: 6 },
+    } });
+    expect(same.scene.dispatchWorldEvent(event('same-room', 'main', 'edit'))).toEqual({ ok: true });
+    expect(same.agents.get('main')!.dispatch).toHaveBeenCalledWith(
+      expect.any(Object), expect.any(Object), expect.any(Object), expect.any(Function),
+      expect.objectContaining({ stayInside: true }),
+    );
+    expect((same.scene as unknown as { statusOverlay: { setPresence: ReturnType<typeof vi.fn> } }).statusOverlay.setPresence)
+      .not.toHaveBeenCalled();
+  });
+
+  it('makes synchronous clone arrival idempotent and publishes before clone creation', () => {
+    const { scene, callbacks, registry } = harness({ synchronousArrival: true });
+    const overlay = (scene as unknown as { statusOverlay: { publish: ReturnType<typeof vi.fn> } }).statusOverlay;
+
+    expect(scene.dispatchWorldEvent(event('sync-clone', 'main'))).toEqual({ ok: true });
+    callbacks.get('main')?.();
+
+    expect(overlay.publish).toHaveBeenCalledTimes(1);
+    expect(registry.createSubagent).toHaveBeenCalledTimes(1);
+    expect(overlay.publish.mock.invocationCallOrder[0]).toBeLessThan(registry.createSubagent.mock.invocationCallOrder[0]!);
   });
 });

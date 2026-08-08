@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { AgentRegistry } from '../agents/AgentRegistry';
+import type { AgentPresence } from '../agents/agentPresence';
 import { DebugOverlay, type DebugLayerName } from '../debug/DebugOverlay';
 import { EventIngress } from '../events/eventIngress';
 import { WORLD_PIXELS } from '../game/constants';
@@ -186,6 +187,11 @@ export class WorldScene extends Phaser.Scene {
   }
 
   selectedAgentId(): string { return this.sceneReady ? (this.agents?.selected()?.agentId ?? '') : ''; }
+  selectedAgentPresence(): AgentPresence {
+    return this.sceneReady && this.agents?.selected()
+      ? this.agents.selected().presence()
+      : { kind: 'outside' };
+  }
   selectedAgent(): import('../agents/AgentController').AgentController { return this.agents.selected(); }
   onRosterChanged(listener: () => void): () => void { this.listeners.add(listener); return () => this.listeners.delete(listener); }
 

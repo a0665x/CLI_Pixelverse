@@ -23,6 +23,7 @@ html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background:
 .panel-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 #test-panel-root fieldset { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin: 10px 0; border-color: #41604c; font-size: 11px; }
 .event-log { min-height: 80px; margin: 10px 0 0; padding-left: 20px; color: #bcd4c1; font-size: 10px; }
+.agent-presence { display: block; margin: 4px 0 8px; padding: 4px 7px; border: 1px solid #8da55b; color: #fff2b6; background: #253b29; font-size: 11px; }
 .event-error { color: #ffadad; }
 .event-success { color: #bcd4c1; }
 @media (max-width: 600px) {
