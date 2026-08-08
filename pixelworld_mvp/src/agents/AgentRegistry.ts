@@ -40,6 +40,7 @@ export class AgentRegistry {
     this.agents.forEach((agent) => agent.update(deltaMs));
     const groups = new Map<string, AgentController[]>();
     this.agents.forEach((agent) => {
+      if (!agent.sprite.visible) return;
       const key = `${Math.round(agent.sprite.x)},${Math.round(agent.sprite.y)}`;
       groups.set(key, [...(groups.get(key) ?? []), agent]);
     });

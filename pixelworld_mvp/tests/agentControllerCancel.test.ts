@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { WORLD_DEFINITION } from '../src/world/worldDefinition';
 import { NavigationGrid } from '../src/navigation/navigationGrid';
+import type { AgentTravelPlan } from '../src/agents/agentPresence';
 
 vi.mock('phaser', () => ({ default: { Math: { Clamp: (value: number, min: number, max: number) => Math.min(max, Math.max(min, value)) } } }));
 
@@ -61,5 +62,39 @@ describe('AgentController cancellation', () => {
       previous = current;
     }
     expect(staleArrival).not.toHaveBeenCalled();
+  });
+
+  it('keeps a cancelled departure outside instead of restoring hidden inside presence', async () => {
+    const sprite = chain({ x: 0, y: 0, visible: true }) as ReturnType<typeof chain> & { x: number; y: number; visible: boolean };
+    sprite.setVisible.mockImplementation(function (this: { visible: boolean }, visible: boolean) { this.visible = visible; return this; });
+    const icon = chain({ x: 0, y: 0 });
+    const scene = {
+      add: { image: vi.fn((x: number, y: number) => { sprite.x = x; sprite.y = y; return sprite; }), text: vi.fn(() => icon) },
+      tweens: { add: vi.fn(() => ({ stop: vi.fn() })) },
+    };
+    const { AgentController } = await import('../src/agents/AgentController');
+    const agent = new AgentController(scene as never, 'main', 'main', WORLD_DEFINITION.spawn, NavigationGrid.fromWorld(WORLD_DEFINITION));
+    const event = { eventId: 'enter', timestamp: 1, source: 'demo' as const, agentId: 'main', agentRole: 'main' as const, kind: 'edit' as const, phase: 'working', activityLabel: 'work' };
+    const route = { destinationId: 'station', preserveLocation: false, action: 'type' as const, bubblePolicy: 'persistent' as const, bubbleText: 'work', priority: 1 };
+    const building = WORLD_DEFINITION.buildings[0]!;
+    const assignment = { agentId: 'main', stationId: 'station', anchorId: 'slot', point: building.entrance.threshold, facing: 'up' as const, action: 'type' as const, kind: 'interaction' as const };
+    const enterPlan: AgentTravelPlan = {
+      waypoints: [building.entrance.outside, building.entrance.threshold],
+      destinationBuilding: { buildingId: building.id, threshold: building.entrance.threshold },
+      stayInside: false,
+    };
+    expect(agent.dispatch(event, assignment, route, undefined, enterPlan)).toBe(true);
+    for (let index = 0; index < 20 && agent.presence().kind === 'outside'; index += 1) agent.update(100_000);
+    expect(agent.presence().kind).toBe('inside');
+
+    const outdoor = { ...assignment, stationId: 'plaza', point: WORLD_DEFINITION.spawn };
+    expect(agent.dispatch({ ...event, eventId: 'leave' }, outdoor, route, undefined, {
+      waypoints: [building.entrance.outside, outdoor.point], stayInside: false,
+    })).toBe(true);
+    agent.update(100);
+    agent.cancel();
+
+    expect(agent.presence()).toEqual({ kind: 'outside' });
+    expect(sprite.visible).toBe(true);
   });
 });
