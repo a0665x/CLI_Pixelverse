@@ -13,33 +13,46 @@ const event = (eventId: string, agentId: string, kind: 'clone' | 'edit' = 'clone
   kind, phase: 'working', activityLabel: kind,
 });
 
-function harness(options: { size?: number; kind?: 'interaction' | 'queue' } = {}) {
+function harness(options: { size?: number; kind?: 'interaction' | 'queue'; synchronousArrival?: boolean } = {}) {
   const callbacks = new Map<string, (() => void) | undefined>();
+  const cloneSprite = { setVisible: vi.fn().mockReturnThis() };
+  const clone = { agentId: 'subagent-2', sprite: cloneSprite };
   const makeAgent = (id: string) => ({
     agentId: id, role: id === 'main' ? 'main' : 'subagent', cancel: vi.fn(), heartbeat: vi.fn(),
-    dispatch: vi.fn((_event, _assignment, _route, callback) => { callbacks.set(id, callback); return true; }),
+    presence: vi.fn(() => ({ kind: 'outside' as const })),
+    dispatch: vi.fn((_event, _assignment, _route, callback) => {
+      callbacks.set(id, callback);
+      if (options.synchronousArrival) callback?.();
+      return true;
+    }),
   });
   const agents = new Map([['main', makeAgent('main')], ['subagent-1', makeAgent('subagent-1')]]);
   const size = options.size ?? 2;
   const registry = {
     get: (id: string) => agents.get(id),
     canCreateSubagent: (reserved = 0) => size + reserved < 11,
-    createSubagent: vi.fn(), destroy: vi.fn(),
+    createSubagent: vi.fn(() => clone), destroy: vi.fn(),
   };
   let sequence = 0;
   const allocator = {
     assignmentFor: vi.fn(), releaseAgent: vi.fn(),
-    assign: vi.fn((agentId: string) => ({ ok: true, assignment: {
-      agentId, stationId: 'dispatch-pad', anchorId: `anchor-${sequence++}`, point: { x: 34, y: 8 }, facing: 'up', action: 'dispatch', kind: options.kind ?? 'interaction',
+    assign: vi.fn((agentId: string, stationId: string) => ({ ok: true, assignment: {
+      agentId, stationId, anchorId: `anchor-${sequence++}`, point: stationId === 'dispatch-pad' ? { x: 34, y: 8 } : { x: 18, y: 8 }, facing: 'up', action: 'dispatch', kind: options.kind ?? 'interaction',
     } })),
   };
   const scene = Object.assign(Object.create(WorldScene.prototype), {
     ingress: new EventIngress(), allocator, agents: registry, pendingCloneAgents: new Set<string>(),
-    statusOverlay: { publish: vi.fn(), showError: vi.fn(), attachAgent: vi.fn(), destroy: vi.fn() },
-    worldDefinition: { stations: [{ id: 'dispatch-pad', buildingId: 'signal-station' }] },
+    statusOverlay: { publish: vi.fn(), setPresence: vi.fn(), showError: vi.fn(), attachAgent: vi.fn(), destroy: vi.fn() },
+    worldDefinition: {
+      stations: [{ id: 'dispatch-pad', buildingId: 'signal-station' }, { id: 'editing-desk', buildingId: 'build-workshop' }],
+      buildings: [
+        { id: 'signal-station', entrance: { outside: { x: 33, y: 7 }, threshold: { x: 33, y: 6 } } },
+        { id: 'build-workshop', entrance: { outside: { x: 20, y: 7 }, threshold: { x: 20, y: 6 } } },
+      ],
+    },
     bindAgentSelection: vi.fn(), notifyRoster: vi.fn(), listeners: new Set(),
   }) as WorldScene;
-  return { scene, agents, registry, allocator, callbacks };
+  return { scene, agents, registry, allocator, callbacks, clone, cloneSprite };
 }
 
 describe('WorldScene clone reservations', () => {
@@ -50,10 +63,11 @@ describe('WorldScene clone reservations', () => {
     expect(scene.dispatchWorldEvent(padded)).toEqual({ ok: true });
     expect(allocator.assign).toHaveBeenCalledWith('main', 'editing-desk', expect.any(Set));
     expect(agents.get('main')!.dispatch).toHaveBeenCalledWith(
-      expect.objectContaining({ agentId: 'main' }), expect.objectContaining({ agentId: 'main' }), expect.any(Object), undefined,
+      expect.objectContaining({ agentId: 'main' }), expect.objectContaining({ agentId: 'main' }), expect.any(Object), expect.any(Function),
+      expect.objectContaining({ waypoints: [{ x: 20, y: 7 }, { x: 20, y: 6 }] }),
     );
     expect((scene as unknown as { statusOverlay: { publish: ReturnType<typeof vi.fn> } }).statusOverlay.publish)
-      .toHaveBeenCalledWith(agents.get('main'), expect.objectContaining({ agentId: 'main' }), expect.any(Object), undefined);
+      .toHaveBeenCalledWith(agents.get('main'), expect.objectContaining({ agentId: 'main' }), expect.any(Object));
   });
 
   it('rejects queued clones without dispatching', () => {
@@ -102,11 +116,27 @@ describe('WorldScene clone reservations', () => {
   });
 
   it('releases reservations on arrival and scene cleanup', () => {
-    const { scene, callbacks } = harness({ size: 10 });
+    const { scene, callbacks, registry, clone, cloneSprite } = harness({ size: 10 });
     expect(scene.dispatchWorldEvent(event('one', 'main'))).toEqual({ ok: true });
     callbacks.get('main')?.();
+    expect(registry.createSubagent).toHaveBeenCalledWith({ x: 33, y: 7 });
+    expect(cloneSprite.setVisible).toHaveBeenCalledWith(true);
+    expect((scene as unknown as { statusOverlay: { attachAgent: ReturnType<typeof vi.fn> } }).statusOverlay.attachAgent)
+      .toHaveBeenCalledWith(clone);
     expect(scene.dispatchWorldEvent(event('two', 'subagent-1'))).toEqual({ ok: true });
     (scene as unknown as { cleanupAgents(): void }).cleanupAgents();
     expect((scene as unknown as { pendingCloneAgents: Set<string> }).pendingCloneAgents.size).toBe(0);
+  });
+
+  it('publishes before applying a synchronous arrival exactly once', () => {
+    const { scene } = harness({ synchronousArrival: true });
+    const overlay = (scene as unknown as { statusOverlay: { publish: ReturnType<typeof vi.fn>; setPresence: ReturnType<typeof vi.fn> } }).statusOverlay;
+
+    expect(scene.dispatchWorldEvent(event('sync', 'main', 'edit'))).toEqual({ ok: true });
+
+    expect(overlay.publish).toHaveBeenCalledTimes(1);
+    expect(overlay.setPresence).toHaveBeenCalledTimes(1);
+    expect(overlay.setPresence).toHaveBeenCalledWith('main', 'build-workshop');
+    expect(overlay.publish.mock.invocationCallOrder[0]).toBeLessThan(overlay.setPresence.mock.invocationCallOrder[0]!);
   });
 });

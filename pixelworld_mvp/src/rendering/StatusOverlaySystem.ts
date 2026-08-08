@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import type { AgentController } from '../agents/AgentController';
-import { ACTION_ICONS, aggregateBuildingActivity, type AgentActivity } from '../status/buildingActivity';
+import { ACTION_ICONS, aggregateBuildingActivity, type AgentActivity, withBuildingPresence } from '../status/buildingActivity';
 import type { AgentWorldEvent, BehaviorRoute, WorldBuilding } from '../world/types';
 
 interface AgentOverlay {
@@ -42,9 +42,10 @@ export class StatusOverlaySystem {
     this.overlays.set(agent.agentId, { chip, bubble, bubbleExpiresAt: 0 });
   }
 
-  publish(agent: AgentController, event: AgentWorldEvent, route: BehaviorRoute, buildingId?: string): void {
+  publish(agent: AgentController, event: AgentWorldEvent, route: BehaviorRoute): void {
     this.attachAgent(agent);
     const overlay = this.overlays.get(agent.agentId)!;
+    const currentActivity = this.activities.get(agent.agentId);
     const prefix = agent.role === 'main' ? 'main' : agent.agentId;
     overlay.chip.setText(`${prefix} · ${ACTION_ICONS[route.action]} ${event.activityLabel}`);
     let bubbleExpiresAt = 0;
@@ -59,8 +60,8 @@ export class StatusOverlaySystem {
       overlay.bubbleExpiresAt = bubbleExpiresAt;
     }
     this.activities.set(agent.agentId, {
+      ...currentActivity,
       agentId: agent.agentId,
-      ...(buildingId ? { buildingId } : {}),
       action: route.action,
       label: event.activityLabel,
       bubbleText: route.bubbleText,
@@ -69,6 +70,14 @@ export class StatusOverlaySystem {
       updatedAt: event.timestamp,
       bubbleExpiresAt,
     });
+    this.syncAgentVisibility(agent, overlay);
+    this.refreshBuildings();
+  }
+
+  setPresence(agentId: string, buildingId?: string): void {
+    const activity = this.activities.get(agentId);
+    if (!activity) return;
+    this.activities.set(agentId, withBuildingPresence(activity, buildingId));
     this.refreshBuildings();
   }
 
@@ -77,10 +86,10 @@ export class StatusOverlaySystem {
     const overlay = this.overlays.get(agent.agentId)!;
     const message = FAILURE_COPY[reason];
     const prefix = agent.role === 'main' ? 'main' : agent.agentId;
-    this.activities.delete(agent.agentId);
     overlay.chip.setText(`${prefix} · ${message}`);
     overlay.bubble.setText(message).setVisible(true);
     overlay.bubbleExpiresAt = Number.POSITIVE_INFINITY;
+    this.syncAgentVisibility(agent, overlay);
     this.refreshBuildings();
   }
 
@@ -90,9 +99,7 @@ export class StatusOverlaySystem {
       if (!overlay) continue;
       overlay.chip.setPosition(agent.sprite.x, agent.sprite.y - 16);
       overlay.bubble.setPosition(agent.sprite.x, agent.sprite.y - 31);
-      if (overlay.bubbleExpiresAt !== Number.POSITIVE_INFINITY && this.scene.time.now >= overlay.bubbleExpiresAt) {
-        overlay.bubble.setVisible(false);
-      }
+      this.syncAgentVisibility(agent, overlay);
     }
     this.refreshBuildings();
   }
@@ -121,5 +128,13 @@ export class StatusOverlaySystem {
         .join(' ');
       badge.setText(`👥${summary.count} ${counts}${summary.message ? `\n${summary.message}` : ''}`).setVisible(true);
     }
+  }
+
+  private syncAgentVisibility(agent: AgentController, overlay: AgentOverlay): void {
+    const outside = agent.presence().kind === 'outside';
+    const bubbleActive = overlay.bubbleExpiresAt === Number.POSITIVE_INFINITY
+      || this.scene.time.now < overlay.bubbleExpiresAt;
+    overlay.chip.setVisible(outside);
+    overlay.bubble.setVisible(outside && bubbleActive);
   }
 }

@@ -5,6 +5,7 @@ import { EventIngress } from '../events/eventIngress';
 import { TILE_SIZE, WORLD_PIXELS } from '../game/constants';
 import { emitWorldReady } from '../game/worldReady';
 import { NavigationGrid } from '../navigation/navigationGrid';
+import { planAgentTravel } from '../navigation/travelPlanner';
 import { ensureAssetFallbacks, preloadVillageAssets, PROP_ASSETS } from '../rendering/assetManifest';
 import { buildingEaveGeometry } from '../rendering/buildingForeground';
 import { createVillageTextures } from '../rendering/createVillageTextures';
@@ -123,20 +124,42 @@ export class WorldScene extends Phaser.Scene {
         : result.route;
       const reservesClone = normalizedEvent.kind === 'clone' && allocation.assignment.kind === 'interaction';
       if (reservesClone) this.pendingCloneAgents.add(normalizedEvent.agentId);
-      const onArrive = reservesClone
-        ? () => {
+      const departurePresence = agent.presence();
+      const travelPlan = planAgentTravel(this.worldDefinition, departurePresence, allocation.assignment);
+      let arrived = false;
+      let published = false;
+      let arrivalApplied = false;
+      const applyArrival = () => {
+        if (!arrived || !published || arrivalApplied) return;
+        arrivalApplied = true;
+        if (travelPlan.destinationBuilding) {
+          this.statusOverlay.setPresence(normalizedEvent.agentId, travelPlan.destinationBuilding.buildingId);
+        }
+        if (reservesClone) {
           this.releasePendingClone(normalizedEvent.agentId);
-          const subagent = this.agents?.createSubagent(allocation.assignment.point);
+          const signalStation = this.worldDefinition.buildings.find((building) => building.id === 'signal-station');
+          const subagent = signalStation
+            ? this.agents?.createSubagent(signalStation.entrance.outside)
+            : undefined;
           if (subagent) {
+            subagent.sprite.setVisible(true);
             this.statusOverlay.attachAgent(subagent);
             this.bindAgentSelection(subagent);
             this.notifyRoster();
           }
         }
-        : undefined;
-      if (agent.dispatch(normalizedEvent, allocation.assignment, effectiveRoute, onArrive)) {
-        const station = this.worldDefinition.stations.find((item) => item.id === result.route.destinationId);
-        this.statusOverlay.publish(agent, normalizedEvent, effectiveRoute, station?.buildingId);
+      };
+      const onArrive = () => {
+        arrived = true;
+        applyArrival();
+      };
+      if (agent.dispatch(normalizedEvent, allocation.assignment, effectiveRoute, onArrive, travelPlan)) {
+        if (departurePresence.kind === 'inside' && !travelPlan.stayInside) {
+          this.statusOverlay.setPresence(normalizedEvent.agentId);
+        }
+        this.statusOverlay.publish(agent, normalizedEvent, effectiveRoute);
+        published = true;
+        applyArrival();
         return { ok: true };
       }
       if (reservesClone) this.releasePendingClone(normalizedEvent.agentId);

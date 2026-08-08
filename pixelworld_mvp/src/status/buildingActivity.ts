@@ -25,6 +25,13 @@ export const ACTION_ICONS: Record<AgentAction, string> = {
   rest: 'z', offline: '×', pulse: '•',
 };
 
+export function withBuildingPresence(activity: AgentActivity, buildingId?: string): AgentActivity {
+  const next = { ...activity };
+  if (buildingId) next.buildingId = buildingId;
+  else delete next.buildingId;
+  return next;
+}
+
 export function aggregateBuildingActivity(
   activities: AgentActivity[],
   buildingId: string,
