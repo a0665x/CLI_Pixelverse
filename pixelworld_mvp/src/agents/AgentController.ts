@@ -8,6 +8,7 @@ import type { AgentWorldEvent, BehaviorRoute, Facing, GridPoint } from '../world
 import { ActionController } from './ActionController';
 import type { AgentPresence, AgentTravelPlan } from './agentPresence';
 import { PathFollower } from './pathFollower';
+import type { InteriorAgentSnapshot } from '../rendering/interiorAssignment';
 
 const WALK_FRAME_MS = 100;
 
@@ -55,6 +56,17 @@ export class AgentController {
     return this.presenceState.kind === 'inside'
       ? { ...this.presenceState, threshold: { ...this.presenceState.threshold } }
       : { kind: 'outside' };
+  }
+
+  interiorSnapshot(): InteriorAgentSnapshot {
+    return {
+      agentId: this.agentId,
+      role: this.role,
+      buildingId: this.presenceState.kind === 'inside' ? this.presenceState.buildingId : undefined,
+      action: this.currentRoute?.action ?? this.currentAssignment?.action ?? 'arrive',
+      eventKind: this.currentEvent?.kind ?? 'unknown',
+      eventId: this.currentEvent?.eventId ?? '',
+    };
   }
 
   clearRenderOffset(): void {
