@@ -36,16 +36,16 @@ describe('WORLD_DEFINITION', () => {
     (pointList) => {
       const world = structuredClone(WORLD_DEFINITION);
       const station = world.stations.find((item) => item.id === 'research-plan')!;
-      station[pointList] = [{ x: 2, y: 2 }];
+      station[pointList] = [{ x: 3, y: 4 }];
 
-      expect(validateWorld(world)).toContain('station point blocked: research-plan@2,2');
+      expect(validateWorld(world)).toContain('station point blocked: research-plan@3,4');
     },
   );
 
   it('allows a blocked but in-bounds building interaction slot as logical capacity', () => {
     const world = structuredClone(WORLD_DEFINITION);
     const station = world.stations.find((item) => item.id === 'research-plan')!;
-    station.interactionSlots[0]!.point = { x: 2, y: 2 };
+    station.interactionSlots[0]!.point = { x: 3, y: 4 };
 
     expect(validateWorld(world)).toEqual([]);
   });

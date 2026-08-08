@@ -3,6 +3,7 @@ import {
   AGENT_ATLAS,
   AGENT_SKINS,
   ANIMAL_ASSETS,
+  HOUSE_ASSETS,
   INTERIOR_ASSETS,
   WORLD_ATLAS,
   WORLD_ATLAS_FALLBACK_KEY,
@@ -38,9 +39,12 @@ describe('village asset manifest', () => {
     expect(spritesheet).toHaveBeenCalledWith('ninja-blue', '/assets/ninja-adventure/ninja-blue.png', { frameWidth: 16, frameHeight: 16 });
     expect(spritesheet).toHaveBeenCalledWith('samurai-blue', '/assets/ninja-adventure/samurai-blue.png', { frameWidth: 16, frameHeight: 16 });
     expect(spritesheet).toHaveBeenCalledWith('samurai-green', '/assets/ninja-adventure/samurai-green.png', { frameWidth: 16, frameHeight: 16 });
-    expect(image).toHaveBeenCalledTimes(Object.keys(ANIMAL_ASSETS).length + Object.keys(INTERIOR_ASSETS).length);
+    expect(image).toHaveBeenCalledTimes(
+      Object.keys(ANIMAL_ASSETS).length + Object.keys(INTERIOR_ASSETS).length + Object.keys(HOUSE_ASSETS).length,
+    );
     expect(image).toHaveBeenCalledWith('animal-cow', '/assets/kenney/tiny-farm/cow.png');
     expect(image).toHaveBeenCalledWith('interior-computer', '/assets/kenney/modern-city/computer.png');
+    expect(image).toHaveBeenCalledWith('tiny-town-wall-brown-door', '/assets/kenney/tiny-town/wall-brown-door.png');
   });
 
   it('maps each facing and skin row to the expected four-column frame', () => {

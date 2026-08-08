@@ -60,22 +60,22 @@ export const WORLD_DEFINITION: WorldDefinition = {
   buildings: [
     {
       id: 'research-library', label: 'Research Library', themeId: 'research-library',
-      bounds: { x: 2, y: 2, width: 6, height: 5 }, labelAnchor: { x: 5, y: 1 },
+      bounds: { x: 3, y: 4, width: 5, height: 3 }, labelAnchor: { x: 5.5, y: 3 },
       entrance: { outside: { x: 5, y: 7 }, threshold: { x: 5, y: 6 }, entryFacing: 'up', exitFacing: 'down' },
     },
     {
       id: 'maker-workshop', label: 'Maker Workshop', themeId: 'maker-workshop',
-      bounds: { x: 25, y: 2, width: 6, height: 5 }, labelAnchor: { x: 28, y: 1 },
+      bounds: { x: 26, y: 4, width: 5, height: 3 }, labelAnchor: { x: 28.5, y: 3 },
       entrance: { outside: { x: 28, y: 7 }, threshold: { x: 28, y: 6 }, entryFacing: 'up', exitFacing: 'down' },
     },
     {
       id: 'rest-cabin', label: 'Rest Cabin', themeId: 'rest-cabin',
-      bounds: { x: 3, y: 14, width: 5, height: 5 }, labelAnchor: { x: 5.5, y: 13 },
+      bounds: { x: 3, y: 16, width: 5, height: 3 }, labelAnchor: { x: 5.5, y: 15 },
       entrance: { outside: { x: 5, y: 19 }, threshold: { x: 5, y: 18 }, entryFacing: 'up', exitFacing: 'down' },
     },
     {
       id: 'collaboration-barn', label: 'Collaboration Barn', themeId: 'collaboration-barn',
-      bounds: { x: 31, y: 13, width: 6, height: 5 }, labelAnchor: { x: 34, y: 12 },
+      bounds: { x: 32, y: 15, width: 5, height: 3 }, labelAnchor: { x: 34.5, y: 14 },
       entrance: { outside: { x: 34, y: 18 }, threshold: { x: 34, y: 17 }, entryFacing: 'up', exitFacing: 'down' },
     },
   ],
@@ -120,10 +120,10 @@ export const WORLD_DEFINITION: WorldDefinition = {
   obstacleRects: [
     { x: 0, y: 0, width: 40, height: 1 }, { x: 0, y: 21, width: 40, height: 1 },
     { x: 0, y: 1, width: 1, height: 20 }, { x: 39, y: 1, width: 1, height: 20 },
-    { x: 2, y: 2, width: 6, height: 4 }, { x: 2, y: 6, width: 3, height: 1 }, { x: 6, y: 6, width: 2, height: 1 },
-    { x: 25, y: 2, width: 6, height: 4 }, { x: 25, y: 6, width: 3, height: 1 }, { x: 29, y: 6, width: 2, height: 1 },
-    { x: 3, y: 14, width: 5, height: 4 }, { x: 3, y: 18, width: 2, height: 1 }, { x: 6, y: 18, width: 2, height: 1 },
-    { x: 31, y: 13, width: 6, height: 4 }, { x: 31, y: 17, width: 3, height: 1 }, { x: 35, y: 17, width: 2, height: 1 },
+    { x: 3, y: 4, width: 5, height: 2 }, { x: 3, y: 6, width: 2, height: 1 }, { x: 6, y: 6, width: 2, height: 1 },
+    { x: 26, y: 4, width: 5, height: 2 }, { x: 26, y: 6, width: 2, height: 1 }, { x: 29, y: 6, width: 2, height: 1 },
+    { x: 3, y: 16, width: 5, height: 2 }, { x: 3, y: 18, width: 2, height: 1 }, { x: 6, y: 18, width: 2, height: 1 },
+    { x: 32, y: 15, width: 5, height: 2 }, { x: 32, y: 17, width: 2, height: 1 }, { x: 35, y: 17, width: 2, height: 1 },
     { x: 18, y: 1, width: 2, height: 8 }, { x: 19, y: 8, width: 2, height: 9 }, { x: 18, y: 16, width: 2, height: 5 },
     { x: 22, y: 10, width: 6, height: 5 }, { x: 11, y: 17, width: 6, height: 3 }, { x: 8, y: 14, width: 2, height: 2 },
     { x: 10, y: 3, width: 1, height: 1 }, { x: 13, y: 6, width: 1, height: 1 },

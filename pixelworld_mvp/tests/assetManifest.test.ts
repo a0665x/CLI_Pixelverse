@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ANIMAL_ASSETS, INTERIOR_ASSETS } from '../src/rendering/assetManifest';
+import { ANIMAL_ASSETS, HOUSE_ASSETS, INTERIOR_ASSETS } from '../src/rendering/assetManifest';
 
 describe('curated village asset manifest', () => {
   it('registers four semantic 16px Kenney Tiny Farm animal cells', () => {
@@ -16,6 +16,17 @@ describe('curated village asset manifest', () => {
     expect(INTERIOR_ASSETS.computer.path).toBe('/assets/kenney/modern-city/computer.png');
     expect(INTERIOR_ASSETS.television.path).toBe('/assets/kenney/modern-city/television.png');
     expect(Object.values(INTERIOR_ASSETS).every(({ frameWidth, frameHeight }) => (
+      frameWidth === 16 && frameHeight === 16
+    ))).toBe(true);
+  });
+
+  it('registers semantic Tiny Town pieces for one coherent house shell', () => {
+    expect(HOUSE_ASSETS.grayRoofTopLeft.path).toBe('/assets/kenney/tiny-town/roof-gray-top-left.png');
+    expect(HOUSE_ASSETS.orangeRoofWindowBottom.path).toBe('/assets/kenney/tiny-town/roof-orange-window-bottom.png');
+    expect(HOUSE_ASSETS.brownWallDoor.path).toBe('/assets/kenney/tiny-town/wall-brown-door.png');
+    expect(HOUSE_ASSETS.grayWallWindow.path).toBe('/assets/kenney/tiny-town/wall-gray-window.png');
+    expect(Object.values(HOUSE_ASSETS)).toHaveLength(24);
+    expect(Object.values(HOUSE_ASSETS).every(({ frameWidth, frameHeight }) => (
       frameWidth === 16 && frameHeight === 16
     ))).toBe(true);
   });

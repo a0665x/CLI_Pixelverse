@@ -30,7 +30,7 @@ describe('four-direction A*', () => {
   });
 
   it('returns null for a blocked or unreachable goal', () => {
-    expect(findPath(grid, WORLD_DEFINITION.spawn, { x: 3, y: 3 })).toBeNull();
+    expect(findPath(grid, WORLD_DEFINITION.spawn, { x: 3, y: 4 })).toBeNull();
   });
 
   it('returns a one-point path when start equals goal', () => {
@@ -69,7 +69,7 @@ describe('four-direction A*', () => {
     expect(grid.costAt({ x: 15, y: 11 })).toBe(1);
     expect(grid.costAt({ x: 17, y: 15 })).toBe(5);
     expect(grid.costAt({ x: 5, y: 6 })).toBe(5);
-    expect(grid.costAt({ x: 3, y: 3 })).toBeUndefined();
+    expect(grid.costAt({ x: 3, y: 4 })).toBeUndefined();
     expect(grid.costAt({ x: -1, y: 1 })).toBeUndefined();
   });
 
@@ -102,6 +102,6 @@ describe('four-direction A*', () => {
   });
 
   it('returns null when any waypoint segment is impossible', () => {
-    expect(findPathVia(grid, { x: 6, y: 7 }, [{ x: 3, y: 3 }])).toBeNull();
+    expect(findPathVia(grid, { x: 6, y: 7 }, [{ x: 3, y: 4 }])).toBeNull();
   });
 });

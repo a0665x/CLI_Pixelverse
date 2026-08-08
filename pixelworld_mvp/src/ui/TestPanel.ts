@@ -18,6 +18,7 @@ const DEBUG_LAYERS: Array<[DebugLayerName, string]> = [
   ['depth', 'Foot-depth lines'],
 ];
 const mountedPanels = new WeakMap<HTMLElement, TestPanel>();
+export const CUTAWAY_OPEN_EVENT = 'pixelworld:cutaway-open';
 
 export function formatAgentPresence(presence: AgentPresence, buildings: readonly WorldBuilding[]): string {
   if (presence.kind === 'outside') return 'Outdoor';
@@ -41,12 +42,22 @@ export function bindPanelBreakpoint(query: PanelBreakpointQuery, setExpanded: (e
   return () => query.removeEventListener('change', listener);
 }
 
+export function bindPanelCutawayCollapse(
+  target: EventTarget,
+  setExpanded: (expanded: boolean) => void,
+): () => void {
+  const listener = (): void => setExpanded(false);
+  target.addEventListener(CUTAWAY_OPEN_EVENT, listener);
+  return () => target.removeEventListener(CUTAWAY_OPEN_EVENT, listener);
+}
+
 export class TestPanel {
   private readonly roster = document.createElement('select');
   private readonly presence = document.createElement('output');
   private readonly log = document.createElement('ol');
   private unsubscribe: (() => void) | undefined;
   private unsubscribeBreakpoint: (() => void) | undefined;
+  private unsubscribeCutaway: (() => void) | undefined;
   private presenceTimer: number | undefined;
   private destroyed = false;
 
@@ -65,6 +76,7 @@ export class TestPanel {
       toggle.setAttribute('aria-expanded', String(expanded));
     };
     this.unsubscribeBreakpoint = bindPanelBreakpoint(window.matchMedia('(min-width: 940px)'), setExpanded);
+    this.unsubscribeCutaway = bindPanelCutawayCollapse(window, setExpanded);
     toggle.addEventListener('click', () => {
       const expanded = root.dataset.expanded !== 'true';
       setExpanded(expanded);
@@ -140,6 +152,8 @@ export class TestPanel {
     this.unsubscribe = undefined;
     this.unsubscribeBreakpoint?.();
     this.unsubscribeBreakpoint = undefined;
+    this.unsubscribeCutaway?.();
+    this.unsubscribeCutaway = undefined;
     if (this.presenceTimer !== undefined) window.clearInterval(this.presenceTimer);
     this.presenceTimer = undefined;
     if (mountedPanels.get(this.root) === this) mountedPanels.delete(this.root);

@@ -1,9 +1,8 @@
 import Phaser from 'phaser';
 import { TILE_SIZE } from '../game/constants';
 import type { GridPoint, TerrainArea, WorldBuilding, WorldDefinition } from '../world/types';
-import { WORLD_ATLAS, WORLD_ATLAS_FALLBACK_KEY } from './assetManifest';
+import { HOUSE_ASSETS, WORLD_ATLAS, WORLD_ATLAS_FALLBACK_KEY } from './assetManifest';
 import {
-  BUILDING_REGION_SETS,
   punyFrameIndex,
   type PunyRegionName,
 } from './punyVillageAtlas';
@@ -30,6 +29,7 @@ export interface AtlasTileCommand {
   primitive: 'atlas';
   layer: VillageLayerName;
   region: PunyRegionName;
+  textureKey?: string;
   x: number;
   y: number;
   depth: number;
@@ -39,7 +39,7 @@ export interface AtlasTileCommand {
   originX?: number;
   originY?: number;
   buildingId?: string;
-  buildingRole?: 'roof' | 'wall' | 'door' | 'door-frame' | 'threshold' | 'signboard';
+  buildingRole?: 'roof' | 'wall' | 'window' | 'door' | 'door-frame' | 'threshold' | 'signboard';
   sceneryRole?: 'river' | 'bridge' | 'crop' | 'pasture' | 'fence' | 'prop';
   foregroundKind?: VillageForegroundKind;
   foregroundGroup?: string;
@@ -115,8 +115,13 @@ function buildingCommands(building: WorldBuilding): {
   tiles: AtlasTileCommand[];
   foregrounds: PlannedForeground[];
 } {
-  const style = BUILDING_REGION_SETS[building.themeId];
-  if (!style) throw new Error(`[pixelworld] missing Puny building regions for ${building.id}`);
+  const styles = {
+    'research-library': { roof: 'gray', wall: 'gray', tint: 0x9fc8ff },
+    'maker-workshop': { roof: 'orange', wall: 'brown', tint: 0xffd49a },
+    'rest-cabin': { roof: 'orange', wall: 'gray', tint: 0xffb9c8 },
+    'collaboration-barn': { roof: 'gray', wall: 'brown', tint: 0xb8dc91 },
+  } as const;
+  const style = styles[building.themeId];
   const frontY = (building.bounds.y + building.bounds.height) * TILE_SIZE;
   const geometry = buildingForegroundGeometry(building, TILE_SIZE);
   const roofGeometry = geometry.find(({ kind }) => kind === 'roof')!;
@@ -124,48 +129,67 @@ function buildingCommands(building: WorldBuilding): {
   const roofGroup = `roof:${building.id}`;
   const doorGroup = `door:${building.id}`;
   const tiles: AtlasTileCommand[] = [];
-  const roofRows = [
-    [style.roofTopCorner, style.roofTop],
-    [style.roofMiddleCorner, style.roofMiddle],
-    [style.roofEaveCorner, style.roofEave],
-  ] as const;
+  const asset = (name: keyof typeof HOUSE_ASSETS): string => HOUSE_ASSETS[name].key;
+  const roofPieces = style.roof === 'gray'
+    ? {
+        topLeft: asset('grayRoofTopLeft'), topMiddle: asset('grayRoofTopMiddle'), topRight: asset('grayRoofTopRight'),
+        windowTop: asset('grayRoofWindowTop'), bottomLeft: asset('grayRoofBottomLeft'),
+        bottomMiddle: asset('grayRoofBottomMiddle'), bottomRight: asset('grayRoofBottomRight'),
+        windowBottom: asset('grayRoofWindowBottom'),
+      }
+    : {
+        topLeft: asset('orangeRoofTopLeft'), topMiddle: asset('orangeRoofTopMiddle'), topRight: asset('orangeRoofTopRight'),
+        windowTop: asset('orangeRoofWindowTop'), bottomLeft: asset('orangeRoofBottomLeft'),
+        bottomMiddle: asset('orangeRoofBottomMiddle'), bottomRight: asset('orangeRoofBottomRight'),
+        windowBottom: asset('orangeRoofWindowBottom'),
+      };
+  const wallPieces = style.wall === 'gray'
+    ? { left: asset('grayWallLeft'), window: asset('grayWallWindow'), door: asset('grayWallDoor'), right: asset('grayWallRight') }
+    : { left: asset('brownWallLeft'), window: asset('brownWallWindow'), door: asset('brownWallDoor'), right: asset('brownWallRight') };
 
-  roofRows.forEach(([corner, fill], localY) => {
+  for (let localY = 0; localY < 2; localY += 1) {
     for (let localX = 0; localX < building.bounds.width; localX += 1) {
-      const edge = localX === 0 || localX === building.bounds.width - 1;
+      const textureKey = localY === 0
+        ? localX === 0 ? roofPieces.topLeft
+          : localX === building.bounds.width - 1 ? roofPieces.topRight
+            : localX === 2 ? roofPieces.windowTop : roofPieces.topMiddle
+        : localX === 0 ? roofPieces.bottomLeft
+          : localX === building.bounds.width - 1 ? roofPieces.bottomRight
+            : localX === 2 ? roofPieces.windowBottom : roofPieces.bottomMiddle;
       tiles.push(tileCommand(
-        'foregrounds', edge ? corner : fill,
+        'foregrounds', 'grassPlain',
         { x: building.bounds.x + localX, y: building.bounds.y + localY },
         roofGeometry.baselineY,
         {
+          textureKey,
           buildingId: building.id,
           buildingRole: 'roof',
           foregroundKind: 'roof',
           foregroundGroup: roofGroup,
-          flipX: localX === building.bounds.width - 1,
           tint: style.tint,
         },
       ));
     }
-  });
+  }
 
-  for (let localY = 3; localY < building.bounds.height; localY += 1) {
-    for (let localX = 0; localX < building.bounds.width; localX += 1) {
-      const point = { x: building.bounds.x + localX, y: building.bounds.y + localY };
-      const isDoor = point.x === building.entrance.threshold.x && point.y === building.entrance.threshold.y;
-      const edge = localX === 0 || localX === building.bounds.width - 1;
-      tiles.push(tileCommand(
-        'wallsAndThresholds', isDoor ? style.door : edge ? style.wallCorner : style.wall,
-        point,
-        isDoor ? -699 : -700,
-        {
-          buildingId: building.id,
-          buildingRole: isDoor ? 'door' : 'wall',
-          flipX: localX === building.bounds.width - 1,
-          tint: style.tint,
-        },
-      ));
-    }
+  const facadeY = building.bounds.y + building.bounds.height - 1;
+  for (let localX = 0; localX < building.bounds.width; localX += 1) {
+    const point = { x: building.bounds.x + localX, y: facadeY };
+    const isDoor = point.x === building.entrance.threshold.x;
+    const isWindow = localX === 1 || localX === building.bounds.width - 2;
+    const textureKey = isDoor ? wallPieces.door
+      : localX === 0 ? wallPieces.left
+        : localX === building.bounds.width - 1 ? wallPieces.right
+          : isWindow ? wallPieces.window : style.wall === 'gray' ? wallPieces.left : wallPieces.right;
+    tiles.push(tileCommand(
+      'wallsAndThresholds', 'grassPlain', point, isDoor ? -699 : -700,
+      {
+        textureKey,
+        buildingId: building.id,
+        buildingRole: isDoor ? 'door' : isWindow ? 'window' : 'wall',
+        tint: style.tint,
+      },
+    ));
   }
 
   tiles.push(
@@ -173,7 +197,8 @@ function buildingCommands(building: WorldBuilding): {
       buildingId: building.id,
       buildingRole: 'threshold',
     }),
-    tileCommand('foregrounds', style.doorFrame, building.entrance.threshold, doorGeometry.baselineY, {
+    tileCommand('foregrounds', 'grassPlain', building.entrance.threshold, doorGeometry.baselineY, {
+      textureKey: wallPieces.door,
       buildingId: building.id,
       buildingRole: 'door-frame',
       foregroundKind: 'door-frame',
@@ -181,8 +206,8 @@ function buildingCommands(building: WorldBuilding): {
       tint: style.tint,
     }),
     tileCommand(
-      'signboards', style.signboard,
-      { x: building.bounds.x + building.bounds.width - 2, y: building.bounds.y + 3 },
+      'signboards', 'signboard',
+      { x: building.bounds.x + building.bounds.width, y: facadeY },
       frontY + 1,
       { buildingId: building.id, buildingRole: 'signboard' },
     ),
@@ -306,7 +331,6 @@ export function buildVillageRenderPlan(world: WorldDefinition): VillageRenderPla
   commands.push(...buildingTiles);
 
   commands.push(
-    tileCommand('trunksAndWorkZones', 'signboard', { x: 8, y: 7 }, 7 * TILE_SIZE + 12, { sceneryRole: 'prop' }),
     tileCommand('trunksAndWorkZones', 'bench', { x: 13, y: 12 }, 12 * TILE_SIZE + 12, { sceneryRole: 'prop' }),
     tileCommand('trunksAndWorkZones', 'bench', { x: 16, y: 12 }, 12 * TILE_SIZE + 12, { sceneryRole: 'prop' }),
     tileCommand('trunksAndWorkZones', 'supplyCrate', { x: 24, y: 7 }, 7 * TILE_SIZE + 12, { sceneryRole: 'prop' }),
@@ -341,8 +365,11 @@ export class VillageRenderer {
     const plan = buildVillageRenderPlan(world);
     const groupedImages = new Map<string, Phaser.GameObjects.Image[]>();
     for (const command of plan.commands) {
-      const frame = this.atlasTextureKey === WORLD_ATLAS_FALLBACK_KEY ? undefined : punyFrameIndex(command.region);
-      const image = this.scene.add.image(command.x, command.y, this.atlasTextureKey, frame)
+      const textureKey = command.textureKey ?? this.atlasTextureKey;
+      const frame = command.textureKey || this.atlasTextureKey === WORLD_ATLAS_FALLBACK_KEY
+        ? undefined
+        : punyFrameIndex(command.region);
+      const image = this.scene.add.image(command.x, command.y, textureKey, frame)
         .setOrigin(0, 0)
         .setDepth(command.depth);
       if (command.scale) image.setScale(command.scale);

@@ -2,6 +2,7 @@ import type Phaser from 'phaser';
 import { WORLD_PIXELS } from '../game/constants';
 import type { FurnitureDefinition, FurnitureKind, GridPoint, InteriorDefinition, WorldDefinition } from '../world/types';
 import { INTERIOR_DEFINITIONS } from '../world/interiorDefinitions';
+import { CUTAWAY_OPEN_EVENT } from '../ui/TestPanel';
 import { AGENT_SKINS, INTERIOR_ASSETS, agentFrameIndex } from './assetManifest';
 import {
   assignInteriorOccupants,
@@ -139,6 +140,7 @@ export class InteriorCutawaySystem {
     const interior = INTERIOR_DEFINITIONS[building.themeId];
     this.close();
     this.openId = buildingId;
+    if (typeof window !== 'undefined') window.dispatchEvent(new Event(CUTAWAY_OPEN_EVENT));
     const size = this.viewportProvider();
     const layout = cutawayLayoutForViewport(size.width, size.height);
     const root = this.scene.add.container(0, 0).setDepth(CUTAWAY_DEPTH).setScrollFactor(0);

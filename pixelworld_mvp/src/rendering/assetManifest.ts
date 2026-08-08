@@ -45,6 +45,40 @@ export const INTERIOR_ASSETS = {
   radio: { key: 'interior-radio', path: '/assets/kenney/modern-city/radio.png', frameWidth: 16, frameHeight: 16 },
 } as const satisfies Record<string, SpriteSheetAsset>;
 
+const tinyTownPiece = (name: string): SpriteSheetAsset => ({
+  key: `tiny-town-${name}`,
+  path: `/assets/kenney/tiny-town/${name}.png`,
+  frameWidth: 16,
+  frameHeight: 16,
+});
+
+export const HOUSE_ASSETS = {
+  grayRoofTopLeft: tinyTownPiece('roof-gray-top-left'),
+  grayRoofTopMiddle: tinyTownPiece('roof-gray-top-middle'),
+  grayRoofTopRight: tinyTownPiece('roof-gray-top-right'),
+  grayRoofWindowTop: tinyTownPiece('roof-gray-window-top'),
+  orangeRoofTopLeft: tinyTownPiece('roof-orange-top-left'),
+  orangeRoofTopMiddle: tinyTownPiece('roof-orange-top-middle'),
+  orangeRoofTopRight: tinyTownPiece('roof-orange-top-right'),
+  orangeRoofWindowTop: tinyTownPiece('roof-orange-window-top'),
+  grayRoofBottomLeft: tinyTownPiece('roof-gray-bottom-left'),
+  grayRoofBottomMiddle: tinyTownPiece('roof-gray-bottom-middle'),
+  grayRoofBottomRight: tinyTownPiece('roof-gray-bottom-right'),
+  grayRoofWindowBottom: tinyTownPiece('roof-gray-window-bottom'),
+  orangeRoofBottomLeft: tinyTownPiece('roof-orange-bottom-left'),
+  orangeRoofBottomMiddle: tinyTownPiece('roof-orange-bottom-middle'),
+  orangeRoofBottomRight: tinyTownPiece('roof-orange-bottom-right'),
+  orangeRoofWindowBottom: tinyTownPiece('roof-orange-window-bottom'),
+  brownWallLeft: tinyTownPiece('wall-brown-left'),
+  brownWallWindow: tinyTownPiece('wall-brown-window'),
+  brownWallDoor: tinyTownPiece('wall-brown-door'),
+  brownWallRight: tinyTownPiece('wall-brown-right'),
+  grayWallLeft: tinyTownPiece('wall-gray-left'),
+  grayWallWindow: tinyTownPiece('wall-gray-window'),
+  grayWallDoor: tinyTownPiece('wall-gray-door'),
+  grayWallRight: tinyTownPiece('wall-gray-right'),
+} as const satisfies Record<string, SpriteSheetAsset>;
+
 export const AGENT_SKINS = {
   main: { sheet: AGENT_ATLAS.main.key, idleRow: 0, walkRows: [0, 1, 2, 3] },
   subagent: { sheet: AGENT_ATLAS.subagent.key, idleRow: 0, walkRows: [0, 1, 2, 3] },
@@ -62,7 +96,7 @@ export function preloadVillageAssets(scene: Phaser.Scene): void {
   [WORLD_ATLAS, ...Object.values(AGENT_ATLAS)].forEach((asset) => {
     scene.load.spritesheet(asset.key, asset.path, { frameWidth: asset.frameWidth, frameHeight: asset.frameHeight });
   });
-  [...Object.values(ANIMAL_ASSETS), ...Object.values(INTERIOR_ASSETS)].forEach((asset) => {
+  [...Object.values(ANIMAL_ASSETS), ...Object.values(INTERIOR_ASSETS), ...Object.values(HOUSE_ASSETS)].forEach((asset) => {
     scene.load.image(asset.key, asset.path);
   });
 }

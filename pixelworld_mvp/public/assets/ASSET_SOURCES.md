@@ -42,6 +42,19 @@ Tiny Farm has no pig cell. The village pig therefore comes from the already
 approved Ninja Adventure CC0 repository: `content/character/pig/pig.png`, first
 16×16 animation frame cropped without resampling to `ninja-adventure/pig.png`.
 
+## Kenney Tiny Town house pieces
+
+- Creator: Kenney
+- Canonical page: <https://kenney.nl/assets/tiny-town>
+- Direct archive: <https://kenney.nl/media/pages/assets/tiny-town/a415fbeb49-1735736916/kenney_tiny-town.zip>
+- License: [CC0 1.0 Universal](https://creativecommons.org/publicdomain/zero/1.0/)
+- Retrieved: 2026-08-08
+- Selected source cells from `Tiles/`:
+  - `tile_0048.png`–`tile_0055.png` → gray/orange upper roof edges, fills, and dormer tops
+  - `tile_0060.png`–`tile_0067.png` → gray/orange lower roof edges, fills, and dormer bottoms
+  - `tile_0072.png`–`tile_0079.png` → brown/gray facade edges, windows, and doors
+- Transformations: semantic filename only; no scaling, smoothing, recoloring, or palette conversion. Runtime tinting distinguishes the four hook themes while preserving the source pixels.
+
 ## Kenney Roguelike/RPG interior cells
 
 - Creator: Kenney

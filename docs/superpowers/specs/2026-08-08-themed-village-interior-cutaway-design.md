@@ -1,7 +1,7 @@
 # Themed Village and Interior Cutaway Design
 
 Date: 2026-08-08
-Status: approved direction, pending written-spec confirmation
+Status: implemented and browser-verified (2026-08-08)
 
 ## Goal
 

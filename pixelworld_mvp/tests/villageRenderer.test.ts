@@ -70,7 +70,7 @@ describe('Puny village renderer contracts', () => {
     const signatures = new Set<string>();
     for (const building of WORLD_DEFINITION.buildings) {
       const tiles = plan.buildingTiles.filter(({ buildingId }) => buildingId === building.id);
-      const shell = tiles.filter(({ buildingRole }) => ['roof', 'wall', 'door'].includes(buildingRole ?? ''));
+      const shell = tiles.filter(({ buildingRole }) => ['roof', 'wall', 'window', 'door'].includes(buildingRole ?? ''));
       const expected = new Set<string>();
       for (let y = building.bounds.y; y < building.bounds.y + building.bounds.height; y += 1) {
         for (let x = building.bounds.x; x < building.bounds.x + building.bounds.width; x += 1) {
@@ -82,9 +82,12 @@ describe('Puny village renderer contracts', () => {
       expect(shell).toHaveLength(building.bounds.width * building.bounds.height);
       expect(tiles.every(({ scale }) => scale === undefined), building.id).toBe(true);
       expect(tiles.every(({ x, y }) => x % TILE_SIZE === 0 && y % TILE_SIZE === 0), building.id).toBe(true);
-      expect(building.bounds.width).toBeGreaterThanOrEqual(4);
-      expect(building.bounds.width).toBeLessThanOrEqual(6);
-      signatures.add(tiles.filter(({ buildingRole }) => buildingRole === 'roof').map(({ region, tint }) => `${region}:${tint ?? 0}`).join('|'));
+      expect(building.bounds).toMatchObject({ width: 5, height: 3 });
+      expect(tiles.filter(({ buildingRole }) => buildingRole === 'door')).toHaveLength(1);
+      expect(tiles.filter(({ buildingRole }) => buildingRole === 'window')).toHaveLength(2);
+      expect(tiles.filter(({ buildingRole }) => ['roof', 'wall', 'window', 'door', 'door-frame'].includes(buildingRole ?? ''))
+        .every(({ textureKey }) => textureKey?.startsWith('tiny-town-')), building.id).toBe(true);
+      signatures.add(tiles.filter(({ buildingRole }) => buildingRole === 'roof').map(({ textureKey, tint }) => `${textureKey}:${tint ?? 0}`).join('|'));
     }
     expect(signatures.size).toBe(4);
     expect(plan.hitRegions.map(({ buildingId }) => buildingId)).toEqual(WORLD_DEFINITION.buildings.map(({ id }) => id));
@@ -95,12 +98,12 @@ describe('Puny village renderer contracts', () => {
     for (const building of WORLD_DEFINITION.buildings) {
       const tiles = plan.buildingTiles.filter(({ buildingId }) => buildingId === building.id);
       const roof = tiles.filter(({ buildingRole }) => buildingRole === 'roof');
-      const facade = tiles.filter(({ buildingRole }) => buildingRole === 'wall' || buildingRole === 'door');
+      const facade = tiles.filter(({ buildingRole }) => ['wall', 'window', 'door'].includes(buildingRole ?? ''));
       const doorFrame = tiles.find(({ buildingRole }) => buildingRole === 'door-frame');
       const frontY = (building.bounds.y + building.bounds.height) * TILE_SIZE;
 
-      expect(roof).toHaveLength(building.bounds.width * 3);
-      expect(facade).toHaveLength(building.bounds.width * 2);
+      expect(roof).toHaveLength(building.bounds.width * 2);
+      expect(facade).toHaveLength(building.bounds.width);
       expect(new Set(roof.map(({ foregroundGroup }) => foregroundGroup))).toEqual(new Set([`roof:${building.id}`]));
       expect(facade.every(({ foregroundGroup, foregroundKind }) => !foregroundGroup && !foregroundKind)).toBe(true);
       expect(doorFrame).toMatchObject({
@@ -132,7 +135,7 @@ describe('Puny village renderer contracts', () => {
         x: building.bounds.x * TILE_SIZE,
         y: building.bounds.y * TILE_SIZE,
         width: building.bounds.width * TILE_SIZE,
-        height: 3 * TILE_SIZE,
+        height: 2 * TILE_SIZE,
       });
       expect(doors[index]!.bounds).toEqual({
         x: building.entrance.threshold.x * TILE_SIZE,
@@ -192,7 +195,7 @@ describe('Puny village renderer contracts', () => {
     expect(new Set(commandsAt('grass').map(({ depth }) => depth))).toEqual(new Set([-1_000]));
     expect(new Set(commandsAt('roads').map(({ depth }) => depth))).toEqual(new Set([-900]));
     expect(new Set(research.filter(({ buildingRole }) => buildingRole === 'wall').map(({ depth }) => depth))).toEqual(new Set([-700]));
-    expect(new Set(research.filter(({ buildingRole }) => buildingRole === 'roof').map(({ depth }) => depth))).toEqual(new Set([80]));
+    expect(new Set(research.filter(({ buildingRole }) => buildingRole === 'roof').map(({ depth }) => depth))).toEqual(new Set([96]));
     expect(research.find(({ buildingRole }) => buildingRole === 'door-frame')?.depth).toBe(112);
     expect(research.find(({ buildingRole }) => buildingRole === 'signboard')?.depth).toBe(113);
   });
@@ -201,7 +204,11 @@ describe('Puny village renderer contracts', () => {
     const fake = fakeScene();
     new VillageRenderer(fake.scene as never, WORLD_ATLAS_FALLBACK_KEY).render(WORLD_DEFINITION);
 
-    expect(fake.images.every(({ texture }) => texture === WORLD_ATLAS_FALLBACK_KEY)).toBe(true);
-    expect(fake.images.every(({ frame }) => frame === undefined)).toBe(true);
+    const fallbackImages = fake.images.filter(({ texture }) => texture === WORLD_ATLAS_FALLBACK_KEY);
+    const houseImages = fake.images.filter(({ texture }) => texture.startsWith('tiny-town-'));
+    expect(fallbackImages.length).toBeGreaterThan(0);
+    expect(fallbackImages.every(({ frame }) => frame === undefined)).toBe(true);
+    expect(houseImages.length).toBeGreaterThan(0);
+    expect(houseImages.every(({ frame }) => frame === undefined)).toBe(true);
   });
 });
