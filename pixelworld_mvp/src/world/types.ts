@@ -78,6 +78,20 @@ export interface FurnitureDefinition {
   blocksNavigation?: boolean;
   requirementId?: string;
 }
+export interface FurniturePrefab {
+  id: string;
+  name: string;
+  createdAt: number;
+  width: number;
+  height: number;
+  items: FurnitureDefinition[];
+}
+export interface InteriorLayoutClipboard {
+  version: 1;
+  sourceBuildingId: string;
+  copiedAt: number;
+  items: FurnitureDefinition[];
+}
 export interface InteriorDefinition {
   id: BuildingThemeId;
   label: string;
