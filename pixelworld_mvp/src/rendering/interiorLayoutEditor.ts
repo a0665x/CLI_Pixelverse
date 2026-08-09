@@ -3,6 +3,7 @@ import type {
   FurnitureKind,
   FurnitureScale,
   FurnitureRotation,
+  FurnitureLayer,
   GridPoint,
   InteriorDefinition,
 } from '../world/types';
@@ -126,8 +127,8 @@ export function rotateFurniture(
 const storageKey = (buildingId: string): string => `pixelworld:interior-layout:${buildingId}`;
 const browserStorage = (): StorageLike | undefined => typeof window === 'undefined' ? undefined : window.localStorage;
 
-interface SavedInteriorLayoutV3 {
-  version: 3;
+interface SavedInteriorLayoutV4 {
+  version: 4;
   furniture: FurnitureDefinition[];
 }
 
@@ -151,12 +152,85 @@ const normalizeLayout = (layout: readonly FurnitureDefinition[]): FurnitureDefin
     };
   });
 
+const requiredId = (room: InteriorDefinition, item: FurnitureDefinition): string =>
+  item.requirementId ?? `${room.id}:${item.id}`;
+
+const normalizeRoomLayout = (
+  room: InteriorDefinition,
+  layout: readonly FurnitureDefinition[],
+): FurnitureDefinition[] => normalizeLayout(layout).map((item) => {
+  const authoredHook = room.furniture.find(({ id }) => id === item.id && item.supportedActions.length > 0);
+  return item.supportedActions.length > 0 || authoredHook
+    ? { ...item, requirementId: requiredId(room, authoredHook ?? item), blocksNavigation: true }
+    : item;
+});
+
+export interface RequiredHookInventoryItem {
+  requirementId: string;
+  furniture: FurnitureDefinition;
+  placed: boolean;
+}
+
+export function requiredHookInventory(
+  room: InteriorDefinition,
+  layout: readonly FurnitureDefinition[],
+): RequiredHookInventoryItem[] {
+  return normalizeRoomLayout(room, room.furniture)
+    .filter(({ supportedActions }) => supportedActions.length > 0)
+    .map((furniture) => ({
+      requirementId: requiredId(room, furniture),
+      furniture,
+      placed: layout.some((item) =>
+        item.requirementId === requiredId(room, furniture)
+        || item.id === furniture.id,
+      ),
+    }));
+}
+
+export function collectAllFurniture(_layout: readonly FurnitureDefinition[]): FurnitureDefinition[] {
+  return [];
+}
+
+const FURNITURE_LAYERS: readonly FurnitureLayer[] = ['floor', 'furniture', 'surface', 'wall'];
+
+export function shiftFurnitureLayer(
+  layout: readonly FurnitureDefinition[],
+  furnitureId: string,
+  direction: 'previous' | 'next',
+): FurnitureDefinition[] {
+  return cloneLayout(layout).map((item) => {
+    if (item.id !== furnitureId) return item;
+    const current = item.layer ?? defaultFurnitureLayer(item);
+    const offset = direction === 'next' ? 1 : -1;
+    const index = Math.max(0, Math.min(FURNITURE_LAYERS.length - 1, FURNITURE_LAYERS.indexOf(current) + offset));
+    return { ...item, layer: FURNITURE_LAYERS[index]!, zIndex: 0 };
+  });
+}
+
+export function reorderFurniture(
+  layout: readonly FurnitureDefinition[],
+  furnitureId: string,
+  direction: 'back' | 'backward' | 'forward' | 'front',
+): FurnitureDefinition[] {
+  const selected = layout.find(({ id }) => id === furnitureId);
+  if (!selected) return cloneLayout(layout);
+  const layer = selected.layer ?? defaultFurnitureLayer(selected);
+  const peers = layout.filter((item) => (item.layer ?? defaultFurnitureLayer(item)) === layer);
+  const current = selected.zIndex ?? 0;
+  const zIndex = direction === 'front'
+    ? Math.max(...peers.map((item) => item.zIndex ?? 0)) + 1
+    : direction === 'back'
+      ? Math.min(...peers.map((item) => item.zIndex ?? 0)) - 1
+      : current + (direction === 'forward' ? 1 : -1);
+  return cloneLayout(layout).map((item) => item.id === furnitureId ? { ...item, zIndex } : item);
+}
+
 export function saveInteriorLayout(
   buildingId: string,
   layout: readonly FurnitureDefinition[],
   storage: StorageLike | undefined = browserStorage(),
 ): void {
-  const saved: SavedInteriorLayoutV3 = { version: 3, furniture: normalizeLayout(layout) };
+  const saved: SavedInteriorLayoutV4 = { version: 4, furniture: normalizeLayout(layout) };
   storage?.setItem(storageKey(buildingId), JSON.stringify(saved));
 }
 
@@ -165,14 +239,14 @@ export function loadInteriorLayout(
   room: InteriorDefinition,
   storage: StorageLike | undefined = browserStorage(),
 ): FurnitureDefinition[] {
-  const fallback = normalizeLayout(room.furniture);
+  const fallback = normalizeRoomLayout(room, room.furniture);
   const raw = storage?.getItem(storageKey(buildingId));
   if (!raw) return fallback;
   try {
     const parsed = JSON.parse(raw) as unknown;
     const source = Array.isArray(parsed)
       ? parsed
-      : parsed && typeof parsed === 'object' && 'version' in parsed && (parsed.version === 2 || parsed.version === 3) && 'furniture' in parsed && Array.isArray(parsed.furniture)
+      : parsed && typeof parsed === 'object' && 'version' in parsed && (parsed.version === 2 || parsed.version === 3 || parsed.version === 4) && 'furniture' in parsed && Array.isArray(parsed.furniture)
         ? parsed.furniture
         : undefined;
     if (!source) return fallback;
@@ -188,16 +262,24 @@ export function loadInteriorLayout(
         || !Array.isArray(item.supportedActions)
         || !FURNITURE_PALETTE.includes(item.kind) && !room.furniture.some(({ kind }) => kind === item.kind)
       ) continue;
-      const normalized = {
+      const normalized = normalizeRoomLayout(room, [{
         ...item,
         point: { ...item.point },
         scale: normalizeFurnitureScale(item.scale),
         rotation: normalizeRotation(item.rotation ?? rotationFromFacing(item.facing)),
-      };
+      }])[0]!;
       if (canPlaceFurniture(room, normalized, accepted)) accepted.push(normalized);
     }
     return accepted.length > 0 ? accepted : fallback;
   } catch {
     return fallback;
   }
+}
+
+export function revertInteriorDraft(
+  buildingId: string,
+  room: InteriorDefinition,
+  storage: StorageLike | undefined = browserStorage(),
+): FurnitureDefinition[] {
+  return loadInteriorLayout(buildingId, room, storage);
 }

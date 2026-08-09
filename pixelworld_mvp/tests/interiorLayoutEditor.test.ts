@@ -9,6 +9,11 @@ import {
   resizeFurniture,
   rotateFurniture,
   saveInteriorLayout,
+  collectAllFurniture,
+  requiredHookInventory,
+  revertInteriorDraft,
+  reorderFurniture,
+  shiftFurnitureLayer,
   FURNITURE_PALETTE,
 } from '../src/rendering/interiorLayoutEditor';
 import { modernOfficeKindForFurniture } from '../src/rendering/InteriorCutawaySystem';
@@ -43,7 +48,7 @@ describe('interior furniture editor model', () => {
     };
     const layout = resizeFurniture(room, moveFurniture(room, normalizedRoomLayout(), 'rest-sofa-a', { x: 3, y: 4 }), 'rest-sofa-a', 1.25);
     saveInteriorLayout('rest-cabin-house', layout, storage);
-    expect(JSON.parse(memory.get('pixelworld:interior-layout:rest-cabin-house')!)).toMatchObject({ version: 3 });
+    expect(JSON.parse(memory.get('pixelworld:interior-layout:rest-cabin-house')!)).toMatchObject({ version: 4 });
     expect(loadInteriorLayout('rest-cabin-house', room, storage)).toEqual(
       layout.map((item) => ({ ...item, scale: item.scale ?? 1, rotation: item.rotation ?? 0 })),
     );
@@ -61,7 +66,7 @@ describe('interior furniture editor model', () => {
     expect(loaded[0]).toMatchObject({ rotation: 90, assetId: 225 });
     saveInteriorLayout('migrate-house', loaded, storage);
     expect(JSON.parse(memory.get('pixelworld:interior-layout:migrate-house')!)).toMatchObject({
-      version: 3,
+      version: 4,
       furniture: [{ rotation: 90, assetId: 225 }],
     });
   });
@@ -112,5 +117,37 @@ describe('interior furniture editor model', () => {
 
     const blocker = { ...room.furniture.find(({ id }) => id === 'rest-lamp')!, point: { x: 3, y: 4 } };
     expect(resizeFurniture(room, [sofa, blocker], sofa.id, 1.5)[0]?.scale).toBe(1.5);
+  });
+
+  it('tracks required Hook furniture independently from decorative furniture', () => {
+    const layout = normalizedRoomLayout();
+    const required = requiredHookInventory(room, layout);
+    expect(required.length).toBeGreaterThan(0);
+    expect(required.every(({ furniture }) => furniture.supportedActions.length > 0)).toBe(true);
+    expect(required.every(({ placed }) => placed)).toBe(true);
+    expect(requiredHookInventory(room, collectAllFurniture(layout)).every(({ placed }) => !placed)).toBe(true);
+  });
+
+  it('collects the draft and can revert it to the last saved configuration', () => {
+    const memory = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => memory.get(key) ?? null,
+      setItem: (key: string, value: string) => { memory.set(key, value); },
+    };
+    const saved = moveFurniture(room, normalizedRoomLayout(), 'rest-sofa-a', { x: 5, y: 3 });
+    saveInteriorLayout('revert-house', saved, storage);
+    expect(collectAllFurniture(saved)).toEqual([]);
+    expect(revertInteriorDraft('revert-house', room, storage)).toEqual(saved);
+  });
+
+  it('moves furniture between semantic layers and reorders within a layer', () => {
+    const layout = normalizedRoomLayout().slice(0, 3).map((item, index) => ({
+      ...item, layer: 'furniture' as const, zIndex: index,
+    }));
+    const id = layout[1]!.id;
+    expect(shiftFurnitureLayer(layout, id, 'next').find((item) => item.id === id)?.layer).toBe('surface');
+    expect(shiftFurnitureLayer(layout, id, 'previous').find((item) => item.id === id)?.layer).toBe('floor');
+    expect(reorderFurniture(layout, id, 'front').find((item) => item.id === id)?.zIndex).toBe(3);
+    expect(reorderFurniture(layout, id, 'back').find((item) => item.id === id)?.zIndex).toBe(-1);
   });
 });
