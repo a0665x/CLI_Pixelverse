@@ -4,6 +4,7 @@ import {
   cutawayLayoutForViewport,
   hookFurnitureLabel,
 } from '../src/rendering/InteriorCutawaySystem';
+import { selectionCapabilities } from '../src/rendering/InteriorCutawayDomOverlay';
 import type { InteriorAgentSnapshot } from '../src/rendering/interiorAssignment';
 import { WORLD_DEFINITION } from '../src/world/worldDefinition';
 
@@ -78,6 +79,17 @@ const idleInside: InteriorAgentSnapshot = {
 };
 
 describe('InteriorCutawaySystem', () => {
+  it('exposes contextual operations from the exact selection shape', () => {
+    const ordinary = {
+      id: 'ordinary', kind: 'decor' as const, point: { x: 1, y: 1 }, facing: 'up' as const,
+      icon: 'generic' as const, supportedActions: [],
+    };
+    const hook = { ...ordinary, id: 'hook', supportedActions: ['terminal' as const], requirementId: 'maker:hook' };
+    expect(selectionCapabilities([ordinary])).toEqual({ canDuplicate: true, canGroup: false });
+    expect(selectionCapabilities([ordinary, { ...ordinary, id: 'second' }])).toEqual({ canDuplicate: false, canGroup: true });
+    expect(selectionCapabilities([ordinary, hook])).toEqual({ canDuplicate: false, canGroup: false });
+  });
+
   it('labels only hook furniture with readable action-oriented text', () => {
     expect(hookFurnitureLabel({
       id: 'hook', kind: 'computer', point: { x: 1, y: 1 }, facing: 'up', icon: 'web',

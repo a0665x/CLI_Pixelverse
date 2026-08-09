@@ -1,7 +1,16 @@
 import { WORLD_PIXELS } from '../game/constants';
 import type { CutawayLayout } from './InteriorCutawaySystem';
 import type { ModernOfficeCategory } from './modernOfficeCatalog';
-import type { FurnitureLayer, FurnitureRotation } from '../world/types';
+import type { FurnitureDefinition, FurnitureLayer, FurnitureRotation } from '../world/types';
+
+export function selectionCapabilities(selection: readonly FurnitureDefinition[]): {
+  canDuplicate: boolean;
+  canGroup: boolean;
+} {
+  const ordinaryCount = selection.filter(({ supportedActions, requirementId }) =>
+    supportedActions.length === 0 && !requirementId).length;
+  return { canDuplicate: selection.length === 1, canGroup: ordinaryCount >= 2 };
+}
 
 export interface CutawayDomModel {
   title: string;
@@ -15,6 +24,8 @@ export interface CutawayDomModel {
   prefabCount: number;
   clipboardAvailable: boolean;
   selectedCount: number;
+  canDuplicate: boolean;
+  canGroup: boolean;
   selected?: { label: string; scale: number; rotation: FurnitureRotation; layer: FurnitureLayer };
 }
 
@@ -33,6 +44,9 @@ export interface CutawayDomHandlers {
   group(): void;
   shiftLayer(direction: 'previous' | 'next'): void;
   reorder(direction: 'back' | 'backward' | 'forward' | 'front'): void;
+  duplicate(): void;
+  returnToShelf(): void;
+  cancelSelection(): void;
 }
 
 export interface CutawayRoomLabel { id: string; text: string; x: number; y: number; kind: 'hook' | 'agent' }
@@ -134,8 +148,14 @@ export class InteriorCutawayDomOverlay {
       this.inspector.replaceChildren();
       if (model.selected) {
         const label = document.createElement('strong');
-        label.textContent = `${model.selected.label} · ${Math.round(model.selected.scale * 100)}% · ${model.selected.rotation}° · ${model.selected.layer}`;
+        label.textContent = model.selectedCount > 1
+          ? `${model.selectedCount} 件家具 · 批次操作`
+          : `${model.selected.label} · ${Math.round(model.selected.scale * 100)}% · ${model.selected.rotation}° · ${model.selected.layer}`;
         const controls: Array<[string, () => void]> = [
+          ['取消選取', () => this.handlers?.cancelSelection()],
+          ...(model.canDuplicate ? [['複製', () => this.handlers?.duplicate()] as [string, () => void]] : []),
+          ...(model.canGroup ? [['建立組裝件', () => this.handlers?.group()] as [string, () => void]] : []),
+          ['放回下排', () => this.handlers?.returnToShelf()],
           ['縮小', () => this.handlers?.resize(-1)], ['放大', () => this.handlers?.resize(1)],
           ['↶', () => this.handlers?.rotate(-90)], ['↷', () => this.handlers?.rotate(90)],
           ['下層', () => this.handlers?.shiftLayer('previous')], ['上層', () => this.handlers?.shiftLayer('next')],
@@ -145,13 +165,6 @@ export class InteriorCutawayDomOverlay {
         this.inspector.append(label, ...controls.map(([text, handler]) => {
           const button = document.createElement('button'); button.type = 'button'; button.textContent = text; button.onclick = handler; return button;
         }));
-      }
-      if (model.selectedCount >= 2) {
-        const group = document.createElement('button');
-        group.type = 'button';
-        group.textContent = `建立組裝件 (${model.selectedCount})`;
-        group.onclick = () => this.handlers?.group();
-        this.inspector.append(group);
       }
     }
     const collect = this.panel.querySelector<HTMLButtonElement>('[data-action="collect"]');
