@@ -29,7 +29,7 @@ const DEFAULT_ASSET_ID: Partial<Record<FurnitureDefinition['kind'], number>> = {
 };
 
 const normalizeScale = (value: unknown): number => (
-  value === 0.75 || value === 1.25 || value === 1.5 ? value : 1
+  typeof value === 'number' && value >= 0.75 && value <= 3 && value * 4 === Math.round(value * 4) ? value : 1
 );
 
 export function normalizeRotation(value: unknown): FurnitureRotation {

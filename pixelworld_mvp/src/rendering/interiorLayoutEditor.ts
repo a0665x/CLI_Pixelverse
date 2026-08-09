@@ -14,7 +14,6 @@ import {
   navigationCells,
   normalizeRotation,
   resolvePlacementCandidate,
-  snapFurniturePoint,
   defaultFurnitureLayer,
   furnitureBlocksNavigation,
   type PlacementDiagnostic,
@@ -27,7 +26,7 @@ export const FURNITURE_PALETTE: readonly FurnitureKind[] = [
   'meeting-table', 'bookcase', 'cabinet', 'planning-board', 'plant', 'beverage-station', 'printer',
 ];
 
-export const FURNITURE_SCALES = [0.75, 1, 1.25, 1.5] as const satisfies readonly FurnitureScale[];
+export const FURNITURE_SCALES = [0.75, 1, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 2.75, 3] as const satisfies readonly FurnitureScale[];
 export function normalizeFurnitureScale(value: unknown): FurnitureScale {
   return FURNITURE_SCALES.includes(value as FurnitureScale) ? value as FurnitureScale : 1;
 }
@@ -145,7 +144,7 @@ const normalizeLayout = (layout: readonly FurnitureDefinition[]): FurnitureDefin
     };
     return {
       ...normalized,
-      point: snapFurniturePoint(item.point),
+      point: { ...item.point },
       layer: item.layer ?? defaultFurnitureLayer(normalized),
       zIndex: Number.isFinite(item.zIndex) ? Math.trunc(item.zIndex!) : 0,
       blocksNavigation: furnitureBlocksNavigation(normalized),

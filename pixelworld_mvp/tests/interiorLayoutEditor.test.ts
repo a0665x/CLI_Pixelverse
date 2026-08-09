@@ -15,6 +15,7 @@ import {
   reorderFurniture,
   shiftFurnitureLayer,
   FURNITURE_PALETTE,
+  FURNITURE_SCALES,
 } from '../src/rendering/interiorLayoutEditor';
 import { modernOfficeKindForFurniture } from '../src/rendering/InteriorCutawaySystem';
 import { INTERIOR_DEFINITIONS } from '../src/world/interiorDefinitions';
@@ -27,7 +28,7 @@ describe('interior furniture editor model', () => {
     const layout = normalizedRoomLayout();
     expect(moveFurniture(room, layout, 'rest-sofa-a', { x: 6, y: 1 }).find(({ id }) => id === 'rest-sofa-a')?.point)
       .toEqual({ x: 6, y: 1 });
-    expect(moveFurniture(room, layout, 'rest-sofa-a', { x: -1, y: 2 })).toEqual(layout);
+    expect(moveFurniture(room, layout, 'rest-sofa-a', { x: -3, y: 2 })).toEqual(layout);
 
     const moved = moveFurniture(room, layout, 'rest-sofa-a', { x: 3, y: 4 });
     expect(moved.find(({ id }) => id === 'rest-sofa-a')?.point).toEqual({ x: 3, y: 4 });
@@ -149,5 +150,23 @@ describe('interior furniture editor model', () => {
     expect(shiftFurnitureLayer(layout, id, 'previous').find((item) => item.id === id)?.layer).toBe('floor');
     expect(reorderFurniture(layout, id, 'front').find((item) => item.id === id)?.zIndex).toBe(3);
     expect(reorderFurniture(layout, id, 'back').find((item) => item.id === id)?.zIndex).toBe(-1);
+  });
+
+  it('supports quarter-step scaling through three hundred percent', () => {
+    expect(FURNITURE_SCALES).toEqual([0.75, 1, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 2.75, 3]);
+    const sofa = { ...normalizedRoomLayout().find(({ id }) => id === 'rest-sofa-a')!, point: { x: 6, y: 4 } };
+    expect(resizeFurniture(room, [sofa], sofa.id, 3 as never)[0]?.scale).toBe(3);
+  });
+
+  it('preserves finite off-grid edge-fit anchors through save and load', () => {
+    const memory = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => memory.get(key) ?? null,
+      setItem: (key: string, value: string) => { memory.set(key, value); },
+    };
+    const item = { ...normalizedRoomLayout()[0]!, point: { x: 2.113636, y: 3.181818 } };
+    saveInteriorLayout('precise-edge-house', [item], storage);
+    expect(loadInteriorLayout('precise-edge-house', room, storage)[0]?.point.x).toBeCloseTo(2.113636);
+    expect(loadInteriorLayout('precise-edge-house', room, storage)[0]?.point.y).toBeCloseTo(3.181818);
   });
 });

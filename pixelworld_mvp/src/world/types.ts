@@ -55,7 +55,7 @@ export type FurnitureKind =
   | 'planning-board' | 'reading-desk' | 'workbench' | 'tool-wall' | 'repair-table'
   | 'dispatch-pod' | 'radio-console' | 'response-desk' | 'meeting-table' | 'decor'
   | 'office-chair' | 'display' | 'desk' | 'cabinet' | 'plant' | 'beverage-station' | 'printer';
-export type FurnitureScale = 0.75 | 1 | 1.25 | 1.5;
+export type FurnitureScale = 0.75 | 1 | 1.25 | 1.5 | 1.75 | 2 | 2.25 | 2.5 | 2.75 | 3;
 export type FurnitureRotation = 0 | 90 | 180 | 270;
 export interface FurnitureFootprint { width: number; height: number }
 export type FurnitureLayer = 'floor' | 'furniture' | 'surface' | 'wall';
