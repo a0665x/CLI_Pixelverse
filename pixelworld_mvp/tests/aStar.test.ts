@@ -30,7 +30,7 @@ describe('four-direction A*', () => {
   });
 
   it('returns null for a blocked or unreachable goal', () => {
-    expect(findPath(grid, WORLD_DEFINITION.spawn, { x: 3, y: 4 })).toBeNull();
+    expect(findPath(grid, WORLD_DEFINITION.spawn, { x: 2, y: 3 })).toBeNull();
   });
 
   it('returns a one-point path when start equals goal', () => {
@@ -44,7 +44,7 @@ describe('four-direction A*', () => {
       spawn: { x: 0, y: 1 },
       buildings: [],
       zones: [],
-      scenery: { trees: [], river: [], bridges: [], pastures: [], cropFields: [], flowerBeds: [], animals: [] },
+      scenery: { trees: [], decorations: [], river: [], bridges: [], pastures: [], cropFields: [], flowerBeds: [], animals: [] },
       terrain: [
         { kind: 'road', bounds: { x: 0, y: 0, width: 5, height: 1 }, cost: 1 },
         { kind: 'grass', bounds: { x: 0, y: 1, width: 5, height: 1 }, cost: 5 },
@@ -66,10 +66,10 @@ describe('four-direction A*', () => {
     const grid = NavigationGrid.fromWorld(WORLD_DEFINITION);
 
     expect(grid.costAt({ x: 1, y: 1 })).toBe(5);
-    expect(grid.costAt({ x: 15, y: 11 })).toBe(1);
-    expect(grid.costAt({ x: 17, y: 15 })).toBe(5);
-    expect(grid.costAt({ x: 5, y: 6 })).toBe(5);
-    expect(grid.costAt({ x: 3, y: 4 })).toBeUndefined();
+    expect(grid.costAt({ x: 15, y: 6 })).toBe(1);
+    expect(grid.costAt({ x: 17, y: 18 })).toBe(5);
+    expect(grid.costAt({ x: 3, y: 5 })).toBe(5);
+    expect(grid.costAt({ x: 1, y: 2 })).toBeUndefined();
     expect(grid.costAt({ x: -1, y: 1 })).toBeUndefined();
   });
 
@@ -80,7 +80,7 @@ describe('four-direction A*', () => {
       spawn: { x: 0, y: 1 },
       buildings: [],
       zones: [],
-      scenery: { trees: [], river: [], bridges: [], pastures: [], cropFields: [], flowerBeds: [], animals: [] },
+      scenery: { trees: [], decorations: [], river: [], bridges: [], pastures: [], cropFields: [], flowerBeds: [], animals: [] },
       terrain: [{ kind: 'road', bounds: { x: 0, y: 1, width: 3, height: 1 }, cost: 1 }],
       obstacleRects: [{ x: 1, y: 0, width: 1, height: 3 }],
       walkableOverrides: [{ x: 1, y: 1 }],
@@ -96,12 +96,12 @@ describe('four-direction A*', () => {
   });
 
   it('concatenates routes through each waypoint without duplicate junctions', () => {
-    const path = findPathVia(grid, { x: 6, y: 7 }, [{ x: 6, y: 8 }, { x: 7, y: 8 }]);
+    const path = findPathVia(grid, { x: 16, y: 13 }, [{ x: 17, y: 13 }, { x: 18, y: 13 }]);
 
-    expect(path).toEqual([{ x: 6, y: 7 }, { x: 6, y: 8 }, { x: 7, y: 8 }]);
+    expect(path).toEqual([{ x: 16, y: 13 }, { x: 17, y: 13 }, { x: 18, y: 13 }]);
   });
 
   it('returns null when any waypoint segment is impossible', () => {
-    expect(findPathVia(grid, { x: 6, y: 7 }, [{ x: 3, y: 4 }])).toBeNull();
+    expect(findPathVia(grid, { x: 16, y: 13 }, [{ x: 2, y: 3 }])).toBeNull();
   });
 });

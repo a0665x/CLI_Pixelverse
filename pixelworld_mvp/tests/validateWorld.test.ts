@@ -5,13 +5,11 @@ import { WORLD_DEFINITION } from '../src/world/worldDefinition';
 import { validateWorld } from '../src/world/validateWorld';
 
 describe('WORLD_DEFINITION', () => {
-  it('is a valid 40x22 village with four dispersed themed houses', () => {
+  it('is a valid 48x28 RPG village with twelve dispersed hook houses', () => {
     expect(validateWorld(WORLD_DEFINITION)).toEqual([]);
-    expect(WORLD_DEFINITION.width).toBe(40);
-    expect(WORLD_DEFINITION.height).toBe(22);
-    expect(WORLD_DEFINITION.buildings.map(({ themeId }) => themeId)).toEqual([
-      'research-library', 'maker-workshop', 'rest-cabin', 'collaboration-barn',
-    ]);
+    expect(WORLD_DEFINITION.width).toBe(48);
+    expect(WORLD_DEFINITION.height).toBe(28);
+    expect(WORLD_DEFINITION.buildings).toHaveLength(12);
     expect(new Set(WORLD_DEFINITION.buildings.map(({ themeId }) => themeId)).size).toBe(4);
     expect(Object.keys(INTERIOR_DEFINITIONS)).toHaveLength(4);
   });
@@ -35,26 +33,26 @@ describe('WORLD_DEFINITION', () => {
     'rejects a blocked building station %s',
     (pointList) => {
       const world = structuredClone(WORLD_DEFINITION);
-      const station = world.stations.find((item) => item.id === 'research-plan')!;
-      station[pointList] = [{ x: 3, y: 4 }];
+      const station = world.stations.find((item) => item.id === 'think-plan')!;
+      station[pointList] = [{ x: 11, y: 2 }];
 
-      expect(validateWorld(world)).toContain('station point blocked: research-plan@3,4');
+      expect(validateWorld(world)).toContain('station point blocked: think-plan@11,2');
     },
   );
 
   it('allows a blocked but in-bounds building interaction slot as logical capacity', () => {
     const world = structuredClone(WORLD_DEFINITION);
-    const station = world.stations.find((item) => item.id === 'research-plan')!;
-    station.interactionSlots[0]!.point = { x: 3, y: 4 };
+    const station = world.stations.find((item) => item.id === 'think-plan')!;
+    station.interactionSlots[0]!.point = { x: 11, y: 2 };
 
     expect(validateWorld(world)).toEqual([]);
   });
 
   it('still rejects an out-of-bounds building interaction slot', () => {
     const world = structuredClone(WORLD_DEFINITION);
-    const station = world.stations.find((item) => item.id === 'research-plan')!;
+    const station = world.stations.find((item) => item.id === 'think-plan')!;
     station.interactionSlots[0]!.point = { x: -1, y: 2 };
 
-    expect(validateWorld(world)).toContain('station point outside world: research-plan@-1,2');
+    expect(validateWorld(world)).toContain('station point outside world: think-plan@-1,2');
   });
 });

@@ -30,9 +30,9 @@ export function buildingForegroundGeometry(building: WorldBuilding, tileSize: nu
         x: building.bounds.x * tileSize,
         y: building.bounds.y * tileSize,
         width: building.bounds.width * tileSize,
-        height: 2 * tileSize,
+        height: 3 * tileSize,
       },
-      baselineY: (building.bounds.y + 2) * tileSize,
+      baselineY: (building.bounds.y + 3) * tileSize,
     },
     {
       kind: 'door-frame',

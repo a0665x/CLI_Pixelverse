@@ -1,17 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { TILE_SIZE, WORLD_PIXELS, WORLD_TILES, integerScaleFor } from '../src/game/constants';
+import { TILE_SIZE, WORLD_PIXELS, WORLD_TILES, displayScaleFor } from '../src/game/constants';
 // @ts-expect-error Node is Vitest's runtime but its ambient types are not part of this app.
 import { readFileSync } from 'node:fs';
 
 const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
 
 describe('fixed village game config', () => {
-  it('uses the approved 40x22 world and pixel-perfect fixed camera settings', () => {
+  it('uses the expanded 48x28 world with a 1.5x desktop presentation', () => {
     expect(TILE_SIZE).toBe(16);
-    expect(WORLD_TILES).toEqual({ width: 40, height: 22 });
-    expect(WORLD_PIXELS).toEqual({ width: 640, height: 352 });
-    expect(integerScaleFor(1280, 704)).toBe(2);
-    expect(integerScaleFor(839, 479)).toBe(1);
+    expect(WORLD_TILES).toEqual({ width: 48, height: 28 });
+    expect(WORLD_PIXELS).toEqual({ width: 768, height: 448 });
+    expect(displayScaleFor(1280, 720)).toBe(1.5);
+    expect(displayScaleFor(839, 479)).toBe(1);
   });
 
   it('lets the canvas own the viewport while the collapsible panel floats above it', () => {

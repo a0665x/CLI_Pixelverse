@@ -15,3 +15,5 @@ yarn-error.log*
 
 .DS_Store
 .worktrees/
+.gstack/
+pixelworld_mvp/public/assets/private/modern-office-v1.2/

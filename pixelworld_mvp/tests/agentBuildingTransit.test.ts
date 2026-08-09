@@ -11,6 +11,7 @@ interface FakeSprite {
   y: number;
   visible: boolean;
   setOrigin: ReturnType<typeof vi.fn>;
+  setScale: ReturnType<typeof vi.fn>;
   setPosition: ReturnType<typeof vi.fn>;
   setTexture: ReturnType<typeof vi.fn>;
   setVisible: ReturnType<typeof vi.fn>;
@@ -18,7 +19,7 @@ interface FakeSprite {
 }
 
 const chain = (state: Record<string, unknown> = {}) => Object.assign(state, {
-  setOrigin: vi.fn().mockReturnThis(), setDepth: vi.fn().mockReturnThis(),
+  setOrigin: vi.fn().mockReturnThis(), setScale: vi.fn().mockReturnThis(), setDepth: vi.fn().mockReturnThis(),
   setVisible: vi.fn(function (this: { visible: boolean }, visible: boolean) { this.visible = visible; return this; }),
   setText: vi.fn().mockReturnThis(),
   setPosition: vi.fn(function (this: { x: number; y: number }, x: number, y: number) { this.x = x; this.y = y; return this; }),
@@ -149,7 +150,7 @@ describe('AgentController building presence', () => {
     expect(agent.currentEvent?.eventId).toBe('enter');
   });
 
-  it('cycles all configured walk rows while retaining directional columns', async () => {
+  it('cycles authored LimeZu right-facing walk frames while the taller main Agent walks', async () => {
     const { agent, sprite } = await harness();
     expect(agent.dispatch(event('walk'), assignment({ x: 9, y: 1 }), route)).toBe(true);
 
@@ -159,7 +160,7 @@ describe('AgentController building presence', () => {
     agent.update(100);
 
     const frames = sprite.setTexture.mock.calls.map((call) => call[1]);
-    expect(new Set(frames)).toEqual(new Set([3, 7, 11, 15]));
+    expect(new Set(frames)).toEqual(new Set([24, 25, 26, 27]));
   });
 
   it('excludes hidden inside Agents from registry overlap offsets', async () => {

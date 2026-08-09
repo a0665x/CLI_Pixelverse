@@ -4,6 +4,15 @@ html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background:
 #app-shell { position: relative; width: 100vw; height: 100vh; }
 #game-root { width: 100%; height: 100%; min-width: 0; min-height: 0; display: grid; place-items: center; overflow: hidden; background: #213722; image-rendering: pixelated; }
 #game-root canvas { image-rendering: pixelated; image-rendering: crisp-edges; }
+#world-status-layer { position: fixed; inset: 0; z-index: 15; overflow: hidden; pointer-events: none; font-family: Inter, "Noto Sans TC", system-ui, sans-serif; }
+.world-agent-status, .world-building-badge, .world-building-label { position: absolute; left: 0; top: 0; transform-origin: center bottom; }
+.world-agent-status { display: grid; justify-items: center; gap: 3px; transform: translate3d(-1000px, -1000px, 0); }
+.world-agent-chip, .world-agent-bubble, .world-building-badge { border: 1px solid rgb(39 60 43 / 82%); border-radius: 8px; box-shadow: 0 2px 8px rgb(6 15 10 / 45%); font-weight: 700; line-height: 1.25; text-rendering: geometricPrecision; }
+.world-agent-chip { padding: 3px 7px; color: #fff8d4; background: rgb(34 63 39 / 92%); font-size: 12px; transform: translate(-50%, 0); }
+.world-agent-bubble { position: absolute; bottom: 26px; padding: 5px 9px; color: #24331f; background: rgb(255 248 211 / 96%); font-size: 13px; white-space: nowrap; transform: translate(-50%, 0); }
+.world-agent-bubble::after { position: absolute; left: 50%; bottom: -5px; width: 9px; height: 9px; content: ''; background: inherit; border-right: 1px solid rgb(39 60 43 / 82%); border-bottom: 1px solid rgb(39 60 43 / 82%); transform: translateX(-50%) rotate(45deg); }
+.world-building-badge { max-width: 220px; padding: 5px 8px; color: #fff6c7; background: rgb(47 39 29 / 92%); font-size: 12px; text-align: center; white-space: pre-line; transform: translate(-50%, 0); }
+.world-building-label { padding: 3px 7px; border: 1px solid rgb(75 54 34 / 78%); border-radius: 7px; color: #fff8d4; background: rgb(56 43 30 / 88%); box-shadow: 0 2px 6px rgb(5 12 8 / 38%); font-size: 11px; font-weight: 800; line-height: 1.15; white-space: nowrap; transform: translate(-50%, -100%); }
 #test-panel-root { position: absolute; right: 10px; bottom: 10px; z-index: 20; width: 264px; overflow: auto; border: 2px solid #765a32; border-radius: 4px; background: #243a27; box-shadow: 0 3px 0 #111d16; }
 #test-panel-root { max-height: 46px; }
 #test-panel-root[data-expanded='true'] { max-height: calc(100vh - 20px); }

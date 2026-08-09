@@ -1,5 +1,6 @@
 import type Phaser from 'phaser';
 import type { Facing } from '../world/types';
+import { MODERN_OFFICE_ASSETS } from './modernOfficeManifest';
 
 export interface SpriteSheetAsset {
   key: string;
@@ -12,6 +13,9 @@ export interface AgentSkin {
   sheet: string;
   idleRow: 0;
   walkRows: readonly [0, 1, 2, 3];
+  facingFrames?: Readonly<Record<Facing, number>>;
+  animation?: 'adam-16x32';
+  renderScale?: number;
 }
 
 export const WORLD_ATLAS: SpriteSheetAsset = {
@@ -20,6 +24,36 @@ export const WORLD_ATLAS: SpriteSheetAsset = {
   frameWidth: 16,
   frameHeight: 16,
 };
+
+export const SERENE_VILLAGE_ASSETS = {
+  atlas: {
+    key: 'serene-village-atlas', path: '/assets/limezu/serene-village/Serene_Village_16x16.png',
+    frameWidth: 16, frameHeight: 16,
+  },
+  door: {
+    key: 'serene-village-door', path: '/assets/limezu/serene-village/door_16x16.png',
+    frameWidth: 16, frameHeight: 16,
+  },
+  campfire: {
+    key: 'serene-village-campfire', path: '/assets/limezu/serene-village/campfire_16x16.png',
+    frameWidth: 16, frameHeight: 16,
+  },
+  waterWaves: {
+    key: 'serene-village-water-waves', path: '/assets/limezu/serene-village/water_waves_16x16.png',
+    frameWidth: 16, frameHeight: 16,
+  },
+} as const satisfies Record<string, SpriteSheetAsset>;
+
+export const MODERN_INTERIOR_ASSETS = {
+  agent: {
+    key: 'modern-agent-adam', path: '/assets/limezu/modern-interiors-free/Adam_16x16.png',
+    frameWidth: 16, frameHeight: 32,
+  },
+  agentIdle: {
+    key: 'modern-agent-adam-idle', path: '/assets/limezu/modern-interiors-free/Adam_idle_anim_16x16.png',
+    frameWidth: 16, frameHeight: 32,
+  },
+} as const satisfies Record<string, SpriteSheetAsset>;
 
 export const AGENT_ATLAS = {
   main: { key: 'ninja-blue', path: '/assets/ninja-adventure/ninja-blue.png', frameWidth: 16, frameHeight: 16 },
@@ -32,17 +66,6 @@ export const ANIMAL_ASSETS = {
   sheep: { key: 'animal-sheep', path: '/assets/kenney/tiny-farm/sheep.png', frameWidth: 16, frameHeight: 16 },
   chicken: { key: 'animal-chicken', path: '/assets/kenney/tiny-farm/chicken.png', frameWidth: 16, frameHeight: 16 },
   pig: { key: 'animal-pig', path: '/assets/ninja-adventure/pig.png', frameWidth: 16, frameHeight: 16 },
-} as const satisfies Record<string, SpriteSheetAsset>;
-
-export const INTERIOR_ASSETS = {
-  sofa: { key: 'interior-sofa', path: '/assets/kenney/roguelike-rpg/sofa.png', frameWidth: 16, frameHeight: 16 },
-  bed: { key: 'interior-bed', path: '/assets/kenney/roguelike-rpg/bed.png', frameWidth: 16, frameHeight: 16 },
-  bookcase: { key: 'interior-bookcase', path: '/assets/kenney/roguelike-rpg/bookcase.png', frameWidth: 16, frameHeight: 16 },
-  table: { key: 'interior-table', path: '/assets/kenney/roguelike-rpg/table.png', frameWidth: 16, frameHeight: 16 },
-  workbench: { key: 'interior-workbench', path: '/assets/kenney/roguelike-rpg/workbench.png', frameWidth: 16, frameHeight: 16 },
-  television: { key: 'interior-television', path: '/assets/kenney/modern-city/television.png', frameWidth: 16, frameHeight: 16 },
-  computer: { key: 'interior-computer', path: '/assets/kenney/modern-city/computer.png', frameWidth: 16, frameHeight: 16 },
-  radio: { key: 'interior-radio', path: '/assets/kenney/modern-city/radio.png', frameWidth: 16, frameHeight: 16 },
 } as const satisfies Record<string, SpriteSheetAsset>;
 
 const tinyTownPiece = (name: string): SpriteSheetAsset => ({
@@ -80,7 +103,14 @@ export const HOUSE_ASSETS = {
 } as const satisfies Record<string, SpriteSheetAsset>;
 
 export const AGENT_SKINS = {
-  main: { sheet: AGENT_ATLAS.main.key, idleRow: 0, walkRows: [0, 1, 2, 3] },
+  main: {
+    sheet: MODERN_INTERIOR_ASSETS.agent.key,
+    idleRow: 0,
+    walkRows: [0, 1, 2, 3],
+    facingFrames: { down: 3, up: 1, left: 2, right: 0 },
+    animation: 'adam-16x32',
+    renderScale: 1.1,
+  },
   subagent: { sheet: AGENT_ATLAS.subagent.key, idleRow: 0, walkRows: [0, 1, 2, 3] },
   branch: { sheet: AGENT_ATLAS.branch.key, idleRow: 0, walkRows: [0, 1, 2, 3] },
 } as const satisfies Record<string, AgentSkin>;
@@ -89,14 +119,22 @@ const FACING_FRAME_COLUMNS: Record<Facing, number> = { down: 0, up: 1, left: 2, 
 const AGENT_FRAME_COLUMNS = 4;
 
 export function agentFrameIndex(skin: AgentSkin, facing: Facing, row: number = skin.idleRow): number {
+  if (skin.facingFrames) return skin.facingFrames[facing];
   return row * AGENT_FRAME_COLUMNS + FACING_FRAME_COLUMNS[facing];
 }
 
 export function preloadVillageAssets(scene: Phaser.Scene): void {
-  [WORLD_ATLAS, ...Object.values(AGENT_ATLAS)].forEach((asset) => {
+  [
+    WORLD_ATLAS,
+    ...Object.values(SERENE_VILLAGE_ASSETS),
+    ...Object.values(MODERN_INTERIOR_ASSETS),
+    ...Object.values(AGENT_ATLAS),
+    MODERN_OFFICE_ASSETS.atlas,
+    MODERN_OFFICE_ASSETS.roomBuilder,
+  ].forEach((asset) => {
     scene.load.spritesheet(asset.key, asset.path, { frameWidth: asset.frameWidth, frameHeight: asset.frameHeight });
   });
-  [...Object.values(ANIMAL_ASSETS), ...Object.values(INTERIOR_ASSETS), ...Object.values(HOUSE_ASSETS)].forEach((asset) => {
+  [...Object.values(ANIMAL_ASSETS), ...Object.values(HOUSE_ASSETS), ...Object.values(MODERN_OFFICE_ASSETS.furniture)].forEach((asset) => {
     scene.load.image(asset.key, asset.path);
   });
 }

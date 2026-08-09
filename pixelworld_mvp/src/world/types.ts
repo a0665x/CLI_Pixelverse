@@ -47,11 +47,15 @@ export interface BuildingEntrance {
   exitFacing: 'down';
 }
 export interface WorldTree { id: string; trunk: GridPoint }
+export type WorldDecorationKind = 'campfire' | 'bench' | 'signboard' | 'crate' | 'rock' | 'flowers';
+export interface WorldDecoration { id: string; kind: WorldDecorationKind; point: GridPoint }
 export type BuildingThemeId = 'rest-cabin' | 'research-library' | 'maker-workshop' | 'collaboration-barn';
 export type FurnitureKind =
-  | 'sofa' | 'television' | 'bed' | 'bookcase' | 'computer' | 'map-table'
+  | 'sofa' | 'chair' | 'television' | 'bed' | 'bookcase' | 'computer' | 'map-table'
   | 'planning-board' | 'reading-desk' | 'workbench' | 'tool-wall' | 'repair-table'
-  | 'dispatch-pod' | 'radio-console' | 'response-desk' | 'meeting-table' | 'decor';
+  | 'dispatch-pod' | 'radio-console' | 'response-desk' | 'meeting-table' | 'decor'
+  | 'office-chair' | 'display' | 'desk' | 'cabinet' | 'plant' | 'beverage-station' | 'printer';
+export type FurnitureScale = 0.75 | 1 | 1.25 | 1.5;
 export type ActivityIconKind =
   | 'rest' | 'offline' | 'think' | 'plan' | 'read' | 'web' | 'edit'
   | 'tool' | 'repair' | 'clone' | 'respond' | 'generic';
@@ -62,6 +66,7 @@ export interface FurnitureDefinition {
   facing: Facing;
   supportedActions: AgentAction[];
   icon: ActivityIconKind;
+  scale?: FurnitureScale;
 }
 export interface InteriorDefinition {
   id: BuildingThemeId;
@@ -82,6 +87,7 @@ export interface AmbientAnimalDefinition {
 }
 export interface WorldScenery {
   trees: WorldTree[];
+  decorations: WorldDecoration[];
   river: GridRect[];
   bridges: GridRect[];
   pastures: GridRect[];

@@ -57,6 +57,83 @@ const fakeScene = () => {
 const pointKey = (x: number, y: number) => `${x},${y}`;
 
 describe('Puny village renderer contracts', () => {
+  it('uses a seamless base tile instead of packed Serene object fragments', () => {
+    const grass = buildVillageRenderPlan(WORLD_DEFINITION).commands.filter(({ layer }) => layer === 'grass');
+
+    expect(grass).toHaveLength(WORLD_DEFINITION.width * WORLD_DEFINITION.height);
+    expect(grass.every(({ region, textureKey, frame }) => (
+      region === 'grassPlain' && textureKey === undefined && frame === undefined
+    ))).toBe(true);
+  });
+
+  it('uses one verified complete six-cell Serene tree assembly for every tree', () => {
+    const plan = buildVillageRenderPlan(WORLD_DEFINITION);
+    const frameSets = WORLD_DEFINITION.scenery.trees.map((tree) => plan.commands
+      .filter(({ foregroundGroup }) => foregroundGroup === `canopy:${tree.id}`)
+      .map(({ frame }) => frame));
+
+    expect(frameSets.every((frames) => frames.length === 6)).toBe(true);
+    expect(new Set(frameSets.map((frames) => frames.join(','))).size).toBe(1);
+  });
+
+  it('renders each exterior threshold as one clean dirt cell beneath its real door frame', () => {
+    const plan = buildVillageRenderPlan(WORLD_DEFINITION);
+    for (const building of WORLD_DEFINITION.buildings) {
+      const threshold = plan.commands.filter(({ x, y, buildingRole }) => (
+        x === building.entrance.threshold.x * TILE_SIZE &&
+        y === building.entrance.threshold.y * TILE_SIZE &&
+        buildingRole === 'threshold'
+      ));
+      expect(threshold).toHaveLength(1);
+      expect(threshold[0]).toMatchObject({ region: 'doorThreshold' });
+      expect(threshold[0]).not.toHaveProperty('textureKey');
+      expect(threshold[0]).not.toHaveProperty('frame');
+    }
+  });
+
+  it('uses the crisp DOM building labels without stray atlas sign fragments', () => {
+    const plan = buildVillageRenderPlan(WORLD_DEFINITION);
+
+    expect(plan.commands.filter(({ buildingRole }) => buildingRole === 'signboard')).toEqual([]);
+  });
+
+  it('uses clean Serene house rows without carrying pixels from the preceding packed object', () => {
+    const plan = buildVillageRenderPlan(WORLD_DEFINITION);
+    const expectedRows: Record<string, number> = {
+      'arrival-lodge': 25,
+      'maker-workshop': 25,
+      'tool-smithy': 25,
+      'thinkers-cottage': 33,
+      'network-lab': 33,
+      'heartbeat-tower': 41,
+      'offline-dormitory': 41,
+      'awaiting-post': 33,
+      'collaboration-barn': 33,
+      'recovery-clinic': 25,
+      'archive-library': 41,
+      'rest-cabin': 41,
+    };
+    for (const building of WORLD_DEFINITION.buildings) {
+      const firstRoof = plan.buildingTiles.find(({ buildingId, buildingRole }) => (
+        buildingId === building.id && buildingRole === 'roof'
+      ));
+      const expectedColumn = ['network-lab', 'offline-dormitory', 'maker-workshop', 'collaboration-barn', 'recovery-clinic', 'rest-cabin']
+        .includes(building.id) ? 5 : 0;
+      expect(firstRoof?.frame).toBe(expectedRows[building.id]! * 19 + expectedColumn);
+    }
+
+  });
+
+  it('uses a clean horizontal avenue at the Maker entrance instead of a broken cap cell', () => {
+    const plan = buildVillageRenderPlan(WORLD_DEFINITION);
+    const maker = WORLD_DEFINITION.buildings.find(({ id }) => id === 'maker-workshop')!;
+    const outside = plan.commands.find(({ layer, x, y }) => (
+      layer === 'roads' && x === maker.entrance.outside.x * TILE_SIZE && y === maker.entrance.outside.y * TILE_SIZE
+    ));
+
+    expect(outside?.region).toBe('dirtHorizontal');
+  });
+
   it('keeps every curated source cell on the native 16-pixel atlas grid', () => {
     for (const region of Object.values(PUNY_REGIONS)) {
       expect(region).toMatchObject({ width: TILE_SIZE, height: TILE_SIZE });
@@ -65,9 +142,8 @@ describe('Puny village renderer contracts', () => {
     }
   });
 
-  it('builds four compact native-scale houses with distinct theme signatures', () => {
+  it('builds twelve compact native-scale LimeZu houses with distinct functional destinations', () => {
     const plan = buildVillageRenderPlan(WORLD_DEFINITION);
-    const signatures = new Set<string>();
     for (const building of WORLD_DEFINITION.buildings) {
       const tiles = plan.buildingTiles.filter(({ buildingId }) => buildingId === building.id);
       const shell = tiles.filter(({ buildingRole }) => ['roof', 'wall', 'window', 'door'].includes(buildingRole ?? ''));
@@ -82,14 +158,13 @@ describe('Puny village renderer contracts', () => {
       expect(shell).toHaveLength(building.bounds.width * building.bounds.height);
       expect(tiles.every(({ scale }) => scale === undefined), building.id).toBe(true);
       expect(tiles.every(({ x, y }) => x % TILE_SIZE === 0 && y % TILE_SIZE === 0), building.id).toBe(true);
-      expect(building.bounds).toMatchObject({ width: 5, height: 3 });
+      expect(building.bounds).toMatchObject({ width: 5, height: 4 });
       expect(tiles.filter(({ buildingRole }) => buildingRole === 'door')).toHaveLength(1);
       expect(tiles.filter(({ buildingRole }) => buildingRole === 'window')).toHaveLength(2);
       expect(tiles.filter(({ buildingRole }) => ['roof', 'wall', 'window', 'door', 'door-frame'].includes(buildingRole ?? ''))
-        .every(({ textureKey }) => textureKey?.startsWith('tiny-town-')), building.id).toBe(true);
-      signatures.add(tiles.filter(({ buildingRole }) => buildingRole === 'roof').map(({ textureKey, tint }) => `${textureKey}:${tint ?? 0}`).join('|'));
+        .every(({ textureKey }) => textureKey === 'serene-village-atlas'), building.id).toBe(true);
     }
-    expect(signatures.size).toBe(4);
+    expect(WORLD_DEFINITION.buildings).toHaveLength(12);
     expect(plan.hitRegions.map(({ buildingId }) => buildingId)).toEqual(WORLD_DEFINITION.buildings.map(({ id }) => id));
   });
 
@@ -102,7 +177,7 @@ describe('Puny village renderer contracts', () => {
       const doorFrame = tiles.find(({ buildingRole }) => buildingRole === 'door-frame');
       const frontY = (building.bounds.y + building.bounds.height) * TILE_SIZE;
 
-      expect(roof).toHaveLength(building.bounds.width * 2);
+      expect(roof).toHaveLength(building.bounds.width * 3);
       expect(facade).toHaveLength(building.bounds.width);
       expect(new Set(roof.map(({ foregroundGroup }) => foregroundGroup))).toEqual(new Set([`roof:${building.id}`]));
       expect(facade.every(({ foregroundGroup, foregroundKind }) => !foregroundGroup && !foregroundKind)).toBe(true);
@@ -128,14 +203,14 @@ describe('Puny village renderer contracts', () => {
     expect(roofs).toHaveLength(WORLD_DEFINITION.buildings.length);
     expect(doors).toHaveLength(WORLD_DEFINITION.buildings.length);
     expect(canopies).toHaveLength(WORLD_DEFINITION.scenery.trees.length);
-    expect(rendered.hitRegions).toHaveLength(4);
+    expect(rendered.hitRegions).toHaveLength(WORLD_DEFINITION.buildings.length);
     expect(rendered.hitRegions.every(({ object }) => (object as unknown as FakeZone).interactive)).toBe(true);
     for (const [index, building] of WORLD_DEFINITION.buildings.entries()) {
       expect(roofs[index]!.bounds).toEqual({
         x: building.bounds.x * TILE_SIZE,
         y: building.bounds.y * TILE_SIZE,
         width: building.bounds.width * TILE_SIZE,
-        height: 2 * TILE_SIZE,
+        height: 3 * TILE_SIZE,
       });
       expect(doors[index]!.bounds).toEqual({
         x: building.entrance.threshold.x * TILE_SIZE,
@@ -147,9 +222,9 @@ describe('Puny village renderer contracts', () => {
     for (const [index, tree] of WORLD_DEFINITION.scenery.trees.entries()) {
       expect(canopies[index]!.bounds).toEqual({
         x: (tree.trunk.x - 1) * TILE_SIZE,
-        y: (tree.trunk.y - 1) * TILE_SIZE,
-        width: 3 * TILE_SIZE,
-        height: 2 * TILE_SIZE,
+        y: (tree.trunk.y - 2) * TILE_SIZE,
+        width: 2 * TILE_SIZE,
+        height: 3 * TILE_SIZE,
       });
     }
     expect(fake.images).toHaveLength(buildVillageRenderPlan(WORLD_DEFINITION).commands.length);
@@ -168,12 +243,12 @@ describe('Puny village renderer contracts', () => {
     expect([...new Set(roads.map(({ region }) => region))]).toEqual(expect.arrayContaining([
       'dirtHorizontal', 'dirtVertical', 'dirtJunction', 'dirtPlaza',
     ]));
-    expect(roads.find(({ x, y }) => x === 21 * TILE_SIZE && y === 8 * TILE_SIZE)?.region).toBe('dirtHorizontal');
-    expect(roads.find(({ x, y }) => x === 10 * TILE_SIZE && y === 15 * TILE_SIZE)?.region).toBe('dirtVertical');
-    expect(roads.find(({ x, y }) => x === 10 * TILE_SIZE && y === 8 * TILE_SIZE)?.region).toBe('dirtJunction');
+    expect(roads.find(({ x, y }) => x === 14 * TILE_SIZE && y === 6 * TILE_SIZE)?.region).toBe('dirtHorizontal');
+    expect(roads.find(({ x, y }) => x === 16 * TILE_SIZE && y === 18 * TILE_SIZE)?.region).toBe('dirtVertical');
+    expect(roads.find(({ x, y }) => x === 38 * TILE_SIZE && y === 14 * TILE_SIZE)?.region).toBe('dirtJunction');
   });
 
-  it('renders winding water, two bridges, crops, pasture, and farm details from world data', () => {
+  it('renders winding water, three bridges, crops, pasture, and farm details from world data', () => {
     const plan = buildVillageRenderPlan(WORLD_DEFINITION);
     const roles = plan.commands.map(({ sceneryRole }) => sceneryRole);
     expect(roles.filter((role) => role === 'bridge')).toHaveLength(6);
@@ -185,19 +260,19 @@ describe('Puny village renderer contracts', () => {
   it('emits only atlas commands in concrete cross-layer depth families', () => {
     const plan = buildVillageRenderPlan(WORLD_DEFINITION);
     const commandsAt = (layer: string) => plan.commands.filter((command) => command.layer === layer);
-    const research = plan.buildingTiles.filter(({ buildingId }) => buildingId === 'research-library');
+    const research = plan.buildingTiles.filter(({ buildingId }) => buildingId === 'arrival-lodge');
 
     expect(plan.commands.every(({ primitive }) => primitive === 'atlas')).toBe(true);
     expect(new Set(plan.commands.map(({ layer }) => layer))).toEqual(new Set([
       'grass', 'roads', 'waterAndDecorations', 'wallsAndThresholds',
-      'trunksAndWorkZones', 'foregrounds', 'signboards',
+      'trunksAndWorkZones', 'foregrounds',
     ]));
     expect(new Set(commandsAt('grass').map(({ depth }) => depth))).toEqual(new Set([-1_000]));
     expect(new Set(commandsAt('roads').map(({ depth }) => depth))).toEqual(new Set([-900]));
     expect(new Set(research.filter(({ buildingRole }) => buildingRole === 'wall').map(({ depth }) => depth))).toEqual(new Set([-700]));
-    expect(new Set(research.filter(({ buildingRole }) => buildingRole === 'roof').map(({ depth }) => depth))).toEqual(new Set([96]));
-    expect(research.find(({ buildingRole }) => buildingRole === 'door-frame')?.depth).toBe(112);
-    expect(research.find(({ buildingRole }) => buildingRole === 'signboard')?.depth).toBe(113);
+    expect(new Set(research.filter(({ buildingRole }) => buildingRole === 'roof').map(({ depth }) => depth))).toEqual(new Set([80]));
+    expect(research.find(({ buildingRole }) => buildingRole === 'door-frame')?.depth).toBe(96);
+    expect(research.find(({ buildingRole }) => buildingRole === 'signboard')).toBeUndefined();
   });
 
   it('renders the diagnostic atlas texture without invalid frame lookups when Puny is missing', () => {
@@ -205,10 +280,10 @@ describe('Puny village renderer contracts', () => {
     new VillageRenderer(fake.scene as never, WORLD_ATLAS_FALLBACK_KEY).render(WORLD_DEFINITION);
 
     const fallbackImages = fake.images.filter(({ texture }) => texture === WORLD_ATLAS_FALLBACK_KEY);
-    const houseImages = fake.images.filter(({ texture }) => texture.startsWith('tiny-town-'));
+    const houseImages = fake.images.filter(({ texture }) => texture === 'serene-village-atlas');
     expect(fallbackImages.length).toBeGreaterThan(0);
     expect(fallbackImages.every(({ frame }) => frame === undefined)).toBe(true);
     expect(houseImages.length).toBeGreaterThan(0);
-    expect(houseImages.every(({ frame }) => frame === undefined)).toBe(true);
+    expect(houseImages.every(({ frame }) => typeof frame === 'number')).toBe(true);
   });
 });

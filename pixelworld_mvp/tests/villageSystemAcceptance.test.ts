@@ -38,7 +38,7 @@ const indexOfPoint = (points: GridPoint[], target: GridPoint) =>
 describe('complete GBA village hook workflow', () => {
   const grid = NavigationGrid.fromWorld(WORLD_DEFINITION);
 
-  it('enters Maker Workshop for edit, then exits its door and crosses the north bridge for web research', () => {
+  it('enters Maker Workshop for edit, then exits its door and walks to the Web / MCP Lab', () => {
     const edit = assignment('edit');
     const editPlan = planAgentTravel(WORLD_DEFINITION, { kind: 'outside' }, edit.assignment);
     const workshop = building('maker-workshop');
@@ -49,19 +49,20 @@ describe('complete GBA village hook workflow', () => {
 
     const web = assignment('web');
     const webPlan = planAgentTravel(WORLD_DEFINITION, inside(workshop.id), web.assignment);
-    const research = building('research-library');
+    const research = building('network-lab');
     expect(webPlan.waypoints).toEqual([
       workshop.entrance.outside, research.entrance.outside, research.entrance.threshold,
     ]);
     const path = findPathVia(grid, workshop.entrance.threshold, webPlan.waypoints)!;
     expect(indexOfPoint(path, workshop.entrance.outside)).toBeLessThan(indexOfPoint(path, research.entrance.outside));
     expect(indexOfPoint(path, research.entrance.outside)).toBeLessThan(indexOfPoint(path, research.entrance.threshold));
-    expect(path.some(({ y, x }) => y === 8 && x >= 18 && x <= 20)).toBe(true);
+    expect(path.length).toBeGreaterThan(2);
+    expect(path.every((point) => grid.isWalkable(point))).toBe(true);
   });
 
-  it('routes think through Research Library, idle to Rest Cabin, and blocked to the outdoor apron', () => {
+  it('routes think, idle, and blocked into their distinct functional houses', () => {
     const think = assignment('think');
-    const research = building('research-library');
+    const research = building('thinkers-cottage');
     const collaboration = building('collaboration-barn');
     const thinkPlan = planAgentTravel(WORLD_DEFINITION, inside(collaboration.id), think.assignment);
     expect(thinkPlan.waypoints).toEqual([
@@ -76,14 +77,16 @@ describe('complete GBA village hook workflow', () => {
     });
 
     const blocked = assignment('blocked');
+    const recovery = building('recovery-clinic');
     const blockedPlan = planAgentTravel(WORLD_DEFINITION, inside(research.id), blocked.assignment);
-    expect(blockedPlan.destinationBuilding).toBeUndefined();
-    expect(blockedPlan.waypoints[0]).toEqual(research.entrance.outside);
-    expect(blockedPlan.waypoints.at(-1)).toEqual(blocked.assignment.point);
+    expect(blockedPlan.destinationBuilding).toMatchObject({ buildingId: recovery.id });
+    expect(blockedPlan.waypoints).toEqual([
+      research.entrance.outside, recovery.entrance.outside, recovery.entrance.threshold,
+    ]);
     expect(findPathVia(grid, research.entrance.threshold, blockedPlan.waypoints)).not.toBeNull();
   });
 
-  it('keeps clone inside Collaboration Barn and heartbeat at the current presence', () => {
+  it('routes clone and heartbeat into their own observable houses', () => {
     const clone = assignment('clone');
     const signal = building('collaboration-barn');
     expect(planAgentTravel(WORLD_DEFINITION, { kind: 'outside' }, clone.assignment)).toMatchObject({
@@ -91,7 +94,6 @@ describe('complete GBA village hook workflow', () => {
       destinationBuilding: { buildingId: signal.id },
     });
     const heartbeat = routeEvent(event('heartbeat'));
-    expect(heartbeat.preserveLocation).toBe(true);
-    expect(heartbeat).not.toHaveProperty('destinationId');
+    expect(heartbeat).toMatchObject({ preserveLocation: false, destinationId: 'heartbeat-pulse' });
   });
 });

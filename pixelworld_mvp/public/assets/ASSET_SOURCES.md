@@ -1,6 +1,28 @@
-# Curated CC0 asset sources
+# Curated asset sources
 
-Retrieved 2026-08-08. The local copies below are vendor snapshots; no visual transformation was applied. Filenames were normalized for the application asset manifest only.
+Retrieved 2026-08-08. The local copies below are vendor snapshots. Any
+source-aligned crops or filename normalization are documented per asset; no
+resampling is used.
+
+## LimeZu Serene Village Revamped
+
+- Creator: LimeZu
+- Canonical page: <https://limezu.itch.io/serenevillagerevamped>
+- License: [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)
+- Selected files: `limezu/serene-village/Serene_Village_16x16.png`, `door_16x16.png`, `campfire_16x16.png`, and `water_waves_16x16.png`
+- Use: village grass, complete house assemblies, trees, and animated exterior details
+- Transformations: none; the runtime assembles source-aligned 16×16 cells
+
+## LimeZu Modern Interiors Free
+
+- Creator: LimeZu
+- Canonical page: <https://limezu.itch.io/moderninteriors>
+- Free-version terms: <https://limezu.itch.io/moderninteriors/devlog/244045/free-version-overview-18042021-update>
+- Local license: `limezu/modern-interiors-free/LICENSE.txt`
+- License limitation: the downloaded free version is for non-commercial projects, private use, and testing; it is not licensed for commercial release
+- Selected files: the free furniture/room-builder atlases, Adam character sheets, and source-aligned furniture crops in `limezu/modern-interiors-free/`
+- Use: the current local prototype's interior furniture and character reference
+- Transformations: source-aligned crops only; no resampling or AI-generated alteration. The detailed PC desk uses source rectangle `x=64, y=576, 16×32`; the matching chair uses `x=0, y=576, 16×32` from `Interiors_free_16x16.png`.
 
 ## Puny World overworld tileset
 
@@ -83,5 +105,16 @@ approved Ninja Adventure CC0 repository: `content/character/pig/pig.png`, first
   - `Tiles/tile_0483.png` → `kenney/modern-city/radio.png`
 - Transformations: semantic filename only; no scaling, smoothing, recoloring, or palette conversion.
 
-No Pokémon, Nintendo, Game Freak, fan-game-only, extracted/ripped,
-AI-prohibited, or non-commercial-only asset is included in this village.
+No Pokémon, Nintendo, Game Freak, fan-game-only, extracted/ripped, or
+AI-prohibited asset is included. The LimeZu Modern Interiors Free files are
+explicitly non-commercial and must be replaced or covered by a commercial
+license before distributing a paid/commercial build.
+
+## LimeZu Modern Office Revamped v1.2 (private installation)
+
+- Creator: LimeZu
+- Canonical page: <https://limezu.itch.io/modernoffice>
+- License: purchased project license supplied inside the archive; editing and commercial/non-commercial project use permitted, redistribution/resale prohibited.
+- Local source: `~/Downloads/Modern_Office_Revamped_v1.2.zip`
+- Installation: `scripts/install-modern-office-assets.sh` extracts only the allowlisted atlas, room builder, license, and selected office furniture singles.
+- Privacy: installed binaries live under the Git-ignored `public/assets/private/modern-office-v1.2/` directory and are never committed or redistributed.

@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { ANIMAL_ASSETS, HOUSE_ASSETS, INTERIOR_ASSETS } from '../src/rendering/assetManifest';
+import {
+  ANIMAL_ASSETS,
+  HOUSE_ASSETS,
+  MODERN_INTERIOR_ASSETS,
+  SERENE_VILLAGE_ASSETS,
+} from '../src/rendering/assetManifest';
+import { MODERN_OFFICE_ASSETS } from '../src/rendering/modernOfficeManifest';
 
 describe('curated village asset manifest', () => {
   it('registers four semantic 16px Kenney Tiny Farm animal cells', () => {
@@ -11,13 +17,10 @@ describe('curated village asset manifest', () => {
     ))).toBe(true);
   });
 
-  it('registers furniture by visual purpose instead of source tile number', () => {
-    expect(INTERIOR_ASSETS.sofa.path).toBe('/assets/kenney/roguelike-rpg/sofa.png');
-    expect(INTERIOR_ASSETS.computer.path).toBe('/assets/kenney/modern-city/computer.png');
-    expect(INTERIOR_ASSETS.television.path).toBe('/assets/kenney/modern-city/television.png');
-    expect(Object.values(INTERIOR_ASSETS).every(({ frameWidth, frameHeight }) => (
-      frameWidth === 16 && frameHeight === 16
-    ))).toBe(true);
+  it('registers detailed furniture only from the purchased Modern Office family', () => {
+    expect(MODERN_OFFICE_ASSETS.furniture.computer.path).toBe('/assets/private/modern-office-v1.2/Modern_Office_Singles_225.png');
+    expect(MODERN_OFFICE_ASSETS.furniture['office-chair'].path).toBe('/assets/private/modern-office-v1.2/Modern_Office_Singles_101.png');
+    expect(Object.values(MODERN_OFFICE_ASSETS.furniture).every(({ path }) => path.includes('/assets/private/modern-office-v1.2/'))).toBe(true);
   });
 
   it('registers semantic Tiny Town pieces for one coherent house shell', () => {
@@ -29,5 +32,17 @@ describe('curated village asset manifest', () => {
     expect(Object.values(HOUSE_ASSETS).every(({ frameWidth, frameHeight }) => (
       frameWidth === 16 && frameHeight === 16
     ))).toBe(true);
+  });
+
+  it('registers the official LimeZu exterior and prototype interior family', () => {
+    expect(SERENE_VILLAGE_ASSETS.atlas).toMatchObject({
+      key: 'serene-village-atlas',
+      path: '/assets/limezu/serene-village/Serene_Village_16x16.png',
+      frameWidth: 16,
+      frameHeight: 16,
+    });
+    expect(SERENE_VILLAGE_ASSETS.door.path).toContain('/assets/limezu/serene-village/door_16x16.png');
+    expect(MODERN_INTERIOR_ASSETS.agentIdle.path).toContain('/assets/limezu/modern-interiors-free/Adam_idle_anim_16x16.png');
+    expect(MODERN_OFFICE_ASSETS.roomBuilder.path).toContain('/assets/private/modern-office-v1.2/Room_Builder_Office_16x16.png');
   });
 });

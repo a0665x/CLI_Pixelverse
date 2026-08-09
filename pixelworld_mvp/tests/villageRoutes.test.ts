@@ -9,6 +9,28 @@ const pointIndex = (path: readonly { x: number; y: number }[], point: { x: numbe
 describe('village building routes', () => {
   const grid = NavigationGrid.fromWorld(WORLD_DEFINITION);
 
+  it('provides twelve dispersed hook destinations with unique doors', () => {
+    expect(WORLD_DEFINITION.buildings).toHaveLength(12);
+    expect(new Set(WORLD_DEFINITION.buildings.map(({ id }) => id))).toEqual(new Set([
+      'arrival-lodge', 'thinkers-cottage', 'archive-library', 'network-lab',
+      'heartbeat-tower', 'offline-dormitory', 'maker-workshop', 'tool-smithy',
+      'awaiting-post', 'collaboration-barn', 'recovery-clinic', 'rest-cabin',
+    ]));
+    expect(new Set(WORLD_DEFINITION.buildings.map(({ entrance }) => `${entrance.threshold.x},${entrance.threshold.y}`)).size).toBe(12);
+  });
+
+  it('uses several road junctions instead of a single sparse spine', () => {
+    const roads = new Set(WORLD_DEFINITION.terrain
+      .filter(({ kind }) => kind === 'road' || kind === 'plaza')
+      .map(({ bounds }) => `${bounds.x},${bounds.y}`));
+    const junctions = [...roads].filter((entry) => {
+      const [x, y] = entry.split(',').map(Number);
+      return [[x! + 1, y!], [x! - 1, y!], [x!, y! + 1], [x!, y! - 1]]
+        .filter(([nx, ny]) => roads.has(`${nx},${ny}`)).length >= 3;
+    });
+    expect(junctions.length).toBeGreaterThanOrEqual(10);
+  });
+
   it('visits each destination outside and threshold in order for every ordered building pair', () => {
     for (const source of WORLD_DEFINITION.buildings) {
       for (const target of WORLD_DEFINITION.buildings) {

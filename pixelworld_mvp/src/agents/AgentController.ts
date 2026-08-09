@@ -3,6 +3,7 @@ import { TILE_SIZE } from '../game/constants';
 import { findPathVia } from '../navigation/aStar';
 import { NavigationGrid } from '../navigation/navigationGrid';
 import { AGENT_SKINS, agentFrameIndex, type AgentSkin } from '../rendering/assetManifest';
+import { agentAnimationFrame } from '../rendering/agentAnimation';
 import type { StationAssignment } from '../stations/stationAllocator';
 import type { AgentWorldEvent, BehaviorRoute, Facing, GridPoint } from '../world/types';
 import { ActionController } from './ActionController';
@@ -29,6 +30,7 @@ export class AgentController {
   private presenceState: AgentPresence = { kind: 'outside' };
   private destinationBuilding: AgentTravelPlan['destinationBuilding'];
   private walkClockMs = 0;
+  private interiorElapsedMs = 0;
 
   constructor(
     scene: Phaser.Scene,
@@ -43,8 +45,8 @@ export class AgentController {
       spawn.x * TILE_SIZE + TILE_SIZE / 2,
       spawn.y * TILE_SIZE + TILE_SIZE / 2,
       this.skin.sheet,
-      agentFrameIndex(this.skin, this.facing),
-    ).setOrigin(0.5, 0.82);
+      this.frameFor(this.facing, false),
+    ).setOrigin(0.5, 0.82).setScale(this.skin.renderScale ?? 1);
     this.actions = new ActionController(scene, this.sprite);
   }
 
@@ -66,6 +68,9 @@ export class AgentController {
       action: this.currentRoute?.action ?? this.currentAssignment?.action ?? 'arrive',
       eventKind: this.currentEvent?.kind ?? 'unknown',
       eventId: this.currentEvent?.eventId ?? '',
+      ...(this.currentEvent?.activityLabel ? { activityLabel: this.currentEvent.activityLabel } : {}),
+      ...(this.currentRoute?.bubbleText ? { bubbleText: this.currentRoute.bubbleText } : {}),
+      interiorElapsedMs: this.interiorElapsedMs,
     };
   }
 
@@ -137,13 +142,14 @@ export class AgentController {
   }
 
   update(deltaMs: number): void {
+    if (this.presenceState.kind === 'inside') this.interiorElapsedMs += Math.max(0, deltaMs);
     if (this.moving) {
       this.walkClockMs += Math.max(0, deltaMs);
       const snapshot = this.follower.update(deltaMs);
       this.facing = snapshot.facing;
       this.sprite.setPosition(snapshot.position.x, snapshot.position.y).setTexture(
         this.skin.sheet,
-        agentFrameIndex(this.skin, this.facing, this.skin.walkRows[Math.floor(this.walkClockMs / WALK_FRAME_MS) % this.skin.walkRows.length]),
+        this.frameFor(this.facing, true),
       );
       if (snapshot.arrived) this.arrive();
     }
@@ -165,7 +171,7 @@ export class AgentController {
   private arrive(): void {
     this.moving = false;
     this.currentPath = [];
-    this.sprite.setTexture(this.skin.sheet, agentFrameIndex(this.skin, this.currentAssignment?.facing ?? this.facing));
+    this.sprite.setTexture(this.skin.sheet, this.frameFor(this.currentAssignment?.facing ?? this.facing, false));
     const action = this.currentAssignment?.kind === 'queue'
       ? 'queue'
       : (this.currentRoute?.action ?? this.currentAssignment?.action ?? 'arrive');
@@ -176,6 +182,7 @@ export class AgentController {
         buildingId: this.destinationBuilding.buildingId,
         threshold: { ...this.destinationBuilding.threshold },
       };
+      this.interiorElapsedMs = 0;
       this.sprite.setVisible(false);
     }
     this.destinationBuilding = undefined;
@@ -206,7 +213,15 @@ export class AgentController {
     this.destinationBuilding = undefined;
     this.moving = false;
     this.preservePositionOnNextDispatch = false;
+    this.interiorElapsedMs = Math.max(this.interiorElapsedMs, 8_000);
     this.arrive();
     return true;
+  }
+
+  private frameFor(facing: Facing, walking: boolean): number {
+    if (this.skin.animation === 'adam-16x32') return agentAnimationFrame(facing, walking, this.walkClockMs);
+    if (!walking) return agentFrameIndex(this.skin, facing);
+    const row = this.skin.walkRows[Math.floor(this.walkClockMs / WALK_FRAME_MS) % this.skin.walkRows.length];
+    return agentFrameIndex(this.skin, facing, row);
   }
 }

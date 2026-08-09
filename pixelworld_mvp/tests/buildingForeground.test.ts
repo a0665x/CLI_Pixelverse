@@ -31,8 +31,8 @@ describe('building foreground geometry', () => {
   it('uses roof bounds that can occlude an Agent standing behind the facade', () => {
     const building = WORLD_DEFINITION.buildings[0]!;
     const roof = buildingForegroundGeometry(building, TILE_SIZE)[0]!;
-    expect(roof.bounds).toEqual({ x: 48, y: 64, width: 80, height: 32 });
+    expect(roof.bounds).toEqual({ x: 16, y: 32, width: 80, height: 48 });
     const agentBounds = { x: roof.bounds.x + 16, y: roof.bounds.y + 16, width: 12, height: 14 };
-    expect(shouldFadeForeground(agentBounds, roof.bounds, roof.bounds.y + 30, roof.baselineY)).toBe(true);
+    expect(shouldFadeForeground(agentBounds, roof.bounds, roof.bounds.y + 46, roof.baselineY)).toBe(true);
   });
 });

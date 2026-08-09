@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import type { AgentController } from '../agents/AgentController';
 import { ACTION_ICONS, aggregateBuildingActivity, type AgentActivity, withBuildingPresence } from '../status/buildingActivity';
 import type { AgentWorldEvent, BehaviorRoute, WorldBuilding } from '../world/types';
+import { DomStatusOverlay } from './domStatusOverlay';
 
 interface AgentOverlay {
   chip: Phaser.GameObjects.Text;
@@ -21,8 +22,17 @@ export class StatusOverlaySystem {
   private readonly overlays = new Map<string, AgentOverlay>();
   private readonly activities = new Map<string, AgentActivity>();
   private readonly buildingBadges = new Map<string, Phaser.GameObjects.Text>();
+  private readonly domOverlay: DomStatusOverlay;
+  private readonly buildings: WorldBuilding[];
 
   constructor(private readonly scene: Phaser.Scene, buildings: WorldBuilding[]) {
+    this.buildings = buildings;
+    this.domOverlay = new DomStatusOverlay(buildings, () => {
+      const canvas = scene.game?.canvas;
+      if (!canvas) return undefined;
+      const rect = canvas.getBoundingClientRect();
+      return { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
+    });
     for (const building of buildings) {
       const badge = scene.add.text(building.labelAnchor.x * 16, building.labelAnchor.y * 16 + 11, '', {
         fontFamily: 'monospace', fontSize: '8px', color: '#fff2ba', backgroundColor: '#3b2a1ddd', padding: { x: 3, y: 2 },
@@ -70,6 +80,12 @@ export class StatusOverlaySystem {
       updatedAt: event.timestamp,
       bubbleExpiresAt,
     });
+    this.domOverlay.publish(
+      agent,
+      `${prefix} · ${ACTION_ICONS[route.action]} ${event.activityLabel}`,
+      route.bubbleText,
+      route.bubblePolicy !== 'none',
+    );
     this.syncAgentVisibility(agent, overlay);
     this.refreshBuildings();
   }
@@ -89,6 +105,7 @@ export class StatusOverlaySystem {
     overlay.chip.setText(`${prefix} · ${message}`);
     overlay.bubble.setText(message).setVisible(true);
     overlay.bubbleExpiresAt = Number.POSITIVE_INFINITY;
+    this.domOverlay.publish(agent, `${prefix} · ${message}`, message, true);
     this.syncAgentVisibility(agent, overlay);
     this.refreshBuildings();
   }
@@ -113,6 +130,7 @@ export class StatusOverlaySystem {
     this.overlays.clear();
     this.activities.clear();
     this.buildingBadges.clear();
+    this.domOverlay.destroy();
   }
 
   private refreshBuildings(): void {
@@ -121,12 +139,17 @@ export class StatusOverlaySystem {
       const summary = aggregateBuildingActivity(activities, buildingId, this.scene.time.now);
       if (summary.count === 0) {
         badge.setVisible(false);
+        const building = this.buildings.find(({ id }) => id === buildingId);
+        if (building) this.domOverlay.setBuilding(building, '', false);
         continue;
       }
       const counts = Object.entries(summary.actionCounts)
         .map(([action, count]) => `${ACTION_ICONS[action as keyof typeof ACTION_ICONS]}${count}`)
         .join(' ');
-      badge.setText(`👥${summary.count} ${counts}${summary.message ? `\n${summary.message}` : ''}`).setVisible(true);
+      const text = `👥${summary.count} ${counts}${summary.message ? `\n${summary.message}` : ''}`;
+      badge.setText(text).setVisible(!this.domOverlay.isActive());
+      const building = this.buildings.find(({ id }) => id === buildingId);
+      if (building) this.domOverlay.setBuilding(building, text, true);
     }
   }
 
@@ -134,7 +157,8 @@ export class StatusOverlaySystem {
     const outside = agent.presence().kind === 'outside';
     const bubbleActive = overlay.bubbleExpiresAt === Number.POSITIVE_INFINITY
       || this.scene.time.now < overlay.bubbleExpiresAt;
-    overlay.chip.setVisible(outside);
-    overlay.bubble.setVisible(outside && bubbleActive);
+    overlay.chip.setVisible(outside && !this.domOverlay.isActive());
+    overlay.bubble.setVisible(outside && bubbleActive && !this.domOverlay.isActive());
+    this.domOverlay.positionAgent(agent, outside, outside && bubbleActive);
   }
 }

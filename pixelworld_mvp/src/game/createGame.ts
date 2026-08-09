@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { WorldScene } from '../scenes/WorldScene';
-import { WORLD_PIXELS, integerScaleFor } from './constants';
+import { WORLD_PIXELS, displayScaleFor } from './constants';
 import { subscribeWorldReady } from './worldReady';
 
 export function buildGameConfig(
@@ -19,7 +19,9 @@ export function buildGameConfig(
     render: { antialias: false, pixelArt: true, roundPixels: true },
     scale: {
       mode: Phaser.Scale.NONE,
-      autoCenter: Phaser.Scale.CENTER_BOTH,
+      // CSS Grid owns centering. Phaser margins plus Grid centering double-offset
+      // a 1.5x canvas and crop the east/south village edges.
+      autoCenter: Phaser.Scale.NO_CENTER,
       width: WORLD_PIXELS.width,
       height: WORLD_PIXELS.height,
     },
@@ -31,7 +33,7 @@ export function buildGameConfig(
         const root = document.getElementById(parent);
         if (!root) throw new Error(`Missing #${parent}`);
         const resize = () => {
-          const scale = integerScaleFor(root.clientWidth, root.clientHeight);
+          const scale = displayScaleFor(root.clientWidth, root.clientHeight);
           game.canvas.style.width = `${WORLD_PIXELS.width * scale}px`;
           game.canvas.style.height = `${WORLD_PIXELS.height * scale}px`;
         };

@@ -14,6 +14,9 @@ export interface InteriorAgentSnapshot {
   action: AgentAction;
   eventKind: WorldEventKind;
   eventId: string;
+  activityLabel?: string;
+  bubbleText?: string;
+  interiorElapsedMs?: number;
 }
 
 export interface InteriorOccupantAssignment extends InteriorAgentSnapshot {
@@ -44,11 +47,12 @@ function fallbackPoints(interior: InteriorDefinition): GridPoint[] {
 export function assignInteriorOccupants(
   interior: InteriorDefinition,
   snapshots: readonly InteriorAgentSnapshot[],
+  buildingId: string = interior.id,
 ): InteriorOccupantAssignment[] {
   const used = new Set<string>();
   const overflow = fallbackPoints(interior);
   return snapshots
-    .filter(({ buildingId }) => buildingId === interior.id)
+    .filter((snapshot) => snapshot.buildingId === buildingId)
     .sort((first, second) => first.agentId.localeCompare(second.agentId))
     .map((snapshot) => {
       const compatible = interior.furniture

@@ -9,7 +9,7 @@ const chain = (state: Record<string, unknown> = {}) => Object.assign(state, {
   setOrigin: vi.fn().mockReturnThis(), setDepth: vi.fn().mockReturnThis(), setVisible: vi.fn().mockReturnThis(),
   setText: vi.fn().mockReturnThis(), setPosition: vi.fn(function (this: { x: number; y: number }, x: number, y: number) { this.x = x; this.y = y; return this; }),
   setTexture: vi.fn().mockReturnThis(), setY: vi.fn(function (this: { y: number }, y: number) { this.y = y; return this; }),
-  setAlpha: vi.fn().mockReturnThis(), destroy: vi.fn(),
+  setAlpha: vi.fn().mockReturnThis(), setScale: vi.fn().mockReturnThis(), destroy: vi.fn(),
 });
 
 describe('AgentController cancellation', () => {
@@ -27,8 +27,8 @@ describe('AgentController cancellation', () => {
     expect(scene.add.image).toHaveBeenLastCalledWith(
       expect.any(Number),
       expect.any(Number),
-      'ninja-blue',
-      0,
+      'modern-agent-adam',
+      3,
     );
     const event = { eventId: 'a', timestamp: 1, source: 'demo' as const, agentId: 'main', agentRole: 'main' as const, kind: 'edit' as const, phase: 'working', activityLabel: 'work' };
     const route = { destinationId: 'queue-benches', preserveLocation: false, action: 'queue' as const, bubblePolicy: 'persistent' as const, bubbleText: 'wait', priority: 1 };
@@ -36,7 +36,7 @@ describe('AgentController cancellation', () => {
     const staleArrival = vi.fn();
     expect(agent.dispatch(event, first, route, staleArrival)).toBe(true);
     agent.update(100);
-    expect(sprite.setTexture).toHaveBeenLastCalledWith('ninja-blue', 4);
+    expect(sprite.setTexture).toHaveBeenLastCalledWith('modern-agent-adam', expect.any(Number));
     const logical = { x: sprite.x, y: sprite.y };
     agent.applyRenderOffset(6);
     sprite.y -= 1;
@@ -50,7 +50,7 @@ describe('AgentController cancellation', () => {
     expect(agent.currentRoute).toBeUndefined();
     expect(agent.currentAssignment).toBeUndefined();
 
-    const second = { ...first, anchorId: 'b', point: { x: 17, y: 12 }, facing: 'right' as const };
+    const second = { ...first, anchorId: 'b', point: { x: 17, y: 11 }, facing: 'right' as const };
     expect(agent.dispatch({ ...event, eventId: 'b' }, second, route)).toBe(true);
     agent.update(0);
     expect({ x: sprite.x, y: sprite.y }).toEqual(logical);

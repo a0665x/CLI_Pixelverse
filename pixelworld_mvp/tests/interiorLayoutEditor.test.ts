@@ -1,0 +1,87 @@
+import { describe, expect, it } from 'vitest';
+import {
+  addFurniture,
+  canPlaceFurniture,
+  furnitureCells,
+  loadInteriorLayout,
+  moveFurniture,
+  placementDiagnostic,
+  resizeFurniture,
+  saveInteriorLayout,
+  FURNITURE_PALETTE,
+} from '../src/rendering/interiorLayoutEditor';
+import { modernOfficeKindForFurniture } from '../src/rendering/InteriorCutawaySystem';
+import { INTERIOR_DEFINITIONS } from '../src/world/interiorDefinitions';
+
+describe('interior furniture editor model', () => {
+  const room = INTERIOR_DEFINITIONS['rest-cabin'];
+
+  it('moves furniture only inside the room and never overlaps another footprint', () => {
+    const layout = room.furniture.map((item) => ({ ...item, point: { ...item.point } }));
+    expect(moveFurniture(room, layout, 'rest-sofa-a', { x: 6, y: 1 })).toEqual(layout);
+    expect(moveFurniture(room, layout, 'rest-sofa-a', { x: -1, y: 2 })).toEqual(layout);
+
+    const moved = moveFurniture(room, layout, 'rest-sofa-a', { x: 3, y: 4 });
+    expect(moved.find(({ id }) => id === 'rest-sofa-a')?.point).toEqual({ x: 3, y: 4 });
+    expect(canPlaceFurniture(room, moved.find(({ id }) => id === 'rest-sofa-a')!, moved, 'rest-sofa-a')).toBe(true);
+  });
+
+  it('adds palette furniture only at a legal free cell', () => {
+    const layout = room.furniture.map((item) => ({ ...item, point: { ...item.point } }));
+    expect(addFurniture(room, layout, 'chair', { x: 7, y: 4 })).toHaveLength(layout.length + 1);
+    expect(addFurniture(room, layout, 'sofa', { x: 6, y: 1 })).toEqual(layout);
+  });
+
+  it('saves and restores a building-specific arrangement', () => {
+    const memory = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => memory.get(key) ?? null,
+      setItem: (key: string, value: string) => { memory.set(key, value); },
+    };
+    const layout = resizeFurniture(room, moveFurniture(room, room.furniture, 'rest-sofa-a', { x: 3, y: 4 }), 'rest-sofa-a', 1.25);
+    saveInteriorLayout('rest-cabin-house', layout, storage);
+    expect(JSON.parse(memory.get('pixelworld:interior-layout:rest-cabin-house')!)).toMatchObject({ version: 2 });
+    expect(loadInteriorLayout('rest-cabin-house', room, storage)).toEqual(
+      layout.map((item) => ({ ...item, scale: item.scale ?? 1 })),
+    );
+  });
+
+  it('migrates legacy arrays and falls back from corrupted saved layouts', () => {
+    const memory = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => memory.get(key) ?? null,
+      setItem: (key: string, value: string) => { memory.set(key, value); },
+    };
+    const key = 'pixelworld:interior-layout:legacy-house';
+    memory.set(key, JSON.stringify(room.furniture));
+    expect(loadInteriorLayout('legacy-house', room, storage).every(({ scale }) => scale === 1)).toBe(true);
+    memory.set(key, JSON.stringify({ version: 99, furniture: [] }));
+    expect(loadInteriorLayout('legacy-house', room, storage)).toEqual(room.furniture);
+  });
+  it('offers a complete Modern Office palette and maps every item to that family', () => {
+    expect(FURNITURE_PALETTE).toEqual(expect.arrayContaining([
+      'sofa', 'chair', 'office-chair', 'television', 'display', 'computer', 'desk',
+      'meeting-table', 'bookcase', 'cabinet', 'planning-board', 'plant', 'beverage-station', 'printer',
+    ]));
+    FURNITURE_PALETTE.forEach((kind) => expect(modernOfficeKindForFurniture(kind)).toBeTruthy());
+  });
+
+  it('scales semantic footprints and explains rejected placement', () => {
+    expect(furnitureCells({ kind: 'sofa', point: { x: 4, y: 4 }, scale: 1.5 })).toHaveLength(9);
+    const layout = room.furniture.map((item) => ({ ...item, point: { ...item.point } }));
+    const overlapping = { ...layout[0]!, id: 'candidate', kind: 'chair' as const, point: { x: 4, y: 5 } };
+    const atDoor = { ...overlapping, point: { x: Math.floor(room.width / 2), y: room.height - 1 } };
+    expect(placementDiagnostic(room, overlapping, layout)).toBe('overlap');
+    expect(placementDiagnostic(room, atDoor, layout)).toBe('blocks-door');
+    expect(placementDiagnostic(room, { ...overlapping, point: { x: -1, y: 2 } }, layout)).toBe('outside-room');
+  });
+
+  it('resizes only when the scaled footprint remains legal', () => {
+    const sofa = { ...room.furniture.find(({ id }) => id === 'rest-sofa-a')!, scale: 1 as const };
+    const valid = resizeFurniture(room, [sofa], sofa.id, 1.25);
+    expect(valid[0]?.scale).toBe(1.25);
+
+    const blocker = { ...room.furniture.find(({ id }) => id === 'rest-lamp')!, point: { x: 3, y: 4 } };
+    expect(resizeFurniture(room, [sofa, blocker], sofa.id, 1.5)).toEqual([sofa, blocker]);
+  });
+});

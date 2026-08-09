@@ -15,26 +15,28 @@ const event = (kind: WorldEventKind): AgentWorldEvent => ({
 
 describe('routeEvent', () => {
   it.each([
-    ['think', 'research-plan', 'ponder'],
-    ['plan', 'research-plan', 'plan'],
-    ['read', 'research-read', 'read'],
+    ['think', 'think-plan', 'ponder'],
+    ['plan', 'think-plan', 'plan'],
+    ['read', 'archive-read', 'read'],
     ['edit', 'maker-edit', 'type'],
-    ['tool', 'maker-tool', 'terminal'],
-    ['web', 'research-web', 'signal'],
-    ['clone', 'dispatch-pod', 'dispatch'],
-    ['respond', 'response-radio', 'respond'],
-    ['await', 'queue-benches', 'queue'],
-    ['blocked', 'blocked-apron', 'repair'],
-    ['self_heal', 'maker-heal', 'repair'],
+    ['tool', 'tool-call', 'terminal'],
+    ['web', 'network-web', 'signal'],
+    ['clone', 'guild-dispatch', 'dispatch'],
+    ['respond', 'guild-respond', 'respond'],
+    ['await', 'awaiting-wait', 'queue'],
+    ['blocked', 'recovery-blocked', 'repair'],
+    ['self_heal', 'recovery-heal', 'repair'],
     ['idle', 'rest-sofa', 'rest'],
-    ['offline', 'rest-bed', 'offline'],
+    ['offline', 'offline-bed', 'offline'],
+    ['heartbeat', 'heartbeat-pulse', 'pulse'],
   ] as const)('maps %s to %s/%s', (kind, destinationId, action) => {
     expect(routeEvent(event(kind))).toMatchObject({ destinationId, action });
   });
 
-  it('preserves movement and suppresses bubbles for heartbeat', () => {
+  it('routes heartbeat to its own visible house without a bubble', () => {
     expect(routeEvent(event('heartbeat'))).toEqual({
-      preserveLocation: true,
+      destinationId: 'heartbeat-pulse',
+      preserveLocation: false,
       action: 'pulse',
       bubblePolicy: 'none',
       bubbleText: '',

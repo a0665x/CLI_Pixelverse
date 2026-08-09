@@ -4,13 +4,15 @@ import {
   AGENT_SKINS,
   ANIMAL_ASSETS,
   HOUSE_ASSETS,
-  INTERIOR_ASSETS,
+  MODERN_INTERIOR_ASSETS,
+  SERENE_VILLAGE_ASSETS,
   WORLD_ATLAS,
   WORLD_ATLAS_FALLBACK_KEY,
   agentFrameIndex,
   ensureWorldAtlasTexture,
   preloadVillageAssets,
 } from '../src/rendering/assetManifest';
+import { MODERN_OFFICE_ASSETS } from '../src/rendering/modernOfficeManifest';
 
 describe('village asset manifest', () => {
   it('uses only the curated CC0 world and agent sprite sheets', () => {
@@ -28,31 +30,41 @@ describe('village asset manifest', () => {
     }
   });
 
-  it('loads every curated sheet as 16 by 16 spritesheet frames', () => {
+  it('loads the Serene, Modern Interiors, world, and Agent sprite sheets', () => {
     const spritesheet = vi.fn();
     const image = vi.fn();
 
     preloadVillageAssets({ load: { spritesheet, image } } as never);
 
-    expect(spritesheet).toHaveBeenCalledTimes(4);
+    expect([...spritesheet.mock.calls, ...image.mock.calls].map((call) => String(call[1])))
+      .not.toEqual(expect.arrayContaining([
+        expect.stringMatching(/modern-interiors-free\/(?:Interiors|Room_Builder|sofa|bed|bookcase|table|board|computer|chair)/),
+      ]));
+
+    expect(spritesheet).toHaveBeenCalledTimes(12);
     expect(spritesheet).toHaveBeenCalledWith('puny-world', '/assets/puny-world/punyworld-overworld-tileset.png', { frameWidth: 16, frameHeight: 16 });
     expect(spritesheet).toHaveBeenCalledWith('ninja-blue', '/assets/ninja-adventure/ninja-blue.png', { frameWidth: 16, frameHeight: 16 });
     expect(spritesheet).toHaveBeenCalledWith('samurai-blue', '/assets/ninja-adventure/samurai-blue.png', { frameWidth: 16, frameHeight: 16 });
     expect(spritesheet).toHaveBeenCalledWith('samurai-green', '/assets/ninja-adventure/samurai-green.png', { frameWidth: 16, frameHeight: 16 });
+    expect(spritesheet).toHaveBeenCalledWith(SERENE_VILLAGE_ASSETS.atlas.key, SERENE_VILLAGE_ASSETS.atlas.path, { frameWidth: 16, frameHeight: 16 });
+    expect(spritesheet).toHaveBeenCalledWith(MODERN_INTERIOR_ASSETS.agent.key, MODERN_INTERIOR_ASSETS.agent.path, { frameWidth: 16, frameHeight: 32 });
+    expect(spritesheet).toHaveBeenCalledWith(MODERN_OFFICE_ASSETS.roomBuilder.key, MODERN_OFFICE_ASSETS.roomBuilder.path, { frameWidth: 16, frameHeight: 16 });
     expect(image).toHaveBeenCalledTimes(
-      Object.keys(ANIMAL_ASSETS).length + Object.keys(INTERIOR_ASSETS).length + Object.keys(HOUSE_ASSETS).length,
+      Object.keys(ANIMAL_ASSETS).length + Object.keys(HOUSE_ASSETS).length
+        + Object.keys(MODERN_OFFICE_ASSETS.furniture).length,
     );
     expect(image).toHaveBeenCalledWith('animal-cow', '/assets/kenney/tiny-farm/cow.png');
-    expect(image).toHaveBeenCalledWith('interior-computer', '/assets/kenney/modern-city/computer.png');
+    expect(image).toHaveBeenCalledWith('modern-office-v1.2-computer', '/assets/private/modern-office-v1.2/Modern_Office_Singles_225.png');
     expect(image).toHaveBeenCalledWith('tiny-town-wall-brown-door', '/assets/kenney/tiny-town/wall-brown-door.png');
   });
 
-  it('maps each facing and skin row to the expected four-column frame', () => {
-    expect(agentFrameIndex(AGENT_SKINS.main, 'down')).toBe(0);
+  it('maps the taller LimeZu main character to its authored directional frames', () => {
+    expect(AGENT_SKINS.main).toMatchObject({ sheet: MODERN_INTERIOR_ASSETS.agent.key, renderScale: 1.1 });
+    expect(agentFrameIndex(AGENT_SKINS.main, 'down')).toBe(3);
     expect(agentFrameIndex(AGENT_SKINS.main, 'up')).toBe(1);
     expect(agentFrameIndex(AGENT_SKINS.main, 'left')).toBe(2);
-    expect(agentFrameIndex(AGENT_SKINS.main, 'right')).toBe(3);
-    expect(agentFrameIndex(AGENT_SKINS.main, 'right', AGENT_SKINS.main.walkRows[1])).toBe(7);
+    expect(agentFrameIndex(AGENT_SKINS.main, 'right')).toBe(0);
+    expect(agentFrameIndex(AGENT_SKINS.subagent, 'right', AGENT_SKINS.subagent.walkRows[1])).toBe(7);
   });
 
   it('installs and reports an explicit diagnostic texture when the Puny atlas is missing', () => {

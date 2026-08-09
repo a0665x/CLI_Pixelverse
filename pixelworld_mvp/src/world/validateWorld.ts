@@ -29,7 +29,7 @@ export function validateWorld(world: WorldDefinition): string[] {
   const locationIds = new Set([...world.zones.map((item) => item.id), ...world.buildings.map((item) => item.id)]);
   const buildingIds = new Set(world.buildings.map((item) => item.id));
   const bridgeKeys = new Set(world.scenery.bridges.flatMap(pointsIn).map(key));
-  if (world.width !== 40 || world.height !== 22) errors.push('world must be 40x22 tiles');
+  if (world.width !== 48 || world.height !== 28) errors.push('world must be 48x28 tiles');
   if (!inside(world.spawn, world)) errors.push('spawn is outside the world');
   const terrainPoints = new Set<string>();
   for (const [index, area] of world.terrain.entries()) {
@@ -88,7 +88,7 @@ export function validateWorld(world: WorldDefinition): string[] {
       const first = world.buildings[firstIndex]!;
       const second = world.buildings[secondIndex]!;
       const gap = rectGap(first.bounds, second.bounds);
-      if (gap.x < 4 && gap.y < 4) errors.push(`buildings too close: ${first.id},${second.id}`);
+      if (gap.x < 2 && gap.y < 2) errors.push(`buildings too close: ${first.id},${second.id}`);
     }
   }
   for (const [index, rect] of [

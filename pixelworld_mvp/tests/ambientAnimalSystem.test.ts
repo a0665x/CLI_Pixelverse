@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { AmbientAnimalSystem, advanceAnimal, pointInsideRect } from '../src/rendering/AmbientAnimalSystem';
+import { AmbientAnimalSystem, advanceAnimal, animalShouldFlip, pointInsideRect } from '../src/rendering/AmbientAnimalSystem';
 import type { AmbientAnimalDefinition } from '../src/world/types';
 
 const cow: AmbientAnimalDefinition = {
@@ -9,13 +9,43 @@ const cow: AmbientAnimalDefinition = {
 
 describe('ambient animal motion', () => {
   it('is deterministic and stays inside its declared pasture', () => {
-    const state = { point: { ...cow.start }, targetIndex: 0, idleMs: 0 };
+    const state = { point: { ...cow.start }, targetIndex: 0, idleMs: 0, direction: 'idle' as const };
     const first = advanceAnimal(state, cow, 1_000);
     const second = advanceAnimal(state, cow, 1_000);
 
     expect(first).toEqual(second);
     expect(pointInsideRect(first.point, cow.patrolBounds)).toBe(true);
     expect(first).not.toHaveProperty('navigationGrid');
+  });
+
+  it('grazes horizontally so a side-facing animal never appears to crab-walk', () => {
+    const left = advanceAnimal({
+      point: { x: 5, y: 6 }, targetIndex: 0, idleMs: 0, direction: 'idle',
+    }, cow, 500);
+    const right = advanceAnimal({
+      point: { x: 4.5, y: 6 }, targetIndex: 1, idleMs: 0, direction: 'left',
+    }, cow, 500);
+
+    expect(left.point.y).toBe(6);
+    expect(left.direction).toBe('left');
+    expect(right.point.y).toBe(6);
+    expect(right.direction).toBe('right');
+  });
+
+  it('keeps the last facing while pausing to graze', () => {
+    const paused = advanceAnimal({
+      point: { x: 5, y: 6 }, targetIndex: 0, idleMs: 400, direction: 'left',
+    }, cow, 100);
+
+    expect(paused.direction).toBe('left');
+    expect(paused.point).toEqual({ x: 5, y: 6 });
+  });
+
+  it('honors each source sprite direction so the left-facing pig never walks backward', () => {
+    expect(animalShouldFlip('pig', 'left')).toBe(false);
+    expect(animalShouldFlip('pig', 'right')).toBe(true);
+    expect(animalShouldFlip('sheep', 'left')).toBe(true);
+    expect(animalShouldFlip('sheep', 'right')).toBe(false);
   });
 
   it('owns only ambient sprites and destroys every one', () => {

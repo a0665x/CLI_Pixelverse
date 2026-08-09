@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { TILE_SIZE } from '../game/constants';
 import type { GridPoint, TerrainArea, WorldBuilding, WorldDefinition } from '../world/types';
-import { HOUSE_ASSETS, WORLD_ATLAS, WORLD_ATLAS_FALLBACK_KEY } from './assetManifest';
+import { SERENE_VILLAGE_ASSETS, WORLD_ATLAS, WORLD_ATLAS_FALLBACK_KEY } from './assetManifest';
 import {
   punyFrameIndex,
   type PunyRegionName,
@@ -30,6 +30,7 @@ export interface AtlasTileCommand {
   layer: VillageLayerName;
   region: PunyRegionName;
   textureKey?: string;
+  frame?: number;
   x: number;
   y: number;
   depth: number;
@@ -95,8 +96,8 @@ function roadRegion(point: GridPoint, roads: Set<string>, plazas: Set<string>): 
   const horizontal = left || right;
   const vertical = up || down;
   if (horizontal && vertical) return 'dirtJunction';
-  if (horizontal) return left && right ? 'dirtHorizontal' : left ? 'dirtHorizontalRight' : 'dirtHorizontalLeft';
-  if (vertical) return up && down ? 'dirtVertical' : up ? 'dirtVerticalBottom' : 'dirtVerticalTop';
+  if (horizontal) return 'dirtHorizontal';
+  if (vertical) return 'dirtVertical';
   return 'dirtCenter';
 }
 
@@ -115,58 +116,43 @@ function buildingCommands(building: WorldBuilding): {
   tiles: AtlasTileCommand[];
   foregrounds: PlannedForeground[];
 } {
-  const styles = {
-    'research-library': { roof: 'gray', wall: 'gray', tint: 0x9fc8ff },
-    'maker-workshop': { roof: 'orange', wall: 'brown', tint: 0xffd49a },
-    'rest-cabin': { roof: 'orange', wall: 'gray', tint: 0xffb9c8 },
-    'collaboration-barn': { roof: 'gray', wall: 'brown', tint: 0xb8dc91 },
-  } as const;
-  const style = styles[building.themeId];
-  const frontY = (building.bounds.y + building.bounds.height) * TILE_SIZE;
+  const houseStyle: Record<string, { row: number; column: number }> = {
+    'arrival-lodge': { row: 25, column: 0 },
+    'thinkers-cottage': { row: 33, column: 0 },
+    'archive-library': { row: 41, column: 0 },
+    'network-lab': { row: 33, column: 5 },
+    'heartbeat-tower': { row: 41, column: 0 },
+    'offline-dormitory': { row: 41, column: 5 },
+    'maker-workshop': { row: 25, column: 5 },
+    'tool-smithy': { row: 25, column: 0 },
+    'awaiting-post': { row: 33, column: 0 },
+    'collaboration-barn': { row: 33, column: 5 },
+    'recovery-clinic': { row: 25, column: 5 },
+    'rest-cabin': { row: 41, column: 5 },
+  };
+  const style = houseStyle[building.id] ?? houseStyle['arrival-lodge']!;
   const geometry = buildingForegroundGeometry(building, TILE_SIZE);
   const roofGeometry = geometry.find(({ kind }) => kind === 'roof')!;
   const doorGeometry = geometry.find(({ kind }) => kind === 'door-frame')!;
   const roofGroup = `roof:${building.id}`;
   const doorGroup = `door:${building.id}`;
   const tiles: AtlasTileCommand[] = [];
-  const asset = (name: keyof typeof HOUSE_ASSETS): string => HOUSE_ASSETS[name].key;
-  const roofPieces = style.roof === 'gray'
-    ? {
-        topLeft: asset('grayRoofTopLeft'), topMiddle: asset('grayRoofTopMiddle'), topRight: asset('grayRoofTopRight'),
-        windowTop: asset('grayRoofWindowTop'), bottomLeft: asset('grayRoofBottomLeft'),
-        bottomMiddle: asset('grayRoofBottomMiddle'), bottomRight: asset('grayRoofBottomRight'),
-        windowBottom: asset('grayRoofWindowBottom'),
-      }
-    : {
-        topLeft: asset('orangeRoofTopLeft'), topMiddle: asset('orangeRoofTopMiddle'), topRight: asset('orangeRoofTopRight'),
-        windowTop: asset('orangeRoofWindowTop'), bottomLeft: asset('orangeRoofBottomLeft'),
-        bottomMiddle: asset('orangeRoofBottomMiddle'), bottomRight: asset('orangeRoofBottomRight'),
-        windowBottom: asset('orangeRoofWindowBottom'),
-      };
-  const wallPieces = style.wall === 'gray'
-    ? { left: asset('grayWallLeft'), window: asset('grayWallWindow'), door: asset('grayWallDoor'), right: asset('grayWallRight') }
-    : { left: asset('brownWallLeft'), window: asset('brownWallWindow'), door: asset('brownWallDoor'), right: asset('brownWallRight') };
+  const frameAt = (localX: number, localY: number): number =>
+    (style.row + localY) * 19 + style.column + localX;
 
-  for (let localY = 0; localY < 2; localY += 1) {
+  for (let localY = 0; localY < 3; localY += 1) {
     for (let localX = 0; localX < building.bounds.width; localX += 1) {
-      const textureKey = localY === 0
-        ? localX === 0 ? roofPieces.topLeft
-          : localX === building.bounds.width - 1 ? roofPieces.topRight
-            : localX === 2 ? roofPieces.windowTop : roofPieces.topMiddle
-        : localX === 0 ? roofPieces.bottomLeft
-          : localX === building.bounds.width - 1 ? roofPieces.bottomRight
-            : localX === 2 ? roofPieces.windowBottom : roofPieces.bottomMiddle;
       tiles.push(tileCommand(
         'foregrounds', 'grassPlain',
         { x: building.bounds.x + localX, y: building.bounds.y + localY },
         roofGeometry.baselineY,
         {
-          textureKey,
+          textureKey: SERENE_VILLAGE_ASSETS.atlas.key,
+          frame: frameAt(localX, localY),
           buildingId: building.id,
           buildingRole: 'roof',
           foregroundKind: 'roof',
           foregroundGroup: roofGroup,
-          tint: style.tint,
         },
       ));
     }
@@ -177,17 +163,13 @@ function buildingCommands(building: WorldBuilding): {
     const point = { x: building.bounds.x + localX, y: facadeY };
     const isDoor = point.x === building.entrance.threshold.x;
     const isWindow = localX === 1 || localX === building.bounds.width - 2;
-    const textureKey = isDoor ? wallPieces.door
-      : localX === 0 ? wallPieces.left
-        : localX === building.bounds.width - 1 ? wallPieces.right
-          : isWindow ? wallPieces.window : style.wall === 'gray' ? wallPieces.left : wallPieces.right;
     tiles.push(tileCommand(
       'wallsAndThresholds', 'grassPlain', point, isDoor ? -699 : -700,
       {
-        textureKey,
+        textureKey: SERENE_VILLAGE_ASSETS.atlas.key,
+        frame: frameAt(localX, 3),
         buildingId: building.id,
         buildingRole: isDoor ? 'door' : isWindow ? 'window' : 'wall',
-        tint: style.tint,
       },
     ));
   }
@@ -198,19 +180,13 @@ function buildingCommands(building: WorldBuilding): {
       buildingRole: 'threshold',
     }),
     tileCommand('foregrounds', 'grassPlain', building.entrance.threshold, doorGeometry.baselineY, {
-      textureKey: wallPieces.door,
+      textureKey: SERENE_VILLAGE_ASSETS.atlas.key,
+      frame: frameAt(2, 3),
       buildingId: building.id,
       buildingRole: 'door-frame',
       foregroundKind: 'door-frame',
       foregroundGroup: doorGroup,
-      tint: style.tint,
     }),
-    tileCommand(
-      'signboards', 'signboard',
-      { x: building.bounds.x + building.bounds.width, y: facadeY },
-      frontY + 1,
-      { buildingId: building.id, buildingRole: 'signboard' },
-    ),
   );
   return {
     tiles,
@@ -241,7 +217,7 @@ export function buildVillageRenderPlan(world: WorldDefinition): VillageRenderPla
   const commands: AtlasTileCommand[] = [];
   for (let y = 0; y < world.height; y += 1) {
     for (let x = 0; x < world.width; x += 1) {
-      commands.push(tileCommand('grass', (x * 7 + y * 11) % 13 === 0 ? 'grassTufts' : 'grassPlain', { x, y }, -1_000));
+      commands.push(tileCommand('grass', 'grassPlain', { x, y }, -1_000));
     }
   }
 
@@ -285,41 +261,62 @@ export function buildVillageRenderPlan(world: WorldDefinition): VillageRenderPla
     }
   }
 
+  const decorationRegion = {
+    bench: 'bench', signboard: 'signboard', crate: 'supplyCrate',
+    rock: 'rock', flowers: 'grassFlowers',
+  } as const satisfies Record<Exclude<(typeof world.scenery.decorations)[number]['kind'], 'campfire'>, PunyRegionName>;
+  for (const decoration of world.scenery.decorations) {
+    const depth = decoration.point.y * TILE_SIZE + 12;
+    commands.push(decoration.kind === 'campfire'
+      ? tileCommand('trunksAndWorkZones', 'grassPlain', decoration.point, depth, {
+        textureKey: SERENE_VILLAGE_ASSETS.campfire.key, frame: 0, sceneryRole: 'prop',
+      })
+      : tileCommand(
+        'trunksAndWorkZones', decorationRegion[decoration.kind], decoration.point, depth,
+        { sceneryRole: 'prop' },
+      ));
+  }
+
+  for (const pasture of world.scenery.pastures) {
+    for (let x = pasture.x; x < pasture.x + pasture.width; x += 1) {
+      commands.push(tileCommand('trunksAndWorkZones', 'fence', { x, y: pasture.y }, pasture.y * TILE_SIZE + 12, { sceneryRole: 'fence' }));
+      commands.push(tileCommand('trunksAndWorkZones', 'fence', { x, y: pasture.y + pasture.height - 1 }, (pasture.y + pasture.height) * TILE_SIZE, { sceneryRole: 'fence' }));
+    }
+  }
+
   const foregrounds: PlannedForeground[] = [];
   for (const tree of world.scenery.trees) {
     const footY = (tree.trunk.y + 1) * TILE_SIZE;
     const canopyGroup = `canopy:${tree.id}`;
-    const canopyRegions = ['treeCanopyLeft', 'treeCanopy', 'treeCanopyRight'] as const;
-    const trunkRegions = ['treeTrunkLeft', 'treeTrunk', 'treeTrunkRight'] as const;
-    canopyRegions.forEach((region, index) => commands.push(tileCommand(
-      'foregrounds', region, { x: tree.trunk.x + index - 1, y: tree.trunk.y - 1 }, footY,
-      { foregroundKind: 'canopy', foregroundGroup: canopyGroup },
-    )));
-    trunkRegions.forEach((region, index) => commands.push(tileCommand(
-      'foregrounds', region, { x: tree.trunk.x + index - 1, y: tree.trunk.y }, footY,
-      { foregroundKind: 'canopy', foregroundGroup: canopyGroup },
-    )));
+    // Columns 9-10 at rows 12-14 are one complete standalone tree. The first
+    // canopy row is essential; starting at row 13 visibly shears off its crown.
+    // Adjacent packed objects use different vertical bounds and must not be
+    // treated as interchangeable tile variants.
+    const treeColumn = 9;
+    for (let localY = 0; localY < 3; localY += 1) {
+      for (let localX = 0; localX < 2; localX += 1) {
+        commands.push(tileCommand(
+          'foregrounds', localY === 0 ? 'treeCanopy' : 'treeTrunk',
+          { x: tree.trunk.x + localX - 1, y: tree.trunk.y + localY - 2 }, footY,
+          {
+            textureKey: SERENE_VILLAGE_ASSETS.atlas.key,
+            frame: (12 + localY) * 19 + treeColumn + localX,
+            foregroundKind: 'canopy', foregroundGroup: canopyGroup,
+          },
+        ));
+      }
+    }
     foregrounds.push({
       kind: 'canopy',
       groupId: canopyGroup,
       bounds: {
         x: (tree.trunk.x - 1) * TILE_SIZE,
-        y: (tree.trunk.y - 1) * TILE_SIZE,
-        width: 3 * TILE_SIZE,
-        height: 2 * TILE_SIZE,
+        y: (tree.trunk.y - 2) * TILE_SIZE,
+        width: 2 * TILE_SIZE,
+        height: 3 * TILE_SIZE,
       },
       baselineY: footY,
     });
-  }
-
-  // The obstacle border doubles as a compact GBA-style village fence.
-  for (let x = 0; x < world.width; x += 1) {
-    commands.push(tileCommand('waterAndDecorations', 'fence', { x, y: 0 }, -780, { sceneryRole: 'fence' }));
-    if (x < 18 || x > 21) commands.push(tileCommand('waterAndDecorations', 'fence', { x, y: world.height - 1 }, -780, { sceneryRole: 'fence' }));
-  }
-  for (let y = 1; y < world.height - 1; y += 1) {
-    commands.push(tileCommand('waterAndDecorations', 'fence', { x: 0, y }, -780, { sceneryRole: 'fence' }));
-    commands.push(tileCommand('waterAndDecorations', 'fence', { x: world.width - 1, y }, -780, { sceneryRole: 'fence' }));
   }
 
   const buildingTiles: AtlasTileCommand[] = [];
@@ -366,9 +363,9 @@ export class VillageRenderer {
     const groupedImages = new Map<string, Phaser.GameObjects.Image[]>();
     for (const command of plan.commands) {
       const textureKey = command.textureKey ?? this.atlasTextureKey;
-      const frame = command.textureKey || this.atlasTextureKey === WORLD_ATLAS_FALLBACK_KEY
+      const frame = command.frame ?? (command.textureKey || this.atlasTextureKey === WORLD_ATLAS_FALLBACK_KEY
         ? undefined
-        : punyFrameIndex(command.region);
+        : punyFrameIndex(command.region));
       const image = this.scene.add.image(command.x, command.y, textureKey, frame)
         .setOrigin(0, 0)
         .setDepth(command.depth);
