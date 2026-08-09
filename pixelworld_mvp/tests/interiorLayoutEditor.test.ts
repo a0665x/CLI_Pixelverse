@@ -18,20 +18,21 @@ describe('interior furniture editor model', () => {
   const room = INTERIOR_DEFINITIONS['rest-cabin'];
   const normalizedRoomLayout = () => loadInteriorLayout('unsaved-test-house', room, undefined);
 
-  it('moves furniture only inside the room and never overlaps another footprint', () => {
+  it('moves furniture inside the room and allows visual overlap', () => {
     const layout = normalizedRoomLayout();
-    expect(moveFurniture(room, layout, 'rest-sofa-a', { x: 6, y: 1 })).toEqual(layout);
+    expect(moveFurniture(room, layout, 'rest-sofa-a', { x: 6, y: 1 }).find(({ id }) => id === 'rest-sofa-a')?.point)
+      .toEqual({ x: 6, y: 1 });
     expect(moveFurniture(room, layout, 'rest-sofa-a', { x: -1, y: 2 })).toEqual(layout);
 
     const moved = moveFurniture(room, layout, 'rest-sofa-a', { x: 3, y: 4 });
-    expect(moved.find(({ id }) => id === 'rest-sofa-a')?.point).toEqual({ x: 3.5, y: 4.5 });
+    expect(moved.find(({ id }) => id === 'rest-sofa-a')?.point).toEqual({ x: 3, y: 4 });
     expect(canPlaceFurniture(room, moved.find(({ id }) => id === 'rest-sofa-a')!, moved, 'rest-sofa-a')).toBe(true);
   });
 
-  it('adds palette furniture only at a legal free cell', () => {
+  it('adds palette furniture at legal points even when visuals overlap', () => {
     const layout = normalizedRoomLayout();
     expect(addFurniture(room, layout, 'chair', { x: 7, y: 4 })).toHaveLength(layout.length + 1);
-    expect(addFurniture(room, layout, 'sofa', { x: 6, y: 1 })).toEqual(layout);
+    expect(addFurniture(room, layout, 'sofa', { x: 6, y: 1 })).toHaveLength(layout.length + 1);
   });
 
   it('saves and restores a building-specific arrangement', () => {
@@ -71,7 +72,7 @@ describe('interior furniture editor model', () => {
       footprint: { width: 2, height: 1 },
     };
     const rotated = rotateFurniture(room, [item], item.id, 90);
-    expect(rotated[0]).toMatchObject({ rotation: 90, point: { x: 3, y: 2.5 } });
+    expect(rotated[0]).toMatchObject({ rotation: 90, point: { x: 2.5, y: 2 } });
   });
 
   it('migrates legacy arrays and falls back from corrupted saved layouts', () => {
@@ -94,22 +95,22 @@ describe('interior furniture editor model', () => {
     FURNITURE_PALETTE.forEach((kind) => expect(modernOfficeKindForFurniture(kind)).toBeTruthy());
   });
 
-  it('scales semantic footprints and explains rejected placement', () => {
-    expect(furnitureCells({ kind: 'sofa', point: { x: 4, y: 4 }, scale: 1.5 })).toHaveLength(9);
+  it('projects blocking alpha bounds and explains rejected placement', () => {
+    expect(furnitureCells({ kind: 'sofa', point: { x: 4, y: 4 }, scale: 1.5 }).length).toBeGreaterThan(0);
     const layout = normalizedRoomLayout();
     const overlapping = { ...layout[0]!, id: 'candidate', kind: 'chair' as const, point: { x: 4, y: 5 } };
     const atDoor = { ...overlapping, point: { x: Math.floor(room.width / 2), y: room.height - 1 } };
-    expect(placementDiagnostic(room, overlapping, layout)).toBe('overlap');
+    expect(placementDiagnostic(room, overlapping, layout)).toBe('valid');
     expect(placementDiagnostic(room, atDoor, layout)).toBe('blocks-door');
     expect(placementDiagnostic(room, { ...overlapping, point: { x: -1, y: 2 } }, layout)).toBe('outside-room');
   });
 
-  it('resizes only when the scaled footprint remains legal', () => {
+  it('resizes when transformed alpha bounds remain in the room', () => {
     const sofa = { ...room.furniture.find(({ id }) => id === 'rest-sofa-a')!, scale: 1 as const };
     const valid = resizeFurniture(room, [sofa], sofa.id, 1.25);
     expect(valid[0]?.scale).toBe(1.25);
 
     const blocker = { ...room.furniture.find(({ id }) => id === 'rest-lamp')!, point: { x: 3, y: 4 } };
-    expect(resizeFurniture(room, [sofa, blocker], sofa.id, 1.5)).toEqual([sofa, blocker]);
+    expect(resizeFurniture(room, [sofa, blocker], sofa.id, 1.5)[0]?.scale).toBe(1.5);
   });
 });

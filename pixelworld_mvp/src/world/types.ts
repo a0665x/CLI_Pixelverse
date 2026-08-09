@@ -58,6 +58,7 @@ export type FurnitureKind =
 export type FurnitureScale = 0.75 | 1 | 1.25 | 1.5;
 export type FurnitureRotation = 0 | 90 | 180 | 270;
 export interface FurnitureFootprint { width: number; height: number }
+export type FurnitureLayer = 'floor' | 'furniture' | 'surface' | 'wall';
 export type ActivityIconKind =
   | 'rest' | 'offline' | 'think' | 'plan' | 'read' | 'web' | 'edit'
   | 'tool' | 'repair' | 'clone' | 'respond' | 'generic';
@@ -72,6 +73,10 @@ export interface FurnitureDefinition {
   rotation?: FurnitureRotation;
   assetId?: number;
   footprint?: FurnitureFootprint;
+  layer?: FurnitureLayer;
+  zIndex?: number;
+  blocksNavigation?: boolean;
+  requirementId?: string;
 }
 export interface InteriorDefinition {
   id: BuildingThemeId;

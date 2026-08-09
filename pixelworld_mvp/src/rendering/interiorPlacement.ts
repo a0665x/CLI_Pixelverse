@@ -2,19 +2,31 @@ import { furnitureFootprint } from '../world/interiorDefinitions';
 import type {
   FurnitureDefinition,
   FurnitureFootprint,
+  FurnitureLayer,
   FurnitureRotation,
   GridPoint,
   InteriorDefinition,
 } from '../world/types';
+import { catalogItem, type ModernOfficeCatalogItem } from './modernOfficeCatalog';
 
-export const EDITOR_CELL = 11;
+export const EDITOR_CELL = 5.5;
 export type PlacementDiagnostic = 'valid' | 'outside-room' | 'blocks-door' | 'overlap' | 'invalid-asset';
+export interface FurnitureBounds { x: number; y: number; width: number; height: number }
 
 export interface PlacementCandidate {
   furniture: FurnitureDefinition;
   diagnostic: PlacementDiagnostic;
   fineCells: GridPoint[];
+  bounds: FurnitureBounds;
 }
+
+const DEFAULT_ASSET_ID: Partial<Record<FurnitureDefinition['kind'], number>> = {
+  sofa: 200, bed: 200, chair: 101, 'office-chair': 101, television: 129, display: 129,
+  computer: 225, 'dispatch-pod': 225, 'radio-console': 225, bookcase: 176,
+  'planning-board': 171, 'map-table': 207, 'meeting-table': 207, 'reading-desk': 193,
+  workbench: 193, 'repair-table': 193, 'response-desk': 193, desk: 193,
+  'tool-wall': 175, cabinet: 175, decor: 98, plant: 98, 'beverage-station': 173, printer: 177,
+};
 
 const normalizeScale = (value: unknown): number => (
   value === 0.75 || value === 1.25 || value === 1.5 ? value : 1
@@ -51,30 +63,78 @@ export function snapFurnitureCenter(point: GridPoint, footprint: FurnitureFootpr
   return { x: snapAxis(point.x, footprint.width), y: snapAxis(point.y, footprint.height) };
 }
 
+export function snapFurniturePoint(point: GridPoint): GridPoint {
+  return { x: Math.round(point.x * 4) / 4, y: Math.round(point.y * 4) / 4 };
+}
+
+const catalogForFurniture = (item: Pick<FurnitureDefinition, 'kind' | 'assetId'>): ModernOfficeCatalogItem | undefined =>
+  catalogItem(item.assetId ?? DEFAULT_ASSET_ID[item.kind] ?? -1);
+
+export function transformedAlphaBounds(
+  item: Pick<FurnitureDefinition, 'kind' | 'point' | 'assetId' | 'rotation' | 'scale' | 'footprint'>,
+  asset: ModernOfficeCatalogItem | undefined = catalogForFurniture(item),
+): FurnitureBounds {
+  const scale = normalizeScale(item.scale);
+  const fallback = baseFurnitureFootprint(item);
+  const sourceWidth = asset?.opaqueBounds.width ?? fallback.width * 22;
+  const sourceHeight = asset?.opaqueBounds.height ?? fallback.height * 22;
+  const rotation = normalizeRotation(item.rotation);
+  const width = (rotation % 180 === 0 ? sourceWidth : sourceHeight) * scale / 22;
+  const height = (rotation % 180 === 0 ? sourceHeight : sourceWidth) * scale / 22;
+  const center = { x: item.point.x + 0.5, y: item.point.y + 0.5 };
+  return { x: center.x - width / 2, y: center.y - height / 2, width, height };
+}
+
+export function defaultFurnitureLayer(
+  item: Pick<FurnitureDefinition, 'kind' | 'assetId' | 'supportedActions'>,
+): FurnitureLayer {
+  if (item.supportedActions.length > 0) return 'furniture';
+  if (['sofa', 'bed', 'chair', 'office-chair', 'desk', 'reading-desk', 'workbench', 'repair-table',
+    'response-desk', 'map-table', 'meeting-table', 'computer', 'dispatch-pod', 'radio-console',
+    'bookcase', 'cabinet', 'tool-wall'].includes(item.kind)) return 'furniture';
+  const asset = catalogForFurniture(item);
+  if (asset?.category === 'surfaces') return 'floor';
+  if (asset?.category === 'screens-electronics') return 'surface';
+  if (asset?.category === 'storage-partitions') return 'wall';
+  if (item.kind === 'plant' || item.kind === 'decor' || item.kind === 'beverage-station' || item.kind === 'printer') return 'surface';
+  return 'furniture';
+}
+
+export function furnitureBlocksNavigation(
+  item: Pick<FurnitureDefinition, 'kind' | 'assetId' | 'supportedActions' | 'blocksNavigation'>,
+): boolean {
+  return item.blocksNavigation ?? (item.supportedActions.length > 0 || defaultFurnitureLayer(item) === 'furniture');
+}
+
 export function fineFootprintCells(
-  item: Pick<FurnitureDefinition, 'kind' | 'point' | 'footprint' | 'rotation' | 'scale'>,
+  item: Pick<FurnitureDefinition, 'kind' | 'point' | 'footprint' | 'rotation' | 'scale' | 'assetId'>,
 ): GridPoint[] {
-  const size = effectiveFurnitureFootprint(item);
-  const fineWidth = size.width * 2;
-  const fineHeight = size.height * 2;
-  const centerFineX = item.point.x * 2 + 1;
-  const centerFineY = item.point.y * 2 + 1;
-  const left = Math.floor(centerFineX - fineWidth / 2);
-  const top = Math.floor(centerFineY - fineHeight / 2);
+  const bounds = transformedAlphaBounds(item);
+  const left = Math.floor(bounds.x * 4 + 1e-6);
+  const top = Math.floor(bounds.y * 4 + 1e-6);
+  const right = Math.ceil((bounds.x + bounds.width) * 4 - 1e-6);
+  const bottom = Math.ceil((bounds.y + bounds.height) * 4 - 1e-6);
   const cells: GridPoint[] = [];
-  for (let y = top; y < top + fineHeight; y += 1) {
-    for (let x = left; x < left + fineWidth; x += 1) cells.push({ x, y });
+  for (let y = top; y < bottom; y += 1) {
+    for (let x = left; x < right; x += 1) cells.push({ x, y });
   }
   return cells;
 }
 
 export function navigationCells(
-  item: Pick<FurnitureDefinition, 'kind' | 'point' | 'footprint' | 'rotation' | 'scale'>,
+  item: Pick<FurnitureDefinition, 'kind' | 'point' | 'footprint' | 'rotation' | 'scale' | 'assetId'> &
+    Partial<Pick<FurnitureDefinition, 'layer' | 'blocksNavigation' | 'supportedActions'>>,
 ): GridPoint[] {
+  const withActions = { ...item, supportedActions: item.supportedActions ?? [] };
+  if (!furnitureBlocksNavigation(withActions)) return [];
+  const bounds = transformedAlphaBounds(item);
   const unique = new Map<string, GridPoint>();
-  for (const cell of fineFootprintCells(item)) {
-    const logical = { x: Math.floor(cell.x / 2), y: Math.floor(cell.y / 2) };
-    unique.set(`${logical.x},${logical.y}`, logical);
+  const left = Math.floor(bounds.x + 1e-6);
+  const top = Math.floor(bounds.y + 1e-6);
+  const right = Math.ceil(bounds.x + bounds.width - 1e-6);
+  const bottom = Math.ceil(bounds.y + bounds.height - 1e-6);
+  for (let y = top; y < bottom; y += 1) {
+    for (let x = left; x < right; x += 1) unique.set(`${x},${y}`, { x, y });
   }
   return [...unique.values()].sort((a, b) => a.y - b.y || a.x - b.x);
 }
@@ -85,15 +145,15 @@ export function diagnoseFinePlacement(
   layout: readonly FurnitureDefinition[],
   ignoreId?: string,
 ): PlacementDiagnostic {
-  const cells = fineFootprintCells(candidate);
-  if (cells.some(({ x, y }) => x < 0 || y < 0 || x >= room.width * 2 || y >= room.height * 2)) return 'outside-room';
+  const bounds = transformedAlphaBounds(candidate);
   const doorX = Math.floor(room.width / 2);
-  if (cells.some(({ x, y }) => Math.floor(x / 2) === doorX && Math.floor(y / 2) === room.height - 1)) return 'blocks-door';
-  const occupied = new Set(layout
-    .filter(({ id }) => id !== ignoreId)
-    .flatMap(fineFootprintCells)
-    .map(({ x, y }) => `${x},${y}`));
-  return cells.some(({ x, y }) => occupied.has(`${x},${y}`)) ? 'overlap' : 'valid';
+  const door = { x: doorX, y: room.height - 1, width: 1, height: 1 };
+  const intersectsDoor = bounds.x < door.x + door.width && bounds.x + bounds.width > door.x &&
+    bounds.y < door.y + door.height && bounds.y + bounds.height > door.y;
+  if (intersectsDoor) return 'blocks-door';
+  return bounds.x < 0 || bounds.y < 0 || bounds.x + bounds.width > room.width || bounds.y + bounds.height > room.height
+    ? 'outside-room'
+    : 'valid';
 }
 
 export function resolvePlacementCandidate(
@@ -103,12 +163,13 @@ export function resolvePlacementCandidate(
   pointerPoint: GridPoint,
   ignoreId?: string,
 ): PlacementCandidate {
-  const point = snapFurnitureCenter(pointerPoint, effectiveFurnitureFootprint(furniture));
+  const point = snapFurniturePoint(pointerPoint);
   const resolved = { ...furniture, point, rotation: normalizeRotation(furniture.rotation) };
   return {
     furniture: resolved,
     diagnostic: diagnoseFinePlacement(room, resolved, layout, ignoreId),
     fineCells: fineFootprintCells(resolved),
+    bounds: transformedAlphaBounds(resolved),
   };
 }
 

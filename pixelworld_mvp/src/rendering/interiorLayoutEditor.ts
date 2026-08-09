@@ -13,7 +13,9 @@ import {
   navigationCells,
   normalizeRotation,
   resolvePlacementCandidate,
-  snapFurnitureCenter,
+  snapFurniturePoint,
+  defaultFurnitureLayer,
+  furnitureBlocksNavigation,
   type PlacementDiagnostic,
 } from './interiorPlacement';
 
@@ -140,7 +142,13 @@ const normalizeLayout = (layout: readonly FurnitureDefinition[]): FurnitureDefin
       scale: normalizeFurnitureScale(item.scale),
       rotation: normalizeRotation(item.rotation ?? rotationFromFacing(item.facing)),
     };
-    return { ...normalized, point: snapFurnitureCenter(item.point, effectiveFurnitureFootprint(normalized)) };
+    return {
+      ...normalized,
+      point: snapFurniturePoint(item.point),
+      layer: item.layer ?? defaultFurnitureLayer(normalized),
+      zIndex: Number.isFinite(item.zIndex) ? Math.trunc(item.zIndex!) : 0,
+      blocksNavigation: furnitureBlocksNavigation(normalized),
+    };
   });
 
 export function saveInteriorLayout(
