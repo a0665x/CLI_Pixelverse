@@ -67,12 +67,12 @@ export function snapFurniturePoint(point: GridPoint): GridPoint {
   return { x: Math.round(point.x * 4) / 4, y: Math.round(point.y * 4) / 4 };
 }
 
-const catalogForFurniture = (item: Pick<FurnitureDefinition, 'kind' | 'assetId'>): ModernOfficeCatalogItem | undefined =>
+export const resolvedFurnitureAsset = (item: Pick<FurnitureDefinition, 'kind' | 'assetId'>): ModernOfficeCatalogItem | undefined =>
   catalogItem(item.assetId ?? DEFAULT_ASSET_ID[item.kind] ?? -1);
 
 export function transformedAlphaBounds(
   item: Pick<FurnitureDefinition, 'kind' | 'point' | 'assetId' | 'rotation' | 'scale' | 'footprint'>,
-  asset: ModernOfficeCatalogItem | undefined = catalogForFurniture(item),
+  asset: ModernOfficeCatalogItem | undefined = resolvedFurnitureAsset(item),
 ): FurnitureBounds {
   const scale = normalizeScale(item.scale);
   const fallback = baseFurnitureFootprint(item);
@@ -92,7 +92,7 @@ export function defaultFurnitureLayer(
   if (['sofa', 'bed', 'chair', 'office-chair', 'desk', 'reading-desk', 'workbench', 'repair-table',
     'response-desk', 'map-table', 'meeting-table', 'computer', 'dispatch-pod', 'radio-console',
     'bookcase', 'cabinet', 'tool-wall'].includes(item.kind)) return 'furniture';
-  const asset = catalogForFurniture(item);
+  const asset = resolvedFurnitureAsset(item);
   if (asset?.category === 'surfaces') return 'floor';
   if (asset?.category === 'screens-electronics') return 'surface';
   if (asset?.category === 'storage-partitions') return 'wall';
@@ -156,6 +156,22 @@ export function diagnoseFinePlacement(
     : 'valid';
 }
 
+export function fitFurniturePointToRoom(
+  room: InteriorDefinition,
+  furniture: FurnitureDefinition,
+  point: GridPoint,
+): GridPoint {
+  const bounds = transformedAlphaBounds({ ...furniture, point });
+  if (bounds.width > room.width || bounds.height > room.height) return { ...point };
+  const intersectsRoom = bounds.x < room.width && bounds.x + bounds.width > 0
+    && bounds.y < room.height && bounds.y + bounds.height > 0;
+  if (!intersectsRoom) return { ...point };
+  return {
+    x: point.x + Math.max(0, -bounds.x) - Math.max(0, bounds.x + bounds.width - room.width),
+    y: point.y + Math.max(0, -bounds.y) - Math.max(0, bounds.y + bounds.height - room.height),
+  };
+}
+
 export function resolvePlacementCandidate(
   room: InteriorDefinition,
   layout: readonly FurnitureDefinition[],
@@ -163,7 +179,7 @@ export function resolvePlacementCandidate(
   pointerPoint: GridPoint,
   ignoreId?: string,
 ): PlacementCandidate {
-  const point = snapFurniturePoint(pointerPoint);
+  const point = fitFurniturePointToRoom(room, furniture, snapFurniturePoint(pointerPoint));
   const resolved = { ...furniture, point, rotation: normalizeRotation(furniture.rotation) };
   return {
     furniture: resolved,

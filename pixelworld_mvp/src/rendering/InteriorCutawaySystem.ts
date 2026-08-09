@@ -28,6 +28,7 @@ import {
   commitPlacementCandidate,
   effectiveFurnitureFootprint,
   resolvePlacementCandidate,
+  resolvedFurnitureAsset,
   type PlacementCandidate,
 } from './interiorPlacement';
 import {
@@ -488,7 +489,7 @@ export class InteriorCutawaySystem {
     for (const furniture of sortedFurniture) {
       const x = this.roomOrigin.x + furniture.point.x * ROOM_CELL + ROOM_CELL / 2;
       const y = this.roomOrigin.y + furniture.point.y * ROOM_CELL + ROOM_CELL / 2;
-      const catalog = MODERN_OFFICE_CATALOG.find(({ id }) => id === furniture.assetId);
+      const catalog = resolvedFurnitureAsset(furniture);
       const assetKey = catalog?.key ?? modernOfficeAsset(modernOfficeKindForFurniture(furniture.kind)).key;
       const originX = catalog ? (catalog.opaqueBounds.x + catalog.opaqueBounds.width / 2) / 32 : 0.5;
       const originY = catalog ? (catalog.opaqueBounds.y + catalog.opaqueBounds.height / 2) / 48 : 0.5;
@@ -560,7 +561,7 @@ export class InteriorCutawaySystem {
     const shelfY = layout.y + layout.height - 42;
     const missingRequired = required.filter(({ placed }) => !placed);
     missingRequired.slice(0, 12).forEach(({ furniture }, index) => {
-      const catalog = MODERN_OFFICE_CATALOG.find(({ id }) => id === furniture.assetId);
+      const catalog = resolvedFurnitureAsset(furniture);
       const assetKey = catalog?.key ?? modernOfficeAsset(modernOfficeKindForFurniture(furniture.kind)).key;
       const originX = catalog ? (catalog.opaqueBounds.x + catalog.opaqueBounds.width / 2) / 32 : 0.5;
       const originY = catalog ? (catalog.opaqueBounds.y + catalog.opaqueBounds.height / 2) / 48 : 0.5;
@@ -571,7 +572,7 @@ export class InteriorCutawaySystem {
     const prefabOffset = Math.min(12, missingRequired.length);
     this.prefabs.slice(0, Math.max(0, 12 - prefabOffset)).forEach((prefab, index) => {
       const template = prefab.items[0]!;
-      const catalog = MODERN_OFFICE_CATALOG.find(({ id }) => id === template.assetId);
+      const catalog = resolvedFurnitureAsset(template);
       const assetKey = catalog?.key ?? modernOfficeAsset(modernOfficeKindForFurniture(template.kind)).key;
       const originX = catalog ? (catalog.opaqueBounds.x + catalog.opaqueBounds.width / 2) / 32 : 0.5;
       const originY = catalog ? (catalog.opaqueBounds.y + catalog.opaqueBounds.height / 2) / 48 : 0.5;
@@ -581,7 +582,7 @@ export class InteriorCutawaySystem {
       let ghosts: Phaser.GameObjects.Image[] = [];
       item.on('dragstart', () => {
         ghosts = prefab.items.map((part) => {
-          const partCatalog = MODERN_OFFICE_CATALOG.find(({ id }) => id === part.assetId);
+          const partCatalog = resolvedFurnitureAsset(part);
           const partKey = partCatalog?.key ?? modernOfficeAsset(modernOfficeKindForFurniture(part.kind)).key;
           const partOriginX = partCatalog ? (partCatalog.opaqueBounds.x + partCatalog.opaqueBounds.width / 2) / 32 : 0.5;
           const partOriginY = partCatalog ? (partCatalog.opaqueBounds.y + partCatalog.opaqueBounds.height / 2) / 48 : 0.5;
@@ -763,7 +764,7 @@ export class InteriorCutawaySystem {
   private overlayModel() {
     const page = catalogPage(this.catalogCategory, this.catalogPageIndex, 12);
     const selected = this.activeInterior?.furniture.find(({ id }) => id === this.selectedFurnitureId);
-    const catalog = selected ? MODERN_OFFICE_CATALOG.find(({ id }) => id === selected.assetId) : undefined;
+    const catalog = selected ? resolvedFurnitureAsset(selected) : undefined;
     return {
       title: this.activeInterior?.label ?? '', status: this.statusMessage, editMode: this.editMode,
       category: this.catalogCategory, page: page.page, totalPages: page.totalPages,

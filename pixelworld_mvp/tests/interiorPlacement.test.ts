@@ -4,6 +4,7 @@ import {
   commitPlacementCandidate,
   navigationCells,
   resolvePlacementCandidate,
+  resolvedFurnitureAsset,
   rotatedFootprint,
   snapFurnitureCenter,
   snapFurniturePoint,
@@ -38,6 +39,29 @@ describe('interior fine-grid placement', () => {
     expect(bounds.height).toBeCloseTo(asset.opaqueBounds.height / 22);
   });
 
+  it('resolves authored and explicit catalog furniture to the same alpha asset', () => {
+    expect(resolvedFurnitureAsset(sofa)?.id).toBe(200);
+    expect(transformedAlphaBounds(sofa)).toEqual(transformedAlphaBounds({ ...sofa, assetId: 200 }));
+  });
+
+  it('fits intersecting alpha pixels flush to every room edge', () => {
+    const left = resolvePlacementCandidate(room, [], sofa, { x: -0.25, y: 2 });
+    const right = resolvePlacementCandidate(room, [], sofa, { x: 13.75, y: 2 });
+    const top = resolvePlacementCandidate(room, [], sofa, { x: 2, y: -0.25 });
+    const bottom = resolvePlacementCandidate(room, [], sofa, { x: 2, y: 8.75 });
+
+    expect(left.diagnostic).toBe('valid');
+    expect(left.bounds.x).toBeCloseTo(0);
+    expect(right.bounds.x + right.bounds.width).toBeCloseTo(room.width);
+    expect(top.bounds.y).toBeCloseTo(0);
+    expect(bottom.bounds.y + bottom.bounds.height).toBeCloseTo(room.height);
+  });
+
+  it('does not pull fully outside furniture into the room and still protects the door', () => {
+    expect(resolvePlacementCandidate(room, [], sofa, { x: -3, y: 2 }).diagnostic).toBe('outside-room');
+    expect(resolvePlacementCandidate(room, [], sofa, { x: 7, y: 9 }).diagnostic).toBe('blocks-door');
+  });
+
   it('swaps footprint axes after a quarter turn', () => {
     expect(rotatedFootprint({ width: 4, height: 2 }, 90)).toEqual({ width: 2, height: 4 });
     expect(rotatedFootprint({ width: 4, height: 2 }, 180)).toEqual({ width: 4, height: 2 });
@@ -56,7 +80,7 @@ describe('interior fine-grid placement', () => {
   it('allows visual overlap while retaining room and door rejection', () => {
     const overlapping = resolvePlacementCandidate(room, [sofa], { ...sofa, id: 'chair', kind: 'chair' }, sofa.point);
     expect(overlapping.diagnostic).toBe('valid');
-    expect(resolvePlacementCandidate(room, [], sofa, { x: -1, y: 1 }).diagnostic).toBe('outside-room');
+    expect(resolvePlacementCandidate(room, [], sofa, { x: -3, y: 1 }).diagnostic).toBe('outside-room');
     expect(resolvePlacementCandidate(room, [], sofa, { x: 7, y: 8 }).diagnostic).toBe('blocks-door');
   });
 
