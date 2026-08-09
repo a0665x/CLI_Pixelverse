@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import type { FurnitureDefinition } from '../src/world/types';
+import type { FurnitureDefinition, InteriorDefinition } from '../src/world/types';
 import {
   createFurniturePrefab,
+  duplicateFurniture,
   moveSelection,
+  removeSelection,
   selectedFurnitureIds,
+  transformSelectionAtomically,
 } from '../src/rendering/interiorSelection';
 
 const furniture = (id: string, assetId: number, x: number, y: number, actions: FurnitureDefinition['supportedActions'] = []): FurnitureDefinition => ({
@@ -11,6 +14,9 @@ const furniture = (id: string, assetId: number, x: number, y: number, actions: F
   icon: actions.length ? 'tool' : 'generic', scale: 1, rotation: 0,
   layer: actions.length ? 'furniture' : 'surface', zIndex: 0, blocksNavigation: actions.length > 0,
 });
+const room: InteriorDefinition = {
+  id: 'maker-workshop', label: 'Test', width: 14, height: 9, floor: 'tile', wall: 'brick', furniture: [], overflow: [],
+};
 
 describe('interior marquee selection and prefabs', () => {
   it('selects items whose exact visible alpha bounds intersect the marquee', () => {
@@ -37,5 +43,35 @@ describe('interior marquee selection and prefabs', () => {
     const monitor = furniture('monitor', 129, 2.5, 2.25);
     const moved = moveSelection([desk, monitor], ['desk', 'monitor'], { x: 1.25, y: -0.5 });
     expect(moved.map(({ point }) => point)).toEqual([{ x: 3.25, y: 1.5 }, { x: 3.75, y: 1.75 }]);
+  });
+
+  it('returns every selected furniture instance to the shelf', () => {
+    const layout = [furniture('a', 225, 2, 2), furniture('b', 129, 3, 2), furniture('c', 98, 4, 2)];
+    expect(removeSelection(layout, ['a', 'b']).map(({ id }) => id)).toEqual(['c']);
+    expect(layout).toHaveLength(3);
+  });
+
+  it('applies selection transforms atomically', () => {
+    const layout = [furniture('a', 225, 2, 2), furniture('b', 129, 3, 2)];
+    const layered = transformSelectionAtomically(room, layout, ['a', 'b'], (item) => ({ ...item, layer: 'surface' }));
+    expect(layered.accepted).toBe(true);
+    expect(layered.layout.every(({ layer }) => layer === 'surface')).toBe(true);
+
+    const rejected = transformSelectionAtomically(room, layout, ['a', 'b'], (item) => (
+      item.id === 'b' ? { ...item, point: { x: -10, y: -10 } } : { ...item, layer: 'wall' }
+    ));
+    expect(rejected).toEqual({ accepted: false, layout });
+  });
+
+  it('duplicates one item nearby without duplicating Hook identity', () => {
+    const hook = { ...furniture('hook', 225, 4, 4, ['terminal']), requirementId: 'maker:terminal' };
+    const duplicated = duplicateFurniture(room, [hook], hook.id, 1_234);
+    expect(duplicated.accepted).toBe(true);
+    expect(duplicated.layout).toHaveLength(2);
+    expect(duplicated.layout[1]).toMatchObject({
+      id: 'duplicate-1234-hook', supportedActions: [], icon: 'generic', assetId: 225,
+    });
+    expect(duplicated.layout[1]).not.toHaveProperty('requirementId');
+    expect(duplicated.selectedIds).toEqual(['hook', 'duplicate-1234-hook']);
   });
 });

@@ -1,5 +1,13 @@
-import type { FurnitureDefinition, FurniturePrefab, GridPoint } from '../world/types';
-import { snapFurniturePoint, transformedAlphaBounds, type FurnitureBounds } from './interiorPlacement';
+import type { FurnitureDefinition, FurniturePrefab, GridPoint, InteriorDefinition } from '../world/types';
+import {
+  diagnoseFinePlacement,
+  fitFurniturePointToRoom,
+  furnitureBlocksNavigation,
+  resolvePlacementCandidate,
+  snapFurniturePoint,
+  transformedAlphaBounds,
+  type FurnitureBounds,
+} from './interiorPlacement';
 
 export interface SelectionRect extends FurnitureBounds {}
 
@@ -35,6 +43,89 @@ export function moveSelection(
   return layout.map((item) => selected.has(item.id)
     ? { ...cloneFurniture(item), point: snapFurniturePoint({ x: item.point.x + delta.x, y: item.point.y + delta.y }) }
     : cloneFurniture(item));
+}
+
+export interface SelectionMutationResult {
+  accepted: boolean;
+  layout: FurnitureDefinition[];
+}
+
+export interface DuplicateFurnitureResult extends SelectionMutationResult {
+  selectedIds: string[];
+}
+
+export function removeSelection(
+  layout: readonly FurnitureDefinition[],
+  selectedIds: readonly string[],
+): FurnitureDefinition[] {
+  const selected = new Set(selectedIds);
+  return layout.filter(({ id }) => !selected.has(id)).map(cloneFurniture);
+}
+
+export function transformSelectionAtomically(
+  room: InteriorDefinition,
+  layout: readonly FurnitureDefinition[],
+  selectedIds: readonly string[],
+  transform: (item: FurnitureDefinition) => FurnitureDefinition,
+): SelectionMutationResult {
+  const selected = new Set(selectedIds);
+  if (selected.size === 0) return { accepted: false, layout: layout.map(cloneFurniture) };
+  const transformed = layout.map((item) => {
+    if (!selected.has(item.id)) return cloneFurniture(item);
+    const changed = transform(cloneFurniture(item));
+    return { ...changed, point: fitFurniturePointToRoom(room, changed, changed.point) };
+  });
+  const accepted = transformed
+    .filter(({ id }) => selected.has(id))
+    .every((item) => diagnoseFinePlacement(room, item, transformed, item.id) === 'valid');
+  return { accepted, layout: (accepted ? transformed : layout).map(cloneFurniture) };
+}
+
+const duplicateOffsets = (): GridPoint[] => {
+  const offsets: GridPoint[] = [{ x: 0.25, y: 0.25 }];
+  for (let radius = 1; radius <= 8; radius += 1) {
+    const distance = radius * 0.25;
+    offsets.push(
+      { x: distance, y: 0 }, { x: 0, y: distance },
+      { x: -distance, y: 0 }, { x: 0, y: -distance },
+      { x: distance, y: distance }, { x: -distance, y: distance },
+      { x: distance, y: -distance }, { x: -distance, y: -distance },
+    );
+  }
+  return offsets;
+};
+
+export function duplicateFurniture(
+  room: InteriorDefinition,
+  layout: readonly FurnitureDefinition[],
+  furnitureId: string,
+  now: number = Date.now(),
+): DuplicateFurnitureResult {
+  const source = layout.find(({ id }) => id === furnitureId);
+  if (!source) return { accepted: false, layout: layout.map(cloneFurniture), selectedIds: [] };
+  const {
+    requirementId: _requirementId,
+    blocksNavigation: _blocksNavigation,
+    ...visualSource
+  } = cloneFurniture(source);
+  const base: FurnitureDefinition = {
+    ...visualSource,
+    id: `duplicate-${now}-${source.id}`,
+    supportedActions: [],
+    icon: 'generic',
+  };
+  base.blocksNavigation = furnitureBlocksNavigation(base);
+  for (const offset of duplicateOffsets()) {
+    const point = { x: source.point.x + offset.x, y: source.point.y + offset.y };
+    const candidate = resolvePlacementCandidate(room, layout, base, point);
+    if (candidate.diagnostic !== 'valid') continue;
+    return {
+      accepted: true,
+      layout: [...layout.map(cloneFurniture), cloneFurniture(candidate.furniture)],
+      selectedIds: [source.id, candidate.furniture.id],
+    };
+  }
+  return { accepted: false, layout: layout.map(cloneFurniture), selectedIds: [source.id] };
 }
 
 export function createFurniturePrefab(
