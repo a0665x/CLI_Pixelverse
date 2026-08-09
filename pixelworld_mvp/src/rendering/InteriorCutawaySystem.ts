@@ -6,6 +6,8 @@ import type {
   FurnitureKind,
   FurnitureScale,
   FurnitureRotation,
+  FurnitureLayer,
+  FurniturePrefab,
   GridPoint,
   InteriorDefinition,
   WorldDefinition,
@@ -41,10 +43,27 @@ import {
   resizeFurniture,
   rotateFurniture,
   saveInteriorLayout,
+  collectAllFurniture,
+  requiredHookInventory,
+  reorderFurniture,
+  revertInteriorDraft,
+  shiftFurnitureLayer,
 } from './interiorLayoutEditor';
+import { createFurniturePrefab, selectedFurnitureIds } from './interiorSelection';
+import {
+  copyDecorativeLayout,
+  loadLayoutClipboard,
+  loadPrefabs,
+  pasteDecorativeLayout,
+  placePrefab,
+  saveLayoutClipboard,
+  savePrefabs,
+  upsertPrefab,
+} from './interiorPrefabStore';
 
 const ROOM_CELL = 22;
 const CUTAWAY_DEPTH = 100_000;
+const LAYER_ORDER: Record<FurnitureLayer, number> = { floor: 0, furniture: 1, surface: 2, wall: 3 };
 
 export interface CutawayLayout {
   x: number;
@@ -139,6 +158,8 @@ export class InteriorCutawaySystem {
   private furnitureLayer: Phaser.GameObjects.Container | undefined;
   private paletteLayer: Phaser.GameObjects.Container | undefined;
   private selectedFurnitureId: string | undefined;
+  private readonly selectedFurnitureIds = new Set<string>();
+  private prefabs: FurniturePrefab[] = [];
   private activeInterior: InteriorDefinition | undefined;
   private editMode = false;
   private openId: string | undefined;
@@ -152,6 +173,7 @@ export class InteriorCutawaySystem {
   private statusMessage = '';
   private furnitureDomLabels: CutawayRoomLabel[] = [];
   private occupantDomLabels: CutawayRoomLabel[] = [];
+  private marqueeCleanup: (() => void) | undefined;
   private readonly occupantViews = new Map<string, {
     sprite: Phaser.GameObjects.Image;
     icon: Phaser.GameObjects.Text;
@@ -187,6 +209,7 @@ export class InteriorCutawaySystem {
       furniture: loadInteriorLayout(buildingId, definition),
       overflow: definition.overflow.map((point) => ({ ...point })),
     };
+    this.prefabs = loadPrefabs();
     const interior = this.activeInterior;
     if (typeof window !== 'undefined') window.dispatchEvent(new Event(CUTAWAY_OPEN_EVENT));
     const size = this.viewportProvider();
@@ -253,13 +276,45 @@ export class InteriorCutawaySystem {
         if (this.openId && this.activeInterior) saveInteriorLayout(this.openId, this.activeInterior.furniture);
         this.setStatus('✓ 家具配置已保存，下次開啟仍會保留');
       },
+      collect: () => {
+        interior.furniture = collectAllFurniture(interior.furniture);
+        this.selectedFurnitureIds.clear();
+        this.selectedFurnitureId = undefined;
+        this.setStatus('全部家具已收回下方貨架 · 尚未儲存');
+        this.renderFurniture(interior, layout);
+      },
+      revert: () => {
+        if (!this.openId) return;
+        interior.furniture = revertInteriorDraft(this.openId, INTERIOR_DEFINITIONS[interior.id]);
+        this.selectedFurnitureIds.clear();
+        this.selectedFurnitureId = undefined;
+        this.setStatus('已取消未儲存變更，回到最後保存版本');
+        this.renderFurniture(interior, layout);
+      },
+      copy: () => {
+        if (!this.openId) return;
+        saveLayoutClipboard(copyDecorativeLayout(this.openId, interior.furniture));
+        this.setStatus('格局已複製（Hook 家具不會被帶走）');
+        this.close();
+      },
+      paste: () => {
+        const clipboard = loadLayoutClipboard();
+        if (!clipboard) return;
+        const result = pasteDecorativeLayout(interior, interior.furniture, clipboard);
+        if (result.accepted) interior.furniture = result.layout;
+        this.setStatus(result.accepted ? '格局已貼上 · 請補齊左側 Hook 家具後儲存' : '⚠ 格局超出這間房，未套用');
+        this.renderFurniture(interior, layout);
+      },
+      group: () => this.createSelectedPrefab(interior, layout),
+      shiftLayer: (direction) => this.shiftSelectedLayer(interior, layout, direction),
+      reorder: (direction) => this.reorderSelected(interior, layout, direction),
       category: (category) => {
         this.catalogCategory = category;
         this.catalogPageIndex = 0;
         if (this.activeInterior) this.renderFurniture(this.activeInterior, layout);
       },
       page: (delta) => {
-        const total = catalogPage(this.catalogCategory, this.catalogPageIndex).totalPages;
+        const total = catalogPage(this.catalogCategory, this.catalogPageIndex, 12).totalPages;
         this.catalogPageIndex = Math.max(0, Math.min(total - 1, this.catalogPageIndex + delta));
         if (this.activeInterior) this.renderFurniture(this.activeInterior, layout);
       },
@@ -269,6 +324,8 @@ export class InteriorCutawaySystem {
   }
 
   close(): void {
+    this.marqueeCleanup?.();
+    this.marqueeCleanup = undefined;
     this.roofTween?.stop();
     if (this.roof) this.scene.tweens.killTweensOf(this.roof);
     this.root?.removeAll(true);
@@ -281,6 +338,7 @@ export class InteriorCutawaySystem {
     this.furnitureLayer = undefined;
     this.paletteLayer = undefined;
     this.selectedFurnitureId = undefined;
+    this.selectedFurnitureIds.clear();
     this.activeInterior = undefined;
     this.editMode = false;
     this.openId = undefined;
@@ -386,6 +444,8 @@ export class InteriorCutawaySystem {
   occupants(): readonly InteriorOccupantAssignment[] { return this.currentAssignments.map((item) => ({ ...item, point: { ...item.point } })); }
 
   private renderFurniture(interior: InteriorDefinition, layout: CutawayLayout): void {
+    this.marqueeCleanup?.();
+    this.marqueeCleanup = undefined;
     this.furnitureLayer?.removeAll(true);
     this.furnitureLayer?.destroy();
     this.paletteLayer?.removeAll(true);
@@ -399,11 +459,11 @@ export class InteriorCutawaySystem {
 
     if (this.editMode) {
       const grid = this.scene.add.graphics().lineStyle(1, 0xf5deb0, 0.15);
-      for (let x = 0; x <= interior.width * 2; x += 1) {
+      for (let x = 0; x <= interior.width * 4; x += 1) {
         grid.lineBetween(this.roomOrigin.x + x * EDITOR_CELL, this.roomOrigin.y,
           this.roomOrigin.x + x * EDITOR_CELL, this.roomOrigin.y + interior.height * ROOM_CELL);
       }
-      for (let y = 0; y <= interior.height * 2; y += 1) {
+      for (let y = 0; y <= interior.height * 4; y += 1) {
         grid.lineBetween(this.roomOrigin.x, this.roomOrigin.y + y * EDITOR_CELL,
           this.roomOrigin.x + interior.width * ROOM_CELL, this.roomOrigin.y + y * EDITOR_CELL);
       }
@@ -413,17 +473,19 @@ export class InteriorCutawaySystem {
     const drawPlacementPreview = (candidate: PlacementCandidate): void => {
       placementPreview.clear();
       placementPreview.fillStyle(candidate.diagnostic === 'valid' ? 0x65d47e : 0xe05b54, 0.42);
-      for (const cell of candidate.fineCells) {
-        placementPreview.fillRect(
-          this.roomOrigin.x + cell.x * EDITOR_CELL + 0.5,
-          this.roomOrigin.y + cell.y * EDITOR_CELL + 0.5,
-          EDITOR_CELL - 1,
-          EDITOR_CELL - 1,
-        );
-      }
+      placementPreview.fillRect(
+        this.roomOrigin.x + candidate.bounds.x * ROOM_CELL,
+        this.roomOrigin.y + candidate.bounds.y * ROOM_CELL,
+        candidate.bounds.width * ROOM_CELL,
+        candidate.bounds.height * ROOM_CELL,
+      );
     };
 
-    for (const furniture of interior.furniture) {
+    const sortedFurniture = [...interior.furniture].sort((a, b) => {
+      const layer = LAYER_ORDER[a.layer ?? 'furniture'] - LAYER_ORDER[b.layer ?? 'furniture'];
+      return layer || (a.zIndex ?? 0) - (b.zIndex ?? 0);
+    });
+    for (const furniture of sortedFurniture) {
       const x = this.roomOrigin.x + furniture.point.x * ROOM_CELL + ROOM_CELL / 2;
       const y = this.roomOrigin.y + furniture.point.y * ROOM_CELL + ROOM_CELL / 2;
       const catalog = MODERN_OFFICE_CATALOG.find(({ id }) => id === furniture.assetId);
@@ -438,6 +500,8 @@ export class InteriorCutawaySystem {
       this.scene.input.setDraggable(sprite);
       sprite.on('pointerdown', () => {
         this.selectedFurnitureId = furniture.id;
+        this.selectedFurnitureIds.clear();
+        this.selectedFurnitureIds.add(furniture.id);
         this.syncOverlay();
       });
       sprite.on('drag', (_pointer: unknown, dragX: number, dragY: number) => {
@@ -473,15 +537,47 @@ export class InteriorCutawaySystem {
     });
     this.syncRoomLabels();
 
+    if (this.editMode) this.installMarqueeSelection(interior, layout, furnitureLayer);
+
     if (!this.editMode) return;
     const palette = this.scene.add.container(0, 0);
     this.paletteLayer = palette;
     this.root.add(palette);
-    const page = catalogPage(this.catalogCategory, this.catalogPageIndex);
+    const page = catalogPage(this.catalogCategory, this.catalogPageIndex, 12);
+    const required = requiredHookInventory(INTERIOR_DEFINITIONS[interior.id], interior.furniture);
     const startX = layout.x + (layout.width - 12 * 34) / 2 + 17;
+    const shelfY = layout.y + layout.height - 42;
+    const missingRequired = required.filter(({ placed }) => !placed);
+    missingRequired.slice(0, 12).forEach(({ furniture }, index) => {
+      const catalog = MODERN_OFFICE_CATALOG.find(({ id }) => id === furniture.assetId);
+      const assetKey = catalog?.key ?? modernOfficeAsset(modernOfficeKindForFurniture(furniture.kind)).key;
+      const originX = catalog ? (catalog.opaqueBounds.x + catalog.opaqueBounds.width / 2) / 32 : 0.5;
+      const originY = catalog ? (catalog.opaqueBounds.y + catalog.opaqueBounds.height / 2) / 48 : 0.5;
+      const item = this.scene.add.image(startX + index * 34, shelfY, assetKey).setOrigin(originX, originY).setScale(0.68).setTint(0xffd36b);
+      this.wireFurnitureSource(item, furniture, assetKey, originX, originY, interior, layout, furnitureLayer, `Hook: ${hookFurnitureLabel(furniture)}`);
+      palette.add(item);
+    });
+    const prefabOffset = Math.min(12, missingRequired.length);
+    this.prefabs.slice(0, Math.max(0, 12 - prefabOffset)).forEach((prefab, index) => {
+      const template = prefab.items[0]!;
+      const catalog = MODERN_OFFICE_CATALOG.find(({ id }) => id === template.assetId);
+      const assetKey = catalog?.key ?? modernOfficeAsset(modernOfficeKindForFurniture(template.kind)).key;
+      const originX = catalog ? (catalog.opaqueBounds.x + catalog.opaqueBounds.width / 2) / 32 : 0.5;
+      const originY = catalog ? (catalog.opaqueBounds.y + catalog.opaqueBounds.height / 2) / 48 : 0.5;
+      const item = this.scene.add.image(startX + (prefabOffset + index) * 34, shelfY, assetKey).setOrigin(originX, originY).setScale(0.68).setTint(0x8ee8ff);
+      item.setInteractive({ useHandCursor: true, draggable: true });
+      this.scene.input.setDraggable(item);
+      item.on('dragend', (_pointer: unknown, dragX: number, dragY: number) => {
+        const result = placePrefab(interior, interior.furniture, prefab, this.roomPoint(dragX ?? item.x, dragY ?? item.y));
+        if (result.accepted) interior.furniture = result.layout;
+        this.setStatus(result.accepted ? `組裝件「${prefab.name}」已放置` : '⚠ 組裝件超出房間或擋門');
+        this.renderFurniture(interior, layout);
+      });
+      palette.add(item);
+    });
     page.items.forEach((catalog, index) => {
-      const x = startX + (index % 12) * 34;
-      const y = layout.y + layout.height - 42 + Math.floor(index / 12) * 24;
+      const x = startX + index * 34;
+      const y = shelfY + 24;
       const originX = (catalog.opaqueBounds.x + catalog.opaqueBounds.width / 2) / 32;
       const originY = (catalog.opaqueBounds.y + catalog.opaqueBounds.height / 2) / 48;
       const item = this.scene.add.image(x, y, catalog.key).setOrigin(originX, originY).setScale(0.68);
@@ -528,16 +624,122 @@ export class InteriorCutawaySystem {
     };
   }
 
+  private wireFurnitureSource(
+    item: Phaser.GameObjects.Image,
+    template: FurnitureDefinition,
+    assetKey: string,
+    originX: number,
+    originY: number,
+    interior: InteriorDefinition,
+    layout: CutawayLayout,
+    furnitureLayer: Phaser.GameObjects.Container,
+    label: string,
+  ): void {
+    item.setInteractive({ useHandCursor: true, draggable: true });
+    this.scene.input.setDraggable(item);
+    let dragClone: Phaser.GameObjects.Image | undefined;
+    item.on('dragstart', () => {
+      dragClone = this.scene.add.image(item.x, item.y, assetKey).setOrigin(originX, originY).setScale(1).setAlpha(0.88);
+      furnitureLayer.add(dragClone);
+    });
+    item.on('drag', (_pointer: unknown, dragX: number, dragY: number) => {
+      dragClone?.setPosition(dragX, dragY);
+      const preview: FurnitureDefinition = {
+        ...template,
+        point: this.roomPoint(dragX, dragY),
+        requirementId: template.requirementId ?? `${interior.id}:${template.id}`,
+      };
+      this.currentDragCandidate = resolvePlacementCandidate(interior, interior.furniture, preview, preview.point);
+    });
+    item.on('dragend', () => {
+      const candidate = this.currentDragCandidate;
+      if (candidate?.diagnostic === 'valid') interior.furniture = commitPlacementCandidate(interior, interior.furniture, candidate);
+      this.setStatus(candidate?.diagnostic === 'valid' ? `${label} 已放置 · 按儲存配置` : '⚠ Hook 家具超出房間或擋門');
+      dragClone?.destroy();
+      this.currentDragCandidate = undefined;
+      this.renderFurniture(interior, layout);
+    });
+  }
+
+  private installMarqueeSelection(
+    interior: InteriorDefinition,
+    layout: CutawayLayout,
+    furnitureLayer: Phaser.GameObjects.Container,
+  ): void {
+    const input = this.scene.input as Phaser.Input.InputPlugin & {
+      on?: (event: string, handler: (...args: unknown[]) => void) => void;
+      off?: (event: string, handler: (...args: unknown[]) => void) => void;
+    };
+    if (!input.on || !input.off) return;
+    const marquee = this.scene.add.graphics();
+    furnitureLayer.add(marquee);
+    let start: GridPoint | undefined;
+    const pointOf = (pointer: unknown): GridPoint => {
+      const value = pointer as { x?: number; y?: number };
+      return this.roomPoint(value.x ?? 0, value.y ?? 0);
+    };
+    const inside = (point: GridPoint): boolean => point.x >= -0.5 && point.y >= -0.5
+      && point.x <= interior.width - 0.5 && point.y <= interior.height - 0.5;
+    const down = (pointer: unknown): void => {
+      const event = (pointer as { event?: { shiftKey?: boolean } }).event;
+      const point = pointOf(pointer);
+      if (!event?.shiftKey || !inside(point)) return;
+      start = point;
+      this.setStatus('框選中 · 放開滑鼠建立多選範圍');
+    };
+    const move = (pointer: unknown): void => {
+      if (!start) return;
+      const end = pointOf(pointer);
+      marquee.clear().fillStyle(0x79d9ff, 0.16).fillRect(
+        this.roomOrigin.x + Math.min(start.x, end.x) * ROOM_CELL + ROOM_CELL / 2,
+        this.roomOrigin.y + Math.min(start.y, end.y) * ROOM_CELL + ROOM_CELL / 2,
+        Math.abs(end.x - start.x) * ROOM_CELL,
+        Math.abs(end.y - start.y) * ROOM_CELL,
+      );
+    };
+    const up = (pointer: unknown): void => {
+      if (!start) return;
+      const end = pointOf(pointer);
+      const rect = {
+        x: Math.min(start.x, end.x) + 0.5,
+        y: Math.min(start.y, end.y) + 0.5,
+        width: Math.abs(end.x - start.x),
+        height: Math.abs(end.y - start.y),
+      };
+      this.selectedFurnitureIds.clear();
+      selectedFurnitureIds(rect, interior.furniture).forEach((id) => this.selectedFurnitureIds.add(id));
+      this.selectedFurnitureId = [...this.selectedFurnitureIds][0];
+      start = undefined;
+      marquee.clear();
+      this.setStatus(`已框選 ${this.selectedFurnitureIds.size} 件 · 可建立組裝件`);
+      this.syncOverlay();
+    };
+    input.on('pointerdown', down);
+    input.on('pointermove', move);
+    input.on('pointerup', up);
+    this.marqueeCleanup = () => {
+      input.off?.('pointerdown', down);
+      input.off?.('pointermove', move);
+      input.off?.('pointerup', up);
+    };
+  }
+
   private overlayModel() {
-    const page = catalogPage(this.catalogCategory, this.catalogPageIndex);
+    const page = catalogPage(this.catalogCategory, this.catalogPageIndex, 12);
     const selected = this.activeInterior?.furniture.find(({ id }) => id === this.selectedFurnitureId);
     const catalog = selected ? MODERN_OFFICE_CATALOG.find(({ id }) => id === selected.assetId) : undefined;
     return {
       title: this.activeInterior?.label ?? '', status: this.statusMessage, editMode: this.editMode,
       category: this.catalogCategory, page: page.page, totalPages: page.totalPages,
+      requiredPlaced: this.activeInterior ? requiredHookInventory(INTERIOR_DEFINITIONS[this.activeInterior.id], this.activeInterior.furniture).filter(({ placed }) => placed).length : 0,
+      requiredTotal: this.activeInterior ? requiredHookInventory(INTERIOR_DEFINITIONS[this.activeInterior.id], this.activeInterior.furniture).length : 0,
+      prefabCount: this.prefabs.length,
+      clipboardAvailable: Boolean(loadLayoutClipboard()),
+      selectedCount: this.selectedFurnitureIds.size,
       ...(selected ? { selected: {
         label: hookFurnitureLabel(selected) || catalog?.label || furnitureLabel(selected.kind),
         scale: normalizeFurnitureScale(selected.scale), rotation: selected.rotation ?? 0,
+        layer: selected.layer ?? 'furniture',
       } } : {}),
     };
   }
@@ -573,6 +775,42 @@ export class InteriorCutawaySystem {
     const accepted = rotated.find(({ id }) => id === selected.id)?.rotation === next;
     if (accepted) interior.furniture = rotated;
     this.setStatus(accepted ? `家具已旋轉至 ${next}° · 按儲存配置` : '⚠ 旋轉後會超界、擋門或重疊');
+    this.renderFurniture(interior, layout);
+  }
+
+  private shiftSelectedLayer(interior: InteriorDefinition, layout: CutawayLayout, direction: 'previous' | 'next'): void {
+    if (!this.selectedFurnitureId) return;
+    interior.furniture = shiftFurnitureLayer(interior.furniture, this.selectedFurnitureId, direction);
+    this.setStatus(direction === 'next' ? '家具已移到上一層' : '家具已移到下一層');
+    this.renderFurniture(interior, layout);
+  }
+
+  private reorderSelected(
+    interior: InteriorDefinition,
+    layout: CutawayLayout,
+    direction: 'back' | 'backward' | 'forward' | 'front',
+  ): void {
+    if (!this.selectedFurnitureId) return;
+    interior.furniture = reorderFurniture(interior.furniture, this.selectedFurnitureId, direction);
+    this.setStatus('家具顯示順序已調整 · 按儲存配置');
+    this.renderFurniture(interior, layout);
+  }
+
+  private createSelectedPrefab(interior: InteriorDefinition, layout: CutawayLayout): void {
+    const name = typeof window === 'undefined' ? `組裝件 ${this.prefabs.length + 1}`
+      : window.prompt('替這個組裝件命名', `組裝件 ${this.prefabs.length + 1}`)?.trim();
+    if (!name) return;
+    const selection = interior.furniture.filter(({ id }) => this.selectedFurnitureIds.has(id));
+    let prefab: FurniturePrefab;
+    try {
+      prefab = createFurniturePrefab(name, selection);
+    } catch {
+      this.setStatus('⚠ 至少框選兩件一般家具；Hook 家具不會加入組裝件');
+      return;
+    }
+    this.prefabs = upsertPrefab(this.prefabs, prefab);
+    savePrefabs(this.prefabs);
+    this.setStatus(`組裝件「${name}」已加入下方貨架`);
     this.renderFurniture(interior, layout);
   }
 }

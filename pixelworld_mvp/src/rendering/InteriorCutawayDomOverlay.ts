@@ -1,7 +1,7 @@
 import { WORLD_PIXELS } from '../game/constants';
 import type { CutawayLayout } from './InteriorCutawaySystem';
 import type { ModernOfficeCategory } from './modernOfficeCatalog';
-import type { FurnitureRotation } from '../world/types';
+import type { FurnitureLayer, FurnitureRotation } from '../world/types';
 
 export interface CutawayDomModel {
   title: string;
@@ -10,7 +10,12 @@ export interface CutawayDomModel {
   category: ModernOfficeCategory;
   page: number;
   totalPages: number;
-  selected?: { label: string; scale: number; rotation: FurnitureRotation };
+  requiredPlaced: number;
+  requiredTotal: number;
+  prefabCount: number;
+  clipboardAvailable: boolean;
+  selectedCount: number;
+  selected?: { label: string; scale: number; rotation: FurnitureRotation; layer: FurnitureLayer };
 }
 
 export interface CutawayDomHandlers {
@@ -21,6 +26,13 @@ export interface CutawayDomHandlers {
   page(delta: -1 | 1): void;
   resize(delta: -1 | 1): void;
   rotate(delta: -90 | 90): void;
+  collect(): void;
+  revert(): void;
+  copy(): void;
+  paste(): void;
+  group(): void;
+  shiftLayer(direction: 'previous' | 'next'): void;
+  reorder(direction: 'back' | 'backward' | 'forward' | 'front'): void;
 }
 
 export interface CutawayRoomLabel { id: string; text: string; x: number; y: number; kind: 'hook' | 'agent' }
@@ -61,6 +73,10 @@ export class InteriorCutawayDomOverlay {
         <div><h2></h2><p class="cutaway-dom-status"></p></div>
         <div class="cutaway-dom-actions">
           <button type="button" data-action="edit"></button>
+          <button type="button" data-action="collect">全部收回</button>
+          <button type="button" data-action="revert">取消配置</button>
+          <button type="button" data-action="copy">複製格局</button>
+          <button type="button" data-action="paste">貼上格局</button>
           <button type="button" data-action="save">儲存配置</button>
           <button type="button" data-action="close" aria-label="關閉室內">×</button>
         </div>
@@ -84,6 +100,10 @@ export class InteriorCutawayDomOverlay {
     panel.querySelector('[data-action="close"]')?.addEventListener('click', handlers.close);
     panel.querySelector('[data-action="edit"]')?.addEventListener('click', handlers.toggleEdit);
     panel.querySelector('[data-action="save"]')?.addEventListener('click', handlers.save);
+    panel.querySelector('[data-action="collect"]')?.addEventListener('click', handlers.collect);
+    panel.querySelector('[data-action="revert"]')?.addEventListener('click', handlers.revert);
+    panel.querySelector('[data-action="copy"]')?.addEventListener('click', handlers.copy);
+    panel.querySelector('[data-action="paste"]')?.addEventListener('click', handlers.paste);
     panel.querySelector('[data-action="prev"]')?.addEventListener('click', () => handlers.page(-1));
     panel.querySelector('[data-action="next"]')?.addEventListener('click', () => handlers.page(1));
     this.position(layout);
@@ -114,15 +134,36 @@ export class InteriorCutawayDomOverlay {
       this.inspector.replaceChildren();
       if (model.selected) {
         const label = document.createElement('strong');
-        label.textContent = `${model.selected.label} · ${Math.round(model.selected.scale * 100)}% · ${model.selected.rotation}°`;
+        label.textContent = `${model.selected.label} · ${Math.round(model.selected.scale * 100)}% · ${model.selected.rotation}° · ${model.selected.layer}`;
         const controls: Array<[string, () => void]> = [
           ['縮小', () => this.handlers?.resize(-1)], ['放大', () => this.handlers?.resize(1)],
           ['↶', () => this.handlers?.rotate(-90)], ['↷', () => this.handlers?.rotate(90)],
+          ['下層', () => this.handlers?.shiftLayer('previous')], ['上層', () => this.handlers?.shiftLayer('next')],
+          ['最下', () => this.handlers?.reorder('back')], ['下降', () => this.handlers?.reorder('backward')],
+          ['上升', () => this.handlers?.reorder('forward')], ['最上', () => this.handlers?.reorder('front')],
         ];
         this.inspector.append(label, ...controls.map(([text, handler]) => {
           const button = document.createElement('button'); button.type = 'button'; button.textContent = text; button.onclick = handler; return button;
         }));
       }
+      if (model.selectedCount >= 2) {
+        const group = document.createElement('button');
+        group.type = 'button';
+        group.textContent = `建立組裝件 (${model.selectedCount})`;
+        group.onclick = () => this.handlers?.group();
+        this.inspector.append(group);
+      }
+    }
+    const collect = this.panel.querySelector<HTMLButtonElement>('[data-action="collect"]');
+    const revert = this.panel.querySelector<HTMLButtonElement>('[data-action="revert"]');
+    const copy = this.panel.querySelector<HTMLButtonElement>('[data-action="copy"]');
+    const paste = this.panel.querySelector<HTMLButtonElement>('[data-action="paste"]');
+    if (collect) collect.hidden = !model.editMode;
+    if (revert) revert.hidden = !model.editMode;
+    if (copy) copy.hidden = !model.editMode;
+    if (paste) { paste.hidden = !model.editMode; paste.disabled = !model.clipboardAvailable; }
+    if (this.status && model.editMode) {
+      this.status.textContent = `${model.status} · Hook ${model.requiredPlaced}/${model.requiredTotal} · 組裝件 ${model.prefabCount}`;
     }
   }
 
