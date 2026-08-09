@@ -1,4 +1,3 @@
-import { furnitureFootprint } from '../world/interiorDefinitions';
 import type {
   FurnitureDefinition,
   FurnitureKind,
@@ -6,6 +5,18 @@ import type {
   GridPoint,
   InteriorDefinition,
 } from '../world/types';
+import {
+  commitPlacementCandidate,
+  diagnoseFinePlacement,
+  effectiveFurnitureFootprint,
+  navigationCells,
+  normalizeRotation,
+  resolvePlacementCandidate,
+  snapFurnitureCenter,
+  type PlacementDiagnostic,
+} from './interiorPlacement';
+
+export type { PlacementDiagnostic } from './interiorPlacement';
 
 export const FURNITURE_PALETTE: readonly FurnitureKind[] = [
   'sofa', 'chair', 'office-chair', 'television', 'display', 'computer', 'desk',
@@ -13,8 +24,6 @@ export const FURNITURE_PALETTE: readonly FurnitureKind[] = [
 ];
 
 export const FURNITURE_SCALES = [0.75, 1, 1.25, 1.5] as const satisfies readonly FurnitureScale[];
-export type PlacementDiagnostic = 'valid' | 'outside-room' | 'blocks-door' | 'overlap';
-
 export function normalizeFurnitureScale(value: unknown): FurnitureScale {
   return FURNITURE_SCALES.includes(value as FurnitureScale) ? value as FurnitureScale : 1;
 }
@@ -30,26 +39,8 @@ const cloneLayout = (layout: readonly FurnitureDefinition[]): FurnitureDefinitio
   supportedActions: [...item.supportedActions],
 }));
 
-const footprintBounds = (item: Pick<FurnitureDefinition, 'kind' | 'point' | 'scale'>) => {
-  const base = furnitureFootprint(item.kind);
-  const scale = normalizeFurnitureScale(item.scale);
-  const width = Math.ceil(base.width * scale);
-  const height = Math.ceil(base.height * scale);
-  return {
-    left: Math.round(item.point.x - (width - 1) / 2),
-    top: Math.round(item.point.y - (height - 1) / 2),
-    right: Math.round(item.point.x - (width - 1) / 2) + width - 1,
-    bottom: Math.round(item.point.y - (height - 1) / 2) + height - 1,
-  };
-};
-
 export function furnitureCells(item: Pick<FurnitureDefinition, 'kind' | 'point' | 'scale'>): GridPoint[] {
-  const bounds = footprintBounds(item);
-  const cells: GridPoint[] = [];
-  for (let y = bounds.top; y <= bounds.bottom; y += 1) {
-    for (let x = bounds.left; x <= bounds.right; x += 1) cells.push({ x, y });
-  }
-  return cells;
+  return navigationCells(item);
 }
 
 export function canPlaceFurniture(
@@ -67,15 +58,7 @@ export function placementDiagnostic(
   layout: readonly FurnitureDefinition[],
   ignoreId?: string,
 ): PlacementDiagnostic {
-  const cells = furnitureCells(candidate);
-  const door = { x: Math.floor(room.width / 2), y: room.height - 1 };
-  if (cells.some(({ x, y }) => x < 0 || y < 0 || x >= room.width || y >= room.height)) return 'outside-room';
-  if (cells.some(({ x, y }) => x === door.x && y === door.y)) return 'blocks-door';
-  const occupied = new Set(layout
-    .filter(({ id }) => id !== ignoreId)
-    .flatMap(furnitureCells)
-    .map(({ x, y }) => `${x},${y}`));
-  return cells.some(({ x, y }) => occupied.has(`${x},${y}`)) ? 'overlap' : 'valid';
+  return diagnoseFinePlacement(room, candidate, layout, ignoreId);
 }
 
 export function moveFurniture(
@@ -86,9 +69,8 @@ export function moveFurniture(
 ): FurnitureDefinition[] {
   const current = layout.find(({ id }) => id === furnitureId);
   if (!current) return cloneLayout(layout);
-  const candidate = { ...current, point: { x: Math.round(point.x), y: Math.round(point.y) } };
-  if (!canPlaceFurniture(room, candidate, layout, furnitureId)) return cloneLayout(layout);
-  return layout.map((item) => item.id === furnitureId ? candidate : { ...item, point: { ...item.point } });
+  const candidate = resolvePlacementCandidate(room, layout, current, point, furnitureId);
+  return commitPlacementCandidate(room, layout, candidate);
 }
 
 export function addFurniture(
@@ -100,13 +82,14 @@ export function addFurniture(
   const candidate: FurnitureDefinition = {
     id: `custom-${kind}-${Date.now()}-${layout.length}`,
     kind,
-    point: { x: Math.round(point.x), y: Math.round(point.y) },
+    point: { ...point },
     facing: 'up',
     supportedActions: [],
     icon: 'generic',
     scale: 1,
+    rotation: 0,
   };
-  return canPlaceFurniture(room, candidate, layout) ? [...cloneLayout(layout), candidate] : cloneLayout(layout);
+  return commitPlacementCandidate(room, layout, resolvePlacementCandidate(room, layout, candidate, point));
 }
 
 export function resizeFurniture(
@@ -117,9 +100,10 @@ export function resizeFurniture(
 ): FurnitureDefinition[] {
   const current = layout.find(({ id }) => id === furnitureId);
   if (!current) return cloneLayout(layout);
-  const candidate = { ...current, scale: normalizeFurnitureScale(scale) };
-  if (!canPlaceFurniture(room, candidate, layout, furnitureId)) return cloneLayout(layout);
-  return layout.map((item) => item.id === furnitureId ? candidate : { ...item, point: { ...item.point } });
+  const candidate = resolvePlacementCandidate(
+    room, layout, { ...current, scale: normalizeFurnitureScale(scale) }, current.point, furnitureId,
+  );
+  return commitPlacementCandidate(room, layout, candidate);
 }
 
 const storageKey = (buildingId: string): string => `pixelworld:interior-layout:${buildingId}`;
@@ -131,7 +115,12 @@ interface SavedInteriorLayoutV2 {
 }
 
 const normalizeLayout = (layout: readonly FurnitureDefinition[]): FurnitureDefinition[] =>
-  cloneLayout(layout).map((item) => ({ ...item, scale: normalizeFurnitureScale(item.scale) }));
+  cloneLayout(layout).map((item) => ({
+    ...item,
+    point: snapFurnitureCenter(item.point, effectiveFurnitureFootprint(item)),
+    scale: normalizeFurnitureScale(item.scale),
+    rotation: normalizeRotation(item.rotation),
+  }));
 
 export function saveInteriorLayout(
   buildingId: string,
@@ -147,7 +136,7 @@ export function loadInteriorLayout(
   room: InteriorDefinition,
   storage: StorageLike | undefined = browserStorage(),
 ): FurnitureDefinition[] {
-  const fallback = cloneLayout(room.furniture);
+  const fallback = normalizeLayout(room.furniture);
   const raw = storage?.getItem(storageKey(buildingId));
   if (!raw) return fallback;
   try {

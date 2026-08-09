@@ -56,6 +56,8 @@ export type FurnitureKind =
   | 'dispatch-pod' | 'radio-console' | 'response-desk' | 'meeting-table' | 'decor'
   | 'office-chair' | 'display' | 'desk' | 'cabinet' | 'plant' | 'beverage-station' | 'printer';
 export type FurnitureScale = 0.75 | 1 | 1.25 | 1.5;
+export type FurnitureRotation = 0 | 90 | 180 | 270;
+export interface FurnitureFootprint { width: number; height: number }
 export type ActivityIconKind =
   | 'rest' | 'offline' | 'think' | 'plan' | 'read' | 'web' | 'edit'
   | 'tool' | 'repair' | 'clone' | 'respond' | 'generic';
@@ -67,6 +69,9 @@ export interface FurnitureDefinition {
   supportedActions: AgentAction[];
   icon: ActivityIconKind;
   scale?: FurnitureScale;
+  rotation?: FurnitureRotation;
+  assetId?: number;
+  footprint?: FurnitureFootprint;
 }
 export interface InteriorDefinition {
   id: BuildingThemeId;
