@@ -2,6 +2,7 @@ import type {
   FurnitureDefinition,
   FurnitureKind,
   FurnitureScale,
+  FurnitureRotation,
   GridPoint,
   InteriorDefinition,
 } from '../world/types';
@@ -106,28 +107,48 @@ export function resizeFurniture(
   return commitPlacementCandidate(room, layout, candidate);
 }
 
+export function rotateFurniture(
+  room: InteriorDefinition,
+  layout: readonly FurnitureDefinition[],
+  furnitureId: string,
+  rotation: FurnitureRotation,
+): FurnitureDefinition[] {
+  const current = layout.find(({ id }) => id === furnitureId);
+  if (!current) return cloneLayout(layout);
+  const candidate = resolvePlacementCandidate(
+    room, layout, { ...current, rotation: normalizeRotation(rotation) }, current.point, furnitureId,
+  );
+  return commitPlacementCandidate(room, layout, candidate);
+}
+
 const storageKey = (buildingId: string): string => `pixelworld:interior-layout:${buildingId}`;
 const browserStorage = (): StorageLike | undefined => typeof window === 'undefined' ? undefined : window.localStorage;
 
-interface SavedInteriorLayoutV2 {
-  version: 2;
+interface SavedInteriorLayoutV3 {
+  version: 3;
   furniture: FurnitureDefinition[];
 }
 
+const rotationFromFacing = (facing: FurnitureDefinition['facing']): FurnitureRotation => ({
+  up: 0, right: 90, down: 180, left: 270,
+})[facing];
+
 const normalizeLayout = (layout: readonly FurnitureDefinition[]): FurnitureDefinition[] =>
-  cloneLayout(layout).map((item) => ({
-    ...item,
-    point: snapFurnitureCenter(item.point, effectiveFurnitureFootprint(item)),
-    scale: normalizeFurnitureScale(item.scale),
-    rotation: normalizeRotation(item.rotation),
-  }));
+  cloneLayout(layout).map((item) => {
+    const normalized = {
+      ...item,
+      scale: normalizeFurnitureScale(item.scale),
+      rotation: normalizeRotation(item.rotation ?? rotationFromFacing(item.facing)),
+    };
+    return { ...normalized, point: snapFurnitureCenter(item.point, effectiveFurnitureFootprint(normalized)) };
+  });
 
 export function saveInteriorLayout(
   buildingId: string,
   layout: readonly FurnitureDefinition[],
   storage: StorageLike | undefined = browserStorage(),
 ): void {
-  const saved: SavedInteriorLayoutV2 = { version: 2, furniture: normalizeLayout(layout) };
+  const saved: SavedInteriorLayoutV3 = { version: 3, furniture: normalizeLayout(layout) };
   storage?.setItem(storageKey(buildingId), JSON.stringify(saved));
 }
 
@@ -143,7 +164,7 @@ export function loadInteriorLayout(
     const parsed = JSON.parse(raw) as unknown;
     const source = Array.isArray(parsed)
       ? parsed
-      : parsed && typeof parsed === 'object' && 'version' in parsed && parsed.version === 2 && 'furniture' in parsed && Array.isArray(parsed.furniture)
+      : parsed && typeof parsed === 'object' && 'version' in parsed && (parsed.version === 2 || parsed.version === 3) && 'furniture' in parsed && Array.isArray(parsed.furniture)
         ? parsed.furniture
         : undefined;
     if (!source) return fallback;
@@ -159,7 +180,12 @@ export function loadInteriorLayout(
         || !Array.isArray(item.supportedActions)
         || !FURNITURE_PALETTE.includes(item.kind) && !room.furniture.some(({ kind }) => kind === item.kind)
       ) continue;
-      const normalized = { ...item, point: { ...item.point }, scale: normalizeFurnitureScale(item.scale) };
+      const normalized = {
+        ...item,
+        point: { ...item.point },
+        scale: normalizeFurnitureScale(item.scale),
+        rotation: normalizeRotation(item.rotation ?? rotationFromFacing(item.facing)),
+      };
       if (canPlaceFurniture(room, normalized, accepted)) accepted.push(normalized);
     }
     return accepted.length > 0 ? accepted : fallback;

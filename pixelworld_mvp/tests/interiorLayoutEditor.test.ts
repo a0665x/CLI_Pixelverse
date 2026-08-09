@@ -7,6 +7,7 @@ import {
   moveFurniture,
   placementDiagnostic,
   resizeFurniture,
+  rotateFurniture,
   saveInteriorLayout,
   FURNITURE_PALETTE,
 } from '../src/rendering/interiorLayoutEditor';
@@ -41,10 +42,36 @@ describe('interior furniture editor model', () => {
     };
     const layout = resizeFurniture(room, moveFurniture(room, normalizedRoomLayout(), 'rest-sofa-a', { x: 3, y: 4 }), 'rest-sofa-a', 1.25);
     saveInteriorLayout('rest-cabin-house', layout, storage);
-    expect(JSON.parse(memory.get('pixelworld:interior-layout:rest-cabin-house')!)).toMatchObject({ version: 2 });
+    expect(JSON.parse(memory.get('pixelworld:interior-layout:rest-cabin-house')!)).toMatchObject({ version: 3 });
     expect(loadInteriorLayout('rest-cabin-house', room, storage)).toEqual(
       layout.map((item) => ({ ...item, scale: item.scale ?? 1, rotation: item.rotation ?? 0 })),
     );
+  });
+
+  it('migrates v2 facing into rotation and retains catalog assets', () => {
+    const memory = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => memory.get(key) ?? null,
+      setItem: (key: string, value: string) => { memory.set(key, value); },
+    };
+    const item = { ...room.furniture[0]!, facing: 'right' as const, assetId: 'modern-office-v1.2-single-225' };
+    memory.set('pixelworld:interior-layout:migrate-house', JSON.stringify({ version: 2, furniture: [item] }));
+    const loaded = loadInteriorLayout('migrate-house', room, storage);
+    expect(loaded[0]).toMatchObject({ rotation: 90, assetId: 'modern-office-v1.2-single-225' });
+    saveInteriorLayout('migrate-house', loaded, storage);
+    expect(JSON.parse(memory.get('pixelworld:interior-layout:migrate-house')!)).toMatchObject({
+      version: 3,
+      furniture: [{ rotation: 90, assetId: 'modern-office-v1.2-single-225' }],
+    });
+  });
+
+  it('rotates furniture only when the rotated footprint is legal', () => {
+    const item = {
+      ...room.furniture[0]!, point: { x: 2.5, y: 2 }, rotation: 0 as const,
+      footprint: { width: 2, height: 1 },
+    };
+    const rotated = rotateFurniture(room, [item], item.id, 90);
+    expect(rotated[0]).toMatchObject({ rotation: 90, point: { x: 3, y: 2.5 } });
   });
 
   it('migrates legacy arrays and falls back from corrupted saved layouts', () => {
