@@ -1,6 +1,7 @@
 import type Phaser from 'phaser';
 import type { Facing } from '../world/types';
 import { MODERN_OFFICE_ASSETS } from './modernOfficeManifest';
+import { MODERN_OFFICE_CATALOG } from './modernOfficeCatalog';
 
 export interface SpriteSheetAsset {
   key: string;
@@ -134,7 +135,12 @@ export function preloadVillageAssets(scene: Phaser.Scene): void {
   ].forEach((asset) => {
     scene.load.spritesheet(asset.key, asset.path, { frameWidth: asset.frameWidth, frameHeight: asset.frameHeight });
   });
-  [...Object.values(ANIMAL_ASSETS), ...Object.values(HOUSE_ASSETS), ...Object.values(MODERN_OFFICE_ASSETS.furniture)].forEach((asset) => {
+  [
+    ...Object.values(ANIMAL_ASSETS),
+    ...Object.values(HOUSE_ASSETS),
+    ...Object.values(MODERN_OFFICE_ASSETS.furniture),
+    ...MODERN_OFFICE_CATALOG,
+  ].forEach((asset) => {
     scene.load.image(asset.key, asset.path);
   });
 }
