@@ -206,7 +206,7 @@ git commit -m "feat: persist prefabs and room clipboard"
 - Test: `pixelworld_mvp/tests/interiorLayoutEditor.test.ts`
 
 **Interfaces:**
-- Produces `requiredHookInventory(room, layout)`, `collectAllFurniture(layout)`, `setFurnitureLayer`, and `reorderFurniture`.
+- Produces `requiredHookInventory(room, layout)`, `collectAllFurniture(layout)`, `revertInteriorDraft(buildingId, room, storage)`, `setFurnitureLayer`, `shiftFurnitureLayer`, and `reorderFurniture`.
 - Saves `SavedInteriorLayoutV4` and migrates v2/v3.
 
 - [ ] **Step 1: Write failing inventory and migration tests**
@@ -221,6 +221,11 @@ it('migrates v3 furniture to layered v4', () => {
   memory.set(key, JSON.stringify({ version: 3, furniture: oldLayout }));
   expect(loadInteriorLayout(id, room, storage)[0]).toMatchObject({ layer: expect.any(String), zIndex: expect.any(Number) });
 });
+
+it('reverts every unsaved draft operation to the last saved layout', () => {
+  saveInteriorLayout(id, saved, storage);
+  expect(revertInteriorDraft(id, room, storage)).toEqual(loadInteriorLayout(id, room, storage));
+});
 ```
 
 - [ ] **Step 2: Run and observe RED**
@@ -231,7 +236,7 @@ Expected: FAIL on missing inventory operations and version 4.
 
 - [ ] **Step 3: Implement required inventory and v4 operations**
 
-Derive stable requirements from authored `supportedActions`, keep requirement instances unique, collect only the draft, normalize z-order within layers, and migrate old layouts using semantic defaults.
+Derive stable requirements from authored `supportedActions`, keep requirement instances unique, collect only the draft, normalize z-order within layers, provide adjacent-layer movement in the fixed layer order, reload the persisted layout for cancel/revert, and migrate old layouts using semantic defaults.
 
 - [ ] **Step 4: Run focused tests**
 
@@ -255,7 +260,7 @@ git commit -m "feat: add Hook inventory and v4 layouts"
 
 **Interfaces:**
 - Extends `CutawayDomModel` with Hook completeness, clipboard availability, selection count, selected layer, and prefab-name prompt state.
-- Extends handlers with `collectAll`, `copyLayout`, `pasteLayout`, `createPrefab`, `setLayer`, and `reorder`.
+- Extends handlers with `collectAll`, `revertDraft`, `copyLayout`, `pasteLayout`, `createPrefab`, `setLayer`, `shiftLayer`, and `reorder`.
 
 - [ ] **Step 1: Write failing DOM-model tests**
 
@@ -274,7 +279,7 @@ Expected: FAIL because the control helper and handlers are absent.
 
 - [ ] **Step 3: Implement DOM controls and CSS**
 
-Add the fixed left `本屋必備` strip, `組裝件` tab, collect/copy/paste buttons, selection toolbar, layer/z controls, missing/placed badges, confirmation state, and accessible prefab-name input. Keep 9–13px CSS text and pointer events scoped to controls.
+Add the fixed left `本屋必備` strip, `組裝件` tab, collect/revert/copy/paste buttons, selection toolbar, same-layer z controls, previous/next layer controls, missing/placed badges, confirmation state, and accessible prefab-name input. Keep 9–13px CSS text and pointer events scoped to controls.
 
 - [ ] **Step 4: Run focused tests and build**
 
@@ -450,6 +455,7 @@ Verify and capture screenshots for:
 - quarter-grid movement, exact minimum alpha occupancy previews, and persistent diagnostics;
 - marquee selection and saved prefab after reload;
 - collect-all with prefabs retained and Hook items marked missing;
+- cancel/revert after move, layer change, and collect-all;
 - copy room, return to village, open another house, paste, and complete missing Hooks;
 - save/reload persistence;
 - ten correctly facing farm animals;

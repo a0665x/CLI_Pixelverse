@@ -47,7 +47,7 @@ Every furniture instance stores:
 - `blocksNavigation`: whether Agents route around it;
 - existing position, rotation, scale, asset ID, Hook actions, and footprint.
 
-Default render order is floor, furniture, surface, wall. Within one layer, lower `zIndex` renders first. The inspector exposes “置底”, “下移”, “上移”, and “置頂”. Visual overlap is allowed between any items, including items in the same layer.
+Default render order is floor, furniture, surface, wall. Within one layer, lower `zIndex` renders first. The inspector exposes “置底”, “下移”, “上移”, and “置頂” for order within one layer, plus “上一圖層” and “下一圖層” to move between `floor`, `furniture`, `surface`, and `wall`. Visual overlap is allowed between any items, including items in the same layer.
 
 Catalog defaults are derived from curated asset ranges:
 
@@ -93,6 +93,8 @@ Dragging a missing required item places that unique instance. Returning it remov
 `全部收回` requires a confirmation click within the cutaway panel and then removes all placed items from the current room. It does not delete global prefabs, catalog assets, the copied-room clipboard, or authored Hook requirements.
 
 After collection, every required Hook item appears as missing in the left shelf. The empty draft is saved only when the user presses `儲存配置`, preserving the existing explicit-save contract.
+
+`取消配置／還原` immediately discards every unsaved change in the active room and reloads the last explicitly saved v4 layout. This includes movement, overlap, resize, rotation, layer changes, z-order, collect-all, prefab drops, and paste operations. It does not alter global prefabs or the cross-room clipboard.
 
 ## Cross-Room Copy and Paste
 
@@ -140,6 +142,7 @@ The cutaway retains Phaser sprites and the crisp DOM control layer.
 DOM controls add:
 
 - `全部收回`;
+- `取消配置／還原`;
 - `複製格局` and conditional `貼上格局`;
 - `建立組裝件` when multiple items are selected;
 - layer and z-order controls;
@@ -175,6 +178,7 @@ The navigation grid continues treating declared bridge cells as walkable road ce
 - Clear and paste operations mutate only the draft until explicit save.
 - Paste is atomic: all copied items fit or none are applied.
 - Rotation, resize, group move, prefab drop, and paste preserve the previous draft on failure.
+- Cancel/revert restores the last saved layout without requiring the cutaway to close.
 
 ## Testing
 
@@ -201,6 +205,7 @@ Cutaway integration tests cover DOM controls, palette ordering, selection state,
 - The fine grid provides four snap points per logical room cell.
 - A marquee-selected arrangement can be saved and redropped from `組裝件` after reload.
 - `全部收回` empties the room while retaining prefabs and required Hook shelf entries.
+- `取消配置／還原` restores the last explicitly saved room state, including layers and stacking order.
 - Required Hook furniture is always the leftmost palette content with missing/placed state.
 - A decorative layout can be copied, the cutaway closes to the village, and the layout can be atomically pasted into another house without copying source Hook items.
 - Agent routing ignores floor/surface decoration and avoids blocking furniture.
