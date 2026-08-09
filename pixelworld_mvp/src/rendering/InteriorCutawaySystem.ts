@@ -498,11 +498,22 @@ export class InteriorCutawaySystem {
       if (!this.editMode) continue;
       sprite.setInteractive({ useHandCursor: true, draggable: true });
       this.scene.input.setDraggable(sprite);
-      sprite.on('pointerdown', () => {
+      sprite.on('pointerdown', (pointer: unknown) => {
         this.selectedFurnitureId = furniture.id;
         this.selectedFurnitureIds.clear();
         this.selectedFurnitureIds.add(furniture.id);
         this.syncOverlay();
+        if ((pointer as { event?: { detail?: number } }).event?.detail === 2) {
+          const scale = normalizeFurnitureScale(furniture.scale);
+          const nextIndex = (FURNITURE_SCALES.indexOf(scale) + 1) % FURNITURE_SCALES.length;
+          const nextScale = FURNITURE_SCALES[nextIndex]!;
+          const resized = resizeFurniture(interior, interior.furniture, furniture.id, nextScale);
+          if (normalizeFurnitureScale(resized.find(({ id }) => id === furniture.id)?.scale) === nextScale) {
+            interior.furniture = resized;
+            this.setStatus(`雙擊調整為 ${Math.round(nextScale * 100)}% · 按儲存配置`);
+            this.renderFurniture(interior, layout);
+          }
+        }
       });
       sprite.on('drag', (_pointer: unknown, dragX: number, dragY: number) => {
         sprite.setPosition(dragX, dragY);
@@ -567,10 +578,35 @@ export class InteriorCutawaySystem {
       const item = this.scene.add.image(startX + (prefabOffset + index) * 34, shelfY, assetKey).setOrigin(originX, originY).setScale(0.68).setTint(0x8ee8ff);
       item.setInteractive({ useHandCursor: true, draggable: true });
       this.scene.input.setDraggable(item);
+      let ghosts: Phaser.GameObjects.Image[] = [];
+      item.on('dragstart', () => {
+        ghosts = prefab.items.map((part) => {
+          const partCatalog = MODERN_OFFICE_CATALOG.find(({ id }) => id === part.assetId);
+          const partKey = partCatalog?.key ?? modernOfficeAsset(modernOfficeKindForFurniture(part.kind)).key;
+          const partOriginX = partCatalog ? (partCatalog.opaqueBounds.x + partCatalog.opaqueBounds.width / 2) / 32 : 0.5;
+          const partOriginY = partCatalog ? (partCatalog.opaqueBounds.y + partCatalog.opaqueBounds.height / 2) / 48 : 0.5;
+          const ghost = this.scene.add.image(item.x, item.y, partKey).setOrigin(partOriginX, partOriginY)
+            .setScale(normalizeFurnitureScale(part.scale)).setAngle(part.rotation ?? 0).setAlpha(0.72);
+          furnitureLayer.add(ghost);
+          return ghost;
+        });
+      });
+      item.on('drag', (_pointer: unknown, dragX: number, dragY: number) => {
+        const anchor = this.roomPoint(dragX, dragY);
+        ghosts.forEach((ghost, partIndex) => {
+          const part = prefab.items[partIndex]!;
+          ghost.setPosition(
+            this.roomOrigin.x + (anchor.x + part.point.x) * ROOM_CELL + ROOM_CELL / 2,
+            this.roomOrigin.y + (anchor.y + part.point.y) * ROOM_CELL + ROOM_CELL / 2,
+          );
+        });
+      });
       item.on('dragend', (_pointer: unknown, dragX: number, dragY: number) => {
         const result = placePrefab(interior, interior.furniture, prefab, this.roomPoint(dragX ?? item.x, dragY ?? item.y));
         if (result.accepted) interior.furniture = result.layout;
         this.setStatus(result.accepted ? `組裝件「${prefab.name}」已放置` : '⚠ 組裝件超出房間或擋門');
+        ghosts.forEach((ghost) => ghost.destroy());
+        ghosts = [];
         this.renderFurniture(interior, layout);
       });
       palette.add(item);
