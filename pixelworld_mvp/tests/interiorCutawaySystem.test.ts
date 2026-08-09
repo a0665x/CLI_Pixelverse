@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   InteriorCutawaySystem,
+  dragPreviewScreenPoint,
   cutawayLayoutForViewport,
+  cutawayContainsPointer,
   hookFurnitureLabel,
 } from '../src/rendering/InteriorCutawaySystem';
 import { selectionCapabilities } from '../src/rendering/InteriorCutawayDomOverlay';
@@ -103,6 +105,19 @@ describe('InteriorCutawaySystem', () => {
   it('uses the approved centered desktop and narrow viewport layouts', () => {
     expect(cutawayLayoutForViewport(1_280, 720)).toMatchObject({ width: 480, height: 330, x: 144, y: 59 });
     expect(cutawayLayoutForViewport(840, 480)).toMatchObject({ width: 608, height: 360, x: 80, y: 44 });
+  });
+
+  it('keeps panel pointer events available for room marquee input', () => {
+    const layout = cutawayLayoutForViewport(1_280, 720);
+    expect(cutawayContainsPointer(layout, { x: layout.x + 1, y: layout.y + 1 })).toBe(true);
+    expect(cutawayContainsPointer(layout, { x: layout.x - 1, y: layout.y + 1 })).toBe(false);
+  });
+
+  it('renders the dragged sprite at the same fitted anchor as its placement preview', () => {
+    expect(dragPreviewScreenPoint({ x: 486, y: 178 }, { x: 0.125, y: 1.75 })).toEqual({
+      x: 499.75,
+      y: 227.5,
+    });
   });
 
   it('opens any house, projects matching occupants, and closes idempotently', () => {

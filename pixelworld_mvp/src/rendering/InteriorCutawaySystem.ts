@@ -93,6 +93,18 @@ export function cutawayLayoutForViewport(viewportWidth: number, _viewportHeight:
   };
 }
 
+export function cutawayContainsPointer(layout: CutawayLayout, point: GridPoint): boolean {
+  return point.x >= layout.x && point.x <= layout.x + layout.width
+    && point.y >= layout.y && point.y <= layout.y + layout.height;
+}
+
+export function dragPreviewScreenPoint(roomOrigin: GridPoint, point: GridPoint): GridPoint {
+  return {
+    x: roomOrigin.x + point.x * ROOM_CELL + ROOM_CELL / 2,
+    y: roomOrigin.y + point.y * ROOM_CELL + ROOM_CELL / 2,
+  };
+}
+
 const viewport = (): { width: number; height: number } => ({
   width: typeof window === 'undefined' ? 1_280 : window.innerWidth,
   height: typeof window === 'undefined' ? 720 : window.innerHeight,
@@ -229,13 +241,14 @@ export class InteriorCutawaySystem {
     const backdrop = this.scene.add.rectangle(
       WORLD_PIXELS.width / 2, WORLD_PIXELS.height / 2,
       WORLD_PIXELS.width, WORLD_PIXELS.height, 0x071018, 0.78,
-    ).setScrollFactor(0).setInteractive({ useHandCursor: true }).on('pointerdown', () => this.close());
+    ).setScrollFactor(0).setInteractive({ useHandCursor: true }).on('pointerdown', (pointer: unknown) => {
+      const point = pointer as Partial<GridPoint>;
+      if (!cutawayContainsPointer(layout, { x: point.x ?? -1, y: point.y ?? -1 })) this.close();
+    });
     const panel = this.scene.add.rectangle(
       layout.x + layout.width / 2, layout.y + layout.height / 2,
       layout.width, layout.height, 0x17252a, 1,
-    ).setStrokeStyle(3, 0xf1d89a, 1).setInteractive().on('pointerdown', (...args: unknown[]) => {
-        (args.at(-1) as { stopPropagation?: () => void } | undefined)?.stopPropagation?.();
-      });
+    ).setStrokeStyle(3, 0xf1d89a, 1).setInteractive();
     root.add([backdrop, panel]);
 
     const roomWidth = interior.width * ROOM_CELL;
@@ -530,10 +543,11 @@ export class InteriorCutawaySystem {
         }
       });
       sprite.on('drag', (_pointer: unknown, dragX: number, dragY: number) => {
-        sprite.setPosition(dragX, dragY);
         this.currentDragCandidate = resolvePlacementCandidate(
           interior, interior.furniture, furniture, this.roomPoint(dragX, dragY), furniture.id,
         );
+        const fitted = dragPreviewScreenPoint(this.roomOrigin, this.currentDragCandidate.furniture.point);
+        sprite.setPosition(fitted.x, fitted.y);
         drawPlacementPreview(this.currentDragCandidate);
       });
       sprite.on('dragend', () => {
@@ -643,13 +657,14 @@ export class InteriorCutawaySystem {
           dragClone = this.scene.add.image(dragX, dragY, catalog.key).setOrigin(originX, originY).setScale(1).setAlpha(0.88);
           furnitureLayer.add(dragClone);
         }
-        dragClone.setPosition(dragX, dragY);
         const preview: FurnitureDefinition = {
           id: `custom-office-${catalog.id}-${Date.now()}`, kind: 'decor', point: this.roomPoint(dragX, dragY),
           facing: 'up', supportedActions: [], icon: 'generic', scale: 1, rotation: 0,
           assetId: catalog.id, footprint: { ...catalog.footprint },
         };
         this.currentDragCandidate = resolvePlacementCandidate(interior, interior.furniture, preview, preview.point);
+        const fitted = dragPreviewScreenPoint(this.roomOrigin, this.currentDragCandidate.furniture.point);
+        dragClone.setPosition(fitted.x, fitted.y);
         drawPlacementPreview(this.currentDragCandidate);
       });
       item.on('dragend', () => {
@@ -693,13 +708,14 @@ export class InteriorCutawaySystem {
       furnitureLayer.add(dragClone);
     });
     item.on('drag', (_pointer: unknown, dragX: number, dragY: number) => {
-      dragClone?.setPosition(dragX, dragY);
       const preview: FurnitureDefinition = {
         ...template,
         point: this.roomPoint(dragX, dragY),
         requirementId: template.requirementId ?? `${interior.id}:${template.id}`,
       };
       this.currentDragCandidate = resolvePlacementCandidate(interior, interior.furniture, preview, preview.point);
+      const fitted = dragPreviewScreenPoint(this.roomOrigin, this.currentDragCandidate.furniture.point);
+      dragClone?.setPosition(fitted.x, fitted.y);
     });
     item.on('dragend', () => {
       const candidate = this.currentDragCandidate;
