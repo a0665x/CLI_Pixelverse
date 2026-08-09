@@ -131,7 +131,7 @@ interface SavedInteriorLayoutV3 {
 
 const rotationFromFacing = (facing: FurnitureDefinition['facing']): FurnitureRotation => ({
   up: 0, right: 90, down: 180, left: 270,
-})[facing];
+} satisfies Record<FurnitureDefinition['facing'], FurnitureRotation>)[facing];
 
 const normalizeLayout = (layout: readonly FurnitureDefinition[]): FurnitureDefinition[] =>
   cloneLayout(layout).map((item) => {

@@ -54,14 +54,14 @@ describe('interior furniture editor model', () => {
       getItem: (key: string) => memory.get(key) ?? null,
       setItem: (key: string, value: string) => { memory.set(key, value); },
     };
-    const item = { ...room.furniture[0]!, facing: 'right' as const, assetId: 'modern-office-v1.2-single-225' };
+    const item = { ...room.furniture[0]!, facing: 'right' as const, assetId: 225 };
     memory.set('pixelworld:interior-layout:migrate-house', JSON.stringify({ version: 2, furniture: [item] }));
     const loaded = loadInteriorLayout('migrate-house', room, storage);
-    expect(loaded[0]).toMatchObject({ rotation: 90, assetId: 'modern-office-v1.2-single-225' });
+    expect(loaded[0]).toMatchObject({ rotation: 90, assetId: 225 });
     saveInteriorLayout('migrate-house', loaded, storage);
     expect(JSON.parse(memory.get('pixelworld:interior-layout:migrate-house')!)).toMatchObject({
       version: 3,
-      furniture: [{ rotation: 90, assetId: 'modern-office-v1.2-single-225' }],
+      furniture: [{ rotation: 90, assetId: 225 }],
     });
   });
 

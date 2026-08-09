@@ -13,6 +13,7 @@ import {
   preloadVillageAssets,
 } from '../src/rendering/assetManifest';
 import { MODERN_OFFICE_ASSETS } from '../src/rendering/modernOfficeManifest';
+import { MODERN_OFFICE_CATALOG } from '../src/rendering/modernOfficeCatalog';
 
 describe('village asset manifest', () => {
   it('uses only the curated CC0 world and agent sprite sheets', () => {
@@ -51,7 +52,7 @@ describe('village asset manifest', () => {
     expect(spritesheet).toHaveBeenCalledWith(MODERN_OFFICE_ASSETS.roomBuilder.key, MODERN_OFFICE_ASSETS.roomBuilder.path, { frameWidth: 16, frameHeight: 16 });
     expect(image).toHaveBeenCalledTimes(
       Object.keys(ANIMAL_ASSETS).length + Object.keys(HOUSE_ASSETS).length
-        + Object.keys(MODERN_OFFICE_ASSETS.furniture).length,
+        + Object.keys(MODERN_OFFICE_ASSETS.furniture).length + MODERN_OFFICE_CATALOG.length,
     );
     expect(image).toHaveBeenCalledWith('animal-cow', '/assets/kenney/tiny-farm/cow.png');
     expect(image).toHaveBeenCalledWith('modern-office-v1.2-computer', '/assets/private/modern-office-v1.2/Modern_Office_Singles_225.png');

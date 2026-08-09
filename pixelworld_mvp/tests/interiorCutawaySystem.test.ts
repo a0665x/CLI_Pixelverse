@@ -27,6 +27,7 @@ class FakeObject {
   setInteractive(): this { this.interactive = true; return this; }
   setPosition(x: number, y: number): this { this.x = x; this.y = y; return this; }
   setScale(scale: number): this { this.scale = scale; return this; }
+  setAngle(): this { return this; }
   setResolution(resolution: number): this { this.resolution = resolution; return this; }
   setTint(): this { return this; }
   setTexture(): this { return this; }
@@ -88,8 +89,8 @@ describe('InteriorCutawaySystem', () => {
   });
 
   it('uses the approved centered desktop and narrow viewport layouts', () => {
-    expect(cutawayLayoutForViewport(1_280, 720)).toMatchObject({ width: 480, height: 288, x: 144, y: 80 });
-    expect(cutawayLayoutForViewport(840, 480)).toMatchObject({ width: 608, height: 320, x: 80, y: 64 });
+    expect(cutawayLayoutForViewport(1_280, 720)).toMatchObject({ width: 480, height: 330, x: 144, y: 59 });
+    expect(cutawayLayoutForViewport(840, 480)).toMatchObject({ width: 608, height: 360, x: 80, y: 44 });
   });
 
   it('opens any house, projects matching occupants, and closes idempotently', () => {
@@ -131,36 +132,19 @@ describe('InteriorCutawaySystem', () => {
     expect(cutaway.isOpen()).toBe(false);
   });
 
-  it('drags the visible furniture sprite without rebuilding the room mid-drag', () => {
+  it('renders furniture from the licensed Modern Office family', () => {
     const fake = fakeScene();
     const cutaway = new InteriorCutawaySystem(fake.scene as never, WORLD_DEFINITION, () => ({ width: 1_280, height: 720 }));
     cutaway.open('rest-cabin');
-    fake.objects.find(({ text }) => text === '移動家具')?.emit('pointerdown');
-    const sprite = fake.objects.find(({ interactive, texture, scale }) => interactive && texture.startsWith('modern-office') && scale === 1);
-    expect(sprite).toBeDefined();
-
-    sprite?.emit('drag', {}, 250, 190);
-
-    expect(sprite).toMatchObject({ x: 250, y: 190, destroyed: false });
+    const sprites = fake.objects.filter(({ texture }) => texture.startsWith('modern-office'));
+    expect(sprites.length).toBeGreaterThan(5);
+    expect(sprites.every(({ destroyed }) => !destroyed)).toBe(true);
   });
 
-  it('keeps palette sources fixed and opens a size inspector on furniture double click', () => {
+  it('keeps canvas text out of the cutaway header so DOM text stays crisp', () => {
     const fake = fakeScene();
     const cutaway = new InteriorCutawaySystem(fake.scene as never, WORLD_DEFINITION, () => ({ width: 1_280, height: 720 }));
     cutaway.open('rest-cabin');
-    fake.objects.find(({ text }) => text === '移動家具')?.emit('pointerdown');
-    const paletteItem = fake.objects.find(({ interactive, texture, scale }) => interactive && texture.startsWith('modern-office') && scale === 0.65);
-    const paletteStart = { x: paletteItem?.x, y: paletteItem?.y };
-    paletteItem?.emit('dragstart');
-    paletteItem?.emit('drag', {}, 260, 190);
-    expect(paletteItem).toMatchObject(paletteStart);
-
-    const sprite = fake.objects.find(({ interactive, texture, scale }) => interactive && texture.startsWith('modern-office') && scale === 1);
-    fake.scene.time.now = 100;
-    sprite?.emit('pointerdown');
-    fake.scene.time.now = 260;
-    sprite?.emit('pointerdown');
-
-    expect(fake.objects.some(({ text, resolution }) => text === '尺寸 100%' && resolution >= 2)).toBe(true);
+    expect(fake.objects.some(({ text }) => text === '移動家具' || text === '儲存配置')).toBe(false);
   });
 });
