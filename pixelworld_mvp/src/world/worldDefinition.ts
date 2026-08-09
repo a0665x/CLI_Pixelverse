@@ -160,9 +160,15 @@ export const WORLD_DEFINITION: WorldDefinition = {
     flowerBeds: [{ x: 10, y: 8, width: 3, height: 2 }, { x: 34, y: 8, width: 3, height: 2 }],
     animals: [
       { id: 'cow-mochi', species: 'cow', patrolBounds: { x: 31, y: 15, width: 3, height: 3 }, start: { x: 32, y: 16 }, speed: 6 },
+      { id: 'cow-cocoa', species: 'cow', patrolBounds: { x: 32, y: 17, width: 3, height: 3 }, start: { x: 33, y: 18 }, speed: 5 },
       { id: 'sheep-cloud', species: 'sheep', patrolBounds: { x: 34, y: 16, width: 4, height: 4 }, start: { x: 35, y: 17 }, speed: 7 },
+      { id: 'sheep-wool', species: 'sheep', patrolBounds: { x: 35, y: 16, width: 3, height: 4 }, start: { x: 37, y: 18 }, speed: 6 },
+      { id: 'sheep-snow', species: 'sheep', patrolBounds: { x: 33, y: 15, width: 3, height: 3 }, start: { x: 34, y: 16 }, speed: 7 },
       { id: 'chicken-peep', species: 'chicken', patrolBounds: { x: 31, y: 18, width: 3, height: 3 }, start: { x: 32, y: 19 }, speed: 9 },
+      { id: 'chicken-pip', species: 'chicken', patrolBounds: { x: 35, y: 17, width: 3, height: 3 }, start: { x: 36, y: 19 }, speed: 9 },
+      { id: 'chicken-dot', species: 'chicken', patrolBounds: { x: 32, y: 16, width: 3, height: 3 }, start: { x: 33, y: 17 }, speed: 8 },
       { id: 'pig-bean', species: 'pig', patrolBounds: { x: 35, y: 15, width: 3, height: 3 }, start: { x: 36, y: 16 }, speed: 6 },
+      { id: 'pig-truffle', species: 'pig', patrolBounds: { x: 33, y: 17, width: 3, height: 3 }, start: { x: 34, y: 18 }, speed: 6 },
     ],
   },
   terrain: terrainCells([

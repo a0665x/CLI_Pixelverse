@@ -60,6 +60,10 @@ export const PUNY_REGIONS = {
   signboard: region(8, 31),
   bench: region(7, 31),
   supplyCrate: region(2, 29),
+  // Two adjoining deck cells from Puny World's original CC0 timber structure.
+  // They read as one continuous east-west crossing over the two-cell river.
+  timberBridgeLeft: region(22, 27),
+  timberBridgeRight: region(23, 27),
 
   brownRoofTopCorner: region(4, 26),
   brownRoofTop: region(5, 26),

@@ -134,6 +134,25 @@ describe('Puny village renderer contracts', () => {
     expect(outside?.region).toBe('dirtHorizontal');
   });
 
+  it('uses dedicated timber bridge deck tiles instead of house-wall fragments', () => {
+    const bridges = buildVillageRenderPlan(WORLD_DEFINITION).commands.filter(({ sceneryRole }) => sceneryRole === 'bridge');
+    expect(bridges).toHaveLength(6);
+    expect(bridges.map(({ region }) => region)).toEqual([
+      'timberBridgeLeft', 'timberBridgeRight',
+      'timberBridgeLeft', 'timberBridgeRight',
+      'timberBridgeLeft', 'timberBridgeRight',
+    ]);
+  });
+
+  it('keeps a lively mixed herd in the village pasture', () => {
+    const count = (species: 'cow' | 'sheep' | 'pig' | 'chicken') =>
+      WORLD_DEFINITION.scenery.animals.filter((animal) => animal.species === species);
+    expect(count('cow')).toHaveLength(2);
+    expect(count('sheep')).toHaveLength(3);
+    expect(count('pig')).toHaveLength(2);
+    expect(count('chicken')).toHaveLength(3);
+  });
+
   it('keeps every curated source cell on the native 16-pixel atlas grid', () => {
     for (const region of Object.values(PUNY_REGIONS)) {
       expect(region).toMatchObject({ width: TILE_SIZE, height: TILE_SIZE });

@@ -257,7 +257,10 @@ export function buildVillageRenderPlan(world: WorldDefinition): VillageRenderPla
   }
   for (const bridge of world.scenery.bridges) {
     for (const point of pointsInArea({ kind: 'road', cost: 1, bounds: bridge })) {
-      commands.push(tileCommand('waterAndDecorations', 'brownWall', point, -760, { sceneryRole: 'bridge' }));
+      commands.push(tileCommand(
+        'waterAndDecorations', point.x === bridge.x ? 'timberBridgeLeft' : 'timberBridgeRight',
+        point, -760, { sceneryRole: 'bridge' },
+      ));
     }
   }
 
