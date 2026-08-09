@@ -32,6 +32,12 @@ One 22px logical room cell is divided into a 4×4 editor grid. `EDITOR_CELL` bec
 
 The editor still rejects placements whose complete visual footprint leaves the room or blocks the fixed door clearance. Furniture-to-furniture overlap is no longer a placement error.
 
+### Exact alpha occupancy
+
+Furniture occupancy must use the smallest axis-aligned rectangle containing the asset’s non-transparent pixels, not a rounded 16px tile footprint. The existing catalog `opaqueBounds` is the source rectangle. Runtime bounds apply the instance’s corrected visual origin, scale, and rotation, then compute the smallest transformed room-space rectangle.
+
+The same exact rectangle drives placement preview, room bounds, door clearance, marquee intersection, selection outline, group bounds, and navigation projection. Grid snapping affects the furniture anchor only; it must not inflate the occupied rectangle to whole editor cells. The preview is therefore a precise rectangular outline/fill around visible pixels rather than a collection of overestimated occupied squares.
+
 ### Layers and stacking
 
 Every furniture instance stores:
@@ -100,7 +106,7 @@ After paste, the `本屋必備` shelf reports all target-room Hook requirements 
 
 ## Navigation and Agent Work
 
-Navigation collision is no longer derived from every furniture alpha footprint. It is the union of `blocksNavigation` items projected from quarter cells onto the existing 22px logical navigation grid. Floor, surface, and wall decoration normally do not block.
+Navigation collision is no longer derived from every furniture tile footprint. It is the union of the exact transformed alpha rectangles for `blocksNavigation` items projected conservatively onto the existing 22px logical navigation grid. Floor, surface, and wall decoration normally do not block.
 
 Hook interaction targets retain their stable IDs and supported actions. Agent work routing continues to target the required Hook furniture placed in the room. Missing Hook furniture falls back to the authored overflow/work point and is visibly reported in the required shelf.
 
@@ -175,6 +181,7 @@ The navigation grid continues treating declared bridge cells as walkable road ce
 Model tests cover:
 
 - quarter-cell snapping;
+- exact transformed alpha occupancy without tile-size inflation;
 - legal visual overlap and remaining room/door rejection;
 - semantic layer defaults and navigation blocking projection;
 - marquee intersection using visual alpha bounds;
@@ -190,6 +197,7 @@ Cutaway integration tests cover DOM controls, palette ordering, selection state,
 ## Acceptance Criteria
 
 - A rug, desk, and computer can occupy overlapping visual bounds and render in the intended order.
+- Each item’s preview and blocking area matches its smallest transformed non-transparent pixel rectangle.
 - The fine grid provides four snap points per logical room cell.
 - A marquee-selected arrangement can be saved and redropped from `組裝件` after reload.
 - `全部收回` empties the room while retaining prefabs and required Hook shelf entries.
