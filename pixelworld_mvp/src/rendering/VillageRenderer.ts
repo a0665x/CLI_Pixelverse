@@ -95,7 +95,7 @@ function roadRegion(point: GridPoint, roads: Set<string>, plazas: Set<string>): 
   const down = roads.has(`${point.x},${point.y + 1}`);
   const horizontal = left || right;
   const vertical = up || down;
-  if (horizontal && vertical) return 'dirtJunction';
+  if (horizontal && vertical) return up && down ? 'dirtJunction' : 'dirtHorizontal';
   if (horizontal) return 'dirtHorizontal';
   if (vertical) return 'dirtVertical';
   return 'dirtCenter';
