@@ -1,0 +1,67 @@
+import { describe, expect, it } from 'vitest';
+import { EventIngress, sanitizeDisplayDetail } from '../src/events/eventIngress';
+import type { AgentWorldEvent } from '../src/world/types';
+
+const valid: AgentWorldEvent = {
+  eventId: 'evt-1', timestamp: 1, source: 'demo', agentId: 'main', agentRole: 'main',
+  kind: 'edit', phase: 'working', activityLabel: '修改程式', detail: '<script>secret</script>\nlong line',
+};
+
+describe('EventIngress', () => {
+  it('accepts once and rejects a duplicate event id', () => {
+    const ingress = new EventIngress();
+    expect(ingress.ingest(valid).accepted).toBe(true);
+    expect(ingress.ingest(valid)).toEqual({ accepted: false, reason: 'duplicate-event' });
+  });
+
+  it('rejects missing identity without routing', () => {
+    const ingress = new EventIngress();
+    expect(ingress.ingest({ ...valid, eventId: '', agentId: '' })).toEqual({
+      accepted: false,
+      reason: 'invalid-event',
+    });
+  });
+
+  it('strips markup/newlines and caps optional display detail at 80 characters', () => {
+    expect(sanitizeDisplayDetail(valid.detail)).toBe('scriptsecret/script long line');
+    expect(sanitizeDisplayDetail('x'.repeat(100))).toHaveLength(80);
+  });
+
+  it.each([
+    null,
+    42,
+    { ...valid, eventId: null },
+    { ...valid, agentId: 7 },
+    { ...valid, phase: null },
+    { ...valid, activityLabel: 9 },
+    { ...valid, timestamp: 'now' },
+    { ...valid, source: 'socket' },
+    { ...valid, agentRole: 'worker' },
+    { ...valid, kind: 'explode' },
+    { ...valid, detail: 123 },
+    { ...valid, toolName: { name: 'bash' } },
+  ])('rejects malformed runtime input without throwing: %#', (input) => {
+    const ingress = new EventIngress();
+    expect(() => ingress.ingest(input)).not.toThrow();
+    expect(ingress.ingest(input)).toEqual({ accepted: false, reason: 'invalid-event' });
+  });
+
+  it('trims accepted identity and display fields before deduplication', () => {
+    const ingress = new EventIngress();
+    const result = ingress.ingest({
+      ...valid,
+      eventId: '  evt-trim  ', agentId: ' main ', phase: ' working ', activityLabel: ' 修改程式 ', toolName: ' bash ',
+    });
+    expect(result).toMatchObject({ accepted: true, event: {
+      eventId: 'evt-trim', agentId: 'main', phase: 'working', activityLabel: '修改程式', toolName: 'bash',
+    } });
+    expect(ingress.ingest({ ...valid, eventId: 'evt-trim' })).toEqual({ accepted: false, reason: 'duplicate-event' });
+  });
+
+  it('drops unknown input properties from the normalized event', () => {
+    const result = new EventIngress().ingest({ ...valid, unexpectedSecret: 'do-not-forward' });
+    expect(result.accepted).toBe(true);
+    if (!result.accepted) return;
+    expect(result.event).not.toHaveProperty('unexpectedSecret');
+  });
+});
