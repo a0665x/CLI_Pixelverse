@@ -49,26 +49,39 @@ describe('interior furniture editor model', () => {
     };
     const layout = resizeFurniture(room, moveFurniture(room, normalizedRoomLayout(), 'rest-sofa-a', { x: 3, y: 4 }), 'rest-sofa-a', 1.25);
     saveInteriorLayout('rest-cabin-house', layout, storage);
-    expect(JSON.parse(memory.get('pixelworld:interior-layout:rest-cabin-house')!)).toMatchObject({ version: 4 });
+    expect(JSON.parse(memory.get('pixelworld:interior-layout:rest-cabin-house')!)).toMatchObject({
+      version: 5,
+      authoredRevision: 2,
+    });
     expect(loadInteriorLayout('rest-cabin-house', room, storage)).toEqual(
       layout.map((item) => ({ ...item, scale: item.scale ?? 1, rotation: item.rotation ?? 0 })),
     );
   });
 
-  it('migrates v2 facing into rotation and retains catalog assets', () => {
+  it('migrates legacy authored furniture to the current preset while preserving custom additions', () => {
     const memory = new Map<string, string>();
     const storage = {
       getItem: (key: string) => memory.get(key) ?? null,
       setItem: (key: string, value: string) => { memory.set(key, value); },
     };
-    const item = { ...room.furniture[0]!, facing: 'right' as const, assetId: 225 };
-    memory.set('pixelworld:interior-layout:migrate-house', JSON.stringify({ version: 2, furniture: [item] }));
+    const oldAuthored = {
+      id: 'rest-sofa-a', kind: 'sofa' as const, point: { x: 1, y: 1 }, facing: 'right' as const,
+      supportedActions: ['rest' as const], icon: 'rest' as const, assetId: 225,
+    };
+    const custom = {
+      id: 'custom-office-kept', kind: 'decor' as const, point: { x: 3.125, y: 7.25 }, facing: 'up' as const,
+      supportedActions: [], icon: 'generic' as const, assetId: 120, layer: 'surface' as const,
+      blocksNavigation: false,
+    };
+    memory.set('pixelworld:interior-layout:migrate-house', JSON.stringify({ version: 4, furniture: [oldAuthored, custom] }));
     const loaded = loadInteriorLayout('migrate-house', room, storage);
-    expect(loaded[0]).toMatchObject({ rotation: 90, assetId: 225 });
+    expect(loaded.find(({ id }) => id === 'rest-sofa-a')).toMatchObject(room.furniture.find(({ id }) => id === 'rest-sofa-a')!);
+    expect(loaded.find(({ id }) => id === custom.id)).toMatchObject({ point: custom.point, assetId: 120 });
+    expect(loaded.filter(({ id }) => id === custom.id)).toHaveLength(1);
     saveInteriorLayout('migrate-house', loaded, storage);
     expect(JSON.parse(memory.get('pixelworld:interior-layout:migrate-house')!)).toMatchObject({
-      version: 4,
-      furniture: [{ rotation: 90, assetId: 225 }],
+      version: 5,
+      authoredRevision: 2,
     });
   });
 
@@ -89,7 +102,7 @@ describe('interior furniture editor model', () => {
     };
     const key = 'pixelworld:interior-layout:legacy-house';
     memory.set(key, JSON.stringify(room.furniture));
-    expect(loadInteriorLayout('legacy-house', room, storage).every(({ scale }) => scale === 1)).toBe(true);
+    expect(loadInteriorLayout('legacy-house', room, storage)).toEqual(normalizedRoomLayout());
     memory.set(key, JSON.stringify({ version: 99, furniture: [] }));
     expect(loadInteriorLayout('legacy-house', room, storage)).toEqual(normalizedRoomLayout());
   });

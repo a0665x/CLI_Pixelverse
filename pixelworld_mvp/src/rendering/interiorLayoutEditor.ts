@@ -7,6 +7,7 @@ import type {
   GridPoint,
   InteriorDefinition,
 } from '../world/types';
+import { INTERIOR_LAYOUT_REVISION } from '../world/interiorDefinitions';
 import {
   commitPlacementCandidate,
   diagnoseFinePlacement,
@@ -126,8 +127,9 @@ export function rotateFurniture(
 const storageKey = (buildingId: string): string => `pixelworld:interior-layout:${buildingId}`;
 const browserStorage = (): StorageLike | undefined => typeof window === 'undefined' ? undefined : window.localStorage;
 
-interface SavedInteriorLayoutV4 {
-  version: 4;
+interface SavedInteriorLayoutV5 {
+  version: 5;
+  authoredRevision: number;
   furniture: FurnitureDefinition[];
 }
 
@@ -229,7 +231,11 @@ export function saveInteriorLayout(
   layout: readonly FurnitureDefinition[],
   storage: StorageLike | undefined = browserStorage(),
 ): void {
-  const saved: SavedInteriorLayoutV4 = { version: 4, furniture: normalizeLayout(layout) };
+  const saved: SavedInteriorLayoutV5 = {
+    version: 5,
+    authoredRevision: INTERIOR_LAYOUT_REVISION,
+    furniture: normalizeLayout(layout),
+  };
   storage?.setItem(storageKey(buildingId), JSON.stringify(saved));
 }
 
@@ -243,14 +249,33 @@ export function loadInteriorLayout(
   if (!raw) return fallback;
   try {
     const parsed = JSON.parse(raw) as unknown;
+    const saved = parsed && typeof parsed === 'object' ? parsed as {
+      version?: unknown;
+      authoredRevision?: unknown;
+      furniture?: unknown;
+    } : undefined;
+    const legacy = Array.isArray(parsed)
+      || saved?.version === 2
+      || saved?.version === 3
+      || saved?.version === 4
+      || saved?.version === 5 && saved.authoredRevision !== INTERIOR_LAYOUT_REVISION;
     const source = Array.isArray(parsed)
       ? parsed
-      : parsed && typeof parsed === 'object' && 'version' in parsed && (parsed.version === 2 || parsed.version === 3 || parsed.version === 4) && 'furniture' in parsed && Array.isArray(parsed.furniture)
-        ? parsed.furniture
+      : saved && (saved.version === 2 || saved.version === 3 || saved.version === 4 || saved.version === 5)
+        && Array.isArray(saved.furniture)
+        ? saved.furniture
         : undefined;
     if (!source) return fallback;
+    const authoredIds = new Set(room.furniture.map(({ id }) => id));
+    const candidates = legacy
+      ? [...fallback, ...source.filter((candidate) => (
+        candidate && typeof candidate === 'object'
+        && 'id' in candidate && typeof candidate.id === 'string'
+        && !authoredIds.has(candidate.id)
+      ))]
+      : source;
     const accepted: FurnitureDefinition[] = [];
-    for (const candidate of source) {
+    for (const candidate of candidates) {
       if (!candidate || typeof candidate !== 'object') continue;
       const item = candidate as FurnitureDefinition;
       if (
@@ -269,7 +294,7 @@ export function loadInteriorLayout(
       }])[0]!;
       if (canPlaceFurniture(room, normalized, accepted)) accepted.push(normalized);
     }
-    return accepted.length > 0 ? accepted : fallback;
+    return accepted.length > 0 || saved?.version === 5 ? accepted : fallback;
   } catch {
     return fallback;
   }
