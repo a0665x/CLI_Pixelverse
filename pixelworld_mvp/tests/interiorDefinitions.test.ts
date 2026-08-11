@@ -3,6 +3,7 @@ import {
   INTERIOR_DEFINITIONS,
   INTERIOR_LAYOUT_REVISION,
 } from '../src/world/interiorDefinitions';
+import type { AgentAction, BuildingThemeId } from '../src/world/types';
 
 const expectedActions = {
   'rest-cabin': ['offline', 'queue', 'repair', 'rest'],
@@ -35,7 +36,7 @@ describe('Smallville-style authored interiors', () => {
     },
   );
 
-  it.each(Object.entries(expectedActions))('%s preserves every Hook action', (themeId, actions) => {
+  it.each(Object.entries(expectedActions) as Array<[BuildingThemeId, readonly AgentAction[]]>)('%s preserves every Hook action', (themeId, actions) => {
     const actual = [...new Set(INTERIOR_DEFINITIONS[themeId].furniture
       .flatMap(({ supportedActions }) => supportedActions))].sort();
     expect(actual).toEqual([...actions].sort());
