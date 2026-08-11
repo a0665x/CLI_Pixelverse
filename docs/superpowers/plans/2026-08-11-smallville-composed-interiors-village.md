@@ -158,4 +158,3 @@ Expected: `Index is up to date`.
 Run: `git diff --check`, inspect commits against the base, then `git push -u origin feat/pixelworld-work-village-mvp`.
 
 Expected: push succeeds and local HEAD matches the remote tracking branch.
-

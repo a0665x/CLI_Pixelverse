@@ -33,6 +33,12 @@ describe('Smallville-style village composition', () => {
     expect(districts.every((district) => district.length >= 14)).toBe(true);
   });
 
+  it('keeps each decorative prop on a distinct tile', () => {
+    const decorationTiles = WORLD_DEFINITION.scenery.decorations.map(({ point }) => key(point));
+
+    expect(new Set(decorationTiles).size).toBe(decorationTiles.length);
+  });
+
   it('keeps every Hook house reachable from the fixed spawn', () => {
     const grid = NavigationGrid.fromWorld(WORLD_DEFINITION);
     for (const building of WORLD_DEFINITION.buildings) {

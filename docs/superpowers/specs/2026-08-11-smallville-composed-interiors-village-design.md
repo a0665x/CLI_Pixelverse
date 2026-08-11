@@ -54,4 +54,3 @@ Add intentional clusters of trees, benches, signs, rocks, flowers, crates, and f
 - Existing world validation, navigation, renderer, interior editor, and persistence suites must pass.
 - Browser QA checks the 1280×720 fixed village, at least one room from each theme, stacked furniture alignment, edit mode, and console/network errors.
 - CodeGraph is synchronized after final source changes.
-

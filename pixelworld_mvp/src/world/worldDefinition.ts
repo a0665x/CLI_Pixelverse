@@ -182,7 +182,7 @@ export const WORLD_DEFINITION: WorldDefinition = {
       { id: 'plaza-north-flowers', kind: 'flowers', point: { x: 17, y: 8 } },
       { id: 'plaza-south-flowers', kind: 'flowers', point: { x: 24, y: 18 } },
       { id: 'river-walk-rock', kind: 'rock', point: { x: 26, y: 18 } },
-      { id: 'farm-lane-crate', kind: 'crate', point: { x: 17, y: 18 } },
+      { id: 'farm-lane-crate', kind: 'crate', point: { x: 18, y: 18 } },
       { id: 'pasture-seat-a', kind: 'bench', point: { x: 40, y: 19 } },
       { id: 'pasture-seat-b', kind: 'bench', point: { x: 45, y: 19 } },
       { id: 'east-crossroad-sign-a', kind: 'signboard', point: { x: 39, y: 9 } },
