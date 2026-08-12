@@ -23,6 +23,9 @@ interface ItemOptions {
   icon?: FurnitureDefinition['icon'];
 }
 
+// Catalog offsets are source-pixel deltas on a 16 px furniture tile; prefab geometry uses tile units.
+const SOURCE_TILE_PIXELS = 16;
+
 const furniture = ({ supportedActions = [], icon = 'generic', ...options }: ItemOptions): FurnitureDefinition => {
   const asset = catalogItem(options.assetId);
   if (!asset) throw new Error(`Unknown Modern Office v1.2 asset ${options.assetId}`);
@@ -30,7 +33,13 @@ const furniture = ({ supportedActions = [], icon = 'generic', ...options }: Item
     ...options,
     supportedActions: [...supportedActions],
     icon,
+    rotation: 0,
+    scale: 1,
     footprint: { ...asset.footprint },
+    visualOffset: {
+      x: asset.visualOffset.x / SOURCE_TILE_PIXELS,
+      y: asset.visualOffset.y / SOURCE_TILE_PIXELS,
+    },
   };
 };
 
@@ -93,8 +102,7 @@ const defineOfficePrefab = (input: PrefabInput): OfficePrefabDefinition => {
 
 const benchActions: AgentAction[] = ['signal', 'terminal', 'type'];
 const podActions: AgentAction[] = ['ponder', 'plan', 'read'];
-// AgentAction models tool/edit work as terminal/type; the event-kind vocabulary remains unchanged.
-const controlActions: AgentAction[] = ['terminal', 'repair', 'type', 'signal'];
+const controlActions: AgentAction[] = ['terminal', 'type', 'signal'];
 
 const benchFour = defineOfficePrefab({
   id: 'bench-four',

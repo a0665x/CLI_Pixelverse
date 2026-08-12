@@ -4,7 +4,8 @@ import {
   builtInPrefab,
   prefabsForTheme,
 } from '../src/rendering/builtInOfficePrefabs';
-import { catalogItem } from '../src/rendering/modernOfficeCatalog';
+import { cloneOfficePrefab, rotatePrefab } from '../src/rendering/prefabGeometry';
+import { MODERN_OFFICE_CATALOG, catalogItem } from '../src/rendering/modernOfficeCatalog';
 import type { Facing, GridPoint } from '../src/world/types';
 
 const prefabIds = ['bench-four', 'pod-l-two', 'control-m-three'] as const;
@@ -41,6 +42,49 @@ describe('built-in Modern Office prefabs', () => {
       expect(Object.isFrozen(prefab.interactionAnchors)).toBe(true);
       expect(prefab.items.every(Object.isFrozen)).toBe(true);
     }
+  });
+
+  it('uses only concrete routed actions for the M control console', () => {
+    const control = builtInPrefab('control-m-three')!;
+
+    expect(control.hookActions).toEqual(['terminal', 'type', 'signal']);
+    expect(control.hookActions).not.toContain('repair');
+    expect(control.items.flatMap(({ supportedActions }) => supportedActions)).not.toContain('repair');
+    expect(control.interactionAnchors.flatMap(({ actions }) => actions)).not.toContain('repair');
+  });
+
+  it.each(prefabIds)('%s materializes canonical transforms in furniture-grid units', (id) => {
+    const prefab = builtInPrefab(id)!;
+
+    for (const item of prefab.items) {
+      const asset = catalogItem(item.assetId!)!;
+      expect(item.rotation, `${id}:${item.id}:rotation`).toBe(0);
+      expect(item.scale, `${id}:${item.id}:scale`).toBe(1);
+      expect(item.visualOffset, `${id}:${item.id}:visualOffset`).toEqual({
+        x: asset.visualOffset.x / 16,
+        y: asset.visualOffset.y / 16,
+      });
+    }
+  });
+
+  it('preserves canonical offsets through cloning and rotates them through 90 degrees', () => {
+    const source = builtInPrefab('bench-four')!;
+    const cloned = cloneOfficePrefab(source);
+    const rotated = rotatePrefab(source, 90);
+    const sourceItem = source.items[0]!;
+    const clonedItem = cloned.items[0]!;
+    const rotatedItem = rotated.items[0]!;
+
+    expect(clonedItem.visualOffset).toEqual(sourceItem.visualOffset);
+    expect(clonedItem.visualOffset).not.toBe(sourceItem.visualOffset);
+    expect(clonedItem.rotation).toBe(0);
+    expect(clonedItem.scale).toBe(1);
+    expect(rotatedItem.visualOffset).toEqual({
+      x: -sourceItem.visualOffset!.y,
+      y: sourceItem.visualOffset!.x,
+    });
+    expect(rotatedItem.rotation).toBe(90);
+    expect(rotatedItem.scale).toBe(1);
   });
 
   it.each(prefabIds)('%s seats face an adjacent desk surface', (id) => {
@@ -88,5 +132,9 @@ describe('built-in Modern Office prefabs', () => {
     for (const id of selectedIds) {
       expect(catalogItem(id)?.label, `asset ${id}`).not.toMatch(/^Office \d{3}$/);
     }
+    const semanticIds = MODERN_OFFICE_CATALOG
+      .filter(({ label }) => !/^Office \d{3}$/.test(label))
+      .map(({ id }) => id);
+    expect(semanticIds.every((id) => selectedIds.has(id))).toBe(true);
   });
 });
