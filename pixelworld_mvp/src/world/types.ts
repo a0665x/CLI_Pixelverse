@@ -58,6 +58,7 @@ export type FurnitureKind =
 export type FurnitureScale = 0.75 | 1 | 1.25 | 1.5 | 1.75 | 2 | 2.25 | 2.5 | 2.75 | 3;
 export type FurnitureRotation = 0 | 90 | 180 | 270;
 export interface FurnitureFootprint { width: number; height: number }
+export interface FurnitureVisualOffset { x: number; y: number }
 export type FurnitureLayer = 'floor' | 'furniture' | 'surface' | 'wall';
 export type ActivityIconKind =
   | 'rest' | 'offline' | 'think' | 'plan' | 'read' | 'web' | 'edit'
@@ -77,6 +78,8 @@ export interface FurnitureDefinition {
   zIndex?: number;
   blocksNavigation?: boolean;
   requirementId?: string;
+  visualOffset?: FurnitureVisualOffset;
+  prefabInstanceId?: string;
 }
 export interface FurniturePrefab {
   id: string;
@@ -85,6 +88,14 @@ export interface FurniturePrefab {
   width: number;
   height: number;
   items: FurnitureDefinition[];
+}
+export interface OfficePrefabDefinition extends FurniturePrefab {
+  source: 'modern-office-v1.2' | 'user';
+  immutable: boolean;
+  category: 'bench' | 'pod' | 'control' | 'meeting' | 'support';
+  hookActions: AgentAction[];
+  anchor: GridPoint;
+  interactionAnchors: Array<{ point: GridPoint; actions: AgentAction[] }>;
 }
 export interface InteriorLayoutClipboard {
   version: 1;
@@ -126,6 +137,7 @@ export interface WorldBuilding {
   bounds: GridRect;
   labelAnchor: GridPoint;
   entrance: BuildingEntrance;
+  interiorProfile?: 'compact' | 'work-office';
 }
 export interface WorldZone { id: string; label: string; bounds: GridRect }
 export interface InteractionSlot {
