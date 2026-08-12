@@ -32,6 +32,22 @@ const samplePrefab: OfficePrefabDefinition = {
   ],
 };
 
+const aisleRoom: InteriorDefinition = {
+  id: 'rest-cabin', label: 'Aisle room', width: 6, height: 6, floor: 'wood', wall: 'cream', furniture: [], overflow: [],
+};
+
+const blocker = (id: string, x: number, y: number): FurnitureDefinition => ({
+  id, kind: 'decor', assetId: 98, point: { x, y }, facing: 'up', supportedActions: [], icon: 'generic',
+  layer: 'furniture', blocksNavigation: true,
+});
+
+const aislePrefab: OfficePrefabDefinition = {
+  ...samplePrefab,
+  id: 'aisle-bench',
+  items: [desk('aisle-desk', { x: 0, y: 0 })],
+  interactionAnchors: [{ point: { x: 0, y: 1 }, actions: ['terminal'] }],
+};
+
 describe('office prefab geometry', () => {
   it('preserves internal layers and off-grid offsets while cloning', () => {
     const cloned = cloneOfficePrefab(samplePrefab);
@@ -91,6 +107,20 @@ describe('office prefab geometry', () => {
     };
 
     expect(placeOfficePrefab(room, [], overlappingSurface, { x: 4, y: 3 }, 51).accepted).toBe(true);
+  });
+
+  it('rejects one-cell entrance chokes but accepts a two-cell main aisle to Hooks', () => {
+    const oneCellChoke = [2, 3, 4].flatMap((y) => [blocker(`left-${y}`, 2, y), blocker(`right-${y}`, 4, y)]);
+    const twoCellAisle = [2, 3, 4].map((y) => blocker(`left-${y}`, 2, y));
+
+    expect(placeOfficePrefab(aisleRoom, oneCellChoke, aislePrefab, { x: 3, y: 1 }, 60)).toMatchObject({
+      accepted: false,
+      diagnostics: ['unreachable-interaction-anchor'],
+    });
+    expect(placeOfficePrefab(aisleRoom, twoCellAisle, aislePrefab, { x: 3, y: 1 }, 61)).toMatchObject({
+      accepted: true,
+      diagnostics: [],
+    });
   });
 
   it('rejects invalid assets, blocked doors, and unreachable Hook anchors', () => {

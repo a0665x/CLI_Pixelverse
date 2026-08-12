@@ -77,6 +77,15 @@ describe('interior fine-grid placement', () => {
     expect(committed[0]).not.toBe(candidate.furniture);
   });
 
+  it('deeply clones visual offsets when rejecting a placement candidate', () => {
+    const source = { ...sofa, visualOffset: { x: -0.25, y: 0.125 } };
+    const candidate = resolvePlacementCandidate(room, [source], source, { x: -3, y: 2 });
+    const rejected = commitPlacementCandidate(room, [source], candidate);
+
+    rejected[0]!.visualOffset!.x = 9;
+    expect(source.visualOffset).toEqual({ x: -0.25, y: 0.125 });
+  });
+
   it('allows visual overlap while retaining room and door rejection', () => {
     const overlapping = resolvePlacementCandidate(room, [sofa], { ...sofa, id: 'chair', kind: 'chair' }, sofa.point);
     expect(overlapping.diagnostic).toBe('valid');

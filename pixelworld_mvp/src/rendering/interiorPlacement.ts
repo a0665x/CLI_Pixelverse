@@ -194,6 +194,7 @@ const cloneFurniture = (item: FurnitureDefinition): FurnitureDefinition => ({
   point: { ...item.point },
   supportedActions: [...item.supportedActions],
   ...(item.footprint ? { footprint: { ...item.footprint } } : {}),
+  ...(item.visualOffset ? { visualOffset: { ...item.visualOffset } } : {}),
 });
 
 export function commitPlacementCandidate(

@@ -40,6 +40,14 @@ describe('interior prefab and room clipboard store', () => {
     expect(loadLayoutClipboard(memory)).toEqual(clipboard);
   });
 
+  it('deeply clones visual offsets for copied persisted layout furniture', () => {
+    const source = { ...item('offset', 3, 3), visualOffset: { x: -0.25, y: 0.125 } };
+    const copied = copyDecorativeLayout('source-house', [source], 10);
+
+    copied.items[0]!.visualOffset!.x = 9;
+    expect(source.visualOffset).toEqual({ x: -0.25, y: 0.125 });
+  });
+
   it('atomically replaces ordinary target furniture and preserves target Hooks', () => {
     const hook = item('target-hook', 1, 1, ['rest']);
     const clipboard = copyDecorativeLayout('source', [item('rug', 3, 3), item('monitor', 4, 3)], 10);

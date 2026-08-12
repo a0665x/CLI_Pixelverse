@@ -165,6 +165,14 @@ describe('interior furniture editor model', () => {
     expect(reorderFurniture(layout, id, 'back').find((item) => item.id === id)?.zIndex).toBe(-1);
   });
 
+  it('deeply clones visual offsets through layer editing', () => {
+    const source = { ...normalizedRoomLayout()[0]!, visualOffset: { x: -0.25, y: 0.125 } };
+    const edited = shiftFurnitureLayer([source], source.id, 'next');
+
+    edited[0]!.visualOffset!.x = 9;
+    expect(source.visualOffset).toEqual({ x: -0.25, y: 0.125 });
+  });
+
   it('supports quarter-step scaling through three hundred percent', () => {
     expect(FURNITURE_SCALES).toEqual([0.75, 1, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 2.75, 3]);
     const sofa = { ...normalizedRoomLayout().find(({ id }) => id === 'rest-sofa-a')!, point: { x: 6, y: 4 } };

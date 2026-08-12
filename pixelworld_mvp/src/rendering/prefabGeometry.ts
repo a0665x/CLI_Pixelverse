@@ -153,6 +153,51 @@ const reaches = (room: InteriorDefinition, blocked: ReadonlySet<string>, target:
   return false;
 };
 
+type AislePair = readonly [GridPoint, GridPoint];
+
+const pairKey = ([first, second]: AislePair): string => [key(first), key(second)].sort().join('|');
+const adjacentPoints = ({ x, y }: GridPoint): GridPoint[] => [
+  { x: x + 1, y }, { x: x - 1, y }, { x, y: y + 1 }, { x, y: y - 1 },
+];
+const isOpen = (room: InteriorDefinition, blocked: ReadonlySet<string>, point: GridPoint): boolean =>
+  insideRoom(room, point) && !blocked.has(key(point));
+
+const twoTileAisleReaches = (room: InteriorDefinition, blocked: ReadonlySet<string>, target: GridPoint): boolean => {
+  const door = doorPoint(room);
+  if (!isOpen(room, blocked, door) || !isOpen(room, blocked, target)) return false;
+  const queue: AislePair[] = adjacentPoints(door)
+    .filter((neighbor) => isOpen(room, blocked, neighbor))
+    .map((neighbor) => [door, neighbor]);
+  const visited = new Set(queue.map(pairKey));
+  while (queue.length > 0) {
+    const pair = queue.shift()!;
+    if (key(pair[0]) === key(target) || key(pair[1]) === key(target)) return true;
+    const [first, second] = pair;
+    const horizontal = first.y === second.y;
+    const directions = horizontal ? [{ x: 0, y: -1 }, { x: 0, y: 1 }] : [{ x: -1, y: 0 }, { x: 1, y: 0 }];
+    const nextPairs: AislePair[] = directions.flatMap(({ x, y }) => {
+      const moved: AislePair = [{ x: first.x + x, y: first.y + y }, { x: second.x + x, y: second.y + y }];
+      if (!isOpen(room, blocked, moved[0]) || !isOpen(room, blocked, moved[1])) return [];
+      return [moved];
+    });
+    const turnDirections = horizontal ? [{ x: 0, y: -1 }, { x: 0, y: 1 }] : [{ x: -1, y: 0 }, { x: 1, y: 0 }];
+    for (const { x, y } of turnDirections) {
+      for (const [pivot, other] of [[first, second], [second, first]] as const) {
+        const turned = { x: pivot.x + x, y: pivot.y + y };
+        const corner = { x: other.x + x, y: other.y + y };
+        if (isOpen(room, blocked, turned) && isOpen(room, blocked, corner)) nextPairs.push([pivot, turned]);
+      }
+    }
+    for (const next of nextPairs) {
+      const nextKey = pairKey(next);
+      if (visited.has(nextKey)) continue;
+      visited.add(nextKey);
+      queue.push(next);
+    }
+  }
+  return false;
+};
+
 const appendDiagnostic = (diagnostics: PrefabPlacementDiagnostic[], diagnostic: PrefabPlacementDiagnostic): void => {
   if (!diagnostics.includes(diagnostic)) diagnostics.push(diagnostic);
 };
@@ -193,9 +238,10 @@ const validatePlacedItems = (
   const blocked = new Set([...existingBlocked, ...transformedBlocked]);
   const requiredAnchors = interactionAnchors.filter(({ actions }) => actions.length > 0);
   const everyHookHasAnchor = hookActions.every((action) => requiredAnchors.some(({ actions }) => hasAction(actions, action)));
-  if (!everyHookHasAnchor || requiredAnchors.some(({ point }) => !reaches(room, blocked, {
-    x: Math.round(point.x), y: Math.round(point.y),
-  }))) {
+  if (!everyHookHasAnchor || requiredAnchors.some(({ point }) => {
+    const target = { x: Math.round(point.x), y: Math.round(point.y) };
+    return !reaches(room, blocked, target) || !twoTileAisleReaches(room, blocked, target);
+  })) {
     appendDiagnostic(diagnostics, 'unreachable-interaction-anchor');
   }
   return diagnostics;

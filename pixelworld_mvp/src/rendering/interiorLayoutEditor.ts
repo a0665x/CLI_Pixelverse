@@ -41,6 +41,7 @@ const cloneLayout = (layout: readonly FurnitureDefinition[]): FurnitureDefinitio
   ...item,
   point: { ...item.point },
   supportedActions: [...item.supportedActions],
+  ...(item.visualOffset ? { visualOffset: { ...item.visualOffset } } : {}),
 }));
 
 export function furnitureCells(item: Pick<FurnitureDefinition, 'kind' | 'point' | 'scale'>): GridPoint[] {
