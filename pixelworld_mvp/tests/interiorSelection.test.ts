@@ -195,6 +195,43 @@ describe('interior marquee selection and prefabs', () => {
     expect(shiftSelectionLayer(mixed, ['group-a'], 'next')).toEqual(mixed);
   });
 
+  it('sends an entire group below negative duplicate peers while preserving its z gaps', () => {
+    const layout = [
+      { ...furniture('group-a', 98, 4, 4), prefabInstanceId: 'instance-one', layer: 'surface' as const, zIndex: 3 },
+      { ...furniture('group-b', 129, 6, 4), prefabInstanceId: 'instance-one', layer: 'surface' as const, zIndex: 5 },
+      { ...furniture('peer-a', 98, 8, 4), layer: 'surface' as const, zIndex: -5 },
+      { ...furniture('peer-b', 129, 10, 4), layer: 'surface' as const, zIndex: -5 },
+    ];
+
+    const sentBack = reorderSelection(layout, ['group-b'], 'back');
+    expect(sentBack.slice(0, 2).map(({ zIndex }) => zIndex)).toEqual([-8, -6]);
+    expect(sentBack[1]!.zIndex! - sentBack[0]!.zIndex!).toBe(2);
+    expect(sentBack.slice(2).map(({ zIndex }) => zIndex)).toEqual([-5, -5]);
+  });
+
+  it('reorders each selected layer as one block and leaves front/back unchanged without peers', () => {
+    const mixedLayers = [
+      { ...furniture('group-surface-a', 98, 2, 2), prefabInstanceId: 'mixed-instance', layer: 'surface' as const, zIndex: 3 },
+      { ...furniture('group-surface-b', 129, 4, 2), prefabInstanceId: 'mixed-instance', layer: 'surface' as const, zIndex: 5 },
+      { ...furniture('group-wall', 98, 6, 2), prefabInstanceId: 'mixed-instance', layer: 'wall' as const, zIndex: 10 },
+      { ...furniture('surface-peer', 129, 8, 2), layer: 'surface' as const, zIndex: -5 },
+      { ...furniture('wall-peer', 98, 10, 2), layer: 'wall' as const, zIndex: -2 },
+    ];
+
+    expect(reorderSelection(mixedLayers, ['group-surface-a'], 'back').slice(0, 3).map(({ zIndex }) => zIndex))
+      .toEqual([-8, -6, -3]);
+    expect(reorderSelection(mixedLayers, ['group-surface-a'], 'front').slice(0, 3).map(({ zIndex }) => zIndex))
+      .toEqual([-4, -2, -1]);
+    expect(reorderSelection(mixedLayers, ['group-surface-a'], 'backward').slice(0, 3).map(({ zIndex }) => zIndex))
+      .toEqual([2, 4, 9]);
+    expect(reorderSelection(mixedLayers, ['group-surface-a'], 'forward').slice(0, 3).map(({ zIndex }) => zIndex))
+      .toEqual([4, 6, 11]);
+
+    const selectedOnly = mixedLayers.slice(0, 3);
+    expect(reorderSelection(selectedOnly, ['group-surface-a'], 'back')).toEqual(selectedOnly);
+    expect(reorderSelection(selectedOnly, ['group-surface-a'], 'front')).toEqual(selectedOnly);
+  });
+
   it('rejects a group resize when one shared scale factor cannot be represented by every member', () => {
     const mixed = [
       { ...furniture('group-a', 98, 4, 4), prefabInstanceId: 'instance-one', scale: 1 as const },

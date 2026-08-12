@@ -10,6 +10,13 @@ import type {
 } from '../world/types';
 import { catalogItem } from './modernOfficeCatalog';
 
+export const BUILT_IN_OFFICE_PREFAB_IDS = ['bench-four', 'pod-l-two', 'control-m-three'] as const;
+export type BuiltInOfficePrefabId = typeof BUILT_IN_OFFICE_PREFAB_IDS[number];
+
+export const isBuiltInOfficePrefabId = (id: string): id is BuiltInOfficePrefabId => (
+  BUILT_IN_OFFICE_PREFAB_IDS.includes(id as BuiltInOfficePrefabId)
+);
+
 interface ItemOptions {
   id: string;
   kind: FurnitureKind;

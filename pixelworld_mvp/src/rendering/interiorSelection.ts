@@ -294,18 +294,32 @@ export function reorderSelection(
   const selected = new Set(expandSelection(layout, selectedIds));
   const items = layout.filter(({ id }) => selected.has(id));
   if (items.length === 0) return layout.map(cloneFurniture);
+  const layerDeltas = new Map<FurnitureLayer, number>();
+  for (const layer of LAYERS) {
+    const selectedOnLayer = items.filter((candidate) => (candidate.layer ?? 'furniture') === layer);
+    if (selectedOnLayer.length === 0) continue;
+    const peers = layout.filter((candidate) => (
+      (candidate.layer ?? 'furniture') === layer && !selected.has(candidate.id)
+    ));
+    if (direction === 'front' || direction === 'back') {
+      if (peers.length === 0) {
+        layerDeltas.set(layer, 0);
+        continue;
+      }
+      const peerZ = peers.map((peer) => peer.zIndex ?? 0);
+      const selectedZ = selectedOnLayer.map((peer) => peer.zIndex ?? 0);
+      layerDeltas.set(layer, direction === 'front'
+        ? Math.max(...peerZ) + 1 - Math.min(...selectedZ)
+        : Math.min(...peerZ) - 1 - Math.max(...selectedZ));
+      continue;
+    }
+    layerDeltas.set(layer, direction === 'forward' ? 1 : -1);
+  }
   return layout.map((item) => {
     if (!selected.has(item.id)) return cloneFurniture(item);
     const layer = item.layer ?? 'furniture';
-    const selectedOnLayer = items.filter((candidate) => (candidate.layer ?? 'furniture') === layer);
-    const peers = layout.filter((candidate) => (candidate.layer ?? 'furniture') === layer && !selected.has(candidate.id));
     const current = item.zIndex ?? 0;
-    const delta = direction === 'front'
-      ? (Math.max(-1, ...peers.map((peer) => peer.zIndex ?? 0)) + 1) - Math.min(...selectedOnLayer.map((peer) => peer.zIndex ?? 0))
-      : direction === 'back'
-        ? (Math.min(1, ...peers.map((peer) => peer.zIndex ?? 0)) - 1) - Math.min(...selectedOnLayer.map((peer) => peer.zIndex ?? 0))
-        : direction === 'forward' ? 1 : -1;
-    return { ...cloneFurniture(item), zIndex: current + delta };
+    return { ...cloneFurniture(item), zIndex: current + layerDeltas.get(layer)! };
   });
 }
 

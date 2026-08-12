@@ -9,6 +9,7 @@ import {
   hookFurnitureLabel,
   interiorAgentRenderDepth,
   interiorFurnitureRenderDepth,
+  prefabDisplayName,
   roomCellForLayout,
   roomOriginForLayout,
   roomPointForScreen,
@@ -177,6 +178,16 @@ describe('InteriorCutawaySystem', () => {
       id: 'hook', kind: 'computer', point: { x: 1, y: 1 }, facing: 'up', icon: 'web',
       supportedActions: ['signal', 'terminal'],
     }, locale)).toBe(expected);
+  });
+
+  it('localizes immutable built-ins by stable ID while preserving a user-created prefab name', () => {
+    const builtIn = BUILT_IN_OFFICE_PREFABS[1]!;
+    const userPrefab = {
+      ...builtIn, id: 'prefab-user', name: 'My Saved Layout', source: 'user' as const, immutable: false,
+    };
+
+    expect(prefabDisplayName(builtIn, 'ja-JP')).toBe('2人用L字型ポッド');
+    expect(prefabDisplayName(userPrefab, 'ja-JP')).toBe('My Saved Layout');
   });
 
   it('uses the approved centered desktop and narrow viewport layouts', () => {
@@ -417,6 +428,53 @@ describe('InteriorCutawaySystem', () => {
 
     expect(room.furniture).toHaveLength(bench.items.length);
     expect(room.furniture[0]!.point).toEqual({ x: 3, y: 4 });
+  });
+
+  it.each([
+    ['zh-TW', '四人雙排工作桌'],
+    ['en-US', 'Four-seat Double Bench'],
+    ['ja-JP', '4人用両面ベンチ'],
+    ['ko-KR', '4인용 양면 벤치'],
+  ] as const)('localizes the built-in prefab shelf preview and placement feedback in %s', (locale, expectedName) => {
+    const fake = fakeScene();
+    const cutaway = new InteriorCutawaySystem(fake.scene as never, WORLD_DEFINITION, () => ({ width: 1_280, height: 720 }));
+    const capture = captureCutawayHandlers(cutaway);
+    cutaway.setLocale(locale);
+    cutaway.open('rest-cabin');
+    capture.handlers().toggleEdit();
+    const room: InteriorDefinition = {
+      id: 'research-library', label: 'Shelf locale test', width: 18, height: 12,
+      floor: 'tile', wall: 'blue', furniture: [], overflow: [],
+    };
+    const internal = cutaway as unknown as {
+      activeDefinition: InteriorDefinition;
+      activeInterior: InteriorDefinition;
+      roomOrigin: { x: number; y: number };
+      roomCell: number;
+      renderFurniture(interior: InteriorDefinition, layout: ReturnType<typeof cutawayLayoutForViewport>): void;
+    };
+    internal.activeDefinition = room;
+    internal.activeInterior = room;
+    internal.renderFurniture(room, cutawayLayoutForViewport(1_280, 720));
+
+    const bench = BUILT_IN_OFFICE_PREFABS[0]!;
+    const preview = fake.objects.find((object) => !object.destroyed && object.interactive &&
+      object.children.filter(({ texture }) => texture.startsWith('modern-office')).length === bench.items.length)!;
+    const previewLabel = preview.children.find(({ text }) => text === expectedName)!;
+    expect(previewLabel).toBeDefined();
+    expect(previewLabel.visible).toBe(false);
+    preview.emit('pointerover');
+    expect(previewLabel.visible).toBe(true);
+    if (locale !== 'en-US') {
+      expect(preview.children.some(({ text }) => text === bench.name)).toBe(false);
+    }
+
+    const pointer = dragPreviewScreenPoint(internal.roomOrigin, { x: 3, y: 3 }, internal.roomCell);
+    preview.emit('dragstart', pointerAt(pointer.x, pointer.y));
+    preview.emit('dragend', pointerAt(pointer.x, pointer.y));
+    expect(capture.model()).toMatchObject({
+      statusId: 'prefabPlaced', statusParams: { name: expectedName },
+    });
   });
 
   it('keeps an existing offset sprite at the same logical point on a no-motion drag', () => {
@@ -689,7 +747,8 @@ describe('InteriorCutawaySystem', () => {
       supportedActions: [], icon: 'generic' as const, scale: 1 as const, rotation: 0 as const,
       layer: 'surface' as const, zIndex: 9, blocksNavigation: false,
     };
-    internal.activeInterior.furniture = structuredClone([...group, peer]);
+    const negativePeer = { ...peer, id: 'atomic-negative-peer', assetId: 129, point: { x: 12, y: 3 }, zIndex: -5 };
+    internal.activeInterior.furniture = structuredClone([...group, peer, negativePeer]);
     internal.activeDefinition = internal.activeInterior;
     internal.undoStore.reset(internal.activeInterior.furniture);
     internal.renderFurniture(internal.activeInterior, cutawayLayoutForViewport(1_280, 720));
@@ -733,6 +792,12 @@ describe('InteriorCutawaySystem', () => {
     expect(currentGroup().map(({ layer }) => layer)).toEqual(['wall', 'wall']);
     expect(capture.model().statusId).toBe('layerShiftRejected');
     capture.handlers().undo();
+
+    selectGroup();
+    capture.handlers().reorder('back');
+    expect(currentGroup().map(({ zIndex }) => zIndex)).toEqual([-8, -6]);
+    capture.handlers().undo();
+    expect(currentGroup()).toEqual(group);
 
     selectGroup();
     capture.handlers().reorder('front');

@@ -42,6 +42,20 @@ describe('village locale catalog', () => {
     expect(copy.cutaway.titles['research-library']).toBeTruthy();
   });
 
+  it.each([
+    ['zh-TW', ['四人雙排工作桌', '雙人 L 型工作站', '三人 M 型控制台']],
+    ['en-US', ['Four-seat Double Bench', 'Two-seat L Pod', 'Three-seat M Control Console']],
+    ['ja-JP', ['4人用両面ベンチ', '2人用L字型ポッド', '3人用M字型コントロール卓']],
+    ['ko-KR', ['4인용 양면 벤치', '2인용 L자형 포드', '3인용 M자형 제어 콘솔']],
+  ] as const)('provides typed built-in prefab labels for %s', (locale, expected) => {
+    const labels = villageCopy(locale).cutaway.prefabs;
+    expect([
+      labels['bench-four'], labels['pod-l-two'], labels['control-m-three'],
+    ]).toEqual(expected);
+    if (locale === 'en-US') expect(JSON.stringify(labels)).not.toMatch(/[\u3400-\u9fff]/);
+    else expect(Object.values(labels)).not.toContain('Four-seat Double Bench');
+  });
+
   it('does not retain Chinese building text in English mode', () => {
     expect(Object.values(villageCopy('en-US').buildings).join('')).not.toMatch(/[\u3400-\u9fff]/);
     expect(JSON.stringify(villageCopy('en-US').cutaway)).not.toMatch(/[\u3400-\u9fff]/);

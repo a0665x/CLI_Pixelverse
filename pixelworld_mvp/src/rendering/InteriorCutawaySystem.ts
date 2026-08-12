@@ -27,6 +27,7 @@ import {
   type CutawayRoomLabel,
 } from './InteriorCutawayDomOverlay';
 import {
+  builtInPrefabLabel,
   cutawayMessage,
   cutawayMessageState,
   type CutawayMessageArgs,
@@ -35,6 +36,7 @@ import {
   type VillageLocale,
   villageCopy,
 } from '../i18n/villageLocale';
+import { isBuiltInOfficePrefabId } from './builtInOfficePrefabs';
 import {
   commitPlacementCandidate,
   furniturePointFromRenderPoint,
@@ -253,6 +255,15 @@ export const hookFurnitureLabel = (
   locale: VillageLocale = 'zh-TW',
 ): string => (
   [...new Set(furniture.supportedActions.map((action) => villageCopy(locale).actions[action]))].join(' / ')
+);
+
+export const prefabDisplayName = (
+  prefab: FurniturePrefab,
+  locale: VillageLocale,
+): string => (
+  isBuiltInPrefab(prefab) && isBuiltInOfficePrefabId(prefab.id)
+    ? builtInPrefabLabel(locale, prefab.id)
+    : prefab.name
 );
 
 export function modernOfficeKindForFurniture(kind: FurnitureKind): ModernOfficeFurnitureKind {
@@ -877,6 +888,7 @@ export class InteriorCutawaySystem {
     });
     const prefabOffset = Math.min(12, missingRequired.length);
     this.prefabs.slice(0, Math.max(0, 12 - prefabOffset)).forEach((prefab, index) => {
+      const prefabName = prefabDisplayName(prefab, this.locale);
       const points = prefab.items.map((part) => {
         const { center } = furnitureRenderGeometry(part);
         return { x: center.x - 0.5, y: center.y - 0.5 };
@@ -890,7 +902,11 @@ export class InteriorCutawaySystem {
       const previewScale = Math.min(0.68, 26 / (Math.max(maxX - minX + 1, maxY - minY + 1) * this.roomCell));
       const item = this.scene.add.container(startX + (prefabOffset + index) * 34, shelfY).setSize(30, 30);
       const outline = this.scene.add.graphics().lineStyle(1, 0x8ee8ff, 0.95).strokeRect(-14, -14, 28, 28);
-      item.add(outline);
+      const nameLabel = this.scene.add.text(0, -17, prefabName, {
+        fontFamily: 'sans-serif', fontSize: '7px', color: '#fff5c7', backgroundColor: '#27452dee',
+        padding: { x: 3, y: 2 },
+      }).setOrigin(0.5, 1).setVisible(false);
+      item.add([outline, nameLabel]);
       prefab.items.forEach((part) => {
         const partCatalog = resolvedFurnitureAsset(part);
         const partKey = partCatalog?.key ?? modernOfficeAsset(modernOfficeKindForFurniture(part.kind)).key;
@@ -907,6 +923,8 @@ export class InteriorCutawaySystem {
       });
       item.setInteractive({ useHandCursor: true, draggable: true });
       this.scene.input.setDraggable(item);
+      item.on('pointerover', () => nameLabel.setVisible(true));
+      item.on('pointerout', () => nameLabel.setVisible(false));
       let ghosts: Phaser.GameObjects.Image[] = [];
       let lastPointerAnchor: { screen: GridPoint; room: GridPoint } | undefined;
       const capturePointerAnchor = (pointer: unknown) => {
@@ -932,6 +950,7 @@ export class InteriorCutawaySystem {
           return ghost;
         });
       item.on('dragstart', (pointer: unknown) => {
+        nameLabel.setVisible(true);
         const anchor = capturePointerAnchor(pointer);
         ghosts = anchor ? createGhosts(anchor.screen.x, anchor.screen.y) : [];
       });
@@ -954,7 +973,7 @@ export class InteriorCutawaySystem {
           ? placeOfficePrefab(interior, interior.furniture, prefab, snapFurniturePoint(anchor.room))
           : undefined;
         if (result?.accepted) this.commitFurnitureMutation(interior, result.layout);
-        if (result?.accepted) this.setStatus('prefabPlaced', { name: prefab.name });
+        if (result?.accepted) this.setStatus('prefabPlaced', { name: prefabName });
         else this.setStatus('prefabRejected');
         ghosts.forEach((ghost) => ghost.destroy());
         ghosts = [];

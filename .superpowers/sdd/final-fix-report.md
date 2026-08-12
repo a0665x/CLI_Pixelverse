@@ -89,3 +89,34 @@ Only the following implementation/test paths and this report are intended for th
 - `tests/test_docker_release_integrity.py`
 - `tests/test_modern_office_asset_provisioning.py`
 - `.superpowers/sdd/final-fix-report.md`
+
+## Final branch re-review follow-up
+
+The final branch re-review found two additional Important issues. Both were reproduced with tests before implementation and fixed without changing the built-in prefab IDs/source metadata or the out-of-scope Tailscale behavior.
+
+### RED
+
+- Focused command: `npm test -- --run tests/interiorSelection.test.ts tests/interiorCutawaySystem.test.ts tests/villageLocale.test.ts`
+- Result: **3 files failed, 11 tests failed / 71 passed**.
+- `Send to back` moved group z-indexes `[3, 5]` to `[-6, -4]` against duplicate peers at `-5`, leaving the highest member above the peers instead of moving the whole group below them.
+- All four locale catalog tests failed because typed built-in prefab labels did not exist; all four runtime shelf/placement tests failed because the preview exposed no localized name and placement feedback still used the immutable English core name.
+
+### Fix and focused GREEN
+
+- `back` now computes one delta per furniture layer from the selected layer maximum to `peer minimum - 1`, preserving every group member's relative z gap. `front` mirrors this using selected minimum and peer maximum; `forward`/`backward` remain shared ±1 deltas. Front/back are no-ops when that selected layer has no peer.
+- Added negative duplicate-peer, mixed-layer, no-peer, front, back, forward, backward, runtime handler, and Undo regressions.
+- Added typed stable IDs for `bench-four`, `pod-l-two`, and `control-m-three`, with complete `zh-TW`, `en-US`, `ja-JP`, and `ko-KR` labels.
+- Shelf hover/drag preview and placement feedback resolve the built-in display name by stable ID and current locale. User-created prefab names remain unchanged.
+- Focused command with built-in definitions added: 4 files, **100/100 passed**; TypeScript and `git diff --check` passed.
+
+### Fresh full GREEN after follow-up
+
+| Gate | Result |
+| --- | --- |
+| `node --test tests/*.mjs` | **134/134 passed** |
+| `python3 -m pytest -q` | **109 passed / 1 conditional skip** |
+| `npm run typecheck` | **passed** |
+| `npm test` | **53 files, 434/434 passed** |
+| `npm run build` | **passed**, 56 modules transformed |
+
+The existing informational Vite large-chunk warning remains unchanged.
