@@ -35,4 +35,5 @@ services:
     volumes:
       - ${PIXELVERSE_HERMES_REPO_HOST:-/home/a0665x/Desktop/AI_AGX_WS/HermesAgent_OpenWebUI/hermes-agent}:/host-hermes-agent:ro
       - ${PIXELVERSE_RUNTIME_DIR_HOST:-./.pixelverse-service/runtime}:/app/runtime
+      - "${PIXELVERSE_MODERN_OFFICE_ASSET_DIR_HOST:-./.pixelverse-service/private-assets/modern-office-v1.2}:/app/public/assets/private/modern-office-v1.2:ro"
     restart: unless-stopped

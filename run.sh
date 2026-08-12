@@ -121,6 +121,10 @@ compose() {
     "$@"
 }
 
+provision_modern_office_assets() {
+  python3 "$ROOT/scripts/provision_modern_office_assets.py"
+}
+
 select_agent_kind() {
   if [[ -n "${PIXELVERSE_AGENT_KIND:-}" ]]; then
     printf '%s\n' "$PIXELVERSE_AGENT_KIND"
@@ -511,6 +515,7 @@ start_service() {
   install_agent_adapter "$agent_kind"
   agent_command="$(agent_command_name "$agent_kind")"
 
+  provision_modern_office_assets
   stop_legacy_local_processes
   echo "Starting CLI_Pixelverse Docker service for $agent_kind..."
   if [[ "${PIXELVERSE_REBUILD:-0}" == "1" ]] || docker_image_is_stale; then
