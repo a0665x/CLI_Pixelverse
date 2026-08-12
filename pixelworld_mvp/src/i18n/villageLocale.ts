@@ -17,7 +17,7 @@ type VillageCopy = {
     titles: Record<'rest-cabin' | 'research-library' | 'maker-workshop' | 'collaboration-barn', string>;
     categories: Record<'surfaces' | 'seating-plants' | 'screens-electronics' | 'storage-partitions' | 'workstations', string>;
     actions: Record<'edit' | 'done' | 'collect' | 'revert' | 'copy' | 'paste' | 'save' | 'close' | 'cancel' | 'duplicate' | 'group' | 'shelf' | 'smaller' | 'larger' | 'layerDown' | 'layerUp' | 'back' | 'backward' | 'forward' | 'front' | 'undo' | 'applyTemplate' | 'previewTemplate' | 'dissolveGroup', string>;
-    status: { ready: string; editing: string; selected: string; batch: string; hook: string; prefab: string; furniture: string; templateInvalid: string; unreachableHook: string; storageFailed: string };
+    status: { ready: string; editing: string; selected: string; batch: string; hook: string; prefab: string; furniture: string; templateInvalid: string; unreachableHook: string; storageFailed: string; undoApplied: string; templatePreviewReady: string; templateApplied: string; groupDissolved: string };
   };
 };
 
@@ -45,7 +45,7 @@ const CATALOG: Record<VillageLocale, VillageCopy> = {
       { 'rest-cabin': '休息小屋', 'research-library': '研究圖書館', 'maker-workshop': '製作工坊', 'collaboration-barn': '協作穀倉' },
       { surfaces: '地板／牆面', 'seating-plants': '座椅／植栽', 'screens-electronics': '螢幕／電子', 'storage-partitions': '收納／隔間', workstations: '工作桌組' },
       { edit: '移動家具', done: '完成移動', collect: '全部收回', revert: '取消配置', copy: '複製格局', paste: '貼上格局', save: '儲存配置', close: '關閉室內', cancel: '取消選取', duplicate: '複製', group: '建立組裝件', shelf: '放回下排', smaller: '縮小', larger: '放大', layerDown: '下層', layerUp: '上層', back: '最下', backward: '下降', forward: '上升', front: '最上', undo: '復原', applyTemplate: '套用範本', previewTemplate: '預覽範本', dissolveGroup: '解散群組' },
-      { ready: '室內已就緒', editing: '拖曳家具或下方素材到房間', selected: '件家具', batch: '批次操作', hook: 'Hook', prefab: '組裝件', furniture: '家具', templateInvalid: '範本未通過走道或房間檢查', unreachableHook: '部分 Hook 無法抵達', storageFailed: '儲存失敗' },
+      { ready: '室內已就緒', editing: '拖曳家具或下方素材到房間', selected: '件家具', batch: '批次操作', hook: 'Hook', prefab: '組裝件', furniture: '家具', templateInvalid: '範本未通過走道或房間檢查', unreachableHook: '部分 Hook 無法抵達', storageFailed: '儲存失敗', undoApplied: '已復原上一個家具變更 · 尚未儲存', templatePreviewReady: '範本預覽 · 確認後按套用範本', templateApplied: '範本已套用到目前配置 · 按儲存配置才會保存', groupDissolved: '群組已解散 · 家具位置與圖層保持不變' },
     ),
   },
   'en-US': {
@@ -56,7 +56,7 @@ const CATALOG: Record<VillageLocale, VillageCopy> = {
       { 'rest-cabin': 'Rest Cabin', 'research-library': 'Research Library', 'maker-workshop': 'Maker Workshop', 'collaboration-barn': 'Collaboration Barn' },
       { surfaces: 'Floors & walls', 'seating-plants': 'Seats & plants', 'screens-electronics': 'Screens & devices', 'storage-partitions': 'Storage & dividers', workstations: 'Workstations' },
       { edit: 'Move furniture', done: 'Finish editing', collect: 'Collect all', revert: 'Revert', copy: 'Copy layout', paste: 'Paste layout', save: 'Save layout', close: 'Close interior', cancel: 'Clear selection', duplicate: 'Duplicate', group: 'Create assembly', shelf: 'Return to shelf', smaller: 'Smaller', larger: 'Larger', layerDown: 'Layer down', layerUp: 'Layer up', back: 'Send to back', backward: 'Move backward', forward: 'Move forward', front: 'Bring to front', undo: 'Undo', applyTemplate: 'Apply template', previewTemplate: 'Preview template', dissolveGroup: 'Dissolve group' },
-      { ready: 'Interior ready', editing: 'Drag furniture or shelf items into the room', selected: 'items selected', batch: 'Batch actions', hook: 'Hooks', prefab: 'Assemblies', furniture: 'Furniture', templateInvalid: 'Template failed room or aisle checks', unreachableHook: 'Some Hooks are unreachable', storageFailed: 'Could not save layout' },
+      { ready: 'Interior ready', editing: 'Drag furniture or shelf items into the room', selected: 'items selected', batch: 'Batch actions', hook: 'Hooks', prefab: 'Assemblies', furniture: 'Furniture', templateInvalid: 'Template failed room or aisle checks', unreachableHook: 'Some Hooks are unreachable', storageFailed: 'Could not save editor data', undoApplied: 'Undid the last furniture change · Not saved', templatePreviewReady: 'Template preview · Apply when ready', templateApplied: 'Template applied to this draft · Save to keep it', groupDissolved: 'Group dissolved · Positions and layers preserved' },
     ),
   },
   'ja-JP': {
@@ -67,7 +67,7 @@ const CATALOG: Record<VillageLocale, VillageCopy> = {
       { 'rest-cabin': '休憩小屋', 'research-library': '研究図書館', 'maker-workshop': '制作工房', 'collaboration-barn': '協働ギルド' },
       { surfaces: '床・壁', 'seating-plants': '椅子・植物', 'screens-electronics': '画面・機器', 'storage-partitions': '収納・間仕切り', workstations: '作業机' },
       { edit: '家具を移動', done: '編集完了', collect: 'すべて収納', revert: '元に戻す', copy: '配置をコピー', paste: '配置を貼付', save: '配置を保存', close: '室内を閉じる', cancel: '選択解除', duplicate: '複製', group: '組立品を作成', shelf: '棚に戻す', smaller: '縮小', larger: '拡大', layerDown: '下の層', layerUp: '上の層', back: '最背面', backward: '背面へ', forward: '前面へ', front: '最前面', undo: '元に戻す', applyTemplate: 'テンプレートを適用', previewTemplate: 'テンプレートをプレビュー', dissolveGroup: 'グループを解除' },
-      { ready: '室内の準備完了', editing: '家具や棚の素材を部屋へドラッグ', selected: '個を選択', batch: '一括操作', hook: 'Hook', prefab: '組立品', furniture: '家具', templateInvalid: 'テンプレートが部屋または通路の検査に失敗しました', unreachableHook: '到達できない Hook があります', storageFailed: '配置を保存できませんでした' },
+      { ready: '室内の準備完了', editing: '家具や棚の素材を部屋へドラッグ', selected: '個を選択', batch: '一括操作', hook: 'Hook', prefab: '組立品', furniture: '家具', templateInvalid: 'テンプレートが部屋または通路の検査に失敗しました', unreachableHook: '到達できない Hook があります', storageFailed: '編集データを保存できませんでした', undoApplied: '直前の家具変更を元に戻しました・未保存', templatePreviewReady: 'テンプレートをプレビュー中・確認後に適用してください', templateApplied: '下書きにテンプレートを適用しました・保存すると確定します', groupDissolved: 'グループを解除しました・位置とレイヤーは保持されています' },
     ),
   },
   'ko-KR': {
@@ -78,7 +78,7 @@ const CATALOG: Record<VillageLocale, VillageCopy> = {
       { 'rest-cabin': '휴식 오두막', 'research-library': '연구 도서관', 'maker-workshop': '제작 공방', 'collaboration-barn': '협업 길드' },
       { surfaces: '바닥·벽', 'seating-plants': '좌석·식물', 'screens-electronics': '화면·기기', 'storage-partitions': '수납·파티션', workstations: '작업대' },
       { edit: '가구 이동', done: '편집 완료', collect: '모두 회수', revert: '되돌리기', copy: '배치 복사', paste: '배치 붙여넣기', save: '배치 저장', close: '실내 닫기', cancel: '선택 해제', duplicate: '복제', group: '조립품 만들기', shelf: '선반으로', smaller: '축소', larger: '확대', layerDown: '아래 레이어', layerUp: '위 레이어', back: '맨 뒤로', backward: '뒤로', forward: '앞으로', front: '맨 앞으로', undo: '실행 취소', applyTemplate: '템플릿 적용', previewTemplate: '템플릿 미리보기', dissolveGroup: '그룹 해제' },
-      { ready: '실내 준비 완료', editing: '가구나 선반 항목을 방으로 드래그하세요', selected: '개 선택', batch: '일괄 작업', hook: 'Hook', prefab: '조립품', furniture: '가구', templateInvalid: '템플릿이 방 또는 통로 검사를 통과하지 못했습니다', unreachableHook: '도달할 수 없는 Hook이 있습니다', storageFailed: '배치를 저장하지 못했습니다' },
+      { ready: '실내 준비 완료', editing: '가구나 선반 항목을 방으로 드래그하세요', selected: '개 선택', batch: '일괄 작업', hook: 'Hook', prefab: '조립품', furniture: '가구', templateInvalid: '템플릿이 방 또는 통로 검사를 통과하지 못했습니다', unreachableHook: '도달할 수 없는 Hook이 있습니다', storageFailed: '편집 데이터를 저장하지 못했습니다', undoApplied: '마지막 가구 변경을 취소했습니다 · 저장되지 않음', templatePreviewReady: '템플릿 미리보기 · 확인 후 적용하세요', templateApplied: '초안에 템플릿을 적용했습니다 · 저장하면 유지됩니다', groupDissolved: '그룹을 해제했습니다 · 위치와 레이어는 유지됩니다' },
     ),
   },
 };

@@ -90,6 +90,19 @@ describe('interior prefab and room clipboard store', () => {
     expect(loadLayoutClipboard(memory)).toEqual(clipboard);
   });
 
+  it('falls back safely when prefab and clipboard storage reads throw', () => {
+    const throwingStorage = {
+      getItem: () => { throw new Error('storage denied'); },
+      setItem: () => { throw new Error('storage denied'); },
+    };
+
+    expect(loadPrefabs(throwingStorage)).toEqual([]);
+    expect(availablePrefabs(throwingStorage).map(({ id }) => id)).toEqual([
+      'bench-four', 'pod-l-two', 'control-m-three',
+    ]);
+    expect(loadLayoutClipboard(throwingStorage)).toBeUndefined();
+  });
+
   it('deeply clones visual offsets for copied persisted layout furniture', () => {
     const source = { ...item('offset', 3, 3), visualOffset: { x: -0.25, y: 0.125 } };
     const copied = copyDecorativeLayout('source-house', [source], 10);

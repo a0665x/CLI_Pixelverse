@@ -33,7 +33,7 @@ export interface CutawayDomModel {
   templatePreviewing: boolean;
   templateValid: boolean;
   templateDiagnostics: Array<'templateInvalid' | 'unreachableHook'>;
-  statusId?: 'storageFailed';
+  statusId?: 'storageFailed' | 'undoApplied' | 'templatePreviewReady' | 'templateApplied' | 'groupDissolved';
   selected?: { label: string; scale: number; rotation: FurnitureRotation; layer: FurnitureLayer };
 }
 

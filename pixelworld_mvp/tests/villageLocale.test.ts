@@ -27,11 +27,27 @@ describe('village locale catalog', () => {
     expect(copy.cutaway.status.templateInvalid).toBeTruthy();
     expect(copy.cutaway.status.unreachableHook).toBeTruthy();
     expect(copy.cutaway.status.storageFailed).toBeTruthy();
+    expect(copy.cutaway.status.undoApplied).toBeTruthy();
+    expect(copy.cutaway.status.templatePreviewReady).toBeTruthy();
+    expect(copy.cutaway.status.templateApplied).toBeTruthy();
+    expect(copy.cutaway.status.groupDissolved).toBeTruthy();
     expect(copy.cutaway.titles['research-library']).toBeTruthy();
   });
 
   it('does not retain Chinese building text in English mode', () => {
     expect(Object.values(villageCopy('en-US').buildings).join('')).not.toMatch(/[\u3400-\u9fff]/);
     expect(JSON.stringify(villageCopy('en-US').cutaway)).not.toMatch(/[\u3400-\u9fff]/);
+  });
+
+  it.each(['en-US', 'ja-JP', 'ko-KR'] as const)('provides localized editor workflow feedback for %s', (locale) => {
+    const status = villageCopy(locale).cutaway.status;
+    expect(new Set([
+      status.undoApplied,
+      status.templatePreviewReady,
+      status.templateApplied,
+      status.groupDissolved,
+      status.storageFailed,
+    ]).size).toBe(5);
+    if (locale === 'en-US') expect(JSON.stringify(status)).not.toMatch(/[\u3400-\u9fff]/);
   });
 });

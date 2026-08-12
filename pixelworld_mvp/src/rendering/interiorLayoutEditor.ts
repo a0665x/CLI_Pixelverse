@@ -132,7 +132,14 @@ export function rotateFurniture(
 }
 
 const storageKey = (buildingId: string): string => `pixelworld:interior-layout:${buildingId}`;
-const browserStorage = (): StorageLike | undefined => typeof window === 'undefined' ? undefined : window.localStorage;
+const browserStorage = (): StorageLike | undefined => {
+  if (typeof window === 'undefined') return undefined;
+  try { return window.localStorage; } catch { return undefined; }
+};
+
+const readStorage = (storage: StorageLike | undefined, key: string): string | null | undefined => {
+  try { return storage?.getItem(key); } catch { return undefined; }
+};
 
 interface SavedInteriorLayoutV5 {
   version: 5;
@@ -213,7 +220,7 @@ export function hasSavedInteriorLayout(
   buildingId: string,
   storage: StorageLike | undefined = browserStorage(),
 ): boolean {
-  const raw = storage?.getItem(storageKey(buildingId));
+  const raw = readStorage(storage, storageKey(buildingId));
   return raw !== null && raw !== undefined && parseSavedInteriorLayout(raw) !== undefined;
 }
 
@@ -246,7 +253,11 @@ const normalizeRoomLayout = (
 ): FurnitureDefinition[] => normalizeLayout(layout).map((item) => {
   const authoredHook = room.furniture.find(({ id }) => id === item.id && item.supportedActions.length > 0);
   return item.supportedActions.length > 0 || authoredHook
-    ? { ...item, requirementId: requiredId(room, authoredHook ?? item), blocksNavigation: true }
+    ? {
+        ...item,
+        requirementId: requiredId(room, authoredHook ?? item),
+        blocksNavigation: item.blocksNavigation ?? authoredHook?.blocksNavigation ?? true,
+      }
     : item;
 });
 
@@ -315,6 +326,7 @@ export function saveInteriorLayout(
   layout: readonly FurnitureDefinition[],
   storage: StorageLike | undefined = browserStorage(),
 ): void {
+  if (typeof window !== 'undefined' && !storage) throw new Error('Interior storage unavailable');
   const saved: SavedInteriorLayoutV5 = {
     version: 5,
     authoredRevision: INTERIOR_LAYOUT_REVISION,
@@ -329,7 +341,7 @@ export function loadInteriorLayout(
   storage: StorageLike | undefined = browserStorage(),
 ): FurnitureDefinition[] {
   const fallback = normalizeRoomLayout(room, room.furniture);
-  const raw = storage?.getItem(storageKey(buildingId));
+  const raw = readStorage(storage, storageKey(buildingId));
   if (!raw) return fallback;
   const parsed = parseSavedInteriorLayout(raw);
   if (!parsed) return fallback;

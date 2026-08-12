@@ -6,7 +6,11 @@ import {
   cutawayContainsPointer,
   hookFurnitureLabel,
 } from '../src/rendering/InteriorCutawaySystem';
-import { selectionCapabilities } from '../src/rendering/InteriorCutawayDomOverlay';
+import {
+  selectionCapabilities,
+  type CutawayDomHandlers,
+  type CutawayDomModel,
+} from '../src/rendering/InteriorCutawayDomOverlay';
 import type { InteriorAgentSnapshot } from '../src/rendering/interiorAssignment';
 import { BUILT_IN_OFFICE_PREFABS } from '../src/rendering/builtInOfficePrefabs';
 import type { InteriorDefinition } from '../src/world/types';
@@ -91,6 +95,25 @@ const idleInside: InteriorAgentSnapshot = {
 const pointerAt = (x: number, y: number) => ({
   x, y, camera: {}, positionToCamera: () => ({ x, y }),
 });
+
+const captureCutawayHandlers = (cutaway: InteriorCutawaySystem) => {
+  let handlers: CutawayDomHandlers | undefined;
+  let model: CutawayDomModel | undefined;
+  const overlay = {
+    open: vi.fn((_layout, nextModel: CutawayDomModel, nextHandlers: CutawayDomHandlers) => {
+      model = nextModel;
+      handlers = nextHandlers;
+    }),
+    update: vi.fn((nextModel: CutawayDomModel) => { model = nextModel; }),
+    setLocale: vi.fn(), setRoomLabels: vi.fn(), close: vi.fn(), destroy: vi.fn(),
+  };
+  Object.assign(cutaway, { domOverlay: overlay });
+  return {
+    overlay,
+    handlers: () => handlers!,
+    model: () => model!,
+  };
+};
 
 describe('InteriorCutawaySystem', () => {
   it('exposes contextual operations from the exact selection shape', () => {
@@ -256,6 +279,136 @@ describe('InteriorCutawaySystem', () => {
 
     expect(room.furniture).toHaveLength(bench.items.length);
     expect(room.furniture[0]!.point).toEqual({ x: 3, y: 4 });
+  });
+
+  it('previews without mutation or storage, applies a valid compact template in memory, and undoes it', () => {
+    const storage = { getItem: vi.fn(() => null), setItem: vi.fn() };
+    vi.stubGlobal('window', { localStorage: storage, dispatchEvent: vi.fn(), prompt: vi.fn() });
+    try {
+      const fake = fakeScene();
+      const cutaway = new InteriorCutawaySystem(fake.scene as never, WORLD_DEFINITION, () => ({ width: 1_280, height: 720 }));
+      const capture = captureCutawayHandlers(cutaway);
+      cutaway.open('rest-cabin');
+      capture.handlers().toggleEdit();
+      capture.handlers().collect();
+      const beforePreview = structuredClone((cutaway as unknown as { activeInterior: InteriorDefinition }).activeInterior.furniture);
+
+      capture.handlers().previewTemplate();
+
+      expect((cutaway as unknown as { activeInterior: InteriorDefinition }).activeInterior.furniture).toEqual(beforePreview);
+      expect(storage.setItem).not.toHaveBeenCalled();
+      expect(capture.model()).toMatchObject({ templatePreviewing: true, templateValid: true });
+      expect(fake.objects.some(({ alpha, destroyed }) => alpha === 0.36 && !destroyed)).toBe(true);
+
+      capture.handlers().applyTemplate();
+      expect((cutaway as unknown as { activeInterior: InteriorDefinition }).activeInterior.furniture.length).toBeGreaterThan(0);
+      expect(storage.setItem).not.toHaveBeenCalled();
+      expect(capture.model()).toMatchObject({ templatePreviewing: false, canUndo: true, statusId: 'templateApplied' });
+
+      capture.handlers().undo();
+      expect((cutaway as unknown as { activeInterior: InteriorDefinition }).activeInterior.furniture).toEqual([]);
+      expect(storage.setItem).not.toHaveBeenCalled();
+      expect(capture.model()).toMatchObject({ statusId: 'undoApplied' });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it.each(['arrival-lodge', 'awaiting-post', 'offline-dormitory'] as const)(
+    'enables Preview and Apply for the valid compact template in %s',
+    (buildingId) => {
+      const fake = fakeScene();
+      const cutaway = new InteriorCutawaySystem(fake.scene as never, WORLD_DEFINITION, () => ({ width: 1_280, height: 720 }));
+      const capture = captureCutawayHandlers(cutaway);
+      cutaway.open(buildingId);
+      capture.handlers().toggleEdit();
+      capture.handlers().previewTemplate();
+      expect(capture.model()).toMatchObject({ templatePreviewing: true, templateValid: true });
+    },
+  );
+
+  it('reports an invalid template through the model and refuses Apply', () => {
+    const fake = fakeScene();
+    const cutaway = new InteriorCutawaySystem(fake.scene as never, WORLD_DEFINITION, () => ({ width: 1_280, height: 720 }));
+    const capture = captureCutawayHandlers(cutaway);
+    cutaway.open('rest-cabin');
+    capture.handlers().toggleEdit();
+    const internal = cutaway as unknown as { activeDefinition: InteriorDefinition; activeInterior: InteriorDefinition };
+    internal.activeDefinition.furniture.push({
+      id: 'invalid-outside', kind: 'desk', point: { x: -20, y: -20 }, facing: 'up',
+      supportedActions: ['terminal'], icon: 'tool', assetId: 193, blocksNavigation: true,
+    });
+    const before = internal.activeInterior.furniture;
+
+    capture.handlers().previewTemplate();
+    expect(capture.model()).toMatchObject({ templatePreviewing: true, templateValid: false });
+    expect(capture.model().templateDiagnostics).toContain('templateInvalid');
+    capture.handlers().applyTemplate();
+    expect(internal.activeInterior.furniture).toBe(before);
+  });
+
+  it('shows Dissolve only for one selected instance, dissolves it atomically, and supports Undo', () => {
+    const fake = fakeScene();
+    const cutaway = new InteriorCutawaySystem(fake.scene as never, WORLD_DEFINITION, () => ({ width: 1_280, height: 720 }));
+    const capture = captureCutawayHandlers(cutaway);
+    cutaway.open('maker-workshop');
+    capture.handlers().toggleEdit();
+    const internal = cutaway as unknown as {
+      activeInterior: InteriorDefinition;
+      selectedFurnitureIds: Set<string>;
+      selectedFurnitureId?: string;
+      syncOverlay(): void;
+    };
+    const instanceId = internal.activeInterior.furniture.find(({ prefabInstanceId }) => prefabInstanceId)?.prefabInstanceId!;
+    const instance = internal.activeInterior.furniture.filter(({ prefabInstanceId }) => prefabInstanceId === instanceId);
+    instance.forEach(({ id }) => internal.selectedFurnitureIds.add(id));
+    internal.selectedFurnitureId = instance[0]!.id;
+    internal.syncOverlay();
+    expect(capture.model().canDissolve).toBe(true);
+
+    capture.handlers().dissolveGroup();
+    expect(internal.activeInterior.furniture.filter(({ id }) => instance.some((item) => item.id === id))
+      .every(({ prefabInstanceId }) => prefabInstanceId === undefined)).toBe(true);
+    expect(capture.model()).toMatchObject({ canDissolve: false, statusId: 'groupDissolved' });
+
+    capture.handlers().undo();
+    expect(internal.activeInterior.furniture.filter(({ id }) => instance.some((item) => item.id === id))
+      .every(({ prefabInstanceId }) => prefabInstanceId === instanceId)).toBe(true);
+  });
+
+  it('survives throwing storage reads and localizes failed Save, Copy, and assembly writes', () => {
+    const readWindow = { get localStorage(): Storage { throw new Error('storage denied'); }, dispatchEvent: vi.fn() };
+    vi.stubGlobal('window', readWindow);
+    const fake = fakeScene();
+    const cutaway = new InteriorCutawaySystem(fake.scene as never, WORLD_DEFINITION, () => ({ width: 1_280, height: 720 }));
+    const capture = captureCutawayHandlers(cutaway);
+    expect(() => cutaway.open('rest-cabin')).not.toThrow();
+    expect(() => capture.handlers().save()).not.toThrow();
+    expect(capture.model().statusId).toBe('storageFailed');
+    vi.stubGlobal('window', {
+      localStorage: { getItem: vi.fn(() => null), setItem: vi.fn(() => { throw new Error('storage full'); }) },
+      dispatchEvent: vi.fn(), prompt: vi.fn(() => 'Desk group'),
+    });
+    capture.handlers().toggleEdit();
+
+    expect(() => capture.handlers().save()).not.toThrow();
+    expect(capture.model().statusId).toBe('storageFailed');
+    expect(() => capture.handlers().copy()).not.toThrow();
+    expect(capture.model().statusId).toBe('storageFailed');
+    expect(cutaway.isOpen()).toBe(true);
+
+    const internal = cutaway as unknown as {
+      activeInterior: InteriorDefinition;
+      selectedFurnitureIds: Set<string>;
+      selectedFurnitureId?: string;
+    };
+    const ordinary = internal.activeInterior.furniture.filter(({ supportedActions, requirementId }) =>
+      supportedActions.length === 0 && !requirementId).slice(0, 2);
+    ordinary.forEach(({ id }) => internal.selectedFurnitureIds.add(id));
+    internal.selectedFurnitureId = ordinary[0]!.id;
+    expect(() => capture.handlers().group()).not.toThrow();
+    expect(capture.model().statusId).toBe('storageFailed');
+    vi.unstubAllGlobals();
   });
 
   it('keeps canvas text out of the cutaway header so DOM text stays crisp', () => {

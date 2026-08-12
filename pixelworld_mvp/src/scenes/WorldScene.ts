@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import type { VillageLocale } from '../i18n/villageLocale';
 import { AgentRegistry } from '../agents/AgentRegistry';
 import type { AgentPresence } from '../agents/agentPresence';
 import { DebugOverlay, type DebugLayerName } from '../debug/DebugOverlay';
@@ -40,6 +41,7 @@ export class WorldScene extends Phaser.Scene {
   private sceneReady = false;
   private readonly listeners = new Set<() => void>();
   private lastError = '';
+  private locale: VillageLocale = 'zh-TW';
 
   constructor() { super('world'); }
   preload(): void { preloadVillageAssets(this); }
@@ -58,7 +60,7 @@ export class WorldScene extends Phaser.Scene {
     this.renderedForegrounds.push(...village.foregrounds);
     this.animalSystem = new AmbientAnimalSystem(this, this.worldDefinition.scenery.animals);
     this.agents = new AgentRegistry(this, this.navigationGrid, this.worldDefinition.spawn);
-    this.cutawaySystem = new InteriorCutawaySystem(this, this.worldDefinition);
+    this.attachCutawaySystem(new InteriorCutawaySystem(this, this.worldDefinition));
     village.hitRegions.forEach(({ buildingId, object }) => {
       object.on('pointerdown', () => this.cutawaySystem?.open(buildingId));
     });
@@ -204,9 +206,17 @@ export class WorldScene extends Phaser.Scene {
       : { kind: 'outside' };
   }
   selectedAgent(): import('../agents/AgentController').AgentController { return this.agents.selected(); }
+  setLocale(locale: VillageLocale): void {
+    this.locale = locale;
+    this.cutawaySystem?.setLocale(locale);
+  }
   onRosterChanged(listener: () => void): () => void { this.listeners.add(listener); return () => this.listeners.delete(listener); }
 
   private notifyRoster(): void { this.listeners.forEach((listener) => listener()); }
+  private attachCutawaySystem(system: InteriorCutawaySystem): void {
+    this.cutawaySystem = system;
+    system.setLocale(this.locale);
+  }
 
   private releasePendingClone(agentId: string): void { this.pendingCloneAgents.delete(agentId); }
 

@@ -157,6 +157,17 @@ describe('interior furniture editor model', () => {
     expect(writes).toBe(0);
   });
 
+  it('falls back to the authored room when storage access throws', () => {
+    const throwingStorage = {
+      getItem: () => { throw new Error('storage denied'); },
+      setItem: () => { throw new Error('storage denied'); },
+    };
+
+    expect(hasSavedInteriorLayout('throwing-house', throwingStorage)).toBe(false);
+    expect(loadInteriorLayout('throwing-house', room, throwingStorage)).toEqual(normalizedRoomLayout());
+    expect(revertInteriorDraft('throwing-house', room, throwingStorage)).toEqual(normalizedRoomLayout());
+  });
+
   it.each([
     { id: 123, kind: 'chair', point: { x: 2, y: 2 }, facing: 'up', supportedActions: [], icon: 'generic' },
     { id: 'bad-kind', kind: 'spaceship', point: { x: 2, y: 2 }, facing: 'up', supportedActions: [], icon: 'generic' },

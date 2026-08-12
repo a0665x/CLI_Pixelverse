@@ -203,7 +203,7 @@ export class InteriorCutawaySystem {
   private catalogPageIndex = 0;
   private readonly domOverlay: InteriorCutawayDomOverlay;
   private statusMessage = '';
-  private statusId: 'storageFailed' | undefined;
+  private statusId: 'storageFailed' | 'undoApplied' | 'templatePreviewReady' | 'templateApplied' | 'groupDissolved' | undefined;
   private readonly undoStore = new InteriorUndoStore([], 20);
   private templatePreview: FurnitureDefinition[] | undefined;
   private templateDiagnostics: Array<'templateInvalid' | 'unreachableHook'> = [];
@@ -344,9 +344,13 @@ export class InteriorCutawaySystem {
       },
       copy: () => {
         if (!this.openId) return;
-        saveLayoutClipboard(copyDecorativeLayout(this.openId, interior.furniture));
-        this.setStatus('格局已複製（Hook 家具不會被帶走）');
-        this.close();
+        try {
+          saveLayoutClipboard(copyDecorativeLayout(this.openId, interior.furniture));
+          this.setStatus('格局已複製（Hook 家具不會被帶走）');
+          this.close();
+        } catch {
+          this.setStatus('', 'storageFailed');
+        }
       },
       paste: () => {
         const clipboard = loadLayoutClipboard();
@@ -921,7 +925,10 @@ export class InteriorCutawaySystem {
   }
 
   private syncOverlay(): void { this.domOverlay.update(this.overlayModel()); }
-  private setStatus(message: string, statusId?: 'storageFailed'): void {
+  private setStatus(
+    message: string,
+    statusId?: 'storageFailed' | 'undoApplied' | 'templatePreviewReady' | 'templateApplied' | 'groupDissolved',
+  ): void {
     this.statusMessage = message;
     this.statusId = statusId;
     this.domOverlay.update(this.overlayModel());
@@ -949,7 +956,7 @@ export class InteriorCutawaySystem {
     this.clearTemplatePreview();
     this.selectedFurnitureIds.clear();
     this.selectedFurnitureId = undefined;
-    this.setStatus('已復原上一個家具變更 · 尚未儲存');
+    this.setStatus('', 'undoApplied');
     this.renderFurniture(interior, layout);
   }
 
@@ -967,7 +974,7 @@ export class InteriorCutawaySystem {
     }
     this.templatePreview = proposed;
     this.templateDiagnostics = [...diagnostics];
-    this.setStatus(diagnostics.size === 0 ? '範本預覽 · 確認後按套用範本' : '⚠ 範本未套用');
+    this.setStatus('', diagnostics.size === 0 ? 'templatePreviewReady' : undefined);
     this.renderFurniture(interior, layout);
   }
 
@@ -978,7 +985,7 @@ export class InteriorCutawaySystem {
     this.clearTemplatePreview();
     this.selectedFurnitureIds.clear();
     this.selectedFurnitureId = undefined;
-    this.setStatus('範本已套用到目前配置 · 按儲存配置才會保存');
+    this.setStatus('', 'templateApplied');
     this.renderFurniture(interior, layout);
   }
 
@@ -987,7 +994,7 @@ export class InteriorCutawaySystem {
     const instanceId = selection[0]?.prefabInstanceId;
     if (!instanceId || !selection.every(({ prefabInstanceId }) => prefabInstanceId === instanceId)) return;
     this.commitFurnitureMutation(interior, dissolvePrefabInstance(interior.furniture, instanceId));
-    this.setStatus('群組已解散 · 家具位置與圖層保持不變');
+    this.setStatus('', 'groupDissolved');
     this.renderFurniture(interior, layout);
   }
 
@@ -1056,9 +1063,13 @@ export class InteriorCutawaySystem {
       this.setStatus('⚠ 至少框選兩件一般家具；Hook 家具不會加入組裝件');
       return;
     }
-    savePrefabs(upsertPrefab(loadPrefabs(), prefab));
-    this.prefabs = availablePrefabs();
-    this.setStatus(`組裝件「${name}」已加入下方貨架`);
+    try {
+      savePrefabs(upsertPrefab(loadPrefabs(), prefab));
+      this.prefabs = availablePrefabs();
+      this.setStatus(`組裝件「${name}」已加入下方貨架`);
+    } catch {
+      this.setStatus('', 'storageFailed');
+    }
     this.renderFurniture(interior, layout);
   }
 

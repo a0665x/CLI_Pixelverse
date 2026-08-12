@@ -69,6 +69,24 @@ describe('Smallville-style authored interiors', () => {
     expect(interiorDefinitionForBuilding(arrivalLodge)).toMatchObject({ width: 14, height: 9 });
   });
 
+  it.each(['arrival-lodge', 'awaiting-post', 'offline-dormitory', 'rest-cabin'] as const)(
+    '%s has a compact template that passes the complete-room validator and reaches every Hook',
+    (buildingId) => {
+      const building = WORLD_DEFINITION.buildings.find(({ id }) => id === buildingId)!;
+      const room = interiorDefinitionForBuilding(building);
+      const door = { x: Math.floor(room.width / 2), y: room.height - 1 };
+
+      expect(room).toMatchObject({ width: 14, height: 9 });
+      expect(officeLayoutIssues(room), buildingId).toEqual([]);
+      room.furniture.filter(({ supportedActions }) => supportedActions.length > 0).forEach((item) => {
+        const target = interiorInteractionPoint(room, item);
+        expect(interiorPath(room, door, target).at(-1), `${buildingId}:${item.id}`).toEqual({
+          x: Math.round(target.x), y: Math.round(target.y),
+        });
+      });
+    },
+  );
+
   it('returns a fresh interior definition for every building resolution', () => {
     const building = WORLD_DEFINITION.buildings.find(({ id }) => id === 'network-lab')!;
     const first = interiorDefinitionForBuilding(building);

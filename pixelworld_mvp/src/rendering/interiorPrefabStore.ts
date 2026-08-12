@@ -20,7 +20,14 @@ export interface LayoutMutationResult { accepted: boolean; layout: FurnitureDefi
 
 const PREFAB_KEY = 'pixelworld:interior-prefabs:v1';
 const CLIPBOARD_KEY = 'pixelworld:interior-clipboard:v1';
-const browserStorage = (): StorageLike | undefined => typeof window === 'undefined' ? undefined : window.localStorage;
+const browserStorage = (): StorageLike | undefined => {
+  if (typeof window === 'undefined') return undefined;
+  try { return window.localStorage; } catch { return undefined; }
+};
+
+const readStorage = (storage: StorageLike | undefined, key: string): string | null | undefined => {
+  try { return storage?.getItem(key); } catch { return undefined; }
+};
 
 const cloneFurniture = (item: FurnitureDefinition): FurnitureDefinition => ({
   ...item,
@@ -68,12 +75,13 @@ export function savePrefabs(
   prefabs: readonly FurniturePrefab[],
   storage: StorageLike | undefined = browserStorage(),
 ): void {
+  if (typeof window !== 'undefined' && !storage) throw new Error('Prefab storage unavailable');
   const userPrefabs = prefabs.filter((prefab) => !isBuiltInPrefab(prefab)).map(clonePrefab);
   storage?.setItem(PREFAB_KEY, JSON.stringify({ version: 1, prefabs: userPrefabs }));
 }
 
 export function loadPrefabs(storage: StorageLike | undefined = browserStorage()): FurniturePrefab[] {
-  const raw = storage?.getItem(PREFAB_KEY);
+  const raw = readStorage(storage, PREFAB_KEY);
   if (!raw) return [];
   try {
     const parsed = JSON.parse(raw) as { version?: unknown; prefabs?: unknown };
@@ -125,13 +133,14 @@ export function saveLayoutClipboard(
   clipboard: InteriorLayoutClipboard,
   storage: StorageLike | undefined = browserStorage(),
 ): void {
+  if (typeof window !== 'undefined' && !storage) throw new Error('Clipboard storage unavailable');
   storage?.setItem(CLIPBOARD_KEY, JSON.stringify(clipboard));
 }
 
 export function loadLayoutClipboard(
   storage: StorageLike | undefined = browserStorage(),
 ): InteriorLayoutClipboard | undefined {
-  const raw = storage?.getItem(CLIPBOARD_KEY);
+  const raw = readStorage(storage, CLIPBOARD_KEY);
   if (!raw) return undefined;
   try {
     const parsed = JSON.parse(raw) as InteriorLayoutClipboard;
