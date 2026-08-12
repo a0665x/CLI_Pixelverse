@@ -86,8 +86,15 @@ def test_liquid_glass_is_reserved_for_functional_controls():
     structural_panels = [element for element in parser.elements if "panel" in element["classes"]]
     assert structural_panels
     assert all("functional-glass" not in element["classes"] for element in structural_panels)
-    assert 'class="timeline-panel"' in app
-    assert 'class="timeline-panel functional-glass"' not in app
+    timeline_class_tokens = [
+        frozenset(match.group("classes").split())
+        for match in re.finditer(
+            r'<article\s+class="(?P<classes>[^"<>]*\btimeline-panel\b[^"<>]*)"',
+            app,
+        )
+    ]
+    assert timeline_class_tokens
+    assert all("functional-glass" not in classes for classes in timeline_class_tokens)
 
     panel_rule = re.search(r"\.panel\s*\{(?P<body>[^}]*)\}", html)
     timeline_rule = re.search(r"\.timeline-panel\s*\{(?P<body>[^}]*)\}", html)
