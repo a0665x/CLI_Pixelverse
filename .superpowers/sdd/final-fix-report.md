@@ -42,8 +42,16 @@ Fresh full verification after all source changes:
 | `npm run typecheck` in `pixelworld_mvp` | **passed** |
 | `npm test` in `pixelworld_mvp` | **53 files, 423/423 passed** |
 | `npm run build` in `pixelworld_mvp` | **passed**, 56 modules transformed |
+| `PIXELVERSE_TEST_IMAGE=cli-pixelverse:local python3 -m pytest -q tests/test_docker_release_integrity.py` | **9/9 passed**, including built-image inspection |
 
 The Vite build retained its informational warning that the main minified chunk is larger than 500 kB; this is not a test or build failure and is unrelated to this wave.
+
+Post-commit deployment verification:
+
+- Implementation commit `807fe13` was built into `cli-pixelverse:local`; the image revision label is `807fe13045906f705b2bdc2d60467b10b0d35572`.
+- The rebuilt container is serving on localhost port 5661. `/health`, `/openapi.json`, and `/api/world` all responded successfully.
+- Health still reports the pre-existing persisted Tailscale mode as active while exposing localhost 5661 as an available option. Per scope, this behavior was documented and not changed.
+- `codegraph sync .` completed successfully and reported the index already up to date.
 
 ## Coverage added
 
