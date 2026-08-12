@@ -88,6 +88,7 @@ def test_build_fingerprint_inputs_cover_pixelworld_and_container_configuration()
     assert {
         "pixelworld_mvp/package.json",
         "pixelworld_mvp/package-lock.json",
+        "pixelworld_mvp/index.html",
         "pixelworld_mvp/vite.config.ts",
         "pixelworld_mvp/tsconfig.json",
         "pixelworld_mvp/src",

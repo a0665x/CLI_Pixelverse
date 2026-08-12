@@ -23,6 +23,7 @@ BUILD_INPUTS = (
     "scripts",
     "pixelworld_mvp/package.json",
     "pixelworld_mvp/package-lock.json",
+    "pixelworld_mvp/index.html",
     "pixelworld_mvp/vite.config.ts",
     "pixelworld_mvp/tsconfig.json",
     "pixelworld_mvp/src",
