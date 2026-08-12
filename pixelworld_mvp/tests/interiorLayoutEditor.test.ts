@@ -156,6 +156,36 @@ describe('interior furniture editor model', () => {
     expect(memory.get(key)).toBe('{not-json');
     expect(writes).toBe(0);
   });
+
+  it.each([
+    { id: 123, kind: 'chair', point: { x: 2, y: 2 }, facing: 'up', supportedActions: [], icon: 'generic' },
+    { id: 'bad-kind', kind: 'spaceship', point: { x: 2, y: 2 }, facing: 'up', supportedActions: [], icon: 'generic' },
+    { id: 'bad-point', kind: 'chair', point: { x: Infinity, y: 2 }, facing: 'up', supportedActions: [], icon: 'generic' },
+    { id: 'bad-facing', kind: 'chair', point: { x: 2, y: 2 }, facing: 'north', supportedActions: [], icon: 'generic' },
+    { id: 'bad-actions', kind: 'chair', point: { x: 2, y: 2 }, facing: 'up', supportedActions: ['dance'], icon: 'generic' },
+    { id: 'bad-icon', kind: 'chair', point: { x: 2, y: 2 }, facing: 'up', supportedActions: [], icon: 'sparkle' },
+  ])('rejects a structurally invalid saved furniture item without writing: %#', (invalidItem) => {
+    const key = 'pixelworld:interior-layout:invalid-item-house';
+    const raw = JSON.stringify({ version: 5, authoredRevision: INTERIOR_LAYOUT_REVISION, furniture: [invalidItem] });
+    let writes = 0;
+    const storage = {
+      getItem: (candidate: string) => candidate === key ? raw : null,
+      setItem: () => { writes += 1; },
+    };
+
+    expect(hasSavedInteriorLayout('invalid-item-house', storage)).toBe(false);
+    expect(loadInteriorLayout('invalid-item-house', room, storage)).toEqual(normalizedRoomLayout());
+    expect(writes).toBe(0);
+  });
+
+  it('treats a saved empty room as valid and authoritative', () => {
+    const key = 'pixelworld:interior-layout:empty-house';
+    const raw = JSON.stringify({ version: 5, authoredRevision: INTERIOR_LAYOUT_REVISION, furniture: [] });
+    const storage = { getItem: (candidate: string) => candidate === key ? raw : null, setItem: () => undefined };
+
+    expect(hasSavedInteriorLayout('empty-house', storage)).toBe(true);
+    expect(loadInteriorLayout('empty-house', room, storage)).toEqual([]);
+  });
   it('offers a complete Modern Office palette and maps every item to that family', () => {
     expect(FURNITURE_PALETTE).toEqual(expect.arrayContaining([
       'sofa', 'chair', 'office-chair', 'television', 'display', 'computer', 'desk',

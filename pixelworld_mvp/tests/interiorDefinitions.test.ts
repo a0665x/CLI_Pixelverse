@@ -6,6 +6,10 @@ import {
 } from '../src/world/interiorDefinitions';
 import type { AgentAction, BuildingThemeId } from '../src/world/types';
 import { WORLD_DEFINITION } from '../src/world/worldDefinition';
+import { builtInPrefab } from '../src/rendering/builtInOfficePrefabs';
+import { furnitureCells } from '../src/rendering/interiorLayoutEditor';
+import { interiorInteractionPoint, interiorPath } from '../src/rendering/interiorMotion';
+import { officeLayoutIssues } from '../src/rendering/prefabGeometry';
 
 const expectedActions = {
   'rest-cabin': ['offline', 'queue', 'repair', 'rest'],
@@ -41,7 +45,7 @@ describe('Smallville-style authored interiors', () => {
   it.each(Object.entries(expectedActions) as Array<[BuildingThemeId, readonly AgentAction[]]>)('%s preserves every Hook action', (themeId, actions) => {
     const actual = [...new Set(INTERIOR_DEFINITIONS[themeId].furniture
       .flatMap(({ supportedActions }) => supportedActions))].sort();
-    expect(actual).toEqual([...actions].sort());
+    expect(actual).toEqual(expect.arrayContaining([...actions]));
   });
 
   it.each(['research-library', 'maker-workshop', 'collaboration-barn'] as const)(
@@ -74,5 +78,54 @@ describe('Smallville-style authored interiors', () => {
     first.overflow[0]!.x = -99;
     expect(second.furniture[0]!.point.x).not.toBe(-99);
     expect(second.overflow[0]!.x).not.toBe(-99);
+  });
+
+  it.each(['maker-workshop', 'collaboration-barn'] as const)(
+    '%s preserves every canonical M-control desk action and keeps all three desks assignable',
+    (themeId) => {
+      const canonical = builtInPrefab('control-m-three')!;
+      const room = INTERIOR_DEFINITIONS[themeId];
+      expect(officeLayoutIssues(room)).toEqual([]);
+      const instanceId = room.furniture.find(({ prefabInstanceId }) => prefabInstanceId?.includes('control-m-three'))!.prefabInstanceId!;
+      const placed = room.furniture.filter((item) => item.prefabInstanceId === instanceId);
+
+      canonical.items.forEach((item, index) => {
+        expect(placed[index]?.supportedActions, `${themeId}:${item.id}`).toEqual(item.supportedActions);
+      });
+      expect(placed.filter(({ kind, supportedActions }) => kind === 'desk' && supportedActions.length > 0)).toHaveLength(5);
+    },
+  );
+
+  it.each(['research-library', 'maker-workshop', 'collaboration-barn'] as const)(
+    '%s keeps a two-wide main aisle and an ordinary route to every required workstation',
+    (themeId) => {
+      const room = INTERIOR_DEFINITIONS[themeId];
+      const blocked = new Set(room.furniture.flatMap(furnitureCells).map(({ x, y }) => `${x},${y}`));
+      for (const y of [11, 10, 9, 8, 7, 6]) {
+        expect([8, 9].every((x) => !blocked.has(`${x},${y}`)), `${themeId}:main aisle @ y=${y}`).toBe(true);
+      }
+      const door = { x: 9, y: 11 };
+      room.furniture.filter(({ supportedActions }) => supportedActions.length > 0).forEach((item) => {
+        const target = interiorInteractionPoint(room, item);
+        const path = interiorPath(room, door, target);
+        expect(path.at(-1), `${themeId}:${item.id} target ${target.x},${target.y}`).toEqual({
+          x: Math.round(target.x), y: Math.round(target.y),
+        });
+      });
+    },
+  );
+
+  it('keeps the reviewed support targets inside the room and reachable', () => {
+    const maker = INTERIOR_DEFINITIONS['maker-workshop'];
+    const collaboration = INTERIOR_DEFINITIONS['collaboration-barn'];
+    for (const [room, id, expected] of [
+      [maker, 'maker-work-tool-wall', { x: 10.5, y: 7 }],
+      [maker, 'maker-work-planning-board', { x: 16, y: 5 }],
+      [collaboration, 'collab-work-meeting', { x: 13.5, y: 8 }],
+    ] as const) {
+      const target = interiorInteractionPoint(room, room.furniture.find((item) => item.id === id)!);
+      expect(target).toEqual(expected);
+      expect(interiorPath(room, { x: 9, y: 11 }, target).at(-1)).toEqual({ x: Math.round(target.x), y: Math.round(target.y) });
+    }
   });
 });

@@ -109,15 +109,20 @@ describe('office prefab geometry', () => {
     expect(placeOfficePrefab(room, [], overlappingSurface, { x: 4, y: 3 }, 51).accepted).toBe(true);
   });
 
-  it('rejects one-cell entrance chokes but accepts a two-cell main aisle to Hooks', () => {
+  it('requires a two-cell entrance/main aisle but permits one-cell branches to Hook anchors', () => {
     const oneCellChoke = [2, 3, 4].flatMap((y) => [blocker(`left-${y}`, 2, y), blocker(`right-${y}`, 4, y)]);
-    const twoCellAisle = [2, 3, 4].map((y) => blocker(`left-${y}`, 2, y));
+    const twoCellAisle = [2, 3, 4].map((y) => blocker(`far-left-${y}`, 1, y));
+    const branchBlockers = [blocker('branch-left', 2, 1), blocker('branch-right', 4, 2)];
 
     expect(placeOfficePrefab(aisleRoom, oneCellChoke, aislePrefab, { x: 3, y: 1 }, 60)).toMatchObject({
       accepted: false,
       diagnostics: ['unreachable-interaction-anchor'],
     });
     expect(placeOfficePrefab(aisleRoom, twoCellAisle, aislePrefab, { x: 3, y: 1 }, 61)).toMatchObject({
+      accepted: true,
+      diagnostics: [],
+    });
+    expect(placeOfficePrefab(aisleRoom, [...twoCellAisle, ...branchBlockers], aislePrefab, { x: 3, y: 1 }, 62)).toMatchObject({
       accepted: true,
       diagnostics: [],
     });

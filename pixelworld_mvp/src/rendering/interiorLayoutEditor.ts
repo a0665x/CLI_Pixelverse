@@ -141,17 +141,64 @@ interface SavedInteriorLayoutV5 {
 }
 
 interface ParsedSavedInteriorLayout {
-  furniture: unknown[];
+  furniture: FurnitureDefinition[];
   legacy: boolean;
 }
+
+const FACING_VALUES = ['left', 'right', 'up', 'down'] as const;
+const ACTION_VALUES = [
+  'arrive', 'ponder', 'plan', 'read', 'type', 'terminal', 'signal', 'dispatch',
+  'respond', 'queue', 'repair', 'rest', 'offline', 'pulse',
+] as const;
+const ICON_VALUES = [
+  'rest', 'offline', 'think', 'plan', 'read', 'web', 'edit', 'tool', 'repair',
+  'clone', 'respond', 'generic',
+] as const;
+const LAYER_VALUES = ['floor', 'furniture', 'surface', 'wall'] as const;
+
+const finitePoint = (value: unknown): value is GridPoint => Boolean(
+  value && typeof value === 'object'
+  && 'x' in value && Number.isFinite(value.x)
+  && 'y' in value && Number.isFinite(value.y),
+);
+
+const optionalFinite = (value: unknown): boolean => value === undefined || Number.isFinite(value);
+const optionalString = (value: unknown): boolean => value === undefined || typeof value === 'string';
+
+const isSavedFurniture = (value: unknown): value is FurnitureDefinition => {
+  if (!value || typeof value !== 'object') return false;
+  const item = value as Partial<FurnitureDefinition>;
+  return typeof item.id === 'string' && item.id.length > 0
+    && SAVED_FURNITURE_KINDS.includes(item.kind as FurnitureKind)
+    && finitePoint(item.point)
+    && FACING_VALUES.includes(item.facing as typeof FACING_VALUES[number])
+    && Array.isArray(item.supportedActions)
+    && item.supportedActions.every((action) => ACTION_VALUES.includes(action))
+    && ICON_VALUES.includes(item.icon as typeof ICON_VALUES[number])
+    && optionalFinite(item.assetId)
+    && (item.scale === undefined || FURNITURE_SCALES.includes(item.scale))
+    && (item.rotation === undefined || [0, 90, 180, 270].includes(item.rotation))
+    && (item.footprint === undefined || (
+      item.footprint && Number.isFinite(item.footprint.width) && item.footprint.width > 0
+      && Number.isFinite(item.footprint.height) && item.footprint.height > 0
+    ))
+    && (item.layer === undefined || LAYER_VALUES.includes(item.layer))
+    && optionalFinite(item.zIndex)
+    && (item.blocksNavigation === undefined || typeof item.blocksNavigation === 'boolean')
+    && optionalString(item.requirementId)
+    && (item.visualOffset === undefined || finitePoint(item.visualOffset))
+    && optionalString(item.prefabInstanceId);
+};
 
 const parseSavedInteriorLayout = (raw: string): ParsedSavedInteriorLayout | undefined => {
   try {
     const parsed = JSON.parse(raw) as unknown;
-    if (Array.isArray(parsed)) return { furniture: parsed, legacy: true };
+    if (Array.isArray(parsed)) {
+      return parsed.every(isSavedFurniture) ? { furniture: parsed, legacy: true } : undefined;
+    }
     if (!parsed || typeof parsed !== 'object') return undefined;
     const saved = parsed as { version?: unknown; furniture?: unknown };
-    if (!Array.isArray(saved.furniture)) return undefined;
+    if (!Array.isArray(saved.furniture) || !saved.furniture.every(isSavedFurniture)) return undefined;
     if (saved.version === 5) return { furniture: saved.furniture, legacy: false };
     if (saved.version === 2 || saved.version === 3 || saved.version === 4) {
       return { furniture: saved.furniture, legacy: true };

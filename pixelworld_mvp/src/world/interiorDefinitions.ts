@@ -9,11 +9,10 @@ import type {
   FurnitureRotation,
   FurnitureScale,
   InteriorDefinition,
-  OfficePrefabDefinition,
   WorldBuilding,
 } from './types';
 import { prefabsForTheme } from '../rendering/builtInOfficePrefabs';
-import { placeOfficePrefab } from '../rendering/prefabGeometry';
+import { officeLayoutIssues, placeOfficePrefab } from '../rendering/prefabGeometry';
 
 export const INTERIOR_LAYOUT_REVISION = 2;
 
@@ -197,36 +196,6 @@ const cloneInterior = (room: InteriorDefinition): InteriorDefinition => ({
   overflow: room.overflow.map((point) => ({ ...point })),
 });
 
-const reachableOfficePrefab = (prefab: OfficePrefabDefinition): OfficePrefabDefinition => {
-  if (prefab.id !== 'control-m-three') return prefab;
-  return {
-    ...prefab,
-    interactionAnchors: [prefab.interactionAnchors[0]!, prefab.interactionAnchors[2]!].map(({ point, actions }) => ({
-      point: { ...point },
-      actions: [...actions],
-    })),
-  };
-};
-
-const authoredPrefabActions = (
-  themeId: Exclude<BuildingThemeId, 'rest-cabin'>,
-  prefabId: string,
-  itemIndex: number,
-  actions: readonly AgentAction[],
-): AgentAction[] => {
-  if (themeId === 'research-library' && prefabId === 'bench-four') {
-    return itemIndex === 0 ? ['signal'] : [];
-  }
-  if (themeId === 'research-library' && prefabId === 'pod-l-two') {
-    return itemIndex === 0 ? [...actions] : [];
-  }
-  if (themeId === 'maker-workshop') {
-    return itemIndex === 0 ? actions.filter((action) => action === 'terminal' || action === 'type') : [];
-  }
-  if (themeId === 'collaboration-barn') return [];
-  return [...actions];
-};
-
 const composeThemeLayout = (
   themeId: Exclude<BuildingThemeId, 'rest-cabin'>,
   placements: readonly PrefabPlacement[],
@@ -245,7 +214,7 @@ const composeThemeLayout = (
   placements.forEach(([prefabId, anchor], placementIndex) => {
     const prefab = prefabs.find(({ id }) => id === prefabId);
     if (!prefab) throw new Error(`Missing ${themeId} office prefab: ${prefabId}`);
-    const result = placeOfficePrefab(room, layout, reachableOfficePrefab(prefab), anchor, placementIndex + 1);
+    const result = placeOfficePrefab(room, layout, prefab, anchor, placementIndex + 1);
     if (!result.accepted) {
       throw new Error(`Invalid ${themeId} office prefab ${prefabId}: ${result.diagnostics.join(', ')}`);
     }
@@ -257,14 +226,13 @@ const composeThemeLayout = (
         id: themeId === 'research-library' && prefabId === 'bench-four' && itemIndex === 0
           ? `research-computer-${placementIndex + 1}`
           : `${instanceId}-${itemIndex + 1}`,
-        supportedActions: authoredPrefabActions(
-          themeId, prefabId, itemIndex, item.supportedActions,
-        ),
         prefabInstanceId: instanceId,
       })),
     ];
   });
   room.furniture = [...layout, ...supportFurniture.map(cloneFurniture)];
+  const issues = officeLayoutIssues(room);
+  if (issues.length > 0) throw new Error(`Invalid ${themeId} office layout: ${JSON.stringify(issues)}`);
   return room;
 };
 
@@ -273,43 +241,43 @@ const researchDefinition = (): InteriorDefinition => composeThemeLayout('researc
   ['bench-four', { x: 4, y: 7 }],
   ['pod-l-two', { x: 12, y: 3 }],
 ], [
-  base('research-work-meeting', 'meeting-table', 12.5, 8.5, 'down', ['ponder', 'plan'], 'plan', 207, 1.5),
-  surface('research-work-meeting-notes', 'decor', 12.5, 8.5, 156),
+  base('research-work-meeting', 'meeting-table', 12.5, 10, 'down', ['ponder', 'plan'], 'plan', 207, 1.5),
+  surface('research-work-meeting-notes', 'decor', 12.5, 10, 156),
   wall('research-work-archive-a', 'bookcase', 15.5, 7.5, 'right', ['read'], 'read', 176),
   wall('research-work-archive-b', 'bookcase', 15.5, 9.5, 'right', ['read'], 'read', 174),
-  base('research-work-guest-chair', 'chair', 16.5, 10.5, 'up', [], 'generic', 101),
+  { ...base('research-work-guest-chair', 'chair', 16.5, 10.5, 'up', [], 'generic', 101), blocksNavigation: false },
   surface('research-work-plant', 'plant', 16.5, 1.25, 99),
 ], [{ x: 8, y: 6 }, { x: 9, y: 6 }, { x: 10, y: 6 }, { x: 9, y: 9 }]);
 
 const makerDefinition = (): InteriorDefinition => composeThemeLayout('maker-workshop', [
-  ['control-m-three', { x: 11, y: 2 }],
+  ['control-m-three', { x: 12, y: 2 }],
   ['bench-four', { x: 3, y: 3 }],
   ['bench-four', { x: 3, y: 7 }],
 ], [
-  base('maker-work-repair', 'repair-table', 12.5, 8.25, 'down', ['repair'], 'repair', 193, 1.5),
-  surface('maker-work-repair-printer', 'printer', 12.5, 8.25, 177),
-  wall('maker-work-tool-wall', 'tool-wall', 16, 5.5, 'up', ['terminal'], 'tool', 175),
+  base('maker-work-repair', 'repair-table', 11.5, 8.25, 'down', ['repair'], 'repair', 193, 1.5),
+  surface('maker-work-repair-printer', 'printer', 11.5, 8.25, 177),
+  wall('maker-work-tool-wall', 'tool-wall', 10.5, 4, 'up', ['terminal'], 'tool', 175),
   base('maker-work-computer', 'computer', 11, 6, 'down', ['terminal'], 'tool', 193),
-  wall('maker-work-bookcase', 'bookcase', 16, 7.5, 'right', ['terminal'], 'tool', 176),
-  wall('maker-work-planning-board', 'planning-board', 16, 10, 'up', ['terminal'], 'tool', 171),
-  base('maker-work-guest-chair', 'chair', 11, 10, 'up', [], 'generic', 101),
-  base('maker-work-support', 'cabinet', 16, 9.25, 'left', [], 'generic', 174),
-  surface('maker-work-refresh', 'beverage-station', 16, 9.25, 173),
+  wall('maker-work-bookcase', 'bookcase', 15, 7, 'down', ['terminal'], 'tool', 176),
+  wall('maker-work-planning-board', 'planning-board', 16, 10, 'down', ['terminal'], 'tool', 171),
+  { ...base('maker-work-guest-chair', 'chair', 11, 10, 'up', [], 'generic', 101), blocksNavigation: false },
+  base('maker-work-support', 'cabinet', 14, 10.5, 'left', [], 'generic', 174),
+  surface('maker-work-refresh', 'beverage-station', 14, 10.5, 173),
 ], [{ x: 8, y: 6 }, { x: 9, y: 6 }, { x: 10, y: 6 }, { x: 9, y: 9 }]);
 
 const collaborationDefinition = (): InteriorDefinition => composeThemeLayout('collaboration-barn', [
   ['control-m-three', { x: 3, y: 3 }],
-  ['pod-l-two', { x: 13, y: 3 }],
+  ['pod-l-two', { x: 12, y: 2 }],
 ], [
   base('collab-work-clone-a', 'dispatch-pod', 3.5, 8, 'down', ['dispatch'], 'clone', 193, 1.5),
   surface('collab-work-clone-screen-a', 'display', 3.5, 8, 141),
   base('collab-work-clone-b', 'dispatch-pod', 6.5, 8, 'down', ['dispatch'], 'clone', 194, 1.5),
   surface('collab-work-clone-screen-b', 'display', 6.5, 8, 144),
-  base('collab-work-meeting', 'meeting-table', 13.5, 8.5, 'down', ['arrive', 'queue'], 'generic', 207, 1.5),
-  surface('collab-work-meeting-notes', 'decor', 13.5, 8.5, 156),
+  base('collab-work-meeting', 'meeting-table', 13.5, 10, 'down', ['arrive', 'queue'], 'generic', 207, 1.5),
+  surface('collab-work-meeting-notes', 'decor', 13.5, 10, 156),
   wall('collab-work-response-a', 'radio-console', 11.5, 6, 'up', ['pulse', 'respond'], 'respond', 193),
   wall('collab-work-response-b', 'response-desk', 15.5, 6, 'up', ['respond'], 'respond', 194),
-  base('collab-work-guest-chair', 'chair', 16.5, 10.5, 'up', [], 'generic', 101),
+  { ...base('collab-work-guest-chair', 'chair', 16.5, 10.5, 'up', [], 'generic', 101), blocksNavigation: false },
   surface('collab-work-plant', 'plant', 16.5, 1.25, 98),
 ], [{ x: 8, y: 6 }, { x: 9, y: 6 }, { x: 10, y: 6 }, { x: 9, y: 9 }]);
 

@@ -1,7 +1,9 @@
 import type { Facing, FurnitureDefinition, GridPoint, InteriorDefinition } from '../world/types';
-import { furnitureFootprint } from '../world/interiorDefinitions';
 import type { InteriorAgentSnapshot, InteriorOccupantAssignment } from './interiorAssignment';
 import { furnitureCells } from './interiorLayoutEditor';
+import { interiorInteractionPoint } from './prefabGeometry';
+
+export { interiorInteractionPoint } from './prefabGeometry';
 
 export type InteriorMotionPhase = 'ingress' | 'working';
 export interface InteriorMotionState {
@@ -97,31 +99,6 @@ export function interiorPath(interior: InteriorDefinition, from: GridPoint, to: 
   return [start];
 }
 
-const interactionPoint = (interior: InteriorDefinition, furniture: FurnitureDefinition): GridPoint => {
-  if (furniture.kind === 'chair' || furniture.kind === 'sofa' || furniture.kind === 'bed') return { ...furniture.point };
-  const size = furnitureFootprint(furniture.kind);
-  const offsets: Record<Facing, GridPoint> = {
-    up: { x: 0, y: 1 }, down: { x: 0, y: -1 }, left: { x: 1, y: 0 }, right: { x: -1, y: 0 },
-  };
-  const initialDistance = furniture.facing === 'up' || furniture.facing === 'down'
-    ? Math.floor(size.height / 2) + 1
-    : Math.floor(size.width / 2) + 1;
-  const occupied = new Set(interior.furniture
-    .filter(({ id }) => id !== furniture.id)
-    .flatMap(furnitureCells)
-    .map(key));
-  const step = offsets[furniture.facing];
-  for (let distanceFromFurniture = initialDistance; distanceFromFurniture < Math.max(interior.width, interior.height); distanceFromFurniture += 1) {
-    const point = {
-      x: furniture.point.x + step.x * distanceFromFurniture,
-      y: furniture.point.y + step.y * distanceFromFurniture,
-    };
-    if (point.x < 0 || point.y < 0 || point.x >= interior.width || point.y >= interior.height) break;
-    if (!occupied.has(key(point))) return point;
-  }
-  return { ...furniture.point };
-};
-
 function pointAlongPath(path: readonly GridPoint[], progress: number): InteriorMotionState['point'] {
   if (path.length <= 1) return { ...(path[0] ?? { x: 0, y: 0 }) };
   const travel = Math.max(0, Math.min(path.length - 1, (path.length - 1) * progress));
@@ -152,7 +129,7 @@ export function interiorMotionAt(
   const elapsed = Math.max(0, snapshot.interiorElapsedMs ?? 10_000);
   const route = interiorRouteFor(snapshot, interior, assignment);
   const door = { x: Math.floor(interior.width / 2), y: interior.height - 1 };
-  const target = interactionPoint(interior, route[0]!);
+  const target = interiorInteractionPoint(interior, route[0]!);
   const ingressPath = interiorPath(interior, door, target);
   const ingressDuration = Math.max(STEP_MS, (ingressPath.length - 1) * STEP_MS);
   const bob = Math.sin(nowMs / 280) * 0.85;
@@ -168,8 +145,8 @@ export function interiorMotionAt(
   const segmentElapsed = workElapsed % WORK_STOP_MS;
   const from = route[index]!;
   const to = route[nextIndex]!;
-  const fromPoint = interactionPoint(interior, from);
-  const toPoint = interactionPoint(interior, to);
+  const fromPoint = interiorInteractionPoint(interior, from);
+  const toPoint = interiorInteractionPoint(interior, to);
   const workPath = interiorPath(interior, fromPoint, toPoint);
   const transition = Math.max(0, Math.min(1, (segmentElapsed - (WORK_STOP_MS - WORK_TRANSITION_MS)) / WORK_TRANSITION_MS));
   const point = pointAlongPath(workPath, transition);

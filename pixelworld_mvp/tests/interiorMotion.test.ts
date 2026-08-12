@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { interiorMotionAt, interiorPath, interiorRouteFor } from '../src/rendering/interiorMotion';
 import { assignInteriorOccupants, type InteriorAgentSnapshot } from '../src/rendering/interiorAssignment';
-import { INTERIOR_DEFINITIONS, furnitureFootprint } from '../src/world/interiorDefinitions';
+import { INTERIOR_DEFINITIONS } from '../src/world/interiorDefinitions';
 import { furnitureCells } from '../src/rendering/interiorLayoutEditor';
 
 const toolSnapshot = (elapsedMs: number): InteriorAgentSnapshot => ({
@@ -42,10 +42,11 @@ describe('interior motion timeline', () => {
   });
 
   it('adds a subtle breathing bob while an Agent remains at a work point', () => {
-    const snapshot = toolSnapshot(20_000);
+    const snapshot = Array.from({ length: 40 }, (_, index) => toolSnapshot(8_000 + index * 500))
+      .find((candidate) => !interiorMotionAt(candidate, interior, assignInteriorOccupants(interior, [candidate], 'tool-smithy')[0]!, 20_000).walking)!;
     const assignment = assignInteriorOccupants(interior, [snapshot], 'tool-smithy')[0]!;
     const first = interiorMotionAt(snapshot, interior, assignment, 20_000);
-    const second = interiorMotionAt(toolSnapshot(20_350), interior, assignment, 20_350);
+    const second = interiorMotionAt(snapshot, interior, assignment, 20_350);
 
     expect(Math.abs(first.bob)).toBeLessThanOrEqual(1);
     expect(second.bob).not.toBe(first.bob);
@@ -71,7 +72,7 @@ describe('interior motion timeline', () => {
     expect(occupied.has(`${Math.round(motion.point.x)},${Math.round(motion.point.y)}`)).toBe(false);
   });
 
-  it('gives every interior visible seating and keeps functional furniture footprints separate', () => {
+  it('gives every interior visible seating and keeps functional navigation cells separate', () => {
     for (const candidate of Object.values(INTERIOR_DEFINITIONS)) {
       expect(candidate.furniture.some(({ kind }) => kind === 'chair' || kind === 'sofa'), candidate.id).toBe(true);
       const functional = candidate.furniture.filter(({ supportedActions }) => supportedActions.length > 0);
@@ -79,12 +80,8 @@ describe('interior motion timeline', () => {
         for (let secondIndex = firstIndex + 1; secondIndex < functional.length; secondIndex += 1) {
           const first = functional[firstIndex]!;
           const second = functional[secondIndex]!;
-          const firstSize = furnitureFootprint(first.kind);
-          const secondSize = furnitureFootprint(second.kind);
-          const separated = (
-            Math.abs(first.point.x - second.point.x) >= (firstSize.width + secondSize.width) / 2 ||
-            Math.abs(first.point.y - second.point.y) >= (firstSize.height + secondSize.height) / 2
-          );
+          const firstCells = new Set(furnitureCells(first).map(({ x, y }) => `${x},${y}`));
+          const separated = furnitureCells(second).every(({ x, y }) => !firstCells.has(`${x},${y}`));
           expect(separated, `${candidate.id}: ${first.id} overlaps ${second.id}`).toBe(true);
         }
       }

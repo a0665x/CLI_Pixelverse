@@ -18,7 +18,7 @@ describe('interior occupant assignment', () => {
     });
   });
 
-  it('maps web work to a computer or bookcase and changes station by activity cycle id', () => {
+  it('maps web work to an action-bearing research workstation and changes station by activity cycle id', () => {
     const research = INTERIOR_DEFINITIONS['research-library'];
     const first = assignInteriorOccupants(research, [snapshot({
       buildingId: 'research-library', action: 'signal', eventKind: 'web', eventId: 'web-cycle-0',
@@ -27,12 +27,12 @@ describe('interior occupant assignment', () => {
       buildingId: 'research-library', action: 'signal', eventKind: 'web', eventId: 'web-cycle-1',
     })])[0]!;
 
-    expect(first.furnitureId).toMatch(/^research-(computer|bookcase)/);
-    expect(second.furnitureId).toMatch(/^research-(computer|bookcase)/);
+    expect(research.furniture.find(({ id }) => id === first.furnitureId)?.supportedActions).toContain('signal');
+    expect(research.furniture.find(({ id }) => id === second.furnitureId)?.supportedActions).toContain('signal');
     expect(first.furnitureId).not.toBe(second.furnitureId);
   });
 
-  it('assigns multiple occupants to stable non-overlapping furniture and overflow points', () => {
+  it('assigns multiple occupants to stable non-overlapping workstations before overflow', () => {
     const research = INTERIOR_DEFINITIONS['research-library'];
     const agents = Array.from({ length: 6 }, (_, index) => snapshot({
       agentId: `agent-${index}`, role: 'subagent', buildingId: 'research-library',
@@ -43,6 +43,6 @@ describe('interior occupant assignment', () => {
 
     expect(new Set(first.map(({ point }) => `${point.x},${point.y}`)).size).toBe(6);
     expect(first).toEqual(second);
-    expect(first.some(({ furnitureId }) => furnitureId === undefined)).toBe(true);
+    expect(first.every(({ furnitureId }) => furnitureId !== undefined)).toBe(true);
   });
 });
