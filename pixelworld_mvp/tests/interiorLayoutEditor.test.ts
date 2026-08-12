@@ -123,14 +123,21 @@ describe('interior furniture editor model', () => {
     expect(loaded.interactionPoint).not.toBe(item.interactionPoint);
   });
 
-  it('hydrates a pre-anchor v5 authored item without changing its saved fields', () => {
+  it.each([
+    ['unchanged', { x: 10.5, y: 4 }, 0, 1, { x: 10.5, y: 7 }],
+    ['translated', { x: 11.5, y: 5 }, 0, 1, { x: 11.5, y: 8 }],
+    ['rotated', { x: 10.5, y: 4 }, 90, 1, { x: 7.5, y: 4 }],
+    ['translated and rotated', { x: 12, y: 5 }, 90, 1, { x: 9, y: 5 }],
+    ['scaled without scaling its interaction anchor', { x: 10.5, y: 4 }, 0, 2, { x: 10.5, y: 7 }],
+  ] as const)('hydrates a %s pre-anchor v5 item in its saved transform', (_label, point, rotation, scale, expectedAnchor) => {
     const workRoom = INTERIOR_DEFINITIONS['maker-workshop'];
     const authored = workRoom.furniture.find(({ id }) => id === 'maker-work-tool-wall')!;
     const { interactionPoint: _oldAnchor, ...authoredBeforeAnchor } = structuredClone(authored);
     const saved = {
       ...authoredBeforeAnchor,
-      scale: authoredBeforeAnchor.scale ?? 1,
-      rotation: authoredBeforeAnchor.rotation ?? 0,
+      point,
+      scale,
+      rotation,
       requirementId: authoredBeforeAnchor.requirementId ?? `${workRoom.id}:${authoredBeforeAnchor.id}`,
     };
     const memory = new Map([[
@@ -141,8 +148,23 @@ describe('interior furniture editor model', () => {
 
     expect(loadInteriorLayout('old-work-house', workRoom, storage)[0]).toEqual({
       ...saved,
-      interactionPoint: authored.interactionPoint,
+      interactionPoint: expectedAnchor,
     });
+  });
+
+  it('preserves an explicit saved interaction point instead of rehydrating it', () => {
+    const workRoom = INTERIOR_DEFINITIONS['maker-workshop'];
+    const authored = workRoom.furniture.find(({ id }) => id === 'maker-work-tool-wall')!;
+    const saved = {
+      ...structuredClone(authored), point: { x: 12, y: 5 }, rotation: 90 as const,
+      interactionPoint: { x: 4.25, y: 3.5 }, scale: authored.scale ?? 1,
+      requirementId: authored.requirementId ?? `${workRoom.id}:${authored.id}`,
+    };
+    const raw = JSON.stringify({ version: 5, authoredRevision: INTERIOR_LAYOUT_REVISION, furniture: [saved] });
+    const storage = { getItem: () => raw, setItem: () => undefined };
+
+    expect(loadInteriorLayout('explicit-anchor-house', workRoom, storage)[0]!.interactionPoint)
+      .toEqual(saved.interactionPoint);
   });
 
   it('does not invent an authored anchor for unmatched custom v5 furniture', () => {

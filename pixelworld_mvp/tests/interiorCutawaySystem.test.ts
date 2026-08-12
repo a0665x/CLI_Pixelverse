@@ -441,6 +441,65 @@ describe('InteriorCutawaySystem', () => {
     expect(room.furniture.find(({ id }) => id === furniture.id)?.point).toEqual(furniture.point);
   });
 
+  it('retains an off-center grab vector through camera and root transforms', () => {
+    const fake = fakeScene();
+    fake.scene.cameras.main.scrollX = 35;
+    fake.scene.cameras.main.scrollY = 20;
+    fake.scene.cameras.main.zoom = 2;
+    const cutaway = new InteriorCutawaySystem(fake.scene as never, WORLD_DEFINITION, () => ({ width: 1_280, height: 720 }));
+    cutaway.open('rest-cabin');
+    const furniture = {
+      id: 'edge-grab-item', kind: 'plant' as const, point: { x: 6, y: 4 }, facing: 'up' as const,
+      supportedActions: [], icon: 'generic' as const, assetId: 98, scale: 1.5 as const,
+      rotation: 0 as const, visualOffset: { x: 0.5, y: 0.25 }, blocksNavigation: false,
+    };
+    const room: InteriorDefinition = {
+      id: 'rest-cabin', label: 'Edge drag', width: 14, height: 9,
+      floor: 'wood', wall: 'cream', furniture: [furniture], overflow: [],
+    };
+    const internal = cutaway as unknown as {
+      editMode: boolean; activeDefinition: InteriorDefinition; activeInterior: InteriorDefinition;
+      root: FakeObject; currentDragCandidate?: { furniture: { point: { x: number; y: number } } };
+      renderFurniture(interior: InteriorDefinition, layout: ReturnType<typeof cutawayLayoutForViewport>): void;
+    };
+    internal.editMode = true;
+    internal.activeDefinition = room;
+    internal.activeInterior = room;
+    internal.renderFurniture(room, cutawayLayoutForViewport(1_280, 720));
+    internal.root.x = 28;
+    internal.root.y = 17;
+    internal.root.scale = 1.5;
+    const sprite = fake.objects.find(({ texture, interactive, destroyed, depth }) =>
+      texture === 'modern-office-v1.2-single-98' && interactive && !destroyed && depth > 0)!;
+    const pointerForLocal = (local: { x: number; y: number }) => {
+      const world = {
+        x: internal.root.x + local.x * internal.root.scale,
+        y: internal.root.y + local.y * internal.root.scale,
+      };
+      const raw = {
+        x: (world.x - fake.scene.cameras.main.scrollX) * fake.scene.cameras.main.zoom,
+        y: (world.y - fake.scene.cameras.main.scrollY) * fake.scene.cameras.main.zoom,
+      };
+      return {
+        ...raw, camera: fake.scene.cameras.main,
+        positionToCamera: () => ({
+          x: fake.scene.cameras.main.scrollX + raw.x / fake.scene.cameras.main.zoom,
+          y: fake.scene.cameras.main.scrollY + raw.y / fake.scene.cameras.main.zoom,
+        }),
+      };
+    };
+    const grab = { x: sprite.x + 8, y: sprite.y - 6 };
+    sprite.emit('dragstart', pointerForLocal(grab));
+    sprite.emit('drag', pointerForLocal(grab), -999, 999);
+    expect(internal.currentDragCandidate?.furniture.point).toEqual(furniture.point);
+
+    sprite.emit('drag', pointerForLocal({ x: grab.x + 2, y: grab.y - 2 }), -999, 999);
+    expect(internal.currentDragCandidate?.furniture.point).toEqual(furniture.point);
+    internal.renderFurniture(room, cutawayLayoutForViewport(1_280, 720));
+    expect(internal.currentDragCandidate).toBeUndefined();
+    expect(room.furniture.find(({ id }) => id === furniture.id)?.point).toEqual(furniture.point);
+  });
+
   it('refreshes an open cutaway for a changed viewport without discarding its draft', () => {
     const fake = fakeScene();
     const viewport = { width: 1_280, height: 720 };

@@ -685,6 +685,7 @@ export class InteriorCutawaySystem {
 
   private renderFurniture(interior: InteriorDefinition, layout: CutawayLayout): void {
     layout = this.currentLayout ?? layout;
+    this.currentDragCandidate = undefined;
     this.marqueeCleanup?.();
     this.marqueeCleanup = undefined;
     this.furnitureLayer?.removeAll(true);
@@ -748,6 +749,7 @@ export class InteriorCutawaySystem {
       sprite.setInteractive({ useHandCursor: true, draggable: true });
       furnitureSprites.add(sprite);
       this.scene.input.setDraggable(sprite);
+      let dragGrabOffset: GridPoint | undefined;
       sprite.on('pointerdown', (pointer: unknown) => {
         this.selectedFurnitureId = furniture.id;
         this.selectedFurnitureIds.clear();
@@ -765,8 +767,18 @@ export class InteriorCutawaySystem {
           }
         }
       });
+      sprite.on('dragstart', (pointer: unknown) => {
+        const screen = this.pointerScreenPoint(pointer);
+        dragGrabOffset = screen ? { x: screen.x - sprite.x, y: screen.y - sprite.y } : undefined;
+      });
       sprite.on('drag', (pointer: unknown, dragX: number, dragY: number) => {
-        const screen = this.pointerScreenPoint(pointer) ?? { x: dragX, y: dragY };
+        const pointerPoint = this.pointerScreenPoint(pointer);
+        const screen = pointerPoint
+          ? {
+              x: pointerPoint.x - (dragGrabOffset?.x ?? 0),
+              y: pointerPoint.y - (dragGrabOffset?.y ?? 0),
+            }
+          : { x: dragX, y: dragY };
         this.currentDragCandidate = resolvePlacementCandidate(
           interior, interior.furniture, furniture,
           furniturePointFromRenderPoint(furniture, this.roomPoint(screen.x, screen.y)), furniture.id,
@@ -783,6 +795,7 @@ export class InteriorCutawaySystem {
         }
         this.setStatus(accepted ? '家具已移動 · 按儲存配置' : `⚠ ${placementMessage(candidate?.diagnostic ?? 'outside-room')} · 已回復原位`);
         this.currentDragCandidate = undefined;
+        dragGrabOffset = undefined;
         this.renderFurniture(interior, layout);
       });
     }

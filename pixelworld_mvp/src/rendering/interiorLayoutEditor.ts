@@ -18,6 +18,7 @@ import {
   defaultFurnitureLayer,
   furnitureBlocksNavigation,
   furnitureWithRotation,
+  rotateGridPoint,
   type PlacementDiagnostic,
 } from './interiorPlacement';
 
@@ -396,14 +397,28 @@ export function readInteriorLayout(
       || !SAVED_FURNITURE_KINDS.includes(item.kind)
     ) continue;
     const authored = authoredFor(item);
-    const hydrated = !item.interactionPoint && authored?.interactionPoint
-      ? { ...item, interactionPoint: { ...authored.interactionPoint } }
+    const savedRotation = normalizeRotation(item.rotation ?? rotationFromFacing(item.facing));
+    const authoredRotation = authored
+      ? normalizeRotation(authored.rotation ?? rotationFromFacing(authored.facing))
+      : 0;
+    const rotationDelta = (((savedRotation - authoredRotation) + 360) % 360) as FurnitureRotation;
+    const authoredInteractionPoint = authored?.interactionPoint
+      ? (() => {
+          const relative = rotateGridPoint({
+            x: authored.interactionPoint!.x - authored.point.x,
+            y: authored.interactionPoint!.y - authored.point.y,
+          }, rotationDelta);
+          return { x: item.point.x + relative.x, y: item.point.y + relative.y };
+        })()
+      : undefined;
+    const hydrated = !item.interactionPoint && authoredInteractionPoint
+      ? { ...item, interactionPoint: authoredInteractionPoint }
       : item;
     const normalized = normalizeRoomLayout(room, [{
       ...hydrated,
       point: { ...hydrated.point },
       scale: normalizeFurnitureScale(hydrated.scale),
-      rotation: normalizeRotation(hydrated.rotation ?? rotationFromFacing(hydrated.facing)),
+      rotation: savedRotation,
     }])[0]!;
     if (canPlaceFurniture(room, normalized, accepted)) accepted.push(normalized);
   }
