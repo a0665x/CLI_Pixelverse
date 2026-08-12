@@ -5,6 +5,7 @@ import {
   furnitureCells,
   hasSavedInteriorLayout,
   loadInteriorLayout,
+  readInteriorLayout,
   moveFurniture,
   placementDiagnostic,
   resizeFurniture,
@@ -166,6 +167,21 @@ describe('interior furniture editor model', () => {
     expect(hasSavedInteriorLayout('throwing-house', throwingStorage)).toBe(false);
     expect(loadInteriorLayout('throwing-house', room, throwingStorage)).toEqual(normalizedRoomLayout());
     expect(revertInteriorDraft('throwing-house', room, throwingStorage)).toEqual(normalizedRoomLayout());
+  });
+
+  it('distinguishes a failed layout read from a missing saved layout', () => {
+    const failed = readInteriorLayout('throwing-house', room, {
+      getItem: () => { throw new Error('blocked'); },
+      setItem: () => undefined,
+    });
+    const missing = readInteriorLayout('missing-house', room, {
+      getItem: () => null,
+      setItem: () => undefined,
+    });
+
+    expect(failed).toMatchObject({ storageRead: 'failed' });
+    expect(failed.layout).toEqual(missing.layout);
+    expect(missing.storageRead).toBe('success');
   });
 
   it.each([

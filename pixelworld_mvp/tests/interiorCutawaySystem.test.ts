@@ -411,6 +411,96 @@ describe('InteriorCutawaySystem', () => {
     vi.unstubAllGlobals();
   });
 
+  it('blocks ordinary Save after an unknown layout read until a successful Revert retry', () => {
+    const saved = JSON.stringify({
+      version: 5, authoredRevision: 2,
+      furniture: [{
+        id: 'saved-chair', kind: 'chair', point: { x: 2, y: 2 }, facing: 'up',
+        supportedActions: [], icon: 'generic', scale: 1, rotation: 0,
+      }],
+    });
+    let failedLayoutRead = false;
+    const storage = {
+      getItem: vi.fn((key: string) => {
+        if (key.includes('interior-layout') && !failedLayoutRead) {
+          failedLayoutRead = true;
+          throw new Error('temporarily blocked');
+        }
+        return key.includes('interior-layout') ? saved : null;
+      }),
+      setItem: vi.fn(),
+    };
+    vi.stubGlobal('window', { localStorage: storage, dispatchEvent: vi.fn(), prompt: vi.fn() });
+    try {
+      const fake = fakeScene();
+      const cutaway = new InteriorCutawaySystem(fake.scene as never, WORLD_DEFINITION, () => ({ width: 1_280, height: 720 }));
+      const capture = captureCutawayHandlers(cutaway);
+      cutaway.open('rest-cabin');
+
+      expect(capture.model()).toMatchObject({ statusId: 'storageFailed', saveBlocked: true });
+      capture.handlers().save();
+      expect(storage.setItem).not.toHaveBeenCalled();
+
+      capture.handlers().revert();
+      expect(capture.model().saveBlocked).toBe(false);
+      expect((cutaway as unknown as { activeInterior: InteriorDefinition }).activeInterior.furniture)
+        .toEqual(expect.arrayContaining([expect.objectContaining({ id: 'saved-chair' })]));
+      capture.handlers().save();
+      expect(storage.setItem).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('lets explicit Apply establish layout intent after a failed saved-layout read', () => {
+    const storage = {
+      getItem: vi.fn((key: string) => {
+        if (key.includes('interior-layout')) throw new Error('blocked');
+        return null;
+      }),
+      setItem: vi.fn(),
+    };
+    vi.stubGlobal('window', { localStorage: storage, dispatchEvent: vi.fn(), prompt: vi.fn() });
+    try {
+      const fake = fakeScene();
+      const cutaway = new InteriorCutawaySystem(fake.scene as never, WORLD_DEFINITION, () => ({ width: 1_280, height: 720 }));
+      const capture = captureCutawayHandlers(cutaway);
+      cutaway.open('rest-cabin');
+      capture.handlers().toggleEdit();
+      capture.handlers().previewTemplate();
+      capture.handlers().applyTemplate();
+
+      expect(capture.model().saveBlocked).toBe(false);
+      capture.handlers().save();
+      expect(storage.setItem).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('surfaces failed prefab and clipboard reads once without model-render read loops', () => {
+    const storage = {
+      getItem: vi.fn(() => { throw new Error('blocked'); }),
+      setItem: vi.fn(),
+    };
+    vi.stubGlobal('window', { localStorage: storage, dispatchEvent: vi.fn(), prompt: vi.fn() });
+    try {
+      const fake = fakeScene();
+      const cutaway = new InteriorCutawaySystem(fake.scene as never, WORLD_DEFINITION, () => ({ width: 1_280, height: 720 }));
+      const capture = captureCutawayHandlers(cutaway);
+      cutaway.open('rest-cabin');
+      const readsAfterOpen = storage.getItem.mock.calls.length;
+
+      expect(capture.model().statusId).toBe('storageFailed');
+      capture.handlers().toggleEdit();
+      capture.handlers().cancelSelection();
+      expect(capture.model().statusId).toBe('storageFailed');
+      expect(storage.getItem).toHaveBeenCalledTimes(readsAfterOpen);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('keeps canvas text out of the cutaway header so DOM text stays crisp', () => {
     const fake = fakeScene();
     const cutaway = new InteriorCutawaySystem(fake.scene as never, WORLD_DEFINITION, () => ({ width: 1_280, height: 720 }));

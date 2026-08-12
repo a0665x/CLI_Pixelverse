@@ -10,6 +10,7 @@ import type {
   FurniturePrefab,
   GridPoint,
   InteriorDefinition,
+  InteriorLayoutClipboard,
   OfficePrefabDefinition,
   WorldDefinition,
 } from '../world/types';
@@ -46,14 +47,13 @@ import {
 import { interiorMotionAt } from './interiorMotion';
 import {
   FURNITURE_SCALES,
-  loadInteriorLayout,
+  readInteriorLayout,
   normalizeFurnitureScale,
   resizeFurniture,
   saveInteriorLayout,
   collectAllFurniture,
   requiredHookInventory,
   reorderFurniture,
-  revertInteriorDraft,
 } from './interiorLayoutEditor';
 import {
   createFurniturePrefab,
@@ -63,12 +63,11 @@ import {
   transformSelectionAtomically,
 } from './interiorSelection';
 import {
-  availablePrefabs,
   copyDecorativeLayout,
   isBuiltInPrefab,
-  loadLayoutClipboard,
-  loadPrefabs,
   pasteDecorativeLayout,
+  readAvailablePrefabs,
+  readLayoutClipboard,
   saveLayoutClipboard,
   savePrefabs,
   upsertPrefab,
@@ -191,6 +190,10 @@ export class InteriorCutawaySystem {
   private selectedFurnitureId: string | undefined;
   private readonly selectedFurnitureIds = new Set<string>();
   private prefabs: OfficePrefabDefinition[] = [];
+  private clipboard: InteriorLayoutClipboard | undefined;
+  private layoutStorageReadFailed = false;
+  private prefabStorageReadFailed = false;
+  private clipboardStorageReadFailed = false;
   private activeInterior: InteriorDefinition | undefined;
   private activeDefinition: InteriorDefinition | undefined;
   private editMode = false;
@@ -239,17 +242,24 @@ export class InteriorCutawaySystem {
     }
     const definition = interiorDefinitionForBuilding(building);
     this.close();
+    const layoutRead = readInteriorLayout(buildingId, definition);
+    const prefabRead = readAvailablePrefabs();
+    const clipboardRead = readLayoutClipboard();
     this.openId = buildingId;
     this.activeDefinition = definition;
     this.activeInterior = {
       ...definition,
-      furniture: loadInteriorLayout(buildingId, definition),
+      furniture: layoutRead.layout,
       overflow: definition.overflow.map((point) => ({ ...point })),
     };
     this.undoStore.reset(this.activeInterior.furniture);
     this.templatePreview = undefined;
     this.templateDiagnostics = [];
-    this.prefabs = availablePrefabs();
+    this.prefabs = prefabRead.value;
+    this.clipboard = clipboardRead.value;
+    this.layoutStorageReadFailed = layoutRead.storageRead === 'failed';
+    this.prefabStorageReadFailed = prefabRead.storageRead === 'failed';
+    this.clipboardStorageReadFailed = clipboardRead.storageRead === 'failed';
     const interior = this.activeInterior;
     if (typeof window !== 'undefined') window.dispatchEvent(new Event(CUTAWAY_OPEN_EVENT));
     const size = this.viewportProvider();
@@ -306,6 +316,9 @@ export class InteriorCutawaySystem {
     });
 
     this.statusMessage = 'EMPTY · 點擊關閉或按 ESC';
+    if (this.layoutStorageReadFailed || this.prefabStorageReadFailed || this.clipboardStorageReadFailed) {
+      this.statusId = 'storageFailed';
+    }
     this.domOverlay.open(layout, this.overlayModel(), {
       close: () => this.close(),
       toggleEdit: () => {
@@ -315,6 +328,10 @@ export class InteriorCutawaySystem {
         if (this.activeInterior) this.renderFurniture(this.activeInterior, layout);
       },
       save: () => {
+        if (this.layoutStorageReadFailed) {
+          this.setStatus('', 'storageFailed');
+          return;
+        }
         try {
           if (this.openId && this.activeInterior) saveInteriorLayout(this.openId, this.activeInterior.furniture);
           this.setStatus('✓ 家具配置已保存，下次開啟仍會保留');
@@ -334,7 +351,14 @@ export class InteriorCutawaySystem {
       },
       revert: () => {
         if (!this.openId) return;
-        interior.furniture = revertInteriorDraft(this.openId, definition);
+        const read = readInteriorLayout(this.openId, definition);
+        if (read.storageRead === 'failed') {
+          this.layoutStorageReadFailed = true;
+          this.setStatus('', 'storageFailed');
+          return;
+        }
+        this.layoutStorageReadFailed = false;
+        interior.furniture = read.layout;
         this.undoStore.reset(interior.furniture);
         this.clearTemplatePreview();
         this.selectedFurnitureIds.clear();
@@ -344,8 +368,15 @@ export class InteriorCutawaySystem {
       },
       copy: () => {
         if (!this.openId) return;
+        if (this.clipboardStorageReadFailed) {
+          this.setStatus('', 'storageFailed');
+          return;
+        }
         try {
-          saveLayoutClipboard(copyDecorativeLayout(this.openId, interior.furniture));
+          const clipboard = copyDecorativeLayout(this.openId, interior.furniture);
+          saveLayoutClipboard(clipboard);
+          this.clipboard = clipboard;
+          this.clipboardStorageReadFailed = false;
           this.setStatus('格局已複製（Hook 家具不會被帶走）');
           this.close();
         } catch {
@@ -353,7 +384,7 @@ export class InteriorCutawaySystem {
         }
       },
       paste: () => {
-        const clipboard = loadLayoutClipboard();
+        const clipboard = this.clipboard;
         if (!clipboard) return;
         const result = pasteDecorativeLayout(interior, interior.furniture, clipboard);
         if (result.accepted) this.commitFurnitureMutation(interior, result.layout);
@@ -402,6 +433,10 @@ export class InteriorCutawaySystem {
     this.selectedFurnitureIds.clear();
     this.activeInterior = undefined;
     this.activeDefinition = undefined;
+    this.clipboard = undefined;
+    this.layoutStorageReadFailed = false;
+    this.prefabStorageReadFailed = false;
+    this.clipboardStorageReadFailed = false;
     this.editMode = false;
     this.openId = undefined;
     this.currentAssignments = [];
@@ -907,7 +942,8 @@ export class InteriorCutawaySystem {
       requiredPlaced: this.activeInterior ? requiredHookInventory(this.activeDefinition ?? this.activeInterior, this.activeInterior.furniture).filter(({ placed }) => placed).length : 0,
       requiredTotal: this.activeInterior ? requiredHookInventory(this.activeDefinition ?? this.activeInterior, this.activeInterior.furniture).length : 0,
       prefabCount: this.prefabs.length,
-      clipboardAvailable: Boolean(loadLayoutClipboard()),
+      clipboardAvailable: Boolean(this.clipboard),
+      saveBlocked: this.layoutStorageReadFailed,
       selectedCount: this.selectedFurnitureIds.size,
       ...capabilities,
       canDissolve: Boolean(selectedInstanceId) && selection.every(({ prefabInstanceId }) => prefabInstanceId === selectedInstanceId),
@@ -930,7 +966,10 @@ export class InteriorCutawaySystem {
     statusId?: 'storageFailed' | 'undoApplied' | 'templatePreviewReady' | 'templateApplied' | 'groupDissolved',
   ): void {
     this.statusMessage = message;
-    this.statusId = statusId;
+    const unresolvedStorageRead = this.layoutStorageReadFailed
+      || this.prefabStorageReadFailed
+      || this.clipboardStorageReadFailed;
+    this.statusId = statusId ?? (unresolvedStorageRead ? 'storageFailed' : undefined);
     this.domOverlay.update(this.overlayModel());
   }
 
@@ -982,6 +1021,7 @@ export class InteriorCutawaySystem {
     if (!this.templatePreview || this.templateDiagnostics.length > 0) return;
     const proposed = cloneFurnitureLayout(this.templatePreview);
     this.commitFurnitureMutation(interior, proposed);
+    this.layoutStorageReadFailed = false;
     this.clearTemplatePreview();
     this.selectedFurnitureIds.clear();
     this.selectedFurnitureId = undefined;
@@ -1051,6 +1091,10 @@ export class InteriorCutawaySystem {
   }
 
   private createSelectedPrefab(interior: InteriorDefinition, layout: CutawayLayout): void {
+    if (this.prefabStorageReadFailed) {
+      this.setStatus('', 'storageFailed');
+      return;
+    }
     const userPrefabCount = this.prefabs.filter((prefab) => !isBuiltInPrefab(prefab)).length;
     const name = typeof window === 'undefined' ? `組裝件 ${userPrefabCount + 1}`
       : window.prompt('替這個組裝件命名', `組裝件 ${userPrefabCount + 1}`)?.trim();
@@ -1064,8 +1108,14 @@ export class InteriorCutawaySystem {
       return;
     }
     try {
-      savePrefabs(upsertPrefab(loadPrefabs(), prefab));
-      this.prefabs = availablePrefabs();
+      savePrefabs(upsertPrefab(this.prefabs, prefab));
+      const read = readAvailablePrefabs();
+      if (read.storageRead === 'failed') {
+        this.prefabStorageReadFailed = true;
+        this.setStatus('', 'storageFailed');
+        return;
+      }
+      this.prefabs = read.value;
       this.setStatus(`組裝件「${name}」已加入下方貨架`);
     } catch {
       this.setStatus('', 'storageFailed');

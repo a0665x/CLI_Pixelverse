@@ -25,6 +25,7 @@ export interface CutawayDomModel {
   requiredTotal: number;
   prefabCount: number;
   clipboardAvailable: boolean;
+  saveBlocked: boolean;
   selectedCount: number;
   canDuplicate: boolean;
   canGroup: boolean;
@@ -205,6 +206,7 @@ export class InteriorCutawayDomOverlay {
     const revert = this.panel.querySelector<HTMLButtonElement>('[data-action="revert"]');
     const copy = this.panel.querySelector<HTMLButtonElement>('[data-action="copy"]');
     const paste = this.panel.querySelector<HTMLButtonElement>('[data-action="paste"]');
+    const save = this.panel.querySelector<HTMLButtonElement>('[data-action="save"]');
     const undo = this.panel.querySelector<HTMLButtonElement>('[data-action="undo"]');
     const previewTemplate = this.panel.querySelector<HTMLButtonElement>('[data-action="preview-template"]');
     const applyTemplate = this.panel.querySelector<HTMLButtonElement>('[data-action="apply-template"]');
@@ -212,6 +214,7 @@ export class InteriorCutawayDomOverlay {
     if (revert) revert.hidden = !model.editMode;
     if (copy) copy.hidden = !model.editMode;
     if (paste) { paste.hidden = !model.editMode; paste.disabled = !model.clipboardAvailable; }
+    if (save) save.disabled = model.saveBlocked;
     if (undo) { undo.hidden = !model.editMode; undo.disabled = !model.canUndo; }
     if (previewTemplate) previewTemplate.hidden = !model.editMode;
     if (applyTemplate) {

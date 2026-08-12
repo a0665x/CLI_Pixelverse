@@ -5,7 +5,9 @@ import {
   copyDecorativeLayout,
   isBuiltInPrefab,
   loadLayoutClipboard,
+  readLayoutClipboard,
   loadPrefabs,
+  readPrefabs,
   pasteDecorativeLayout,
   placePrefab,
   saveLayoutClipboard,
@@ -101,6 +103,16 @@ describe('interior prefab and room clipboard store', () => {
       'bench-four', 'pod-l-two', 'control-m-three',
     ]);
     expect(loadLayoutClipboard(throwingStorage)).toBeUndefined();
+  });
+
+  it('reports failed prefab and clipboard reads separately from empty storage', () => {
+    const throwingStorage = {
+      getItem: () => { throw new Error('blocked'); },
+      setItem: () => undefined,
+    };
+
+    expect(readPrefabs(throwingStorage)).toEqual({ storageRead: 'failed', value: [] });
+    expect(readLayoutClipboard(throwingStorage)).toEqual({ storageRead: 'failed', value: undefined });
   });
 
   it('deeply clones visual offsets for copied persisted layout furniture', () => {

@@ -137,8 +137,20 @@ const browserStorage = (): StorageLike | undefined => {
   try { return window.localStorage; } catch { return undefined; }
 };
 
-const readStorage = (storage: StorageLike | undefined, key: string): string | null | undefined => {
-  try { return storage?.getItem(key); } catch { return undefined; }
+export type StorageReadStatus = 'success' | 'failed';
+
+const readStorage = (
+  storage: StorageLike | undefined,
+  key: string,
+): { storageRead: StorageReadStatus; value: string | null } => {
+  let resolved = storage;
+  if (!resolved && typeof window !== 'undefined') {
+    try { resolved = window.localStorage; } catch { return { storageRead: 'failed', value: null }; }
+    if (!resolved) return { storageRead: 'failed', value: null };
+  }
+  if (!resolved) return { storageRead: 'success', value: null };
+  try { return { storageRead: 'success', value: resolved.getItem(key) }; }
+  catch { return { storageRead: 'failed', value: null }; }
 };
 
 interface SavedInteriorLayoutV5 {
@@ -218,10 +230,10 @@ const parseSavedInteriorLayout = (raw: string): ParsedSavedInteriorLayout | unde
 
 export function hasSavedInteriorLayout(
   buildingId: string,
-  storage: StorageLike | undefined = browserStorage(),
+  storage?: StorageLike,
 ): boolean {
-  const raw = readStorage(storage, storageKey(buildingId));
-  return raw !== null && raw !== undefined && parseSavedInteriorLayout(raw) !== undefined;
+  const read = readStorage(storage, storageKey(buildingId));
+  return read.storageRead === 'success' && read.value !== null && parseSavedInteriorLayout(read.value) !== undefined;
 }
 
 const rotationFromFacing = (facing: FurnitureDefinition['facing']): FurnitureRotation => ({
@@ -335,16 +347,21 @@ export function saveInteriorLayout(
   storage?.setItem(storageKey(buildingId), JSON.stringify(saved));
 }
 
-export function loadInteriorLayout(
+export interface InteriorLayoutReadResult {
+  layout: FurnitureDefinition[];
+  storageRead: StorageReadStatus;
+}
+
+export function readInteriorLayout(
   buildingId: string,
   room: InteriorDefinition,
-  storage: StorageLike | undefined = browserStorage(),
-): FurnitureDefinition[] {
+  storage?: StorageLike,
+): InteriorLayoutReadResult {
   const fallback = normalizeRoomLayout(room, room.furniture);
-  const raw = readStorage(storage, storageKey(buildingId));
-  if (!raw) return fallback;
-  const parsed = parseSavedInteriorLayout(raw);
-  if (!parsed) return fallback;
+  const read = readStorage(storage, storageKey(buildingId));
+  if (read.storageRead === 'failed' || !read.value) return { layout: fallback, storageRead: read.storageRead };
+  const parsed = parseSavedInteriorLayout(read.value);
+  if (!parsed) return { layout: fallback, storageRead: 'success' };
   const authoredIds = new Set(room.furniture.map(({ id }) => id));
   const candidates = parsed.legacy
     ? [...fallback, ...parsed.furniture.filter((candidate) => (
@@ -373,13 +390,24 @@ export function loadInteriorLayout(
     }])[0]!;
     if (canPlaceFurniture(room, normalized, accepted)) accepted.push(normalized);
   }
-  return accepted.length > 0 || !parsed.legacy ? accepted : fallback;
+  return {
+    layout: accepted.length > 0 || !parsed.legacy ? accepted : fallback,
+    storageRead: 'success',
+  };
+}
+
+export function loadInteriorLayout(
+  buildingId: string,
+  room: InteriorDefinition,
+  storage?: StorageLike,
+): FurnitureDefinition[] {
+  return readInteriorLayout(buildingId, room, storage).layout;
 }
 
 export function revertInteriorDraft(
   buildingId: string,
   room: InteriorDefinition,
-  storage: StorageLike | undefined = browserStorage(),
+  storage?: StorageLike,
 ): FurnitureDefinition[] {
   return loadInteriorLayout(buildingId, room, storage);
 }

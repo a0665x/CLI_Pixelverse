@@ -10,6 +10,7 @@ import { BUILT_IN_OFFICE_PREFABS } from './builtInOfficePrefabs';
 import { catalogItem } from './modernOfficeCatalog';
 import { resolvePlacementCandidate, snapFurniturePoint } from './interiorPlacement';
 import { cloneOfficePrefab } from './prefabGeometry';
+import type { StorageReadStatus } from './interiorLayoutEditor';
 
 interface StorageLike {
   getItem(key: string): string | null;
@@ -25,8 +26,18 @@ const browserStorage = (): StorageLike | undefined => {
   try { return window.localStorage; } catch { return undefined; }
 };
 
-const readStorage = (storage: StorageLike | undefined, key: string): string | null | undefined => {
-  try { return storage?.getItem(key); } catch { return undefined; }
+const readStorage = (
+  storage: StorageLike | undefined,
+  key: string,
+): { storageRead: StorageReadStatus; value: string | null } => {
+  let resolved = storage;
+  if (!resolved && typeof window !== 'undefined') {
+    try { resolved = window.localStorage; } catch { return { storageRead: 'failed', value: null }; }
+    if (!resolved) return { storageRead: 'failed', value: null };
+  }
+  if (!resolved) return { storageRead: 'success', value: null };
+  try { return { storageRead: 'success', value: resolved.getItem(key) }; }
+  catch { return { storageRead: 'failed', value: null }; }
 };
 
 const cloneFurniture = (item: FurnitureDefinition): FurnitureDefinition => ({
@@ -80,28 +91,45 @@ export function savePrefabs(
   storage?.setItem(PREFAB_KEY, JSON.stringify({ version: 1, prefabs: userPrefabs }));
 }
 
-export function loadPrefabs(storage: StorageLike | undefined = browserStorage()): FurniturePrefab[] {
-  const raw = readStorage(storage, PREFAB_KEY);
-  if (!raw) return [];
+export interface StorageReadResult<T> { storageRead: StorageReadStatus; value: T }
+
+export function readPrefabs(storage?: StorageLike): StorageReadResult<FurniturePrefab[]> {
+  const read = readStorage(storage, PREFAB_KEY);
+  if (read.storageRead === 'failed' || !read.value) return { storageRead: read.storageRead, value: [] };
   try {
-    const parsed = JSON.parse(raw) as { version?: unknown; prefabs?: unknown };
-    if (parsed.version !== 1 || !Array.isArray(parsed.prefabs)) return [];
-    return parsed.prefabs.filter((value): value is FurniturePrefab => {
+    const parsed = JSON.parse(read.value) as { version?: unknown; prefabs?: unknown };
+    if (parsed.version !== 1 || !Array.isArray(parsed.prefabs)) return { storageRead: 'success', value: [] };
+    const value = parsed.prefabs.filter((value): value is FurniturePrefab => {
       const prefab = value as FurniturePrefab;
       return Boolean(prefab && typeof prefab.id === 'string' && typeof prefab.name === 'string' &&
         Number.isFinite(prefab.createdAt) && Number.isFinite(prefab.width) && Number.isFinite(prefab.height) &&
         Array.isArray(prefab.items) && prefab.items.length >= 2 && prefab.items.every(isValidTemplate));
     }).map(clonePrefab);
+    return { storageRead: 'success', value };
   } catch {
-    return [];
+    return { storageRead: 'success', value: [] };
   }
 }
 
-export function availablePrefabs(storage: StorageLike | undefined = browserStorage()): OfficePrefabDefinition[] {
-  return [
-    ...BUILT_IN_OFFICE_PREFABS.map((prefab) => deepFreeze(cloneOfficePrefab(prefab))),
-    ...loadPrefabs(storage).map(asUserOfficePrefab),
-  ];
+export function loadPrefabs(storage?: StorageLike): FurniturePrefab[] {
+  return readPrefabs(storage).value;
+}
+
+export function readAvailablePrefabs(
+  storage?: StorageLike,
+): StorageReadResult<OfficePrefabDefinition[]> {
+  const read = readPrefabs(storage);
+  return {
+    storageRead: read.storageRead,
+    value: [
+      ...BUILT_IN_OFFICE_PREFABS.map((prefab) => deepFreeze(cloneOfficePrefab(prefab))),
+      ...read.value.map(asUserOfficePrefab),
+    ],
+  };
+}
+
+export function availablePrefabs(storage?: StorageLike): OfficePrefabDefinition[] {
+  return readAvailablePrefabs(storage).value;
 }
 
 export function upsertPrefab(
@@ -137,19 +165,25 @@ export function saveLayoutClipboard(
   storage?.setItem(CLIPBOARD_KEY, JSON.stringify(clipboard));
 }
 
-export function loadLayoutClipboard(
-  storage: StorageLike | undefined = browserStorage(),
-): InteriorLayoutClipboard | undefined {
-  const raw = readStorage(storage, CLIPBOARD_KEY);
-  if (!raw) return undefined;
+export function readLayoutClipboard(
+  storage?: StorageLike,
+): StorageReadResult<InteriorLayoutClipboard | undefined> {
+  const read = readStorage(storage, CLIPBOARD_KEY);
+  if (read.storageRead === 'failed' || !read.value) return { storageRead: read.storageRead, value: undefined };
   try {
-    const parsed = JSON.parse(raw) as InteriorLayoutClipboard;
+    const parsed = JSON.parse(read.value) as InteriorLayoutClipboard;
     if (parsed.version !== 1 || typeof parsed.sourceBuildingId !== 'string' || !Number.isFinite(parsed.copiedAt) ||
-      !Array.isArray(parsed.items) || !parsed.items.every(isValidTemplate)) return undefined;
-    return { ...parsed, items: cloneLayout(parsed.items) };
+      !Array.isArray(parsed.items) || !parsed.items.every(isValidTemplate)) return { storageRead: 'success', value: undefined };
+    return { storageRead: 'success', value: { ...parsed, items: cloneLayout(parsed.items) } };
   } catch {
-    return undefined;
+    return { storageRead: 'success', value: undefined };
   }
+}
+
+export function loadLayoutClipboard(
+  storage?: StorageLike,
+): InteriorLayoutClipboard | undefined {
+  return readLayoutClipboard(storage).value;
 }
 
 const validateAll = (
