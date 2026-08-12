@@ -2,6 +2,7 @@ import { WORLD_PIXELS } from '../game/constants';
 import type { CutawayLayout } from './InteriorCutawaySystem';
 import type { ModernOfficeCategory } from './modernOfficeCatalog';
 import type { FurnitureDefinition, FurnitureLayer, FurnitureRotation } from '../world/types';
+import { type VillageLocale, villageCopy } from '../i18n/villageLocale';
 
 export function selectionCapabilities(selection: readonly FurnitureDefinition[]): {
   canDuplicate: boolean;
@@ -13,6 +14,7 @@ export function selectionCapabilities(selection: readonly FurnitureDefinition[])
 }
 
 export interface CutawayDomModel {
+  titleId: keyof ReturnType<typeof villageCopy>['cutaway']['titles'];
   title: string;
   status: string;
   editMode: boolean;
@@ -26,6 +28,12 @@ export interface CutawayDomModel {
   selectedCount: number;
   canDuplicate: boolean;
   canGroup: boolean;
+  canDissolve: boolean;
+  canUndo: boolean;
+  templatePreviewing: boolean;
+  templateValid: boolean;
+  templateDiagnostics: Array<'templateInvalid' | 'unreachableHook'>;
+  statusId?: 'storageFailed';
   selected?: { label: string; scale: number; rotation: FurnitureRotation; layer: FurnitureLayer };
 }
 
@@ -33,6 +41,9 @@ export interface CutawayDomHandlers {
   close(): void;
   toggleEdit(): void;
   save(): void;
+  undo(): void;
+  previewTemplate(): void;
+  applyTemplate(): void;
   category(category: ModernOfficeCategory): void;
   page(delta: -1 | 1): void;
   resize(delta: -1 | 1): void;
@@ -42,6 +53,7 @@ export interface CutawayDomHandlers {
   copy(): void;
   paste(): void;
   group(): void;
+  dissolveGroup(): void;
   shiftLayer(direction: 'previous' | 'next'): void;
   reorder(direction: 'back' | 'backward' | 'forward' | 'front'): void;
   duplicate(): void;
@@ -50,14 +62,6 @@ export interface CutawayDomHandlers {
 }
 
 export interface CutawayRoomLabel { id: string; text: string; x: number; y: number; kind: 'hook' | 'agent' }
-
-const CATEGORY_LABELS: Record<ModernOfficeCategory, string> = {
-  surfaces: '地板／牆面',
-  'seating-plants': '座椅／植栽',
-  'screens-electronics': '螢幕／電子',
-  'storage-partitions': '收納／隔間',
-  workstations: '工作桌組',
-};
 
 export class InteriorCutawayDomOverlay {
   private readonly host: HTMLElement | undefined;
@@ -69,6 +73,8 @@ export class InteriorCutawayDomOverlay {
   private inspector: HTMLElement | undefined;
   private handlers: CutawayDomHandlers | undefined;
   private labelLayer: HTMLDivElement | undefined;
+  private locale: VillageLocale = 'zh-TW';
+  private model: CutawayDomModel | undefined;
 
   constructor(private readonly canvasRect: () => DOMRect | undefined) {
     this.host = typeof document === 'undefined'
@@ -91,6 +97,9 @@ export class InteriorCutawayDomOverlay {
           <button type="button" data-action="revert">取消配置</button>
           <button type="button" data-action="copy">複製格局</button>
           <button type="button" data-action="paste">貼上格局</button>
+          <button type="button" data-action="undo"></button>
+          <button type="button" data-action="preview-template"></button>
+          <button type="button" data-action="apply-template"></button>
           <button type="button" data-action="save">儲存配置</button>
           <button type="button" data-action="close" aria-label="關閉室內">×</button>
         </div>
@@ -118,6 +127,9 @@ export class InteriorCutawayDomOverlay {
     panel.querySelector('[data-action="revert"]')?.addEventListener('click', handlers.revert);
     panel.querySelector('[data-action="copy"]')?.addEventListener('click', handlers.copy);
     panel.querySelector('[data-action="paste"]')?.addEventListener('click', handlers.paste);
+    panel.querySelector('[data-action="undo"]')?.addEventListener('click', handlers.undo);
+    panel.querySelector('[data-action="preview-template"]')?.addEventListener('click', handlers.previewTemplate);
+    panel.querySelector('[data-action="apply-template"]')?.addEventListener('click', handlers.applyTemplate);
     panel.querySelector('[data-action="prev"]')?.addEventListener('click', () => handlers.page(-1));
     panel.querySelector('[data-action="next"]')?.addEventListener('click', () => handlers.page(1));
     this.position(layout);
@@ -125,14 +137,33 @@ export class InteriorCutawayDomOverlay {
   }
 
   update(model: CutawayDomModel): void {
+    this.model = model;
     if (!this.panel) return;
-    if (this.title) this.title.textContent = model.title;
-    if (this.status) this.status.textContent = model.status;
-    if (this.editButton) this.editButton.textContent = model.editMode ? '完成移動' : '移動家具';
+    const localeCopy = villageCopy(this.locale).cutaway;
+    if (this.title) this.title.textContent = localeCopy.titles[model.titleId] ?? model.title;
+    if (this.status) this.status.textContent = model.statusId
+      ? localeCopy.status[model.statusId]
+      : this.locale === 'zh-TW' ? model.status : (model.editMode ? localeCopy.status.editing : localeCopy.status.ready);
+    if (this.editButton) this.editButton.textContent = model.editMode ? localeCopy.actions.done : localeCopy.actions.edit;
+    const actionLabels = {
+      collect: localeCopy.actions.collect,
+      revert: localeCopy.actions.revert,
+      copy: localeCopy.actions.copy,
+      paste: localeCopy.actions.paste,
+      undo: localeCopy.actions.undo,
+      'preview-template': localeCopy.actions.previewTemplate,
+      'apply-template': localeCopy.actions.applyTemplate,
+      save: localeCopy.actions.save,
+    } as const;
+    Object.entries(actionLabels).forEach(([action, label]) => {
+      const button = this.panel?.querySelector<HTMLButtonElement>(`[data-action="${action}"]`);
+      if (button) button.textContent = label;
+    });
+    this.panel.querySelector<HTMLButtonElement>('[data-action="close"]')?.setAttribute('aria-label', localeCopy.actions.close);
     if (this.catalog) this.catalog.hidden = !model.editMode;
     const nav = this.panel.querySelector('.cutaway-dom-categories');
     if (nav) {
-      nav.replaceChildren(...Object.entries(CATEGORY_LABELS).map(([category, label]) => {
+      nav.replaceChildren(...Object.entries(localeCopy.categories).map(([category, label]) => {
         const button = document.createElement('button');
         button.type = 'button';
         button.textContent = label;
@@ -148,19 +179,22 @@ export class InteriorCutawayDomOverlay {
       this.inspector.replaceChildren();
       if (model.selected) {
         const label = document.createElement('strong');
+        const selectedLabel = this.locale !== 'zh-TW' && /[\u3400-\u9fff]/.test(model.selected.label)
+          ? localeCopy.status.furniture : model.selected.label;
         label.textContent = model.selectedCount > 1
-          ? `${model.selectedCount} 件家具 · 批次操作`
-          : `${model.selected.label} · ${Math.round(model.selected.scale * 100)}% · ${model.selected.rotation}° · ${model.selected.layer}`;
+          ? `${model.selectedCount} ${localeCopy.status.selected} · ${localeCopy.status.batch}`
+          : `${selectedLabel} · ${Math.round(model.selected.scale * 100)}% · ${model.selected.rotation}° · ${model.selected.layer}`;
         const controls: Array<[string, () => void]> = [
-          ['取消選取', () => this.handlers?.cancelSelection()],
-          ...(model.canDuplicate ? [['複製', () => this.handlers?.duplicate()] as [string, () => void]] : []),
-          ...(model.canGroup ? [['建立組裝件', () => this.handlers?.group()] as [string, () => void]] : []),
-          ['放回下排', () => this.handlers?.returnToShelf()],
-          ['縮小', () => this.handlers?.resize(-1)], ['放大', () => this.handlers?.resize(1)],
+          [localeCopy.actions.cancel, () => this.handlers?.cancelSelection()],
+          ...(model.canDuplicate ? [[localeCopy.actions.duplicate, () => this.handlers?.duplicate()] as [string, () => void]] : []),
+          ...(model.canGroup ? [[localeCopy.actions.group, () => this.handlers?.group()] as [string, () => void]] : []),
+          ...(model.canDissolve ? [[localeCopy.actions.dissolveGroup, () => this.handlers?.dissolveGroup()] as [string, () => void]] : []),
+          [localeCopy.actions.shelf, () => this.handlers?.returnToShelf()],
+          [localeCopy.actions.smaller, () => this.handlers?.resize(-1)], [localeCopy.actions.larger, () => this.handlers?.resize(1)],
           ['↶', () => this.handlers?.rotate(-90)], ['↷', () => this.handlers?.rotate(90)],
-          ['下層', () => this.handlers?.shiftLayer('previous')], ['上層', () => this.handlers?.shiftLayer('next')],
-          ['最下', () => this.handlers?.reorder('back')], ['下降', () => this.handlers?.reorder('backward')],
-          ['上升', () => this.handlers?.reorder('forward')], ['最上', () => this.handlers?.reorder('front')],
+          [localeCopy.actions.layerDown, () => this.handlers?.shiftLayer('previous')], [localeCopy.actions.layerUp, () => this.handlers?.shiftLayer('next')],
+          [localeCopy.actions.back, () => this.handlers?.reorder('back')], [localeCopy.actions.backward, () => this.handlers?.reorder('backward')],
+          [localeCopy.actions.forward, () => this.handlers?.reorder('forward')], [localeCopy.actions.front, () => this.handlers?.reorder('front')],
         ];
         this.inspector.append(label, ...controls.map(([text, handler]) => {
           const button = document.createElement('button'); button.type = 'button'; button.textContent = text; button.onclick = handler; return button;
@@ -171,13 +205,33 @@ export class InteriorCutawayDomOverlay {
     const revert = this.panel.querySelector<HTMLButtonElement>('[data-action="revert"]');
     const copy = this.panel.querySelector<HTMLButtonElement>('[data-action="copy"]');
     const paste = this.panel.querySelector<HTMLButtonElement>('[data-action="paste"]');
+    const undo = this.panel.querySelector<HTMLButtonElement>('[data-action="undo"]');
+    const previewTemplate = this.panel.querySelector<HTMLButtonElement>('[data-action="preview-template"]');
+    const applyTemplate = this.panel.querySelector<HTMLButtonElement>('[data-action="apply-template"]');
     if (collect) collect.hidden = !model.editMode;
     if (revert) revert.hidden = !model.editMode;
     if (copy) copy.hidden = !model.editMode;
     if (paste) { paste.hidden = !model.editMode; paste.disabled = !model.clipboardAvailable; }
-    if (this.status && model.editMode) {
-      this.status.textContent = `${model.status} · Hook ${model.requiredPlaced}/${model.requiredTotal} · 組裝件 ${model.prefabCount}`;
+    if (undo) { undo.hidden = !model.editMode; undo.disabled = !model.canUndo; }
+    if (previewTemplate) previewTemplate.hidden = !model.editMode;
+    if (applyTemplate) {
+      applyTemplate.hidden = !model.editMode || !model.templatePreviewing;
+      applyTemplate.disabled = !model.templateValid;
     }
+    if (this.status && model.editMode) {
+      const diagnostics = model.templateDiagnostics.map((id) => localeCopy.status[id]);
+      const status = diagnostics.length > 0
+        ? diagnostics.join(' · ')
+        : model.statusId
+          ? localeCopy.status[model.statusId]
+          : this.locale === 'zh-TW' ? model.status : localeCopy.status.editing;
+      this.status.textContent = `${status} · ${localeCopy.status.hook} ${model.requiredPlaced}/${model.requiredTotal} · ${localeCopy.status.prefab} ${model.prefabCount}`;
+    }
+  }
+
+  setLocale(locale: VillageLocale): void {
+    this.locale = locale;
+    if (this.model) this.update(this.model);
   }
 
   setStatus(message: string): void { if (this.status) this.status.textContent = message; }
