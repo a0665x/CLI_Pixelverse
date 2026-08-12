@@ -27,6 +27,13 @@ describe('interior marquee selection and prefabs', () => {
       .toEqual(['desk', 'monitor']);
   });
 
+  it('selects the same offset alpha bounds used by the renderer highlight', () => {
+    const shifted = { ...furniture('shifted', 98, 2, 2), visualOffset: { x: 3, y: 0 } };
+
+    expect(selectedFurnitureIds({ x: 4.9, y: 2, width: 1.2, height: 1.2 }, [shifted])).toEqual(['shifted']);
+    expect(selectedFurnitureIds({ x: 1.9, y: 2, width: 1.2, height: 1.2 }, [shifted])).toEqual([]);
+  });
+
   it('creates a relative prefab and strips Hook identity', () => {
     const desk = furniture('desk', 225, 3, 4);
     const monitor = furniture('monitor', 129, 3.5, 4.25);

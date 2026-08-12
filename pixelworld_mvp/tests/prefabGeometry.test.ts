@@ -90,6 +90,15 @@ describe('office prefab geometry', () => {
     expect(result).toMatchObject({ accepted: true, diagnostics: [] });
     expect(result.layout.map(({ point }) => point)).toEqual([{ x: 4, y: 3 }, { x: 5, y: 4 }]);
     expect(new Set(result.layout.map(({ prefabInstanceId }) => prefabInstanceId)).size).toBe(1);
+    expect(result.layout[0]!.interactionPoint).toEqual({ x: 4, y: 4 });
+  });
+
+  it('retains the exact validated authored anchor on the compatible placed Hook item', () => {
+    const result = placeOfficePrefab(room, [], samplePrefab, { x: 6, y: 2 }, 63);
+    const hook = result.layout.find(({ supportedActions }) => supportedActions.includes('terminal'))!;
+
+    expect(result.accepted).toBe(true);
+    expect(hook.interactionPoint).toEqual({ x: 6, y: 3 });
   });
 
   it('creates distinct group and item IDs for placements sharing a timestamp', () => {

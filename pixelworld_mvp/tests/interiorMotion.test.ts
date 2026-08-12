@@ -35,10 +35,43 @@ describe('interior motion timeline', () => {
     const assignment = assignInteriorOccupants(interior, [snapshot], 'tool-smithy')[0]!;
     const route = interiorRouteFor(snapshot, interior, assignment);
 
-    expect(route.map(({ kind }) => kind)).toEqual(['computer', 'bookcase', 'planning-board', 'computer']);
+    expect(route[0]!.id).toBe(assignment.furnitureId);
+    expect(route.at(-1)!.id).toBe(assignment.furnitureId);
+    expect(route.map(({ kind }) => kind)).toEqual(expect.arrayContaining(['bookcase', 'planning-board']));
     const early = interiorMotionAt(snapshot, interior, assignment, 10_000);
     const later = interiorMotionAt(toolSnapshot(12_600), interior, assignment, 12_600);
     expect(later.point).not.toEqual(early.point);
+  });
+
+  it('enters orthogonally at the exact authored anchor of the selected terminal', () => {
+    const custom = {
+      ...interior, width: 8, height: 6,
+      furniture: [
+        {
+          id: 'terminal-a', kind: 'computer' as const, point: { x: 1, y: 1 }, facing: 'down' as const,
+          supportedActions: ['terminal' as const], icon: 'tool' as const, blocksNavigation: true,
+          interactionPoint: { x: 1, y: 3 },
+        },
+        {
+          id: 'terminal-b', kind: 'computer' as const, point: { x: 6, y: 1 }, facing: 'down' as const,
+          supportedActions: ['terminal' as const], icon: 'tool' as const, blocksNavigation: true,
+          interactionPoint: { x: 6, y: 3 },
+        },
+      ],
+      overflow: [],
+    };
+    const assignment = {
+      ...toolSnapshot(0), point: { x: 6, y: 3 }, facing: 'down' as const,
+      furnitureId: 'terminal-b', icon: 'tool' as const, seated: true,
+    };
+    const motion = interiorMotionAt(toolSnapshot(0), custom, assignment, 0);
+
+    expect(motion.path.at(-1)).toEqual(assignment.point);
+    expect(motion.path.every((point, index, path) => index === 0
+      || Math.abs(point.x - path[index - 1]!.x) + Math.abs(point.y - path[index - 1]!.y) === 1)).toBe(true);
+    const route = interiorRouteFor(toolSnapshot(0), custom, assignment);
+    expect(route[0]!.id).toBe('terminal-b');
+    expect(route.at(-1)!.id).toBe('terminal-b');
   });
 
   it('adds a subtle breathing bob while an Agent remains at a work point', () => {

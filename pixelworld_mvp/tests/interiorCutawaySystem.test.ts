@@ -5,6 +5,7 @@ import {
   cutawayLayoutForViewport,
   cutawayContainsPointer,
   furnitureRenderScreenPoint,
+  furnitureRenderScreenGeometry,
   hookFurnitureLabel,
   interiorAgentRenderDepth,
   interiorFurnitureRenderDepth,
@@ -12,6 +13,7 @@ import {
   roomOriginForLayout,
   roomPointForScreen,
   roomScreenPoint,
+  stableInteriorAgentIndex,
 } from '../src/rendering/InteriorCutawaySystem';
 import {
   selectionCapabilities,
@@ -21,6 +23,7 @@ import {
 import type { InteriorAgentSnapshot } from '../src/rendering/interiorAssignment';
 import { BUILT_IN_OFFICE_PREFABS } from '../src/rendering/builtInOfficePrefabs';
 import type { InteriorDefinition } from '../src/world/types';
+import { transformedAlphaBounds } from '../src/rendering/interiorPlacement';
 import { WORLD_DEFINITION } from '../src/world/worldDefinition';
 
 class FakeObject {
@@ -46,7 +49,9 @@ class FakeObject {
   setScrollFactor(): this { return this; }
   setInteractive(): this { this.interactive = true; return this; }
   setPosition(x: number, y: number): this { this.x = x; this.y = y; return this; }
-  getLocalPoint(x: number, y: number): { x: number; y: number } { return { x, y }; }
+  getLocalPoint(x: number, y: number): { x: number; y: number } {
+    return { x: (x - this.x) / this.scale, y: (y - this.y) / this.scale };
+  }
   setScale(scale: number): this { this.scale = scale; return this; }
   setSize(width: number, height: number): this { this.width = width; this.height = height; return this; }
   setAngle(): this { return this; }
@@ -174,13 +179,32 @@ describe('InteriorCutawaySystem', () => {
     expect(roomPointForScreen(origin, roomScreenPoint(origin, point, cell), cell)).toEqual(point);
   });
 
-  it('materializes the authored visual offset without reapplying rotation or scale', () => {
+  it('materializes the normalized authored visual offset at the item scale exactly once', () => {
     const furniture = {
       id: 'offset-display', kind: 'display' as const, point: { x: 3, y: 4 }, facing: 'right' as const,
       icon: 'generic' as const, supportedActions: [], visualOffset: { x: -0.5, y: 0.25 },
       rotation: 90 as const, scale: 1.5 as const,
     };
-    expect(furnitureRenderScreenPoint({ x: 100, y: 50 }, furniture, 20)).toEqual({ x: 160, y: 145 });
+    const point = furnitureRenderScreenPoint({ x: 100, y: 50 }, furniture, 20);
+    expect(point.x).toBeCloseTo(155);
+    expect(point.y).toBeCloseTo(147.5);
+  });
+
+  it('projects the same effective alpha bounds for render positioning and selection highlights', () => {
+    const furniture = {
+      id: 'offset-display', kind: 'display' as const, point: { x: 3, y: 4 }, facing: 'right' as const,
+      icon: 'generic' as const, supportedActions: [], visualOffset: { x: -0.5, y: 0.25 },
+      rotation: 90 as const, scale: 1.5 as const, assetId: 121,
+    };
+    const logical = transformedAlphaBounds(furniture);
+    const screen = furnitureRenderScreenGeometry({ x: 100, y: 50 }, furniture, 20);
+
+    expect(screen.bounds.x).toBeCloseTo(100 + logical.x * 20);
+    expect(screen.bounds.y).toBeCloseTo(50 + logical.y * 20);
+    expect(screen.bounds.width).toBeCloseTo(logical.width * 20);
+    expect(screen.bounds.height).toBeCloseTo(logical.height * 20);
+    expect(screen.point.x).toBeCloseTo(screen.bounds.x + screen.bounds.width / 2);
+    expect(screen.point.y).toBeCloseTo(screen.bounds.y + screen.bounds.height / 2);
   });
 
   it('orders wall foreground against renderer-owned agent foot Y', () => {
@@ -188,11 +212,30 @@ describe('InteriorCutawaySystem', () => {
       id: 'wall', kind: 'cabinet' as const, point: { x: 3, y: 4 }, facing: 'up' as const,
       icon: 'generic' as const, supportedActions: [], layer: 'wall' as const,
     };
-    const wallDepth = interiorFurnitureRenderDepth(wall, { x: 100, y: 145 });
-    expect(wallDepth).toBeGreaterThan(interiorAgentRenderDepth(140, 1));
-    expect(wallDepth).toBeLessThan(interiorAgentRenderDepth(150, 1));
-    expect(interiorFurnitureRenderDepth({ ...wall, layer: 'surface' }, { x: 100, y: 145 }))
+    const geometry = furnitureRenderScreenGeometry({ x: 100, y: 50 }, {
+      ...wall, assetId: 176, scale: 2, visualOffset: { x: 0, y: 0.25 },
+    }, 20);
+    const wallDepth = interiorFurnitureRenderDepth(wall, geometry.baselineY);
+    expect(wallDepth).toBeGreaterThan(interiorAgentRenderDepth(geometry.baselineY - 1, 1));
+    expect(wallDepth).toBeLessThan(interiorAgentRenderDepth(geometry.baselineY + 1, 1));
+    expect(interiorFurnitureRenderDepth({ ...wall, layer: 'surface' }, geometry.baselineY))
       .toBeLessThan(interiorAgentRenderDepth(0, 1));
+  });
+
+  it('uses an ID-stable tie break for agents sharing the same foot Y', () => {
+    const firstOrder = [{ agentId: 'beta' }, { agentId: 'alpha' }];
+    const recreated = [{ agentId: 'alpha' }, { agentId: 'beta' }];
+
+    expect(stableInteriorAgentIndex(firstOrder, 'alpha')).toBe(stableInteriorAgentIndex(recreated, 'alpha'));
+    expect(interiorAgentRenderDepth(120, stableInteriorAgentIndex(firstOrder, 'alpha')))
+      .toBe(interiorAgentRenderDepth(120, stableInteriorAgentIndex(recreated, 'alpha')));
+  });
+
+  it('returns a fitted cell instead of silently overflowing unsupported room dimensions', () => {
+    const layout = { x: 80, y: 44, width: 608, height: 360 };
+    const cell = roomCellForLayout({ width: 80, height: 40 }, layout);
+    expect(cell * 80).toBeLessThanOrEqual(layout.width - 24);
+    expect(cell * 40).toBeLessThanOrEqual(layout.height - 110);
   });
 
   it('keeps panel pointer events available for room marquee input', () => {
@@ -270,12 +313,16 @@ describe('InteriorCutawaySystem', () => {
       activeInterior: InteriorDefinition;
       roomOrigin: { x: number; y: number };
       roomCell: number;
+      root: FakeObject;
       renderFurniture(interior: InteriorDefinition, layout: ReturnType<typeof cutawayLayoutForViewport>): void;
     };
     internal.editMode = true;
     internal.activeDefinition = room;
     internal.activeInterior = room;
     internal.renderFurniture(room, cutawayLayoutForViewport(1_280, 720));
+    internal.root.x = 30;
+    internal.root.y = 20;
+    internal.root.scale = 2;
 
     const bench = BUILT_IN_OFFICE_PREFABS[0]!;
     const preview = fake.objects.find((object) => object.interactive &&
@@ -287,8 +334,16 @@ describe('InteriorCutawaySystem', () => {
 
     const anchor = { x: 2.12, y: 2.12 };
     const pointer = dragPreviewScreenPoint(internal.roomOrigin, anchor, internal.roomCell);
-    preview!.emit('dragstart', pointerAt(pointer.x - 20, pointer.y - 20));
-    preview!.emit('drag', pointerAt(pointer.x, pointer.y), -320, 850);
+    const world = (point: { x: number; y: number }) => ({
+      x: internal.root.x + point.x * internal.root.scale,
+      y: internal.root.y + point.y * internal.root.scale,
+    });
+    const transformedPointer = (point: { x: number; y: number }) => {
+      const transformed = world(point);
+      return pointerAt(transformed.x, transformed.y);
+    };
+    preview!.emit('dragstart', transformedPointer({ x: pointer.x - 20, y: pointer.y - 20 }));
+    preview!.emit('drag', transformedPointer(pointer), -320, 850);
     const ghosts = fake.objects.filter(({ alpha, destroyed }) => alpha === 0.72 && !destroyed);
     expect(ghosts).toHaveLength(bench.items.length);
     const firstOffset = bench.items[0]!.visualOffset ?? { x: 0, y: 0 };
@@ -297,7 +352,7 @@ describe('InteriorCutawaySystem', () => {
       y: pointer.y + (bench.items[0]!.point.y + firstOffset.y - bench.anchor.y) * internal.roomCell,
     });
 
-    preview!.emit('dragend', pointerAt(pointer.x + 200, pointer.y + 200), 7, 9);
+    preview!.emit('dragend', transformedPointer({ x: pointer.x + 200, y: pointer.y + 200 }), 7, 9);
     expect(room.furniture).toHaveLength(bench.items.length);
     expect(room.furniture[0]!.point).toEqual({ x: 2, y: 3 });
     expect(room.furniture.every(({ prefabInstanceId }) => prefabInstanceId === room.furniture[0]!.prefabInstanceId)).toBe(true);
@@ -335,6 +390,66 @@ describe('InteriorCutawaySystem', () => {
 
     expect(room.furniture).toHaveLength(bench.items.length);
     expect(room.furniture[0]!.point).toEqual({ x: 3, y: 4 });
+  });
+
+  it('keeps an existing offset sprite at the same logical point on a no-motion drag', () => {
+    const fake = fakeScene();
+    const cutaway = new InteriorCutawaySystem(fake.scene as never, WORLD_DEFINITION, () => ({ width: 1_280, height: 720 }));
+    cutaway.open('rest-cabin');
+    const furniture = {
+      id: 'offset-item', kind: 'plant' as const, point: { x: 6, y: 4 }, facing: 'up' as const,
+      supportedActions: [], icon: 'generic' as const, assetId: 98, scale: 1.5 as const,
+      rotation: 0 as const, visualOffset: { x: 0.5, y: 0.25 }, blocksNavigation: false,
+    };
+    const room: InteriorDefinition = {
+      id: 'rest-cabin', label: 'Offset drag', width: 14, height: 9,
+      floor: 'wood', wall: 'cream', furniture: [furniture], overflow: [],
+    };
+    const internal = cutaway as unknown as {
+      editMode: boolean;
+      activeDefinition: InteriorDefinition;
+      activeInterior: InteriorDefinition;
+      currentDragCandidate?: { furniture: { point: { x: number; y: number } } };
+      renderFurniture(interior: InteriorDefinition, layout: ReturnType<typeof cutawayLayoutForViewport>): void;
+    };
+    internal.editMode = true;
+    internal.activeDefinition = room;
+    internal.activeInterior = room;
+    internal.renderFurniture(room, cutawayLayoutForViewport(1_280, 720));
+    const sprite = fake.objects.find(({ texture, interactive, destroyed, depth }) =>
+      texture === 'modern-office-v1.2-single-98' && interactive && !destroyed && depth > 0)!;
+
+    sprite.emit('drag', undefined, sprite.x, sprite.y);
+    expect(internal.currentDragCandidate?.furniture.point).toEqual(furniture.point);
+    sprite.emit('dragend');
+
+    expect(room.furniture.find(({ id }) => id === furniture.id)?.point).toEqual(furniture.point);
+  });
+
+  it('refreshes an open cutaway for a changed viewport without discarding its draft', () => {
+    const fake = fakeScene();
+    const viewport = { width: 1_280, height: 720 };
+    const cutaway = new InteriorCutawaySystem(fake.scene as never, WORLD_DEFINITION, () => viewport);
+    cutaway.open('maker-workshop');
+    const internal = cutaway as unknown as {
+      root: FakeObject;
+      roomCell: number;
+      activeInterior: InteriorDefinition;
+    };
+    const firstRoot = internal.root;
+    const firstCell = internal.roomCell;
+    internal.activeInterior.furniture.push({
+      id: 'unsaved-marker', kind: 'plant', point: { x: 9, y: 9 }, facing: 'up',
+      supportedActions: [], icon: 'generic', assetId: 98, blocksNavigation: false,
+    });
+    viewport.width = 840;
+    viewport.height = 480;
+
+    cutaway.open('maker-workshop');
+
+    expect(internal.root).not.toBe(firstRoot);
+    expect(internal.roomCell).not.toBe(firstCell);
+    expect(internal.activeInterior.furniture.some(({ id }) => id === 'unsaved-marker')).toBe(true);
   });
 
   it('previews without mutation or storage, applies a valid compact template in memory, and undoes it', () => {

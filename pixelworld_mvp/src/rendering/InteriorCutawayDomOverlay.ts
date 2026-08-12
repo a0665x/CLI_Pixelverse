@@ -232,6 +232,10 @@ export class InteriorCutawayDomOverlay {
     }
   }
 
+  relayout(layout: CutawayLayout): void {
+    this.position(layout);
+  }
+
   setLocale(locale: VillageLocale): void {
     this.locale = locale;
     if (this.model) this.update(this.model);

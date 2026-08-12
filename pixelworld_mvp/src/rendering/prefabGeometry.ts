@@ -9,6 +9,7 @@ import type {
 import {
   furnitureBlocksNavigation,
   navigationCells,
+  rotateGridPoint,
   resolvedFurnitureAsset,
   transformedAlphaBounds,
   type FurnitureBounds,
@@ -36,6 +37,7 @@ const cloneFurniture = (item: FurnitureDefinition): FurnitureDefinition => ({
   supportedActions: [...item.supportedActions],
   ...(item.footprint ? { footprint: { ...item.footprint } } : {}),
   ...(item.visualOffset ? { visualOffset: { ...item.visualOffset } } : {}),
+  ...(item.interactionPoint ? { interactionPoint: { ...item.interactionPoint } } : {}),
 });
 
 const cloneFurnitureLayout = (layout: readonly FurnitureDefinition[]): FurnitureDefinition[] => layout.map(cloneFurniture);
@@ -60,15 +62,8 @@ export function prefabBounds(prefab: OfficePrefabDefinition): FurnitureBounds {
   return { x: left, y: top, width: right - left, height: bottom - top };
 }
 
-const rotatePoint = ({ x, y }: GridPoint, rotation: FurnitureRotation): GridPoint => {
-  if (rotation === 90) return { x: -y, y: x };
-  if (rotation === 180) return { x: -x, y: -y };
-  if (rotation === 270) return { x: y, y: -x };
-  return { x, y };
-};
-
 const rotateRelativePoint = (point: GridPoint, anchor: GridPoint, rotation: FurnitureRotation): GridPoint => {
-  const relative = rotatePoint({ x: point.x - anchor.x, y: point.y - anchor.y }, rotation);
+  const relative = rotateGridPoint({ x: point.x - anchor.x, y: point.y - anchor.y }, rotation);
   return { x: anchor.x + relative.x, y: anchor.y + relative.y };
 };
 
@@ -90,7 +85,7 @@ export function rotatePrefab(prefab: OfficePrefabDefinition, rotation: Furniture
       point: rotateRelativePoint(item.point, cloned.anchor, rotation),
       facing: rotateFacing(item.facing, rotation),
       rotation: rotateItemRotation(item.rotation, rotation),
-      ...(item.visualOffset ? { visualOffset: rotatePoint(item.visualOffset, rotation) } : {}),
+      ...(item.visualOffset ? { visualOffset: rotateGridPoint(item.visualOffset, rotation) } : {}),
     })),
     interactionAnchors: cloned.interactionAnchors.map(({ point, actions }) => ({
       point: rotateRelativePoint(point, cloned.anchor, rotation),
@@ -125,6 +120,30 @@ const transformedInteractionAnchors = (prefab: OfficePrefabDefinition, anchor: G
     point: transformPoint(point, prefab.anchor, anchor),
     actions: [...actions],
   }));
+
+const withInteractionPoints = (
+  items: readonly FurnitureDefinition[],
+  anchors: ReadonlyArray<{ point: GridPoint; actions: AgentAction[] }>,
+): FurnitureDefinition[] => {
+  const unused = new Set(anchors.map((_, index) => index));
+  return items.map((item) => {
+    if (item.supportedActions.length === 0) return cloneFurniture(item);
+    const compatible = anchors
+      .map((anchor, index) => ({ anchor, index }))
+      .filter(({ anchor }) => anchor.actions.some((action) => item.supportedActions.includes(action)))
+      .sort((first, second) => {
+        const firstUnused = unused.has(first.index) ? 0 : 1;
+        const secondUnused = unused.has(second.index) ? 0 : 1;
+        const firstDistance = Math.abs(first.anchor.point.x - item.point.x) + Math.abs(first.anchor.point.y - item.point.y);
+        const secondDistance = Math.abs(second.anchor.point.x - item.point.x) + Math.abs(second.anchor.point.y - item.point.y);
+        return firstUnused - secondUnused || firstDistance - secondDistance || first.index - second.index;
+      });
+    const selected = compatible[0];
+    if (!selected) return cloneFurniture(item);
+    unused.delete(selected.index);
+    return { ...cloneFurniture(item), interactionPoint: { ...selected.anchor.point } };
+  });
+};
 
 const key = ({ x, y }: GridPoint): string => `${x},${y}`;
 const doorPoint = (room: InteriorDefinition): GridPoint => ({ x: Math.floor(room.width / 2), y: room.height - 1 });
@@ -171,6 +190,12 @@ const appendDiagnostic = (diagnostics: PrefabPlacementDiagnostic[], diagnostic: 
 };
 
 const hasAction = (actions: readonly AgentAction[], action: AgentAction): boolean => actions.includes(action);
+const overlapsOpaqueBounds = (first: FurnitureDefinition, second: FurnitureDefinition): boolean => {
+  const a = transformedAlphaBounds(first);
+  const b = transformedAlphaBounds(second);
+  return a.x < b.x + b.width && a.x + a.width > b.x
+    && a.y < b.y + b.height && a.y + a.height > b.y;
+};
 
 const validatePlacedItems = (
   room: InteriorDefinition,
@@ -192,13 +217,19 @@ const validatePlacedItems = (
     }
   }
 
-  const existingBlocked = new Set(layout.flatMap(navigationCells).map(key));
+  const existingBlocking = layout.filter(furnitureBlocksNavigation);
+  const existingBlocked = new Set(existingBlocking.flatMap(navigationCells).map(key));
   const transformedBlocked = new Set<string>();
+  const transformedBlocking: FurnitureDefinition[] = [];
   for (const item of transformed) {
     if (!furnitureBlocksNavigation(item)) continue;
+    if (existingBlocking.some((existing) => overlapsOpaqueBounds(existing, item))
+      || transformedBlocking.some((existing) => overlapsOpaqueBounds(existing, item))) {
+      appendDiagnostic(diagnostics, 'overlap');
+    }
+    transformedBlocking.push(item);
     for (const cell of navigationCells(item)) {
       const cellKey = key(cell);
-      if (existingBlocked.has(cellKey) || transformedBlocked.has(cellKey)) appendDiagnostic(diagnostics, 'overlap');
       transformedBlocked.add(cellKey);
     }
   }
@@ -208,7 +239,11 @@ const validatePlacedItems = (
   const everyHookHasAnchor = hookActions.every((action) => requiredAnchors.some(({ actions }) => hasAction(actions, action)));
   if (!hasTwoTileMainAisle(room, blocked) || !everyHookHasAnchor || requiredAnchors.some(({ point }) => {
     const target = { x: Math.round(point.x), y: Math.round(point.y) };
-    return !reaches(room, blocked, target);
+    const assigned = transformed.filter((item) => item.interactionPoint
+      && Math.round(item.interactionPoint.x) === target.x && Math.round(item.interactionPoint.y) === target.y);
+    const allowed = new Set(blocked);
+    assigned.flatMap(navigationCells).forEach((cell) => allowed.delete(key(cell)));
+    return !reaches(room, allowed, target);
   })) {
     appendDiagnostic(diagnostics, 'unreachable-interaction-anchor');
   }
@@ -216,6 +251,7 @@ const validatePlacedItems = (
 };
 
 export const interiorInteractionPoint = (interior: InteriorDefinition, furniture: FurnitureDefinition): GridPoint => {
+  if (furniture.interactionPoint) return { ...furniture.interactionPoint };
   if (furniture.kind === 'chair' || furniture.kind === 'sofa' || furniture.kind === 'bed') return { ...furniture.point };
   const size = furnitureFootprint(furniture.kind);
   const offsets: Record<FurnitureDefinition['facing'], GridPoint[]> = {
@@ -254,6 +290,7 @@ export function officeLayoutIssues(room: InteriorDefinition): Array<{
   const issues: ReturnType<typeof officeLayoutIssues> = [];
   const door = doorPoint(room);
   const occupants = new Map<string, string>();
+  const blockingFurniture: FurnitureDefinition[] = [];
   for (const item of room.furniture) {
     if (!resolvedFurnitureAsset(item)) issues.push({ diagnostic: 'invalid-asset', furnitureId: item.id });
     const bounds = transformedAlphaBounds(item);
@@ -264,18 +301,24 @@ export function officeLayoutIssues(room: InteriorDefinition): Array<{
       issues.push({ diagnostic: 'blocks-door', furnitureId: item.id });
     }
     if (!furnitureBlocksNavigation(item)) continue;
+    const conflict = blockingFurniture.find((existing) => overlapsOpaqueBounds(existing, item));
+    if (conflict) issues.push({ diagnostic: 'overlap', furnitureId: item.id, conflictingId: conflict.id });
+    blockingFurniture.push(item);
     for (const cell of navigationCells(item)) {
       const cellKey = key(cell);
-      const conflictingId = occupants.get(cellKey);
-      if (conflictingId) issues.push({ diagnostic: 'overlap', furnitureId: item.id, conflictingId, point: cell });
-      else occupants.set(cellKey, item.id);
+      if (!occupants.has(cellKey)) occupants.set(cellKey, item.id);
     }
   }
   const blocked = new Set(occupants.keys());
   if (!hasTwoTileMainAisle(room, blocked)) issues.push({ diagnostic: 'unreachable-interaction-anchor', point: door });
   for (const furniture of room.furniture.filter(({ supportedActions }) => supportedActions.length > 0)) {
     const point = interiorInteractionPoint(room, furniture);
-    if (!reaches(room, blocked, { x: Math.round(point.x), y: Math.round(point.y) })) {
+    const allowed = new Set(blocked);
+    room.furniture.filter((item) => item.interactionPoint
+      && Math.round(item.interactionPoint.x) === Math.round(point.x)
+      && Math.round(item.interactionPoint.y) === Math.round(point.y))
+      .flatMap(navigationCells).forEach((cell) => allowed.delete(key(cell)));
+    if (!reaches(room, allowed, { x: Math.round(point.x), y: Math.round(point.y) })) {
       issues.push({ diagnostic: 'unreachable-interaction-anchor', furnitureId: furniture.id, point });
     }
   }
@@ -288,11 +331,12 @@ export function validateOfficePrefab(
   prefab: OfficePrefabDefinition,
   anchor: GridPoint,
 ): PrefabPlacementDiagnostic[] {
+  const anchors = transformedInteractionAnchors(prefab, anchor);
   return validatePlacedItems(
     room,
     layout,
-    transformPrefabItems(prefab, anchor, `validation-${prefab.id}`),
-    transformedInteractionAnchors(prefab, anchor),
+    withInteractionPoints(transformPrefabItems(prefab, anchor, `validation-${prefab.id}`), anchors),
+    anchors,
     prefab.hookActions,
   );
 }
@@ -304,8 +348,12 @@ export function placeOfficePrefab(
   anchor: GridPoint,
   now = Date.now(),
 ): PrefabPlacementResult {
-  const transformed = transformPrefabItems(prefab, anchor, nextInstanceId(prefab, now));
-  const diagnostics = validatePlacedItems(room, layout, transformed, transformedInteractionAnchors(prefab, anchor), prefab.hookActions);
+  const anchors = transformedInteractionAnchors(prefab, anchor);
+  const transformed = withInteractionPoints(
+    transformPrefabItems(prefab, anchor, nextInstanceId(prefab, now)),
+    anchors,
+  );
+  const diagnostics = validatePlacedItems(room, layout, transformed, anchors, prefab.hookActions);
   return diagnostics.length
     ? { accepted: false, layout: cloneFurnitureLayout(layout), diagnostics }
     : { accepted: true, layout: [...cloneFurnitureLayout(layout), ...transformed], diagnostics: [] };

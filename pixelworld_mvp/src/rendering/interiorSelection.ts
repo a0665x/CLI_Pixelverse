@@ -21,6 +21,8 @@ const cloneFurniture = (item: FurnitureDefinition): FurnitureDefinition => ({
   point: { ...item.point },
   supportedActions: [...item.supportedActions],
   ...(item.footprint ? { footprint: { ...item.footprint } } : {}),
+  ...(item.visualOffset ? { visualOffset: { ...item.visualOffset } } : {}),
+  ...(item.interactionPoint ? { interactionPoint: { ...item.interactionPoint } } : {}),
 });
 
 export function selectedFurnitureIds(
@@ -73,7 +75,18 @@ export function transformSelectionAtomically(
   const transformed = layout.map((item) => {
     if (!selected.has(item.id)) return cloneFurniture(item);
     const changed = transform(cloneFurniture(item));
-    return { ...changed, point: fitFurniturePointToRoom(room, changed, changed.point) };
+    const point = fitFurniturePointToRoom(room, changed, changed.point);
+    const delta = { x: point.x - changed.point.x, y: point.y - changed.point.y };
+    return {
+      ...changed,
+      point,
+      ...(changed.interactionPoint ? {
+        interactionPoint: {
+          x: changed.interactionPoint.x + delta.x,
+          y: changed.interactionPoint.y + delta.y,
+        },
+      } : {}),
+    };
   });
   const accepted = transformed
     .filter(({ id }) => selected.has(id))
@@ -106,6 +119,7 @@ export function duplicateFurniture(
   const {
     requirementId: _requirementId,
     blocksNavigation: _blocksNavigation,
+    interactionPoint: _interactionPoint,
     ...visualSource
   } = cloneFurniture(source);
   const base: FurnitureDefinition = {
@@ -149,7 +163,7 @@ export function createFurniturePrefab(
     width: right - left,
     height: bottom - top,
     items: ordinary.map((item) => {
-      const { requirementId: _requirementId, ...template } = cloneFurniture(item);
+      const { requirementId: _requirementId, interactionPoint: _interactionPoint, ...template } = cloneFurniture(item);
       return {
         ...template,
         id: `template-${item.id}`,

@@ -17,6 +17,7 @@ import {
   resolvePlacementCandidate,
   defaultFurnitureLayer,
   furnitureBlocksNavigation,
+  furnitureWithRotation,
   type PlacementDiagnostic,
 } from './interiorPlacement';
 
@@ -48,9 +49,16 @@ const cloneLayout = (layout: readonly FurnitureDefinition[]): FurnitureDefinitio
   point: { ...item.point },
   supportedActions: [...item.supportedActions],
   ...(item.visualOffset ? { visualOffset: { ...item.visualOffset } } : {}),
+  ...(item.interactionPoint ? { interactionPoint: { ...item.interactionPoint } } : {}),
 }));
 
-export function furnitureCells(item: Pick<FurnitureDefinition, 'kind' | 'point' | 'scale'>): GridPoint[] {
+export function furnitureCells(item: Pick<
+  FurnitureDefinition,
+  'kind' | 'point' | 'scale'
+> & Partial<Pick<
+  FurnitureDefinition,
+  'assetId' | 'footprint' | 'rotation' | 'visualOffset' | 'layer' | 'blocksNavigation' | 'supportedActions'
+>>): GridPoint[] {
   return navigationCells(item);
 }
 
@@ -126,7 +134,7 @@ export function rotateFurniture(
   const current = layout.find(({ id }) => id === furnitureId);
   if (!current) return cloneLayout(layout);
   const candidate = resolvePlacementCandidate(
-    room, layout, { ...current, rotation: normalizeRotation(rotation) }, current.point, furnitureId,
+    room, layout, furnitureWithRotation(current, normalizeRotation(rotation)), current.point, furnitureId,
   );
   return commitPlacementCandidate(room, layout, candidate);
 }
@@ -206,6 +214,7 @@ const isSavedFurniture = (value: unknown): value is FurnitureDefinition => {
     && (item.blocksNavigation === undefined || typeof item.blocksNavigation === 'boolean')
     && optionalString(item.requirementId)
     && (item.visualOffset === undefined || finitePoint(item.visualOffset))
+    && (item.interactionPoint === undefined || finitePoint(item.interactionPoint))
     && optionalString(item.prefabInstanceId);
 };
 

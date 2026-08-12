@@ -188,6 +188,7 @@ const cloneFurniture = (item: FurnitureDefinition): FurnitureDefinition => ({
   supportedActions: [...item.supportedActions],
   ...(item.footprint ? { footprint: { ...item.footprint } } : {}),
   ...(item.visualOffset ? { visualOffset: { ...item.visualOffset } } : {}),
+  ...(item.interactionPoint ? { interactionPoint: { ...item.interactionPoint } } : {}),
 });
 
 const cloneInterior = (room: InteriorDefinition): InteriorDefinition => ({
@@ -256,10 +257,10 @@ const makerDefinition = (): InteriorDefinition => composeThemeLayout('maker-work
 ], [
   base('maker-work-repair', 'repair-table', 11.5, 8.25, 'down', ['repair'], 'repair', 193, 1.5),
   surface('maker-work-repair-printer', 'printer', 11.5, 8.25, 177),
-  wall('maker-work-tool-wall', 'tool-wall', 10.5, 4, 'up', ['terminal'], 'tool', 175),
+  { ...wall('maker-work-tool-wall', 'tool-wall', 10.5, 4, 'up', ['terminal'], 'tool', 175), interactionPoint: { x: 10.5, y: 7 } },
   base('maker-work-computer', 'computer', 11, 6, 'down', ['terminal'], 'tool', 193),
   wall('maker-work-bookcase', 'bookcase', 15, 7, 'down', ['terminal'], 'tool', 176),
-  wall('maker-work-planning-board', 'planning-board', 16, 10, 'down', ['terminal'], 'tool', 171),
+  { ...wall('maker-work-planning-board', 'planning-board', 16, 10, 'down', ['terminal'], 'tool', 171), interactionPoint: { x: 16, y: 5 } },
   { ...base('maker-work-guest-chair', 'chair', 11, 10, 'up', [], 'generic', 101), blocksNavigation: false },
   base('maker-work-support', 'cabinet', 14, 10.5, 'left', [], 'generic', 174),
   surface('maker-work-refresh', 'beverage-station', 14, 10.5, 173),
@@ -273,7 +274,7 @@ const collaborationDefinition = (): InteriorDefinition => composeThemeLayout('co
   surface('collab-work-clone-screen-a', 'display', 3.5, 8, 141),
   base('collab-work-clone-b', 'dispatch-pod', 6.5, 8, 'down', ['dispatch'], 'clone', 194, 1.5),
   surface('collab-work-clone-screen-b', 'display', 6.5, 8, 144),
-  base('collab-work-meeting', 'meeting-table', 13.5, 10, 'down', ['arrive', 'queue'], 'generic', 207, 1.5),
+  { ...base('collab-work-meeting', 'meeting-table', 13.5, 10, 'down', ['arrive', 'queue'], 'generic', 207, 1.5), interactionPoint: { x: 13.5, y: 8 } },
   surface('collab-work-meeting-notes', 'decor', 13.5, 10, 156),
   wall('collab-work-response-a', 'radio-console', 11.5, 6, 'up', ['pulse', 'respond'], 'respond', 193),
   wall('collab-work-response-b', 'response-desk', 15.5, 6, 'up', ['respond'], 'respond', 194),

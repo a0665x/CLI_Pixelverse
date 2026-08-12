@@ -62,4 +62,32 @@ describe('interior occupant assignment', () => {
     expect(assigned.point).toEqual(anchor);
     expect(path.at(-1)).toEqual({ x: Math.round(anchor.x), y: Math.round(anchor.y) });
   });
+
+  it('uses the authored point of the selected item when same-action terminals coexist', () => {
+    const room = {
+      ...INTERIOR_DEFINITIONS['maker-workshop'], width: 8, height: 6,
+      furniture: [
+        {
+          id: 'terminal-a', kind: 'computer' as const, point: { x: 1, y: 1 }, facing: 'down' as const,
+          supportedActions: ['terminal' as const], icon: 'tool' as const, blocksNavigation: true,
+          interactionPoint: { x: 1, y: 3 },
+        },
+        {
+          id: 'terminal-b', kind: 'computer' as const, point: { x: 6, y: 1 }, facing: 'down' as const,
+          supportedActions: ['terminal' as const], icon: 'tool' as const, blocksNavigation: true,
+          interactionPoint: { x: 6, y: 3 },
+        },
+      ],
+      overflow: [],
+    };
+    const assignments = assignInteriorOccupants(room, [
+      snapshot({ agentId: 'a', buildingId: 'tool-smithy', action: 'terminal', eventId: 'one' }),
+      snapshot({ agentId: 'b', buildingId: 'tool-smithy', action: 'terminal', eventId: 'two' }),
+    ], 'tool-smithy');
+
+    expect(assignments).toHaveLength(2);
+    assignments.forEach((assignment) => {
+      expect(assignment.point).toEqual(room.furniture.find(({ id }) => id === assignment.furnitureId)!.interactionPoint);
+    });
+  });
 });

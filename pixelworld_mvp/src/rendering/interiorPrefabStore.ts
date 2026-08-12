@@ -46,6 +46,7 @@ const cloneFurniture = (item: FurnitureDefinition): FurnitureDefinition => ({
   supportedActions: [...item.supportedActions],
   ...(item.footprint ? { footprint: { ...item.footprint } } : {}),
   ...(item.visualOffset ? { visualOffset: { ...item.visualOffset } } : {}),
+  ...(item.interactionPoint ? { interactionPoint: { ...item.interactionPoint } } : {}),
 });
 const cloneLayout = (layout: readonly FurnitureDefinition[]): FurnitureDefinition[] => layout.map(cloneFurniture);
 const isFinitePoint = (item: FurnitureDefinition): boolean => Number.isFinite(item.point?.x) && Number.isFinite(item.point?.y);

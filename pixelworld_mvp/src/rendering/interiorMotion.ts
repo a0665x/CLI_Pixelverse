@@ -54,7 +54,12 @@ export function interiorRouteFor(
   else route = [];
 
   const assignedFurniture = interior.furniture.find(({ id }) => id === assignment.furnitureId);
-  if (route.length === 0 && assignedFurniture) route = [assignedFurniture];
+  if (assignedFurniture) {
+    const canonicalStops = route.filter(({ id }) => id !== assignedFurniture.id);
+    return canonicalStops.length > 0
+      ? [assignedFurniture, ...canonicalStops, assignedFurniture]
+      : [assignedFurniture];
+  }
   return route.length > 0 ? route : [{
     id: 'interior-overflow', kind: 'decor', point: assignment.point, facing: assignment.facing,
     supportedActions: [snapshot.action], icon: assignment.icon,
@@ -130,7 +135,12 @@ export function interiorMotionAt(
   const elapsed = Math.max(0, snapshot.interiorElapsedMs ?? 10_000);
   const route = interiorRouteFor(snapshot, interior, assignment);
   const door = { x: Math.floor(interior.width / 2), y: interior.height - 1 };
-  const target = interiorInteractionPoint(interior, route[0]!);
+  const pointForRouteItem = (item: FurnitureDefinition): GridPoint => (
+    item.id === assignment.furnitureId || item.id === 'interior-overflow'
+      ? { ...assignment.point }
+      : interiorInteractionPoint(interior, item)
+  );
+  const target = { ...assignment.point };
   const ingressPath = interiorPath(interior, door, target);
   const ingressDuration = Math.max(STEP_MS, (ingressPath.length - 1) * STEP_MS);
   const bob = Math.sin(nowMs / 280) * 0.85;
@@ -149,8 +159,8 @@ export function interiorMotionAt(
   const segmentElapsed = workElapsed % WORK_STOP_MS;
   const from = route[index]!;
   const to = route[nextIndex]!;
-  const fromPoint = interiorInteractionPoint(interior, from);
-  const toPoint = interiorInteractionPoint(interior, to);
+  const fromPoint = pointForRouteItem(from);
+  const toPoint = pointForRouteItem(to);
   const workPath = interiorPath(interior, fromPoint, toPoint);
   const transition = Math.max(0, Math.min(1, (segmentElapsed - (WORK_STOP_MS - WORK_TRANSITION_MS)) / WORK_TRANSITION_MS));
   const point = pointAlongPath(workPath, transition);

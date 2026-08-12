@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import type { FurnitureDefinition, InteriorDefinition } from '../src/world/types';
 import {
   commitPlacementCandidate,
+  furniturePointFromRenderPoint,
+  furnitureRenderGeometry,
   navigationCells,
   resolvePlacementCandidate,
   resolvedFurnitureAsset,
@@ -37,6 +39,31 @@ describe('interior fine-grid placement', () => {
     const bounds = transformedAlphaBounds({ ...sofa, assetId: 98, point: { x: 4, y: 3 } }, asset);
     expect(bounds.width).toBeCloseTo(asset.opaqueBounds.width / 22);
     expect(bounds.height).toBeCloseTo(asset.opaqueBounds.height / 22);
+  });
+
+  it('uses one scaled visual center for rendering, alpha bounds, and drag inversion', () => {
+    const item = {
+      ...sofa, assetId: 98, point: { x: 4, y: 3 }, scale: 2 as const,
+      visualOffset: { x: 0.25, y: -0.5 },
+    };
+    const geometry = furnitureRenderGeometry(item);
+
+    expect(geometry.center).toEqual({ x: 5, y: 2.5 });
+    expect(transformedAlphaBounds(item)).toEqual(geometry.bounds);
+    expect(furniturePointFromRenderPoint(item, { x: 4.5, y: 2 })).toEqual(item.point);
+  });
+
+  it('translates an authored interaction point with its logical furniture point', () => {
+    const item: FurnitureDefinition = {
+      ...sofa,
+      id: 'station',
+      point: { x: 2, y: 2 },
+      interactionPoint: { x: 2, y: 4 },
+    };
+    const candidate = resolvePlacementCandidate(room, [], item, { x: 5, y: 3 });
+
+    expect(candidate.furniture.point).toEqual({ x: 5, y: 3 });
+    expect(candidate.furniture.interactionPoint).toEqual({ x: 5, y: 5 });
   });
 
   it('resolves authored and explicit catalog furniture to the same alpha asset', () => {

@@ -97,6 +97,32 @@ describe('interior furniture editor model', () => {
     expect(rotated[0]).toMatchObject({ rotation: 90, point: { x: 2.5, y: 2 } });
   });
 
+  it('rotates a normalized visual offset by the editor delta exactly once', () => {
+    const item = {
+      ...room.furniture[0]!, point: { x: 5, y: 4 }, rotation: 0 as const,
+      visualOffset: { x: 0.5, y: 0.25 },
+    };
+    const quarterTurn = rotateFurniture(room, [item], item.id, 90)[0]!;
+    const halfTurn = rotateFurniture(room, [quarterTurn], item.id, 180)[0]!;
+
+    expect(quarterTurn.visualOffset).toEqual({ x: -0.25, y: 0.5 });
+    expect(halfTurn.visualOffset).toEqual({ x: -0.5, y: -0.25 });
+  });
+
+  it('persists an authored interaction point through save and load', () => {
+    const memory = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => memory.get(key) ?? null,
+      setItem: (key: string, value: string) => { memory.set(key, value); },
+    };
+    const item = { ...normalizedRoomLayout()[0]!, interactionPoint: { x: 3.25, y: 4.5 } };
+
+    saveInteriorLayout('interaction-house', [item], storage);
+    const loaded = loadInteriorLayout('interaction-house', room, storage)[0]!;
+    expect(loaded.interactionPoint).toEqual(item.interactionPoint);
+    expect(loaded.interactionPoint).not.toBe(item.interactionPoint);
+  });
+
   it('migrates legacy arrays and falls back from corrupted saved layouts', () => {
     const memory = new Map<string, string>();
     const storage = {

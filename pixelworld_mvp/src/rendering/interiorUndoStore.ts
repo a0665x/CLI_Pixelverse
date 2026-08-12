@@ -8,6 +8,7 @@ export const cloneFurnitureLayout = (
   supportedActions: [...item.supportedActions],
   ...(item.footprint ? { footprint: { ...item.footprint } } : {}),
   ...(item.visualOffset ? { visualOffset: { ...item.visualOffset } } : {}),
+  ...(item.interactionPoint ? { interactionPoint: { ...item.interactionPoint } } : {}),
 }));
 
 export class InteriorUndoStore {
