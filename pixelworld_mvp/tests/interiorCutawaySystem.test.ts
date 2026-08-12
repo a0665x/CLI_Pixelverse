@@ -8,6 +8,8 @@ import {
 } from '../src/rendering/InteriorCutawaySystem';
 import { selectionCapabilities } from '../src/rendering/InteriorCutawayDomOverlay';
 import type { InteriorAgentSnapshot } from '../src/rendering/interiorAssignment';
+import { BUILT_IN_OFFICE_PREFABS } from '../src/rendering/builtInOfficePrefabs';
+import type { InteriorDefinition } from '../src/world/types';
 import { WORLD_DEFINITION } from '../src/world/worldDefinition';
 
 class FakeObject {
@@ -21,6 +23,9 @@ class FakeObject {
   texture = '';
   scale = 1;
   resolution = 1;
+  tinted = false;
+  width = 0;
+  height = 0;
   children: FakeObject[] = [];
   private readonly handlers = new Map<string, Array<(...args: unknown[]) => void>>();
   constructor(texture = '') { this.texture = texture; }
@@ -30,9 +35,10 @@ class FakeObject {
   setInteractive(): this { this.interactive = true; return this; }
   setPosition(x: number, y: number): this { this.x = x; this.y = y; return this; }
   setScale(scale: number): this { this.scale = scale; return this; }
+  setSize(width: number, height: number): this { this.width = width; this.height = height; return this; }
   setAngle(): this { return this; }
   setResolution(resolution: number): this { this.resolution = resolution; return this; }
-  setTint(): this { return this; }
+  setTint(): this { this.tinted = true; return this; }
   setTexture(): this { return this; }
   setAlpha(alpha: number): this { this.alpha = alpha; return this; }
   setVisible(visible: boolean): this { this.visible = visible; return this; }
@@ -44,6 +50,7 @@ class FakeObject {
   fillRect(): this { return this; }
   clear(): this { return this; }
   lineStyle(): this { return this; }
+  lineBetween(): this { return this; }
   strokeRect(): this { return this; }
   on(event: string, handler: (...args: unknown[]) => void): this {
     this.handlers.set(event, [...(this.handlers.get(event) ?? []), handler]);
@@ -166,6 +173,50 @@ describe('InteriorCutawaySystem', () => {
     const sprites = fake.objects.filter(({ texture }) => texture.startsWith('modern-office'));
     expect(sprites.length).toBeGreaterThan(5);
     expect(sprites.every(({ destroyed }) => !destroyed)).toBe(true);
+  });
+
+  it('renders every built-in prefab part without tint and drags the group as one atomic preview', () => {
+    const fake = fakeScene();
+    const cutaway = new InteriorCutawaySystem(fake.scene as never, WORLD_DEFINITION, () => ({ width: 1_280, height: 720 }));
+    cutaway.open('rest-cabin');
+    const room: InteriorDefinition = {
+      id: 'research-library', label: 'Shelf test', width: 18, height: 12,
+      floor: 'tile', wall: 'blue', furniture: [], overflow: [],
+    };
+    const internal = cutaway as unknown as {
+      editMode: boolean;
+      activeDefinition: InteriorDefinition;
+      activeInterior: InteriorDefinition;
+      roomOrigin: { x: number; y: number };
+      renderFurniture(interior: InteriorDefinition, layout: ReturnType<typeof cutawayLayoutForViewport>): void;
+    };
+    internal.editMode = true;
+    internal.activeDefinition = room;
+    internal.activeInterior = room;
+    internal.renderFurniture(room, cutawayLayoutForViewport(1_280, 720));
+
+    const bench = BUILT_IN_OFFICE_PREFABS[0]!;
+    const preview = fake.objects.find((object) => object.interactive &&
+      object.children.filter(({ texture }) => texture.startsWith('modern-office')).length === bench.items.length);
+    expect(preview).toBeDefined();
+    const previewParts = preview!.children.filter(({ texture }) => texture.startsWith('modern-office'));
+    expect(previewParts).toHaveLength(bench.items.length);
+    expect(previewParts.every(({ tinted }) => !tinted)).toBe(true);
+
+    preview!.emit('dragstart');
+    const pointer = dragPreviewScreenPoint(internal.roomOrigin, { x: 2, y: 2 });
+    preview!.emit('drag', {}, pointer.x + 0.13, pointer.y + 0.19);
+    const ghosts = fake.objects.filter(({ alpha, destroyed }) => alpha === 0.72 && !destroyed);
+    expect(ghosts).toHaveLength(bench.items.length);
+    expect(ghosts[0]).toMatchObject({
+      x: pointer.x + 0.13 + (bench.items[0]!.point.x - bench.anchor.x) * 22,
+      y: pointer.y + 0.19 + (bench.items[0]!.point.y - bench.anchor.y) * 22,
+    });
+
+    preview!.emit('dragend', {}, pointer.x, pointer.y);
+    expect(room.furniture).toHaveLength(bench.items.length);
+    expect(room.furniture.every(({ prefabInstanceId }) => prefabInstanceId === room.furniture[0]!.prefabInstanceId)).toBe(true);
+    expect(room.furniture.some(({ supportedActions }) => supportedActions.length > 0)).toBe(true);
   });
 
   it('keeps canvas text out of the cutaway header so DOM text stays crisp', () => {

@@ -10,6 +10,7 @@ import type {
   FurniturePrefab,
   GridPoint,
   InteriorDefinition,
+  OfficePrefabDefinition,
   WorldDefinition,
 } from '../world/types';
 import { interiorDefinitionForBuilding } from '../world/interiorDefinitions';
@@ -60,15 +61,17 @@ import {
   transformSelectionAtomically,
 } from './interiorSelection';
 import {
+  availablePrefabs,
   copyDecorativeLayout,
+  isBuiltInPrefab,
   loadLayoutClipboard,
   loadPrefabs,
   pasteDecorativeLayout,
-  placePrefab,
   saveLayoutClipboard,
   savePrefabs,
   upsertPrefab,
 } from './interiorPrefabStore';
+import { placeOfficePrefab } from './prefabGeometry';
 
 const ROOM_CELL = 22;
 const CUTAWAY_DEPTH = 100_000;
@@ -180,7 +183,7 @@ export class InteriorCutawaySystem {
   private paletteLayer: Phaser.GameObjects.Container | undefined;
   private selectedFurnitureId: string | undefined;
   private readonly selectedFurnitureIds = new Set<string>();
-  private prefabs: FurniturePrefab[] = [];
+  private prefabs: OfficePrefabDefinition[] = [];
   private activeInterior: InteriorDefinition | undefined;
   private activeDefinition: InteriorDefinition | undefined;
   private editMode = false;
@@ -232,7 +235,7 @@ export class InteriorCutawaySystem {
       furniture: loadInteriorLayout(buildingId, definition),
       overflow: definition.overflow.map((point) => ({ ...point })),
     };
-    this.prefabs = loadPrefabs();
+    this.prefabs = availablePrefabs();
     const interior = this.activeInterior;
     if (typeof window !== 'undefined') window.dispatchEvent(new Event(CUTAWAY_OPEN_EVENT));
     const size = this.viewportProvider();
@@ -601,39 +604,60 @@ export class InteriorCutawaySystem {
     });
     const prefabOffset = Math.min(12, missingRequired.length);
     this.prefabs.slice(0, Math.max(0, 12 - prefabOffset)).forEach((prefab, index) => {
-      const template = prefab.items[0]!;
-      const catalog = resolvedFurnitureAsset(template);
-      const assetKey = catalog?.key ?? modernOfficeAsset(modernOfficeKindForFurniture(template.kind)).key;
-      const originX = catalog ? (catalog.opaqueBounds.x + catalog.opaqueBounds.width / 2) / 32 : 0.5;
-      const originY = catalog ? (catalog.opaqueBounds.y + catalog.opaqueBounds.height / 2) / 48 : 0.5;
-      const item = this.scene.add.image(startX + (prefabOffset + index) * 34, shelfY, assetKey).setOrigin(originX, originY).setScale(0.68).setTint(0x8ee8ff);
+      const points = prefab.items.map(({ point }) => point);
+      const minX = Math.min(...points.map(({ x }) => x));
+      const maxX = Math.max(...points.map(({ x }) => x));
+      const minY = Math.min(...points.map(({ y }) => y));
+      const maxY = Math.max(...points.map(({ y }) => y));
+      const centerX = (minX + maxX) / 2;
+      const centerY = (minY + maxY) / 2;
+      const previewScale = Math.min(0.68, 26 / (Math.max(maxX - minX + 1, maxY - minY + 1) * ROOM_CELL));
+      const item = this.scene.add.container(startX + (prefabOffset + index) * 34, shelfY).setSize(30, 30);
+      const outline = this.scene.add.graphics().lineStyle(1, 0x8ee8ff, 0.95).strokeRect(-14, -14, 28, 28);
+      item.add(outline);
+      prefab.items.forEach((part) => {
+        const partCatalog = resolvedFurnitureAsset(part);
+        const partKey = partCatalog?.key ?? modernOfficeAsset(modernOfficeKindForFurniture(part.kind)).key;
+        const partOriginX = partCatalog ? (partCatalog.opaqueBounds.x + partCatalog.opaqueBounds.width / 2) / 32 : 0.5;
+        const partOriginY = partCatalog ? (partCatalog.opaqueBounds.y + partCatalog.opaqueBounds.height / 2) / 48 : 0.5;
+        item.add(this.scene.add.image(
+          (part.point.x - centerX) * ROOM_CELL * previewScale,
+          (part.point.y - centerY) * ROOM_CELL * previewScale,
+          partKey,
+        ).setOrigin(partOriginX, partOriginY).setScale(normalizeFurnitureScale(part.scale) * previewScale).setAngle(part.rotation ?? 0));
+      });
       item.setInteractive({ useHandCursor: true, draggable: true });
       this.scene.input.setDraggable(item);
       let ghosts: Phaser.GameObjects.Image[] = [];
-      item.on('dragstart', () => {
-        ghosts = prefab.items.map((part) => {
+      const createGhosts = (x: number, y: number): Phaser.GameObjects.Image[] => prefab.items.map((part) => {
           const partCatalog = resolvedFurnitureAsset(part);
           const partKey = partCatalog?.key ?? modernOfficeAsset(modernOfficeKindForFurniture(part.kind)).key;
           const partOriginX = partCatalog ? (partCatalog.opaqueBounds.x + partCatalog.opaqueBounds.width / 2) / 32 : 0.5;
           const partOriginY = partCatalog ? (partCatalog.opaqueBounds.y + partCatalog.opaqueBounds.height / 2) / 48 : 0.5;
-          const ghost = this.scene.add.image(item.x, item.y, partKey).setOrigin(partOriginX, partOriginY)
+          const ghost = this.scene.add.image(
+            x + (part.point.x - prefab.anchor.x) * ROOM_CELL,
+            y + (part.point.y - prefab.anchor.y) * ROOM_CELL,
+            partKey,
+          ).setOrigin(partOriginX, partOriginY)
             .setScale(normalizeFurnitureScale(part.scale)).setAngle(part.rotation ?? 0).setAlpha(0.72);
           furnitureLayer.add(ghost);
           return ghost;
         });
+      item.on('dragstart', () => {
+        ghosts = createGhosts(item.x, item.y);
       });
       item.on('drag', (_pointer: unknown, dragX: number, dragY: number) => {
-        const anchor = this.roomPoint(dragX, dragY);
+        if (ghosts.length === 0) ghosts = createGhosts(dragX, dragY);
         ghosts.forEach((ghost, partIndex) => {
           const part = prefab.items[partIndex]!;
           ghost.setPosition(
-            this.roomOrigin.x + (anchor.x + part.point.x) * ROOM_CELL + ROOM_CELL / 2,
-            this.roomOrigin.y + (anchor.y + part.point.y) * ROOM_CELL + ROOM_CELL / 2,
+            dragX + (part.point.x - prefab.anchor.x) * ROOM_CELL,
+            dragY + (part.point.y - prefab.anchor.y) * ROOM_CELL,
           );
         });
       });
       item.on('dragend', (_pointer: unknown, dragX: number, dragY: number) => {
-        const result = placePrefab(interior, interior.furniture, prefab, this.roomPoint(dragX ?? item.x, dragY ?? item.y));
+        const result = placeOfficePrefab(interior, interior.furniture, prefab, this.roomPoint(dragX ?? item.x, dragY ?? item.y));
         if (result.accepted) interior.furniture = result.layout;
         this.setStatus(result.accepted ? `組裝件「${prefab.name}」已放置` : '⚠ 組裝件超出房間或擋門');
         ghosts.forEach((ghost) => ghost.destroy());
@@ -876,8 +900,9 @@ export class InteriorCutawaySystem {
   }
 
   private createSelectedPrefab(interior: InteriorDefinition, layout: CutawayLayout): void {
-    const name = typeof window === 'undefined' ? `組裝件 ${this.prefabs.length + 1}`
-      : window.prompt('替這個組裝件命名', `組裝件 ${this.prefabs.length + 1}`)?.trim();
+    const userPrefabCount = this.prefabs.filter((prefab) => !isBuiltInPrefab(prefab)).length;
+    const name = typeof window === 'undefined' ? `組裝件 ${userPrefabCount + 1}`
+      : window.prompt('替這個組裝件命名', `組裝件 ${userPrefabCount + 1}`)?.trim();
     if (!name) return;
     const selection = interior.furniture.filter(({ id }) => this.selectedFurnitureIds.has(id));
     let prefab: FurniturePrefab;
@@ -887,8 +912,8 @@ export class InteriorCutawaySystem {
       this.setStatus('⚠ 至少框選兩件一般家具；Hook 家具不會加入組裝件');
       return;
     }
-    this.prefabs = upsertPrefab(this.prefabs, prefab);
-    savePrefabs(this.prefabs);
+    savePrefabs(upsertPrefab(loadPrefabs(), prefab));
+    this.prefabs = availablePrefabs();
     this.setStatus(`組裝件「${name}」已加入下方貨架`);
     this.renderFurniture(interior, layout);
   }

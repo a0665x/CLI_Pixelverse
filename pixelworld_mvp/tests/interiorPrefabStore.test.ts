@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { FurnitureDefinition, FurniturePrefab, InteriorDefinition } from '../src/world/types';
 import {
+  availablePrefabs,
   copyDecorativeLayout,
+  isBuiltInPrefab,
   loadLayoutClipboard,
   loadPrefabs,
   pasteDecorativeLayout,
@@ -30,6 +32,28 @@ describe('interior prefab and room clipboard store', () => {
     savePrefabs([prefab], memory);
     expect(loadPrefabs(memory)).toEqual([prefab]);
     expect(memory.memory.has('pixelworld:interior-prefabs:v1')).toBe(true);
+  });
+
+  it('lists immutable built-ins before user assemblies without persisting built-ins', () => {
+    const memory = storage();
+    const userPrefab: FurniturePrefab = {
+      id: 'user-desk-kit', name: 'Desk kit', createdAt: 1, width: 2, height: 2,
+      items: [item('a', 0, 0), item('b', 1, 1)],
+    };
+    savePrefabs([userPrefab], memory);
+
+    const listed = availablePrefabs(memory);
+
+    expect(listed.map(({ id }) => id)).toEqual([
+      'bench-four', 'pod-l-two', 'control-m-three', 'user-desk-kit',
+    ]);
+    expect(listed.slice(0, 3).every((prefab) => isBuiltInPrefab(prefab) && prefab.immutable)).toBe(true);
+    expect(listed[3]).toMatchObject({ source: 'user', immutable: false, anchor: { x: 0, y: 0 } });
+
+    savePrefabs(listed, memory);
+    const persisted = JSON.parse(memory.getItem('pixelworld:interior-prefabs:v1')!) as { prefabs: FurniturePrefab[] };
+    expect(persisted.prefabs).toHaveLength(1);
+    expect(persisted.prefabs[0]?.id).toBe('user-desk-kit');
   });
 
   it('copies no Hook furniture and persists the clipboard', () => {

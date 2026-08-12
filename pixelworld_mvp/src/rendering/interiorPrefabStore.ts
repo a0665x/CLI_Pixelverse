@@ -4,9 +4,12 @@ import type {
   GridPoint,
   InteriorDefinition,
   InteriorLayoutClipboard,
+  OfficePrefabDefinition,
 } from '../world/types';
+import { BUILT_IN_OFFICE_PREFABS } from './builtInOfficePrefabs';
 import { catalogItem } from './modernOfficeCatalog';
 import { resolvePlacementCandidate, snapFurniturePoint } from './interiorPlacement';
+import { cloneOfficePrefab } from './prefabGeometry';
 
 interface StorageLike {
   getItem(key: string): string | null;
@@ -38,11 +41,27 @@ const clonePrefab = (prefab: FurniturePrefab): FurniturePrefab => ({
   items: cloneLayout(prefab.items),
 });
 
+const asUserOfficePrefab = (prefab: FurniturePrefab): OfficePrefabDefinition => ({
+  ...clonePrefab(prefab),
+  source: 'user',
+  immutable: false,
+  category: 'support',
+  hookActions: [],
+  anchor: { x: 0, y: 0 },
+  interactionAnchors: [],
+});
+
+export function isBuiltInPrefab(prefab: FurniturePrefab): prefab is OfficePrefabDefinition {
+  return 'source' in prefab && prefab.source === 'modern-office-v1.2'
+    && 'immutable' in prefab && prefab.immutable === true;
+}
+
 export function savePrefabs(
   prefabs: readonly FurniturePrefab[],
   storage: StorageLike | undefined = browserStorage(),
 ): void {
-  storage?.setItem(PREFAB_KEY, JSON.stringify({ version: 1, prefabs: prefabs.map(clonePrefab) }));
+  const userPrefabs = prefabs.filter((prefab) => !isBuiltInPrefab(prefab)).map(clonePrefab);
+  storage?.setItem(PREFAB_KEY, JSON.stringify({ version: 1, prefabs: userPrefabs }));
 }
 
 export function loadPrefabs(storage: StorageLike | undefined = browserStorage()): FurniturePrefab[] {
@@ -60,6 +79,13 @@ export function loadPrefabs(storage: StorageLike | undefined = browserStorage())
   } catch {
     return [];
   }
+}
+
+export function availablePrefabs(storage: StorageLike | undefined = browserStorage()): OfficePrefabDefinition[] {
+  return [
+    ...BUILT_IN_OFFICE_PREFABS.map(cloneOfficePrefab),
+    ...loadPrefabs(storage).map(asUserOfficePrefab),
+  ];
 }
 
 export function upsertPrefab(
