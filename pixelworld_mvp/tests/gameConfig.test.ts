@@ -4,6 +4,7 @@ import { TILE_SIZE, WORLD_PIXELS, WORLD_TILES, displayScaleFor } from '../src/ga
 import { readFileSync } from 'node:fs';
 
 const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
+const mainSource = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8');
 
 describe('fixed village game config', () => {
   it('uses the expanded 48x28 world with a 1.5x desktop presentation', () => {
@@ -11,15 +12,38 @@ describe('fixed village game config', () => {
     expect(WORLD_TILES).toEqual({ width: 48, height: 28 });
     expect(WORLD_PIXELS).toEqual({ width: 768, height: 448 });
     expect(displayScaleFor(1280, 720)).toBe(1.5);
-    expect(displayScaleFor(839, 479)).toBe(1);
+    expect(displayScaleFor(839, 479)).toBeCloseTo(479 / 448);
+    expect(displayScaleFor(800, 230)).toBeCloseTo(230 / 448);
   });
 
   it('lets the canvas own the viewport while the collapsible panel floats above it', () => {
     expect(styles).toContain('#app-shell { position: relative; width: 100vw; height: 100vh; }');
-    expect(styles).toContain('#game-root { width: 100%; height: 100%;');
+    expect(styles).toContain('#game-root { position: relative; width: 100%; height: 100%;');
+    expect(styles).toContain('#game-root canvas { position: absolute; top: 0; left: 0;');
     expect(styles).toContain('#test-panel-root { position: absolute;');
     expect(styles).not.toContain('grid-template-columns: minmax(0, 1fr) 264px;');
     expect(styles).not.toContain('max-width: 100%');
+  });
+
+  it('does not capture a simple house click before the pan threshold is crossed', () => {
+    const pointerDown = mainSource.slice(
+      mainSource.indexOf("gameRoot.addEventListener('pointerdown'"),
+      mainSource.indexOf("gameRoot.addEventListener('pointermove'"),
+    );
+    const pointerMove = mainSource.slice(
+      mainSource.indexOf("gameRoot.addEventListener('pointermove'"),
+      mainSource.indexOf('const finishDrag'),
+    );
+    expect(pointerDown).not.toContain('setPointerCapture');
+    expect(pointerMove).toContain('setPointerCapture');
+  });
+
+  it('leaves cutaway drag gestures to the room editor instead of the village camera', () => {
+    const pointerDown = mainSource.slice(
+      mainSource.indexOf("gameRoot.addEventListener('pointerdown'"),
+      mainSource.indexOf("gameRoot.addEventListener('pointermove'"),
+    );
+    expect(pointerDown).toContain("document.querySelector('.cutaway-dom-panel')");
   });
 
   it('uses functional glass only for floating village and cutaway controls', () => {
@@ -36,7 +60,7 @@ describe('fixed village game config', () => {
 
     expect(styles).toContain('@media (prefers-reduced-transparency: reduce)');
     expect(styles).toContain('@media (prefers-contrast: more)');
-    expect(styles).toContain('#game-root canvas { image-rendering: pixelated; image-rendering: crisp-edges;');
+    expect(styles).toContain('#game-root canvas { position: absolute; top: 0; left: 0; image-rendering: pixelated; image-rendering: crisp-edges;');
   });
 
   it('reduced motion keeps layout transforms independent from press scale', () => {
