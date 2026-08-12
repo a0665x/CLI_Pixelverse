@@ -60,6 +60,13 @@ def test_docker_build_revision_and_fingerprint_are_wired_through_compose() -> No
     assert "io.pixelverse.build-fingerprint" in run_script
 
 
+def test_pixelworld_declares_an_inline_favicon_to_avoid_origin_404() -> None:
+    index = (ROOT / "pixelworld_mvp" / "index.html").read_text(encoding="utf-8")
+
+    assert 'rel="icon"' in index
+    assert 'href="data:image/svg+xml,' in index
+
+
 def test_pixelworld_only_source_edit_changes_build_fingerprint(tmp_path: Path) -> None:
     module = _load_metadata_module()
     root = tmp_path / "repo"
