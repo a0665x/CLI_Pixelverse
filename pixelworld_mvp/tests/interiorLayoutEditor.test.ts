@@ -3,6 +3,7 @@ import {
   addFurniture,
   canPlaceFurniture,
   furnitureCells,
+  hasSavedInteriorLayout,
   loadInteriorLayout,
   moveFurniture,
   placementDiagnostic,
@@ -18,7 +19,8 @@ import {
   FURNITURE_SCALES,
 } from '../src/rendering/interiorLayoutEditor';
 import { modernOfficeKindForFurniture } from '../src/rendering/InteriorCutawaySystem';
-import { INTERIOR_DEFINITIONS } from '../src/world/interiorDefinitions';
+import { INTERIOR_DEFINITIONS, INTERIOR_LAYOUT_REVISION } from '../src/world/interiorDefinitions';
+import type { FurnitureDefinition } from '../src/world/types';
 
 describe('interior furniture editor model', () => {
   const room = INTERIOR_DEFINITIONS['rest-cabin'];
@@ -105,6 +107,54 @@ describe('interior furniture editor model', () => {
     expect(loadInteriorLayout('legacy-house', room, storage)).toEqual(normalizedRoomLayout());
     memory.set(key, JSON.stringify({ version: 99, furniture: [] }));
     expect(loadInteriorLayout('legacy-house', room, storage)).toEqual(normalizedRoomLayout());
+  });
+
+  it('returns a valid saved work layout unchanged when authored defaults gain office prefabs', () => {
+    const workRoom = INTERIOR_DEFINITIONS['research-library'];
+    const savedFurniture = [{
+      id: 'saved-network-workstation',
+      kind: 'reading-desk' as const,
+      point: { x: 2, y: 2 },
+      facing: 'down' as const,
+      supportedActions: ['read' as const],
+      icon: 'read' as const,
+      assetId: 193,
+    }];
+    const memory = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => memory.get(key) ?? null,
+      setItem: (key: string, value: string) => { memory.set(key, value); },
+    };
+    saveInteriorLayout('network-lab', savedFurniture, storage);
+    const key = 'pixelworld:interior-layout:network-lab';
+    const saved = JSON.parse(memory.get(key)!);
+    saved.authoredRevision = INTERIOR_LAYOUT_REVISION - 1;
+    memory.set(key, JSON.stringify(saved));
+    const originalPayload = memory.get(key);
+
+    expect(hasSavedInteriorLayout('network-lab', storage)).toBe(true);
+    expect(loadInteriorLayout('network-lab', workRoom, storage)).toEqual(
+      saved.furniture.map((item: FurnitureDefinition) => ({
+        ...item,
+        requirementId: item.requirementId ?? `${workRoom.id}:${item.id}`,
+      })),
+    );
+    expect(memory.get(key)).toBe(originalPayload);
+  });
+
+  it('falls back from malformed saved data in memory without auto-writing it', () => {
+    const key = 'pixelworld:interior-layout:malformed-house';
+    const memory = new Map([[key, '{not-json']]);
+    let writes = 0;
+    const storage = {
+      getItem: (candidate: string) => memory.get(candidate) ?? null,
+      setItem: (candidate: string, value: string) => { writes += 1; memory.set(candidate, value); },
+    };
+
+    expect(hasSavedInteriorLayout('malformed-house', storage)).toBe(false);
+    expect(loadInteriorLayout('malformed-house', room, storage)).toEqual(normalizedRoomLayout());
+    expect(memory.get(key)).toBe('{not-json');
+    expect(writes).toBe(0);
   });
   it('offers a complete Modern Office palette and maps every item to that family', () => {
     expect(FURNITURE_PALETTE).toEqual(expect.arrayContaining([

@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   INTERIOR_DEFINITIONS,
   INTERIOR_LAYOUT_REVISION,
+  interiorDefinitionForBuilding,
 } from '../src/world/interiorDefinitions';
 import type { AgentAction, BuildingThemeId } from '../src/world/types';
+import { WORLD_DEFINITION } from '../src/world/worldDefinition';
 
 const expectedActions = {
   'rest-cabin': ['offline', 'queue', 'repair', 'rest'],
@@ -40,5 +42,37 @@ describe('Smallville-style authored interiors', () => {
     const actual = [...new Set(INTERIOR_DEFINITIONS[themeId].furniture
       .flatMap(({ supportedActions }) => supportedActions))].sort();
     expect(actual).toEqual([...actions].sort());
+  });
+
+  it.each(['research-library', 'maker-workshop', 'collaboration-barn'] as const)(
+    '%s uses the work-office footprint and composed prefab instances',
+    (id) => {
+      const room = INTERIOR_DEFINITIONS[id];
+      expect(room).toMatchObject({ width: 18, height: 12 });
+      expect(new Set(room.furniture.map(({ id: furnitureId }) => furnitureId)).size).toBe(room.furniture.length);
+      expect(new Set(room.furniture.flatMap(({ prefabInstanceId }) => prefabInstanceId ? [prefabInstanceId] : [])).size)
+        .toBeGreaterThanOrEqual(2);
+    },
+  );
+
+  it('keeps compact buildings compact independently of their outdoor visual theme', () => {
+    const waitingPost = WORLD_DEFINITION.buildings.find(({ id }) => id === 'awaiting-post')!;
+    const arrivalLodge = WORLD_DEFINITION.buildings.find(({ id }) => id === 'arrival-lodge')!;
+
+    expect(waitingPost).toMatchObject({ themeId: 'collaboration-barn', interiorProfile: 'compact' });
+    expect(arrivalLodge).toMatchObject({ themeId: 'collaboration-barn', interiorProfile: 'compact' });
+    expect(interiorDefinitionForBuilding(waitingPost)).toMatchObject({ width: 14, height: 9 });
+    expect(interiorDefinitionForBuilding(arrivalLodge)).toMatchObject({ width: 14, height: 9 });
+  });
+
+  it('returns a fresh interior definition for every building resolution', () => {
+    const building = WORLD_DEFINITION.buildings.find(({ id }) => id === 'network-lab')!;
+    const first = interiorDefinitionForBuilding(building);
+    const second = interiorDefinitionForBuilding(building);
+
+    first.furniture[0]!.point.x = -99;
+    first.overflow[0]!.x = -99;
+    expect(second.furniture[0]!.point.x).not.toBe(-99);
+    expect(second.overflow[0]!.x).not.toBe(-99);
   });
 });

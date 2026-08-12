@@ -26,13 +26,19 @@ export const FURNITURE_PALETTE: readonly FurnitureKind[] = [
   'sofa', 'chair', 'office-chair', 'television', 'display', 'computer', 'desk',
   'meeting-table', 'bookcase', 'cabinet', 'planning-board', 'plant', 'beverage-station', 'printer',
 ];
+const SAVED_FURNITURE_KINDS: readonly FurnitureKind[] = [
+  'sofa', 'chair', 'television', 'bed', 'bookcase', 'computer', 'map-table',
+  'planning-board', 'reading-desk', 'workbench', 'tool-wall', 'repair-table',
+  'dispatch-pod', 'radio-console', 'response-desk', 'meeting-table', 'decor',
+  'office-chair', 'display', 'desk', 'cabinet', 'plant', 'beverage-station', 'printer',
+];
 
 export const FURNITURE_SCALES = [0.75, 1, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 2.75, 3] as const satisfies readonly FurnitureScale[];
 export function normalizeFurnitureScale(value: unknown): FurnitureScale {
   return FURNITURE_SCALES.includes(value as FurnitureScale) ? value as FurnitureScale : 1;
 }
 
-interface StorageLike {
+export interface StorageLike {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
 }
@@ -132,6 +138,36 @@ interface SavedInteriorLayoutV5 {
   version: 5;
   authoredRevision: number;
   furniture: FurnitureDefinition[];
+}
+
+interface ParsedSavedInteriorLayout {
+  furniture: unknown[];
+  legacy: boolean;
+}
+
+const parseSavedInteriorLayout = (raw: string): ParsedSavedInteriorLayout | undefined => {
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (Array.isArray(parsed)) return { furniture: parsed, legacy: true };
+    if (!parsed || typeof parsed !== 'object') return undefined;
+    const saved = parsed as { version?: unknown; furniture?: unknown };
+    if (!Array.isArray(saved.furniture)) return undefined;
+    if (saved.version === 5) return { furniture: saved.furniture, legacy: false };
+    if (saved.version === 2 || saved.version === 3 || saved.version === 4) {
+      return { furniture: saved.furniture, legacy: true };
+    }
+    return undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+export function hasSavedInteriorLayout(
+  buildingId: string,
+  storage: StorageLike | undefined = browserStorage(),
+): boolean {
+  const raw = storage?.getItem(storageKey(buildingId));
+  return raw !== null && raw !== undefined && parseSavedInteriorLayout(raw) !== undefined;
 }
 
 const rotationFromFacing = (facing: FurnitureDefinition['facing']): FurnitureRotation => ({
@@ -248,57 +284,37 @@ export function loadInteriorLayout(
   const fallback = normalizeRoomLayout(room, room.furniture);
   const raw = storage?.getItem(storageKey(buildingId));
   if (!raw) return fallback;
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    const saved = parsed && typeof parsed === 'object' ? parsed as {
-      version?: unknown;
-      authoredRevision?: unknown;
-      furniture?: unknown;
-    } : undefined;
-    const legacy = Array.isArray(parsed)
-      || saved?.version === 2
-      || saved?.version === 3
-      || saved?.version === 4
-      || saved?.version === 5 && saved.authoredRevision !== INTERIOR_LAYOUT_REVISION;
-    const source = Array.isArray(parsed)
-      ? parsed
-      : saved && (saved.version === 2 || saved.version === 3 || saved.version === 4 || saved.version === 5)
-        && Array.isArray(saved.furniture)
-        ? saved.furniture
-        : undefined;
-    if (!source) return fallback;
-    const authoredIds = new Set(room.furniture.map(({ id }) => id));
-    const candidates = legacy
-      ? [...fallback, ...source.filter((candidate) => (
-        candidate && typeof candidate === 'object'
-        && 'id' in candidate && typeof candidate.id === 'string'
-        && !authoredIds.has(candidate.id)
-      ))]
-      : source;
-    const accepted: FurnitureDefinition[] = [];
-    for (const candidate of candidates) {
-      if (!candidate || typeof candidate !== 'object') continue;
-      const item = candidate as FurnitureDefinition;
-      if (
-        typeof item.id !== 'string'
-        || !item.point
-        || !Number.isFinite(item.point.x)
-        || !Number.isFinite(item.point.y)
-        || !Array.isArray(item.supportedActions)
-        || !FURNITURE_PALETTE.includes(item.kind) && !room.furniture.some(({ kind }) => kind === item.kind)
-      ) continue;
-      const normalized = normalizeRoomLayout(room, [{
-        ...item,
-        point: { ...item.point },
-        scale: normalizeFurnitureScale(item.scale),
-        rotation: normalizeRotation(item.rotation ?? rotationFromFacing(item.facing)),
-      }])[0]!;
-      if (canPlaceFurniture(room, normalized, accepted)) accepted.push(normalized);
-    }
-    return accepted.length > 0 || saved?.version === 5 ? accepted : fallback;
-  } catch {
-    return fallback;
+  const parsed = parseSavedInteriorLayout(raw);
+  if (!parsed) return fallback;
+  const authoredIds = new Set(room.furniture.map(({ id }) => id));
+  const candidates = parsed.legacy
+    ? [...fallback, ...parsed.furniture.filter((candidate) => (
+      candidate && typeof candidate === 'object'
+      && 'id' in candidate && typeof candidate.id === 'string'
+      && !authoredIds.has(candidate.id)
+    ))]
+    : parsed.furniture;
+  const accepted: FurnitureDefinition[] = [];
+  for (const candidate of candidates) {
+    if (!candidate || typeof candidate !== 'object') continue;
+    const item = candidate as FurnitureDefinition;
+    if (
+      typeof item.id !== 'string'
+      || !item.point
+      || !Number.isFinite(item.point.x)
+      || !Number.isFinite(item.point.y)
+      || !Array.isArray(item.supportedActions)
+      || !SAVED_FURNITURE_KINDS.includes(item.kind)
+    ) continue;
+    const normalized = normalizeRoomLayout(room, [{
+      ...item,
+      point: { ...item.point },
+      scale: normalizeFurnitureScale(item.scale),
+      rotation: normalizeRotation(item.rotation ?? rotationFromFacing(item.facing)),
+    }])[0]!;
+    if (canPlaceFurniture(room, normalized, accepted)) accepted.push(normalized);
   }
+  return accepted.length > 0 || !parsed.legacy ? accepted : fallback;
 }
 
 export function revertInteriorDraft(

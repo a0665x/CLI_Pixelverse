@@ -19,6 +19,21 @@ describe('WORLD_DEFINITION', () => {
     expect(ROUTE_DESTINATIONS.filter((id) => !ids.has(id))).toEqual([]);
   });
 
+  it('assigns every authored building an explicit interior profile', () => {
+    const profiles = Object.fromEntries(WORLD_DEFINITION.buildings.map(({ id, interiorProfile }) => [id, interiorProfile]));
+    expect(profiles).toMatchObject({
+      'arrival-lodge': 'compact',
+      'network-lab': 'work-office',
+      'offline-dormitory': 'compact',
+      'maker-workshop': 'work-office',
+      'tool-smithy': 'work-office',
+      'awaiting-post': 'compact',
+      'collaboration-barn': 'work-office',
+      'rest-cabin': 'compact',
+    });
+    expect(Object.values(profiles).every(Boolean)).toBe(true);
+  });
+
   it.each([
     { x: 0.5, y: 0, width: 1, height: 1 },
     { x: 0, y: 0, width: Infinity, height: 1 },

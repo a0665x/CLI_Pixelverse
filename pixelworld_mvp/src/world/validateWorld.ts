@@ -1,5 +1,5 @@
 import type { GridPoint, GridRect, TerrainArea, WorldDefinition } from './types';
-import { INTERIOR_DEFINITIONS } from './interiorDefinitions';
+import { INTERIOR_DEFINITIONS, interiorDefinitionForBuilding } from './interiorDefinitions';
 
 const inside = (point: GridPoint, world: WorldDefinition) =>
   Number.isInteger(point.x) && Number.isInteger(point.y) &&
@@ -133,7 +133,7 @@ export function validateWorld(world: WorldDefinition): string[] {
     }
   }
   for (const building of world.buildings) {
-    const interior = INTERIOR_DEFINITIONS[building.themeId];
+    const interior = interiorDefinitionForBuilding(building);
     if (!interior) continue;
     const actions = new Set(world.stations
       .filter((station) => station.buildingId === building.id)

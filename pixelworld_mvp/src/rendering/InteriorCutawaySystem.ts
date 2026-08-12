@@ -12,7 +12,7 @@ import type {
   InteriorDefinition,
   WorldDefinition,
 } from '../world/types';
-import { INTERIOR_DEFINITIONS } from '../world/interiorDefinitions';
+import { interiorDefinitionForBuilding } from '../world/interiorDefinitions';
 import { CUTAWAY_OPEN_EVENT } from '../ui/TestPanel';
 import { AGENT_SKINS, agentFrameIndex } from './assetManifest';
 import { agentAnimationFrame } from './agentAnimation';
@@ -182,6 +182,7 @@ export class InteriorCutawaySystem {
   private readonly selectedFurnitureIds = new Set<string>();
   private prefabs: FurniturePrefab[] = [];
   private activeInterior: InteriorDefinition | undefined;
+  private activeDefinition: InteriorDefinition | undefined;
   private editMode = false;
   private openId: string | undefined;
   private currentAssignments: InteriorOccupantAssignment[] = [];
@@ -222,9 +223,10 @@ export class InteriorCutawaySystem {
       console.warn(`[pixelworld] cannot open unknown house: ${buildingId}`);
       return;
     }
-    const definition = INTERIOR_DEFINITIONS[building.themeId];
+    const definition = interiorDefinitionForBuilding(building);
     this.close();
     this.openId = buildingId;
+    this.activeDefinition = definition;
     this.activeInterior = {
       ...definition,
       furniture: loadInteriorLayout(buildingId, definition),
@@ -307,7 +309,7 @@ export class InteriorCutawaySystem {
       },
       revert: () => {
         if (!this.openId) return;
-        interior.furniture = revertInteriorDraft(this.openId, INTERIOR_DEFINITIONS[interior.id]);
+        interior.furniture = revertInteriorDraft(this.openId, definition);
         this.selectedFurnitureIds.clear();
         this.selectedFurnitureId = undefined;
         this.setStatus('已取消未儲存變更，回到最後保存版本');
@@ -365,6 +367,7 @@ export class InteriorCutawaySystem {
     this.selectedFurnitureId = undefined;
     this.selectedFurnitureIds.clear();
     this.activeInterior = undefined;
+    this.activeDefinition = undefined;
     this.editMode = false;
     this.openId = undefined;
     this.currentAssignments = [];
@@ -380,7 +383,7 @@ export class InteriorCutawaySystem {
     if (!this.root || !this.openId) return;
     const building = this.world.buildings.find(({ id }) => id === this.openId);
     if (!building) return;
-    const interior = this.activeInterior ?? INTERIOR_DEFINITIONS[building.themeId];
+    const interior = this.activeInterior ?? interiorDefinitionForBuilding(building);
     const matchingSnapshots = snapshots.filter(({ buildingId }) => buildingId === building.id);
     const assignments = assignInteriorOccupants(interior, matchingSnapshots, building.id);
     const signature = assignments.map(({ agentId, furnitureId, point, eventId }) => (
@@ -583,7 +586,7 @@ export class InteriorCutawaySystem {
     this.paletteLayer = palette;
     this.root.add(palette);
     const page = catalogPage(this.catalogCategory, this.catalogPageIndex, 12);
-    const required = requiredHookInventory(INTERIOR_DEFINITIONS[interior.id], interior.furniture);
+    const required = requiredHookInventory(this.activeDefinition ?? interior, interior.furniture);
     const startX = layout.x + (layout.width - 12 * 34) / 2 + 17;
     const shelfY = layout.y + layout.height - 42;
     const missingRequired = required.filter(({ placed }) => !placed);
@@ -800,8 +803,8 @@ export class InteriorCutawaySystem {
     return {
       title: this.activeInterior?.label ?? '', status: this.statusMessage, editMode: this.editMode,
       category: this.catalogCategory, page: page.page, totalPages: page.totalPages,
-      requiredPlaced: this.activeInterior ? requiredHookInventory(INTERIOR_DEFINITIONS[this.activeInterior.id], this.activeInterior.furniture).filter(({ placed }) => placed).length : 0,
-      requiredTotal: this.activeInterior ? requiredHookInventory(INTERIOR_DEFINITIONS[this.activeInterior.id], this.activeInterior.furniture).length : 0,
+      requiredPlaced: this.activeInterior ? requiredHookInventory(this.activeDefinition ?? this.activeInterior, this.activeInterior.furniture).filter(({ placed }) => placed).length : 0,
+      requiredTotal: this.activeInterior ? requiredHookInventory(this.activeDefinition ?? this.activeInterior, this.activeInterior.furniture).length : 0,
       prefabCount: this.prefabs.length,
       clipboardAvailable: Boolean(loadLayoutClipboard()),
       selectedCount: this.selectedFurnitureIds.size,

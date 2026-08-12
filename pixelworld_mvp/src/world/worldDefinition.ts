@@ -52,10 +52,12 @@ const building = (
   x: number,
   y: number,
   doorX: number,
+  interiorProfile: NonNullable<WorldBuilding['interiorProfile']>,
 ): WorldBuilding => ({
   id,
   label,
   themeId,
+  interiorProfile,
   bounds: { x, y, width: 5, height: 4 },
   labelAnchor: { x: x + 2.5, y: y - 0.5 },
   entrance: {
@@ -67,18 +69,18 @@ const building = (
 });
 
 const buildings: WorldBuilding[] = [
-  building('arrival-lodge', 'Arrival Lodge · 啟程小屋', 'collaboration-barn', 1, 2, 3),
-  building('thinkers-cottage', 'Thinker’s Cottage · 思考屋', 'research-library', 9, 2, 11),
-  building('archive-library', 'Archive Library · 檔案館', 'research-library', 18, 2, 20),
-  building('network-lab', 'Web / MCP Lab · 網路屋', 'research-library', 31, 2, 33),
-  building('heartbeat-tower', 'Heartbeat Tower · 心跳塔', 'collaboration-barn', 40, 2, 42),
-  building('offline-dormitory', 'Offline Dormitory · 離線宿舍', 'rest-cabin', 2, 10, 4),
-  building('maker-workshop', 'Maker Workshop · 編輯工坊', 'maker-workshop', 40, 10, 42),
-  building('tool-smithy', 'Tool Smithy · 工具鐵舖', 'maker-workshop', 1, 20, 3),
-  building('awaiting-post', 'Awaiting Post · 等候站', 'collaboration-barn', 9, 20, 11),
-  building('collaboration-barn', 'Agent Guild · 協作公會', 'collaboration-barn', 18, 20, 20),
-  building('recovery-clinic', 'Recovery Clinic · 修復所', 'maker-workshop', 31, 20, 33),
-  building('rest-cabin', 'Rest Cabin · 休息小屋', 'rest-cabin', 40, 20, 42),
+  building('arrival-lodge', 'Arrival Lodge · 啟程小屋', 'collaboration-barn', 1, 2, 3, 'compact'),
+  building('thinkers-cottage', 'Thinker’s Cottage · 思考屋', 'research-library', 9, 2, 11, 'work-office'),
+  building('archive-library', 'Archive Library · 檔案館', 'research-library', 18, 2, 20, 'work-office'),
+  building('network-lab', 'Web / MCP Lab · 網路屋', 'research-library', 31, 2, 33, 'work-office'),
+  building('heartbeat-tower', 'Heartbeat Tower · 心跳塔', 'collaboration-barn', 40, 2, 42, 'work-office'),
+  building('offline-dormitory', 'Offline Dormitory · 離線宿舍', 'rest-cabin', 2, 10, 4, 'compact'),
+  building('maker-workshop', 'Maker Workshop · 編輯工坊', 'maker-workshop', 40, 10, 42, 'work-office'),
+  building('tool-smithy', 'Tool Smithy · 工具鐵舖', 'maker-workshop', 1, 20, 3, 'work-office'),
+  building('awaiting-post', 'Awaiting Post · 等候站', 'collaboration-barn', 9, 20, 11, 'compact'),
+  building('collaboration-barn', 'Agent Guild · 協作公會', 'collaboration-barn', 18, 20, 20, 'work-office'),
+  building('recovery-clinic', 'Recovery Clinic · 修復所', 'maker-workshop', 31, 20, 33, 'work-office'),
+  building('rest-cabin', 'Rest Cabin · 休息小屋', 'rest-cabin', 40, 20, 42, 'compact'),
 ];
 
 const trees = [
