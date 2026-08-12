@@ -4,7 +4,14 @@ import {
   dragPreviewScreenPoint,
   cutawayLayoutForViewport,
   cutawayContainsPointer,
+  furnitureRenderScreenPoint,
   hookFurnitureLabel,
+  interiorAgentRenderDepth,
+  interiorFurnitureRenderDepth,
+  roomCellForLayout,
+  roomOriginForLayout,
+  roomPointForScreen,
+  roomScreenPoint,
 } from '../src/rendering/InteriorCutawaySystem';
 import {
   selectionCapabilities,
@@ -30,11 +37,12 @@ class FakeObject {
   tinted = false;
   width = 0;
   height = 0;
+  depth = 0;
   children: FakeObject[] = [];
   private readonly handlers = new Map<string, Array<(...args: unknown[]) => void>>();
   constructor(texture = '') { this.texture = texture; }
   setOrigin(): this { return this; }
-  setDepth(): this { return this; }
+  setDepth(depth: number): this { this.depth = depth; return this; }
   setScrollFactor(): this { return this; }
   setInteractive(): this { this.interactive = true; return this; }
   setPosition(x: number, y: number): this { this.x = x; this.y = y; return this; }
@@ -51,6 +59,10 @@ class FakeObject {
   setStrokeStyle(): this { return this; }
   add(items: FakeObject | FakeObject[]): this { this.children.push(...(Array.isArray(items) ? items : [items])); return this; }
   removeAll(destroy = false): this { if (destroy) this.children.forEach((child) => child.destroy()); this.children = []; return this; }
+  sort(property: keyof FakeObject): this {
+    this.children.sort((first, second) => Number(first[property]) - Number(second[property]));
+    return this;
+  }
   fillStyle(): this { return this; }
   fillRect(): this { return this; }
   clear(): this { return this; }
@@ -142,6 +154,47 @@ describe('InteriorCutawaySystem', () => {
     expect(cutawayLayoutForViewport(840, 480)).toMatchObject({ width: 608, height: 360, x: 80, y: 44 });
   });
 
+  it('fits an 18x12 work office inside the cutaway content area with a readable cell', () => {
+    const cell = roomCellForLayout(
+      { width: 18, height: 12 },
+      { x: 80, y: 44, width: 608, height: 360 },
+    );
+    expect(cell).toBeGreaterThanOrEqual(12);
+    expect(cell * 18).toBeLessThanOrEqual(584);
+    expect(cell * 12).toBeLessThanOrEqual(250);
+  });
+
+  it('round-trips fractional room coordinates through the responsive room origin', () => {
+    const layout = { x: 80, y: 44, width: 608, height: 360 };
+    const room = { width: 18, height: 12 };
+    const cell = roomCellForLayout(room, layout);
+    const origin = roomOriginForLayout(room, layout, cell);
+    const point = { x: 3.125, y: 7.75 };
+
+    expect(roomPointForScreen(origin, roomScreenPoint(origin, point, cell), cell)).toEqual(point);
+  });
+
+  it('materializes the authored visual offset without reapplying rotation or scale', () => {
+    const furniture = {
+      id: 'offset-display', kind: 'display' as const, point: { x: 3, y: 4 }, facing: 'right' as const,
+      icon: 'generic' as const, supportedActions: [], visualOffset: { x: -0.5, y: 0.25 },
+      rotation: 90 as const, scale: 1.5 as const,
+    };
+    expect(furnitureRenderScreenPoint({ x: 100, y: 50 }, furniture, 20)).toEqual({ x: 160, y: 145 });
+  });
+
+  it('orders wall foreground against renderer-owned agent foot Y', () => {
+    const wall = {
+      id: 'wall', kind: 'cabinet' as const, point: { x: 3, y: 4 }, facing: 'up' as const,
+      icon: 'generic' as const, supportedActions: [], layer: 'wall' as const,
+    };
+    const wallDepth = interiorFurnitureRenderDepth(wall, { x: 100, y: 145 });
+    expect(wallDepth).toBeGreaterThan(interiorAgentRenderDepth(140, 1));
+    expect(wallDepth).toBeLessThan(interiorAgentRenderDepth(150, 1));
+    expect(interiorFurnitureRenderDepth({ ...wall, layer: 'surface' }, { x: 100, y: 145 }))
+      .toBeLessThan(interiorAgentRenderDepth(0, 1));
+  });
+
   it('keeps panel pointer events available for room marquee input', () => {
     const layout = cutawayLayoutForViewport(1_280, 720);
     expect(cutawayContainsPointer(layout, { x: layout.x + 1, y: layout.y + 1 })).toBe(true);
@@ -216,6 +269,7 @@ describe('InteriorCutawaySystem', () => {
       activeDefinition: InteriorDefinition;
       activeInterior: InteriorDefinition;
       roomOrigin: { x: number; y: number };
+      roomCell: number;
       renderFurniture(interior: InteriorDefinition, layout: ReturnType<typeof cutawayLayoutForViewport>): void;
     };
     internal.editMode = true;
@@ -232,14 +286,15 @@ describe('InteriorCutawaySystem', () => {
     expect(previewParts.every(({ tinted }) => !tinted)).toBe(true);
 
     const anchor = { x: 2.12, y: 2.12 };
-    const pointer = dragPreviewScreenPoint(internal.roomOrigin, anchor);
+    const pointer = dragPreviewScreenPoint(internal.roomOrigin, anchor, internal.roomCell);
     preview!.emit('dragstart', pointerAt(pointer.x - 20, pointer.y - 20));
     preview!.emit('drag', pointerAt(pointer.x, pointer.y), -320, 850);
     const ghosts = fake.objects.filter(({ alpha, destroyed }) => alpha === 0.72 && !destroyed);
     expect(ghosts).toHaveLength(bench.items.length);
+    const firstOffset = bench.items[0]!.visualOffset ?? { x: 0, y: 0 };
     expect(ghosts[0]).toMatchObject({
-      x: pointer.x + (bench.items[0]!.point.x - bench.anchor.x) * 22,
-      y: pointer.y + (bench.items[0]!.point.y - bench.anchor.y) * 22,
+      x: pointer.x + (bench.items[0]!.point.x + firstOffset.x - bench.anchor.x) * internal.roomCell,
+      y: pointer.y + (bench.items[0]!.point.y + firstOffset.y - bench.anchor.y) * internal.roomCell,
     });
 
     preview!.emit('dragend', pointerAt(pointer.x + 200, pointer.y + 200), 7, 9);
@@ -262,6 +317,7 @@ describe('InteriorCutawaySystem', () => {
       activeDefinition: InteriorDefinition;
       activeInterior: InteriorDefinition;
       roomOrigin: { x: number; y: number };
+      roomCell: number;
       renderFurniture(interior: InteriorDefinition, layout: ReturnType<typeof cutawayLayoutForViewport>): void;
     };
     internal.editMode = true;
@@ -272,7 +328,7 @@ describe('InteriorCutawaySystem', () => {
     const bench = BUILT_IN_OFFICE_PREFABS[0]!;
     const preview = fake.objects.find((object) => object.interactive &&
       object.children.filter(({ texture }) => texture.startsWith('modern-office')).length === bench.items.length)!;
-    const pointer = dragPreviewScreenPoint(internal.roomOrigin, { x: 3.12, y: 2.88 });
+    const pointer = dragPreviewScreenPoint(internal.roomOrigin, { x: 3.12, y: 2.88 }, internal.roomCell);
 
     preview.emit('dragstart', pointerAt(pointer.x, pointer.y));
     preview.emit('dragend', pointerAt(pointer.x + 300, pointer.y + 300), -12, -8);

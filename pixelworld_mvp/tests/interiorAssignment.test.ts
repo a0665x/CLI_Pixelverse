@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { assignInteriorOccupants, type InteriorAgentSnapshot } from '../src/rendering/interiorAssignment';
+import { interiorInteractionPoint } from '../src/rendering/prefabGeometry';
+import { interiorPath } from '../src/rendering/interiorMotion';
 import { INTERIOR_DEFINITIONS } from '../src/world/interiorDefinitions';
 
 const snapshot = (overrides: Partial<InteriorAgentSnapshot>): InteriorAgentSnapshot => ({
@@ -44,5 +46,20 @@ describe('interior occupant assignment', () => {
     expect(new Set(first.map(({ point }) => `${point.x},${point.y}`)).size).toBe(6);
     expect(first).toEqual(second);
     expect(first.every(({ furnitureId }) => furnitureId !== undefined)).toBe(true);
+  });
+
+  it('assigns a reachable interaction anchor shared with interior motion', () => {
+    const maker = INTERIOR_DEFINITIONS['maker-workshop'];
+    const assigned = assignInteriorOccupants(maker, [snapshot({
+      buildingId: 'tool-smithy', action: 'terminal', eventKind: 'tool', eventId: 'tool-anchor',
+    })], 'tool-smithy')[0]!;
+    const furniture = maker.furniture.find(({ id }) => id === assigned.furnitureId)!;
+    const anchor = interiorInteractionPoint(maker, furniture);
+    const door = { x: Math.floor(maker.width / 2), y: maker.height - 1 };
+    const path = interiorPath(maker, door, anchor);
+
+    expect(furniture.supportedActions).toContain('terminal');
+    expect(assigned.point).toEqual(anchor);
+    expect(path.at(-1)).toEqual({ x: Math.round(anchor.x), y: Math.round(anchor.y) });
   });
 });

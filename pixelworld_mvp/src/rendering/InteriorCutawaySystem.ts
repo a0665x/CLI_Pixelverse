@@ -31,9 +31,7 @@ import {
 } from './InteriorCutawayDomOverlay';
 import type { VillageLocale } from '../i18n/villageLocale';
 import {
-  EDITOR_CELL,
   commitPlacementCandidate,
-  effectiveFurnitureFootprint,
   resolvePlacementCandidate,
   resolvedFurnitureAsset,
   snapFurniturePoint,
@@ -79,7 +77,10 @@ import {
   InteriorUndoStore,
 } from './interiorUndoStore';
 
-const ROOM_CELL = 22;
+const BASE_ROOM_CELL = 22;
+const MIN_ROOM_CELL = 12;
+const ROOM_CONTENT_TOP = 52;
+const ROOM_CONTENT_BOTTOM = 58;
 const CUTAWAY_DEPTH = 100_000;
 const LAYER_ORDER: Record<FurnitureLayer, number> = { floor: 0, furniture: 1, surface: 2, wall: 3 };
 
@@ -107,11 +108,76 @@ export function cutawayContainsPointer(layout: CutawayLayout, point: GridPoint):
     && point.y >= layout.y && point.y <= layout.y + layout.height;
 }
 
-export function dragPreviewScreenPoint(roomOrigin: GridPoint, point: GridPoint): GridPoint {
+export function roomCellForLayout(
+  room: Pick<InteriorDefinition, 'width' | 'height'>,
+  layout: CutawayLayout,
+): number {
+  const contentWidth = layout.width - 24;
+  const contentHeight = layout.height - ROOM_CONTENT_TOP - ROOM_CONTENT_BOTTOM;
+  return Math.max(MIN_ROOM_CELL, Math.floor(Math.min(contentWidth / room.width, contentHeight / room.height)));
+}
+
+export function roomOriginForLayout(
+  room: Pick<InteriorDefinition, 'width' | 'height'>,
+  layout: CutawayLayout,
+  cell = roomCellForLayout(room, layout),
+): GridPoint {
   return {
-    x: roomOrigin.x + point.x * ROOM_CELL + ROOM_CELL / 2,
-    y: roomOrigin.y + point.y * ROOM_CELL + ROOM_CELL / 2,
+    x: Math.round(layout.x + (layout.width - room.width * cell) / 2),
+    y: Math.round(layout.y + ROOM_CONTENT_TOP),
   };
+}
+
+export function roomScreenPoint(roomOrigin: GridPoint, point: GridPoint, cell: number): GridPoint {
+  return {
+    x: roomOrigin.x + point.x * cell + cell / 2,
+    y: roomOrigin.y + point.y * cell + cell / 2,
+  };
+}
+
+export function roomPointForScreen(roomOrigin: GridPoint, point: GridPoint, cell: number): GridPoint {
+  return {
+    x: (point.x - roomOrigin.x) / cell - 0.5,
+    y: (point.y - roomOrigin.y) / cell - 0.5,
+  };
+}
+
+export function furnitureRenderScreenPoint(
+  roomOrigin: GridPoint,
+  furniture: Pick<FurnitureDefinition, 'point' | 'visualOffset'>,
+  cell: number,
+): GridPoint {
+  const visualOffset = furniture.visualOffset ?? { x: 0, y: 0 };
+  return roomScreenPoint(roomOrigin, {
+    x: furniture.point.x + visualOffset.x,
+    y: furniture.point.y + visualOffset.y,
+  }, cell);
+}
+
+export function dragPreviewScreenPoint(roomOrigin: GridPoint, point: GridPoint, cell = BASE_ROOM_CELL): GridPoint {
+  return roomScreenPoint(roomOrigin, point, cell);
+}
+
+const BACKGROUND_DEPTH: Record<Exclude<FurnitureLayer, 'wall'>, number> = {
+  floor: 0,
+  furniture: 1_000,
+  surface: 2_000,
+};
+const OCCLUSION_DEPTH = 3_000;
+
+export function interiorAgentRenderDepth(footY: number, tieBreaker: number): number {
+  return OCCLUSION_DEPTH + footY + tieBreaker / 1_000;
+}
+
+export function interiorFurnitureRenderDepth(
+  furniture: Pick<FurnitureDefinition, 'layer' | 'zIndex'>,
+  screenPoint: GridPoint,
+): number {
+  const layer = furniture.layer ?? 'furniture';
+  const zIndex = furniture.zIndex ?? 0;
+  return layer === 'wall'
+    ? OCCLUSION_DEPTH + screenPoint.y + zIndex / 1_000
+    : BACKGROUND_DEPTH[layer] + zIndex / 1_000;
 }
 
 const viewport = (): { width: number; height: number } => ({
@@ -201,6 +267,7 @@ export class InteriorCutawaySystem {
   private currentAssignments: InteriorOccupantAssignment[] = [];
   private assignmentSignature = '';
   private roomOrigin: GridPoint = { x: 0, y: 0 };
+  private roomCell = BASE_ROOM_CELL;
   private currentDragCandidate: PlacementCandidate | undefined;
   private catalogCategory: ModernOfficeCategory = 'workstations';
   private catalogPageIndex = 0;
@@ -280,18 +347,18 @@ export class InteriorCutawaySystem {
     ).setStrokeStyle(3, 0xf1d89a, 1).setInteractive();
     root.add([backdrop, panel]);
 
-    const roomWidth = interior.width * ROOM_CELL;
-    const roomHeight = interior.height * ROOM_CELL;
-    const roomX = Math.round(layout.x + (layout.width - roomWidth) / 2);
-    const roomY = Math.round(layout.y + 52);
-    this.roomOrigin = { x: roomX, y: roomY };
+    this.roomCell = roomCellForLayout(interior, layout);
+    this.roomOrigin = roomOriginForLayout(interior, layout, this.roomCell);
+    const roomWidth = interior.width * this.roomCell;
+    const roomHeight = interior.height * this.roomCell;
+    const { x: roomX, y: roomY } = this.roomOrigin;
     const room = this.scene.add.graphics();
     const [floorA, floorB] = floorColors[interior.floor];
     room.fillStyle(wallColors[interior.wall], 1).fillRect(roomX - 7, roomY - 7, roomWidth + 14, roomHeight + 14);
     for (let y = 0; y < interior.height; y += 1) {
       for (let x = 0; x < interior.width; x += 1) {
         room.fillStyle((x + y) % 2 === 0 ? floorA : floorB, 1)
-          .fillRect(roomX + x * ROOM_CELL, roomY + y * ROOM_CELL, ROOM_CELL, ROOM_CELL);
+          .fillRect(roomX + x * this.roomCell, roomY + y * this.roomCell, this.roomCell, this.roomCell);
       }
     }
     room.fillStyle(0x3b3430, 1).fillRect(roomX - 7, roomY - 7, roomWidth + 14, 7);
@@ -442,6 +509,7 @@ export class InteriorCutawaySystem {
     this.currentAssignments = [];
     this.assignmentSignature = '';
     this.currentDragCandidate = undefined;
+    this.roomCell = BASE_ROOM_CELL;
     this.statusMessage = '';
     this.statusId = undefined;
     this.undoStore.reset([]);
@@ -465,12 +533,16 @@ export class InteriorCutawaySystem {
     if (signature !== this.assignmentSignature) {
       this.assignmentSignature = signature;
       this.currentAssignments = assignments;
-      this.occupantLayer?.removeAll(true);
-      this.occupantLayer?.destroy();
+      for (const view of this.occupantViews.values()) {
+        view.sprite.destroy();
+        view.icon.destroy();
+        view.bubble.destroy();
+        view.name.destroy();
+      }
       this.occupantViews.clear();
-      const layer = this.scene.add.container(0, 0);
+      const layer = this.furnitureLayer;
+      if (!layer) return;
       this.occupantLayer = layer;
-      this.root.add(layer);
       this.setStatus(assignments.length === 0
         ? 'EMPTY HOUSE · 目前沒有 Agent'
         : `${assignments.length} AGENT${assignments.length === 1 ? '' : 'S'} INSIDE · LIVE`);
@@ -484,8 +556,8 @@ export class InteriorCutawaySystem {
         const motion = interiorMotionAt(snapshot, interior, assignment, this.scene.time.now);
         const skin = assignment.role === 'main' ? AGENT_SKINS.main : AGENT_SKINS.subagent;
         const sprite = this.scene.add.image(0, 0, skin.sheet, agentFrameIndex(skin, motion.facing))
-          .setOrigin(0.5, 0.82).setDepth(CUTAWAY_DEPTH + 10 + index / 100)
-          .setScale('renderScale' in skin ? skin.renderScale : 1.35);
+          .setOrigin(0.5, 0.82).setDepth(interiorAgentRenderDepth(0, index + 1))
+          .setScale(('renderScale' in skin ? skin.renderScale : 1.35) * this.roomCell / BASE_ROOM_CELL);
         const icon = this.scene.add.text(0, 0, actionSymbols[assignment.icon], {
           fontFamily: 'sans-serif', fontSize: '8px', color: '#fff4c2', backgroundColor: '#315348', padding: { x: 3, y: 1 },
         }).setOrigin(0.5).setDepth(CUTAWAY_DEPTH + 20);
@@ -513,13 +585,15 @@ export class InteriorCutawaySystem {
         ? agentAnimationFrame(motion.facing, motion.walking, this.scene.time.now)
         : agentFrameIndex(skin, motion.facing);
       view.sprite.setTexture(skin.sheet, frame);
-      const x = this.roomOrigin.x + motion.point.x * ROOM_CELL + ROOM_CELL / 2;
-      const y = this.roomOrigin.y + motion.point.y * ROOM_CELL + ROOM_CELL / 2
-        + (assignment.seated && motion.phase === 'working' ? 4 : 0) + motion.bob;
-      view.sprite.setPosition(x, y);
-      view.icon.setPosition(x, y - 21);
-      view.bubble.setPosition(x, y - 31).setText(motion.bubbleText);
-      view.name.setPosition(x, y + 9);
+      const point = roomScreenPoint(this.roomOrigin, motion.point, this.roomCell);
+      const pixelScale = this.roomCell / BASE_ROOM_CELL;
+      const x = point.x;
+      const y = point.y + (assignment.seated && motion.phase === 'working' ? 4 * pixelScale : 0)
+        + motion.bob * pixelScale;
+      view.sprite.setPosition(x, y).setDepth(interiorAgentRenderDepth(y, this.currentAssignments.indexOf(assignment) + 1));
+      view.icon.setPosition(x, y - 21 * pixelScale);
+      view.bubble.setPosition(x, y - 31 * pixelScale).setText(motion.bubbleText);
+      view.name.setPosition(x, y + 9 * pixelScale);
     });
     this.occupantDomLabels = assignments.map((assignment) => {
       const snapshot = matchingSnapshots.find(({ agentId }) => agentId === assignment.agentId) ?? assignment;
@@ -527,11 +601,12 @@ export class InteriorCutawaySystem {
       return {
         id: `agent:${assignment.agentId}`,
         text: `${actionSymbols[assignment.icon]} ${motion.bubbleText}\n${assignment.agentId}`,
-        x: this.roomOrigin.x + motion.point.x * ROOM_CELL + ROOM_CELL / 2,
-        y: this.roomOrigin.y + motion.point.y * ROOM_CELL - 2,
+        x: roomScreenPoint(this.roomOrigin, motion.point, this.roomCell).x,
+        y: roomScreenPoint(this.roomOrigin, motion.point, this.roomCell).y - this.roomCell / 2 - 2 * this.roomCell / BASE_ROOM_CELL,
         kind: 'agent' as const,
       };
     });
+    this.furnitureLayer?.sort('depth');
     this.syncRoomLabels();
   }
 
@@ -549,9 +624,14 @@ export class InteriorCutawaySystem {
     this.marqueeCleanup = undefined;
     this.furnitureLayer?.removeAll(true);
     this.furnitureLayer?.destroy();
+    this.occupantLayer = undefined;
+    this.occupantViews.clear();
+    this.assignmentSignature = '';
     this.paletteLayer?.removeAll(true);
     this.paletteLayer?.destroy();
     if (!this.root) return;
+    this.roomCell = roomCellForLayout(interior, layout);
+    this.roomOrigin = roomOriginForLayout(interior, layout, this.roomCell);
     const root = this.root;
     const furnitureLayer = this.scene.add.container(0, 0);
     this.furnitureLayer = furnitureLayer;
@@ -562,12 +642,12 @@ export class InteriorCutawaySystem {
     if (this.editMode) {
       const grid = this.scene.add.graphics().lineStyle(1, 0xf5deb0, 0.15);
       for (let x = 0; x <= interior.width * 4; x += 1) {
-        grid.lineBetween(this.roomOrigin.x + x * EDITOR_CELL, this.roomOrigin.y,
-          this.roomOrigin.x + x * EDITOR_CELL, this.roomOrigin.y + interior.height * ROOM_CELL);
+        grid.lineBetween(this.roomOrigin.x + x * this.roomCell / 4, this.roomOrigin.y,
+          this.roomOrigin.x + x * this.roomCell / 4, this.roomOrigin.y + interior.height * this.roomCell);
       }
       for (let y = 0; y <= interior.height * 4; y += 1) {
-        grid.lineBetween(this.roomOrigin.x, this.roomOrigin.y + y * EDITOR_CELL,
-          this.roomOrigin.x + interior.width * ROOM_CELL, this.roomOrigin.y + y * EDITOR_CELL);
+        grid.lineBetween(this.roomOrigin.x, this.roomOrigin.y + y * this.roomCell / 4,
+          this.roomOrigin.x + interior.width * this.roomCell, this.roomOrigin.y + y * this.roomCell / 4);
       }
       furnitureLayer.add(grid);
     }
@@ -576,10 +656,10 @@ export class InteriorCutawaySystem {
       placementPreview.clear();
       placementPreview.fillStyle(candidate.diagnostic === 'valid' ? 0x65d47e : 0xe05b54, 0.42);
       placementPreview.fillRect(
-        this.roomOrigin.x + candidate.bounds.x * ROOM_CELL,
-        this.roomOrigin.y + candidate.bounds.y * ROOM_CELL,
-        candidate.bounds.width * ROOM_CELL,
-        candidate.bounds.height * ROOM_CELL,
+        this.roomOrigin.x + candidate.bounds.x * this.roomCell,
+        this.roomOrigin.y + candidate.bounds.y * this.roomCell,
+        candidate.bounds.width * this.roomCell,
+        candidate.bounds.height * this.roomCell,
       );
     };
 
@@ -589,14 +669,14 @@ export class InteriorCutawaySystem {
     });
     const furnitureSprites = new Set<Phaser.GameObjects.Image>();
     for (const furniture of sortedFurniture) {
-      const x = this.roomOrigin.x + furniture.point.x * ROOM_CELL + ROOM_CELL / 2;
-      const y = this.roomOrigin.y + furniture.point.y * ROOM_CELL + ROOM_CELL / 2;
+      const point = furnitureRenderScreenPoint(this.roomOrigin, furniture, this.roomCell);
       const catalog = resolvedFurnitureAsset(furniture);
       const assetKey = catalog?.key ?? modernOfficeAsset(modernOfficeKindForFurniture(furniture.kind)).key;
       const originX = catalog ? (catalog.opaqueBounds.x + catalog.opaqueBounds.width / 2) / 32 : 0.5;
       const originY = catalog ? (catalog.opaqueBounds.y + catalog.opaqueBounds.height / 2) / 48 : 0.5;
-      const sprite = this.scene.add.image(x, y, assetKey).setOrigin(originX, originY)
-        .setScale(normalizeFurnitureScale(furniture.scale)).setAngle(furniture.rotation ?? 0);
+      const sprite = this.scene.add.image(point.x, point.y, assetKey).setOrigin(originX, originY)
+        .setScale(normalizeFurnitureScale(furniture.scale) * this.roomCell / BASE_ROOM_CELL)
+        .setAngle(furniture.rotation ?? 0).setDepth(interiorFurnitureRenderDepth(furniture, point));
       furnitureLayer.add(sprite);
       if (!this.editMode) continue;
       sprite.setInteractive({ useHandCursor: true, draggable: true });
@@ -623,7 +703,7 @@ export class InteriorCutawaySystem {
         this.currentDragCandidate = resolvePlacementCandidate(
           interior, interior.furniture, furniture, this.roomPoint(dragX, dragY), furniture.id,
         );
-        const fitted = dragPreviewScreenPoint(this.roomOrigin, this.currentDragCandidate.furniture.point);
+        const fitted = furnitureRenderScreenPoint(this.roomOrigin, this.currentDragCandidate.furniture, this.roomCell);
         sprite.setPosition(fitted.x, fitted.y);
         drawPlacementPreview(this.currentDragCandidate);
       });
@@ -640,15 +720,16 @@ export class InteriorCutawaySystem {
     }
 
     for (const furniture of this.templatePreview ?? []) {
-      const x = this.roomOrigin.x + furniture.point.x * ROOM_CELL + ROOM_CELL / 2;
-      const y = this.roomOrigin.y + furniture.point.y * ROOM_CELL + ROOM_CELL / 2;
+      const point = furnitureRenderScreenPoint(this.roomOrigin, furniture, this.roomCell);
       const catalog = resolvedFurnitureAsset(furniture);
       const assetKey = catalog?.key ?? modernOfficeAsset(modernOfficeKindForFurniture(furniture.kind)).key;
       const originX = catalog ? (catalog.opaqueBounds.x + catalog.opaqueBounds.width / 2) / 32 : 0.5;
       const originY = catalog ? (catalog.opaqueBounds.y + catalog.opaqueBounds.height / 2) / 48 : 0.5;
-      furnitureLayer.add(this.scene.add.image(x, y, assetKey).setOrigin(originX, originY)
-        .setScale(normalizeFurnitureScale(furniture.scale)).setAngle(furniture.rotation ?? 0).setAlpha(0.36));
+      furnitureLayer.add(this.scene.add.image(point.x, point.y, assetKey).setOrigin(originX, originY)
+        .setScale(normalizeFurnitureScale(furniture.scale) * this.roomCell / BASE_ROOM_CELL)
+        .setAngle(furniture.rotation ?? 0).setDepth(interiorFurnitureRenderDepth(furniture, point)).setAlpha(0.36));
     }
+    furnitureLayer.sort('depth');
 
     const contextualFurnitureIds = new Set([
       this.selectedFurnitureId,
@@ -659,8 +740,8 @@ export class InteriorCutawaySystem {
       if (!label || !contextualFurnitureIds.has(furniture.id)) return [];
       return [{
         id: `hook:${furniture.id}`, text: label,
-        x: this.roomOrigin.x + furniture.point.x * ROOM_CELL + ROOM_CELL / 2,
-        y: this.roomOrigin.y + furniture.point.y * ROOM_CELL + ROOM_CELL / 2 + 18,
+        x: furnitureRenderScreenPoint(this.roomOrigin, furniture, this.roomCell).x,
+        y: furnitureRenderScreenPoint(this.roomOrigin, furniture, this.roomCell).y + 18 * this.roomCell / BASE_ROOM_CELL,
         kind: 'hook',
       }];
     });
@@ -696,14 +777,17 @@ export class InteriorCutawaySystem {
     });
     const prefabOffset = Math.min(12, missingRequired.length);
     this.prefabs.slice(0, Math.max(0, 12 - prefabOffset)).forEach((prefab, index) => {
-      const points = prefab.items.map(({ point }) => point);
+      const points = prefab.items.map(({ point, visualOffset }) => ({
+        x: point.x + (visualOffset?.x ?? 0),
+        y: point.y + (visualOffset?.y ?? 0),
+      }));
       const minX = Math.min(...points.map(({ x }) => x));
       const maxX = Math.max(...points.map(({ x }) => x));
       const minY = Math.min(...points.map(({ y }) => y));
       const maxY = Math.max(...points.map(({ y }) => y));
       const centerX = (minX + maxX) / 2;
       const centerY = (minY + maxY) / 2;
-      const previewScale = Math.min(0.68, 26 / (Math.max(maxX - minX + 1, maxY - minY + 1) * ROOM_CELL));
+      const previewScale = Math.min(0.68, 26 / (Math.max(maxX - minX + 1, maxY - minY + 1) * this.roomCell));
       const item = this.scene.add.container(startX + (prefabOffset + index) * 34, shelfY).setSize(30, 30);
       const outline = this.scene.add.graphics().lineStyle(1, 0x8ee8ff, 0.95).strokeRect(-14, -14, 28, 28);
       item.add(outline);
@@ -712,11 +796,14 @@ export class InteriorCutawaySystem {
         const partKey = partCatalog?.key ?? modernOfficeAsset(modernOfficeKindForFurniture(part.kind)).key;
         const partOriginX = partCatalog ? (partCatalog.opaqueBounds.x + partCatalog.opaqueBounds.width / 2) / 32 : 0.5;
         const partOriginY = partCatalog ? (partCatalog.opaqueBounds.y + partCatalog.opaqueBounds.height / 2) / 48 : 0.5;
+        const offset = part.visualOffset ?? { x: 0, y: 0 };
         item.add(this.scene.add.image(
-          (part.point.x - centerX) * ROOM_CELL * previewScale,
-          (part.point.y - centerY) * ROOM_CELL * previewScale,
+          (part.point.x + offset.x - centerX) * this.roomCell * previewScale,
+          (part.point.y + offset.y - centerY) * this.roomCell * previewScale,
           partKey,
-        ).setOrigin(partOriginX, partOriginY).setScale(normalizeFurnitureScale(part.scale) * previewScale).setAngle(part.rotation ?? 0));
+        ).setOrigin(partOriginX, partOriginY)
+          .setScale(normalizeFurnitureScale(part.scale) * this.roomCell / BASE_ROOM_CELL * previewScale)
+          .setAngle(part.rotation ?? 0));
       });
       item.setInteractive({ useHandCursor: true, draggable: true });
       this.scene.input.setDraggable(item);
@@ -733,12 +820,14 @@ export class InteriorCutawaySystem {
           const partKey = partCatalog?.key ?? modernOfficeAsset(modernOfficeKindForFurniture(part.kind)).key;
           const partOriginX = partCatalog ? (partCatalog.opaqueBounds.x + partCatalog.opaqueBounds.width / 2) / 32 : 0.5;
           const partOriginY = partCatalog ? (partCatalog.opaqueBounds.y + partCatalog.opaqueBounds.height / 2) / 48 : 0.5;
+          const offset = part.visualOffset ?? { x: 0, y: 0 };
           const ghost = this.scene.add.image(
-            x + (part.point.x - prefab.anchor.x) * ROOM_CELL,
-            y + (part.point.y - prefab.anchor.y) * ROOM_CELL,
+            x + (part.point.x + offset.x - prefab.anchor.x) * this.roomCell,
+            y + (part.point.y + offset.y - prefab.anchor.y) * this.roomCell,
             partKey,
           ).setOrigin(partOriginX, partOriginY)
-            .setScale(normalizeFurnitureScale(part.scale)).setAngle(part.rotation ?? 0).setAlpha(0.72);
+            .setScale(normalizeFurnitureScale(part.scale) * this.roomCell / BASE_ROOM_CELL)
+            .setAngle(part.rotation ?? 0).setAlpha(0.72);
           furnitureLayer.add(ghost);
           return ghost;
         });
@@ -752,9 +841,10 @@ export class InteriorCutawaySystem {
         if (ghosts.length === 0) ghosts = createGhosts(anchor.screen.x, anchor.screen.y);
         ghosts.forEach((ghost, partIndex) => {
           const part = prefab.items[partIndex]!;
+          const offset = part.visualOffset ?? { x: 0, y: 0 };
           ghost.setPosition(
-            anchor.screen.x + (part.point.x - prefab.anchor.x) * ROOM_CELL,
-            anchor.screen.y + (part.point.y - prefab.anchor.y) * ROOM_CELL,
+            anchor.screen.x + (part.point.x + offset.x - prefab.anchor.x) * this.roomCell,
+            anchor.screen.y + (part.point.y + offset.y - prefab.anchor.y) * this.roomCell,
           );
         });
       });
@@ -782,21 +872,24 @@ export class InteriorCutawaySystem {
       this.scene.input.setDraggable(item);
       let dragClone: Phaser.GameObjects.Image | undefined;
       item.on('dragstart', () => {
-        dragClone = this.scene.add.image(item.x, item.y, catalog.key).setOrigin(originX, originY).setScale(1).setAlpha(0.88);
+        dragClone = this.scene.add.image(item.x, item.y, catalog.key).setOrigin(originX, originY)
+          .setScale(this.roomCell / BASE_ROOM_CELL).setAlpha(0.88);
         furnitureLayer.add(dragClone);
       });
       item.on('drag', (_pointer: unknown, dragX: number, dragY: number) => {
         if (!dragClone) {
-          dragClone = this.scene.add.image(dragX, dragY, catalog.key).setOrigin(originX, originY).setScale(1).setAlpha(0.88);
+          dragClone = this.scene.add.image(dragX, dragY, catalog.key).setOrigin(originX, originY)
+            .setScale(this.roomCell / BASE_ROOM_CELL).setAlpha(0.88);
           furnitureLayer.add(dragClone);
         }
         const preview: FurnitureDefinition = {
           id: `custom-office-${catalog.id}-${Date.now()}`, kind: 'decor', point: this.roomPoint(dragX, dragY),
           facing: 'up', supportedActions: [], icon: 'generic', scale: 1, rotation: 0,
           assetId: catalog.id, footprint: { ...catalog.footprint },
+          visualOffset: { x: catalog.visualOffset.x / 16, y: catalog.visualOffset.y / 16 },
         };
         this.currentDragCandidate = resolvePlacementCandidate(interior, interior.furniture, preview, preview.point);
-        const fitted = dragPreviewScreenPoint(this.roomOrigin, this.currentDragCandidate.furniture.point);
+        const fitted = furnitureRenderScreenPoint(this.roomOrigin, this.currentDragCandidate.furniture, this.roomCell);
         dragClone.setPosition(fitted.x, fitted.y);
         drawPlacementPreview(this.currentDragCandidate);
       });
@@ -818,10 +911,7 @@ export class InteriorCutawaySystem {
   }
 
   private roomPoint(x: number, y: number): GridPoint {
-    return {
-      x: (x - this.roomOrigin.x) / ROOM_CELL - 0.5,
-      y: (y - this.roomOrigin.y) / ROOM_CELL - 0.5,
-    };
+    return roomPointForScreen(this.roomOrigin, { x, y }, this.roomCell);
   }
 
   private wireFurnitureSource(
@@ -839,7 +929,8 @@ export class InteriorCutawaySystem {
     this.scene.input.setDraggable(item);
     let dragClone: Phaser.GameObjects.Image | undefined;
     item.on('dragstart', () => {
-      dragClone = this.scene.add.image(item.x, item.y, assetKey).setOrigin(originX, originY).setScale(1).setAlpha(0.88);
+      dragClone = this.scene.add.image(item.x, item.y, assetKey).setOrigin(originX, originY)
+        .setScale(normalizeFurnitureScale(template.scale) * this.roomCell / BASE_ROOM_CELL).setAlpha(0.88);
       furnitureLayer.add(dragClone);
     });
     item.on('drag', (_pointer: unknown, dragX: number, dragY: number) => {
@@ -849,7 +940,7 @@ export class InteriorCutawaySystem {
         requirementId: template.requirementId ?? `${interior.id}:${template.id}`,
       };
       this.currentDragCandidate = resolvePlacementCandidate(interior, interior.furniture, preview, preview.point);
-      const fitted = dragPreviewScreenPoint(this.roomOrigin, this.currentDragCandidate.furniture.point);
+      const fitted = furnitureRenderScreenPoint(this.roomOrigin, this.currentDragCandidate.furniture, this.roomCell);
       dragClone?.setPosition(fitted.x, fitted.y);
     });
     item.on('dragend', () => {
@@ -895,10 +986,10 @@ export class InteriorCutawaySystem {
       if (!start) return;
       const end = pointOf(pointer);
       marquee.clear().fillStyle(0x79d9ff, 0.16).fillRect(
-        this.roomOrigin.x + Math.min(start.x, end.x) * ROOM_CELL + ROOM_CELL / 2,
-        this.roomOrigin.y + Math.min(start.y, end.y) * ROOM_CELL + ROOM_CELL / 2,
-        Math.abs(end.x - start.x) * ROOM_CELL,
-        Math.abs(end.y - start.y) * ROOM_CELL,
+        this.roomOrigin.x + Math.min(start.x, end.x) * this.roomCell + this.roomCell / 2,
+        this.roomOrigin.y + Math.min(start.y, end.y) * this.roomCell + this.roomCell / 2,
+        Math.abs(end.x - start.x) * this.roomCell,
+        Math.abs(end.y - start.y) * this.roomCell,
       );
     };
     const up = (pointer: unknown): void => {

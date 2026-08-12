@@ -9,6 +9,7 @@ export type InteriorMotionPhase = 'ingress' | 'working';
 export interface InteriorMotionState {
   phase: InteriorMotionPhase;
   point: { x: number; y: number };
+  path: GridPoint[];
   facing: Facing;
   bob: number;
   bubbleText: string;
@@ -136,7 +137,10 @@ export function interiorMotionAt(
   const bubbleText = eventBubble(snapshot);
   if (elapsed < ingressDuration) {
     const point = pointAlongPath(ingressPath, elapsed / ingressDuration);
-    return { phase: 'ingress', point, facing: facingToward(door, point, 'up'), bob: 0, bubbleText, walking: true };
+    return {
+      phase: 'ingress', point, path: ingressPath.map((step) => ({ ...step })),
+      facing: facingToward(door, point, 'up'), bob: 0, bubbleText, walking: true,
+    };
   }
 
   const workElapsed = elapsed - ingressDuration;
@@ -154,6 +158,7 @@ export function interiorMotionAt(
   return {
     phase: 'working',
     point,
+    path: workPath.map((step) => ({ ...step })),
     facing: transition > 0 ? facingToward(point, pointAlongPath(workPath, Math.min(1, transition + 0.05)), from.facing) : from.facing,
     bob: walking ? 0 : bob,
     bubbleText,

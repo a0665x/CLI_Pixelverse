@@ -64,6 +64,18 @@ describe('interior motion timeline', () => {
     }
   });
 
+  it('keeps every visible movement segment orthogonal around grouped blockers', () => {
+    const snapshot = toolSnapshot(900);
+    const assignment = assignInteriorOccupants(interior, [snapshot], 'tool-smithy')[0]!;
+    const motion = interiorMotionAt(snapshot, interior, assignment, 900);
+
+    expect(motion.walking).toBe(true);
+    expect(motion.path.length).toBeGreaterThan(1);
+    expect(motion.path.every((point, index, path) => index === 0
+      || point.x === path[index - 1]!.x
+      || point.y === path[index - 1]!.y)).toBe(true);
+  });
+
   it('stops at a free interaction cell instead of standing on non-seating furniture', () => {
     const snapshot = toolSnapshot(8_000);
     const assignment = assignInteriorOccupants(interior, [snapshot], 'tool-smithy')[0]!;

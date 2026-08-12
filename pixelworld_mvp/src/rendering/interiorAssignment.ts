@@ -6,6 +6,8 @@ import type {
   InteriorDefinition,
   WorldEventKind,
 } from '../world/types';
+import { navigationCells } from './interiorPlacement';
+import { interiorInteractionPoint } from './prefabGeometry';
 
 export interface InteriorAgentSnapshot {
   agentId: string;
@@ -36,6 +38,31 @@ const isSeatedFurniture = (kind: string): boolean => [
   'sofa', 'bed', 'computer', 'reading-desk', 'response-desk', 'radio-console', 'dispatch-pod',
 ].includes(kind);
 
+const reachable = (interior: InteriorDefinition, targetPoint: GridPoint): boolean => {
+  const start = { x: Math.floor(interior.width / 2), y: interior.height - 1 };
+  const target = { x: Math.round(targetPoint.x), y: Math.round(targetPoint.y) };
+  const blocked = new Set(interior.furniture.flatMap(navigationCells).map(pointKey));
+  blocked.delete(pointKey(start));
+  blocked.delete(pointKey(target));
+  const queue = [start];
+  const visited = new Set([pointKey(start)]);
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    if (pointKey(current) === pointKey(target)) return true;
+    for (const next of [
+      { x: current.x + 1, y: current.y }, { x: current.x - 1, y: current.y },
+      { x: current.x, y: current.y + 1 }, { x: current.x, y: current.y - 1 },
+    ]) {
+      const key = pointKey(next);
+      if (next.x < 0 || next.y < 0 || next.x >= interior.width || next.y >= interior.height
+        || blocked.has(key) || visited.has(key)) continue;
+      visited.add(key);
+      queue.push(next);
+    }
+  }
+  return false;
+};
+
 function fallbackPoints(interior: InteriorDefinition): GridPoint[] {
   const points: GridPoint[] = [];
   for (let y = interior.height - 2; y >= 2; y -= 1) {
@@ -57,15 +84,18 @@ export function assignInteriorOccupants(
     .map((snapshot) => {
       const compatible = interior.furniture
         .filter(({ supportedActions }) => supportedActions.includes(snapshot.action))
-        .sort((first, second) => first.id.localeCompare(second.id));
+        .map((furniture) => ({ furniture, point: interiorInteractionPoint(interior, furniture) }))
+        .filter(({ point }) => reachable(interior, point))
+        .sort((first, second) => first.furniture.id.localeCompare(second.furniture.id));
       const offset = compatible.length > 0 ? stableHash(`${snapshot.agentId}:${snapshot.eventId}`) % compatible.length : 0;
       const ordered = compatible.map((_, index) => compatible[(index + offset) % compatible.length]!);
-      const furniture = ordered.find(({ point }) => !used.has(pointKey(point)));
-      if (furniture) {
-        used.add(pointKey(furniture.point));
+      const matched = ordered.find(({ point }) => !used.has(pointKey(point)));
+      if (matched) {
+        const { furniture, point } = matched;
+        used.add(pointKey(point));
         return {
           ...snapshot,
-          point: { ...furniture.point },
+          point: { ...point },
           facing: furniture.facing,
           furnitureId: furniture.id,
           icon: furniture.icon,
