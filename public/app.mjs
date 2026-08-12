@@ -62,6 +62,7 @@ import {
   resolveSnapStep,
 } from './furniture_editing.mjs';
 import { buildAgentTimelinePanels, buildHeartbeatPath, heartbeatBeatWidthPx } from './agent_timeline_graphs.mjs';
+import { setupPressFeedback } from './press_feedback.mjs';
 
 const ROOM_ACTIVITY_TARGETS = {
   think_lab: {
@@ -2283,6 +2284,7 @@ dom.refreshSlowerButton?.addEventListener('click', () => adjustRefreshInterval(1
 dom.refreshFasterButton?.addEventListener('click', () => adjustRefreshInterval(-100));
 
 async function initializeApp() {
+  setupPressFeedback();
   try {
     await loadGlobalMap();
   } catch (err) {

@@ -1,29 +1,39 @@
-:root { color-scheme: dark; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+:root { color-scheme: dark; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", Inter, "Noto Sans TC", "Segoe UI", system-ui, sans-serif; --material-content: #111d16; --material-structural: rgb(24 43 30 / 97%); --material-glass: rgb(213 240 220 / 15%); --material-glass-border: rgb(238 255 240 / 38%); }
 * { box-sizing: border-box; }
 html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #111d16; }
 #app-shell { position: relative; width: 100vw; height: 100vh; }
 #game-root { width: 100%; height: 100%; min-width: 0; min-height: 0; display: grid; place-items: center; overflow: hidden; background: #213722; image-rendering: pixelated; }
 #game-root canvas { image-rendering: pixelated; image-rendering: crisp-edges; }
+#village-zoom-controls { position: absolute; right: 12px; top: 12px; z-index: 24; display: flex; align-items: stretch; overflow: hidden; border: 1px solid var(--material-glass-border); border-radius: 12px; background: var(--material-glass); box-shadow: 0 10px 30px rgb(4 15 8 / 30%), inset 0 1px rgb(255 255 255 / 34%); backdrop-filter: blur(20px) saturate(155%); -webkit-backdrop-filter: blur(20px) saturate(155%); }
+#village-zoom-controls button { min-width: 34px; min-height: 34px; padding: 0 10px; border: 0; border-right: 1px solid rgb(214 234 217 / 18%); color: #f6f2d2; background: transparent; font: 650 12px/1 Inter, "Noto Sans TC", system-ui, sans-serif; cursor: pointer; transition: background-color .14s ease, scale .12s ease; }
+#village-zoom-controls button:last-child { border-right: 0; }
+#village-zoom-controls button:hover { background: rgb(113 153 112 / 28%); }
+#village-zoom-controls button:focus-visible { outline: 2px solid #fff0bd; outline-offset: -3px; }
+#village-zoom-controls button:active { scale: .97; background: rgb(151 211 165 / 32%); }
+#village-zoom-controls [data-zoom='fit'] { display: flex; align-items: center; gap: 6px; }
+#village-zoom-controls output { min-width: 34px; color: #bfd8c1; font-size: 10px; }
 #world-status-layer { position: fixed; inset: 0; z-index: 15; overflow: hidden; pointer-events: none; font-family: Inter, "Noto Sans TC", system-ui, sans-serif; }
 #cutaway-ui-layer { position: fixed; inset: 0; z-index: 30; overflow: hidden; pointer-events: none; font-family: Inter, "Noto Sans TC", system-ui, sans-serif; }
 .cutaway-dom-panel { position: absolute; pointer-events: none; color: #fff0bd; text-rendering: geometricPrecision; }
 .cutaway-dom-header { position: absolute; inset: 8px 10px auto; display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
 .cutaway-dom-header > div:first-child { min-width: 132px; }
-.cutaway-dom-header h2 { margin: 0; font-size: 13px; line-height: 1.2; letter-spacing: .02em; }
-.cutaway-dom-status { margin: 3px 0 0; color: #b9ddcb; font-size: 10px; line-height: 1.25; }
+.cutaway-dom-header h2 { margin: 0; font-size: 13px; font-weight: 760; line-height: 1.15; letter-spacing: -.015em; text-shadow: 0 1px 4px rgb(4 15 8 / 70%); }
+.cutaway-dom-status { margin: 3px 0 0; color: #cde6d2; font-size: 10px; font-weight: 550; line-height: 1.35; letter-spacing: .02em; text-shadow: 0 1px 3px rgb(4 15 8 / 80%); }
 .cutaway-dom-actions, .cutaway-dom-page, .cutaway-dom-inspector { display: flex; align-items: center; gap: 5px; pointer-events: auto; }
-.cutaway-dom-actions { max-width: 72%; justify-content: flex-end; flex-wrap: wrap; }
-.cutaway-dom-panel button { min-height: 23px; padding: 3px 7px; border: 1px solid #9a8152; border-radius: 4px; color: #fff4c2; background: #315348; font: 600 10px/1 Inter, "Noto Sans TC", system-ui, sans-serif; cursor: pointer; }
-.cutaway-dom-panel button:hover, .cutaway-dom-panel button:focus-visible { background: #487363; outline: 1px solid #ffe29b; }
+.cutaway-dom-actions { max-width: 72%; padding: 4px; border: 1px solid var(--material-glass-border); border-radius: 9px; background: var(--material-glass); box-shadow: inset 0 1px rgb(255 255 255 / 28%), 0 8px 22px rgb(4 15 8 / 24%); backdrop-filter: blur(18px) saturate(150%); -webkit-backdrop-filter: blur(18px) saturate(150%); justify-content: flex-end; flex-wrap: wrap; }
+.cutaway-dom-panel button { min-height: 23px; padding: 3px 7px; border: 1px solid rgb(238 255 240 / 22%); border-radius: 6px; color: #fff4c2; background: #315348; font: 650 10px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", Inter, "Noto Sans TC", system-ui, sans-serif; letter-spacing: .015em; cursor: pointer; touch-action: manipulation; transition: background-color 100ms ease-out, border-color 100ms ease-out, scale 100ms ease-out, box-shadow 100ms ease-out; }
+.cutaway-dom-panel button:hover { background: #487363; }
+.cutaway-dom-panel button:focus-visible { outline: 2px solid #ffe29b; outline-offset: 2px; }
+.cutaway-dom-panel button:active { scale: .97; background: #5f876f; box-shadow: inset 0 1px rgb(255 255 255 / 28%); }
 .cutaway-dom-actions [data-action='save'] { background: #6b5734; }
 .cutaway-dom-actions [data-action='close'] { min-width: 25px; color: #fff; background: #9d443d; font-size: 16px; }
 .cutaway-dom-catalog { position: absolute; right: 10px; bottom: 5px; left: 10px; height: 68px; pointer-events: none; }
-.cutaway-dom-categories { position: absolute; bottom: 70px; left: 0; display: flex; gap: 4px; pointer-events: auto; }
+.cutaway-dom-categories { position: absolute; bottom: 70px; left: 0; display: flex; gap: 4px; padding: 4px; border: 1px solid var(--material-glass-border); border-radius: 8px; background: var(--material-glass); box-shadow: inset 0 1px rgb(255 255 255 / 26%), 0 8px 18px rgb(4 15 8 / 22%); backdrop-filter: blur(18px) saturate(150%); -webkit-backdrop-filter: blur(18px) saturate(150%); pointer-events: auto; }
 .cutaway-dom-categories button { min-height: 19px; padding: 2px 6px; font-size: 9px; background: #283f39; }
 .cutaway-dom-categories button[data-active='true'] { color: #263323; background: #f1d89a; }
-.cutaway-dom-page { position: absolute; right: 0; bottom: 69px; font-size: 10px; }
+.cutaway-dom-page { position: absolute; right: 0; bottom: 69px; padding: 4px; border: 1px solid var(--material-glass-border); border-radius: 8px; background: var(--material-glass); box-shadow: inset 0 1px rgb(255 255 255 / 26%), 0 8px 18px rgb(4 15 8 / 22%); backdrop-filter: blur(18px) saturate(150%); -webkit-backdrop-filter: blur(18px) saturate(150%); font-size: 10px; }
 .cutaway-dom-page button { min-width: 22px; min-height: 19px; padding: 1px 5px; }
-.cutaway-dom-inspector { position: absolute; bottom: 100px; left: 50%; width: max-content; max-width: calc(100% - 20px); padding: 4px 7px; border-radius: 5px; background: rgb(28 48 43 / 94%); transform: translateX(-50%); flex-wrap: wrap; justify-content: center; }
+.cutaway-dom-inspector { position: absolute; bottom: 100px; left: 50%; width: max-content; max-width: calc(100% - 20px); padding: 4px 7px; border: 1px solid rgb(190 220 198 / 28%); border-radius: 7px; background: var(--material-structural); box-shadow: 0 8px 18px rgb(4 15 8 / 24%); transform: translateX(-50%); flex-wrap: wrap; justify-content: center; }
 .cutaway-dom-inspector strong { margin-right: 3px; font-size: 10px; }
 .cutaway-dom-room-labels { position: fixed; inset: 0; pointer-events: none; }
 .cutaway-room-label { position: absolute; top: 0; left: 0; z-index: 1; border: 1px solid rgb(45 55 39 / 72%); border-radius: 5px; font-weight: 700; line-height: 1.2; text-align: center; white-space: pre-line; transform-origin: center bottom; }
@@ -39,6 +49,16 @@ html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background:
   .cutaway-dom-categories { bottom: 66px; }
   .cutaway-dom-page { bottom: 65px; }
   .cutaway-dom-inspector { bottom: 92px; padding: 3px 5px; gap: 3px; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  #village-zoom-controls, .cutaway-dom-actions, .cutaway-dom-categories, .cutaway-dom-page { background: var(--material-structural); backdrop-filter: none; -webkit-backdrop-filter: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #village-zoom-controls button, .cutaway-dom-panel button { transition: opacity 160ms ease; }
+  #village-zoom-controls button:active, .cutaway-dom-panel button:active { scale: 1; }
+}
+@media (prefers-contrast: more) {
+  #village-zoom-controls, .cutaway-dom-actions, .cutaway-dom-categories, .cutaway-dom-page, .cutaway-dom-inspector { border-color: #fff4c2; background: var(--material-content); }
 }
 .world-agent-status, .world-building-badge, .world-building-label { position: absolute; left: 0; top: 0; transform-origin: center bottom; }
 .world-agent-status { display: grid; justify-items: center; gap: 3px; transform: translate3d(-1000px, -1000px, 0); }

@@ -8,6 +8,10 @@
     :root {
       --sidebar-width: 440px;
       --timeline-height: 320px;
+      --material-content: #07111f;
+      --material-structural: rgba(8, 19, 34, .96);
+      --material-glass: rgba(207, 229, 250, .16);
+      --material-glass-border: rgba(235, 247, 255, .34);
       --bg: #08111f;
       --bg2: #10203a;
       --panel: rgba(7, 14, 26, 0.92);
@@ -24,14 +28,14 @@
       --purple: #a78bfa;
       --pink: #f472b6;
       --shadow: rgba(0, 0, 0, 0.35);
-      --ui-font: "Noto Sans TC", system-ui, sans-serif;
-      --caps-font: "Press Start 2P", "Noto Sans TC", monospace;
+      --ui-font: -apple-system, BlinkMacSystemFont, "SF Pro Text", Inter, "Noto Sans TC", "Segoe UI", system-ui, sans-serif;
+      --caps-font: -apple-system, BlinkMacSystemFont, "SF Pro Display", Inter, "Noto Sans TC", "Segoe UI", system-ui, sans-serif;
       --base-size: 11px;
     }
     body[data-locale="en-US"] {
-      --ui-font: "Press Start 2P", monospace;
-      --caps-font: "Press Start 2P", monospace;
-      --base-size: 9px;
+      --ui-font: -apple-system, BlinkMacSystemFont, "SF Pro Text", Inter, "Segoe UI", sans-serif;
+      --caps-font: -apple-system, BlinkMacSystemFont, "SF Pro Display", Inter, "Segoe UI", sans-serif;
+      --base-size: 11px;
     }
     * { box-sizing: border-box; }
     html, body {
@@ -45,6 +49,8 @@
       color: var(--text);
       font-family: var(--ui-font);
       font-size: var(--base-size);
+      font-optical-sizing: auto;
+      text-rendering: optimizeLegibility;
     }
     button { font: inherit; }
     .app {
@@ -214,12 +220,19 @@
     }
     .hud > * { pointer-events: auto; }
     .panel {
-      background: var(--panel);
+      background: var(--material-structural);
       border: 3px solid var(--line);
       border-radius: 14px;
       box-shadow: 0 0 0 4px rgba(3, 7, 14, 0.92), 0 14px 30px var(--shadow);
       pointer-events: auto;
       touch-action: none;
+    }
+    .functional-glass {
+      background: var(--material-glass);
+      border: 1px solid var(--material-glass-border);
+      backdrop-filter: blur(22px) saturate(165%);
+      -webkit-backdrop-filter: blur(22px) saturate(165%);
+      box-shadow: inset 0 1px rgba(255,255,255,.4), 0 14px 34px rgba(0,13,31,.28);
     }
     .panel.dragging { opacity: 0.96; box-shadow: 0 0 0 4px rgba(3, 7, 14, 0.92), 0 22px 42px rgba(0,0,0,0.46); }
     [data-drag-handle] {
@@ -242,7 +255,9 @@
     .title {
       font-family: var(--caps-font);
       font-size: 18px;
-      line-height: 1.3;
+      font-weight: 760;
+      line-height: 1.15;
+      letter-spacing: -.02em;
       color: #f8fbff;
       text-shadow: 0 0 10px rgba(110,231,249,0.24);
     }
@@ -251,6 +266,7 @@
       color: var(--muted);
       line-height: 1.55;
     }
+    .subtitle, .muted { letter-spacing: .015em; }
     .top-tools {
       display: flex;
       flex-wrap: wrap;
@@ -266,6 +282,7 @@
       padding: 6px;
       flex-wrap: wrap;
     }
+    .lang-switch, .exposure-switch { border-radius: 16px; }
     .lang-switch select,
     .lang-switch button {
       border: 2px solid var(--line-2);
@@ -1334,7 +1351,7 @@
       padding: 10px;
       border-radius: 12px;
       border: 2px solid rgba(74,116,174,0.82);
-      background: rgba(7, 14, 26, 0.78);
+      background: var(--material-content);
       display: grid;
       gap: 6px;
     }
@@ -1359,7 +1376,7 @@
     .timeline-panel {
       border: 2px solid rgba(74,116,174,0.82);
       border-radius: 12px;
-      background: rgba(7, 14, 26, 0.78);
+      background: var(--material-content);
       padding: 10px;
       display: grid;
       gap: 8px;
@@ -1845,17 +1862,40 @@
       z-index: 18;
       display: grid;
       gap: 6px;
+      padding: 5px;
+      border-radius: 16px;
     }
     .camera-controls button {
       width: 44px;
       height: 44px;
-      border: 2px solid var(--line-2);
+      border: 0;
       border-radius: 12px;
-      background: rgba(7, 14, 26, 0.9);
+      background: transparent;
       color: #fff;
       cursor: pointer;
       touch-action: manipulation;
       box-shadow: 0 7px 16px rgba(0,0,0,0.28);
+    }
+    button, select, a {
+      transition: background-color 100ms ease-out, border-color 100ms ease-out, color 100ms ease-out, opacity 100ms ease-out, scale 100ms ease-out, box-shadow 100ms ease-out;
+    }
+    :where(button, a[href], [role="button"]) { touch-action: manipulation; }
+    :where(button, select, a[href], [role="button"]):focus-visible {
+      outline: 2px solid var(--cyan);
+      outline-offset: 3px;
+    }
+    :where(button, a[href], [role="button"])[data-pressed="true"] {
+      scale: .97;
+      background-color: rgba(126, 219, 255, .24);
+      box-shadow: inset 0 1px rgba(255,255,255,.36), 0 0 0 3px rgba(110,231,249,.12);
+    }
+    :where(button, a[href], [role="button"]):disabled[data-pressed="true"] { scale: 1; }
+    .dashboard-sidebar,
+    .events-track,
+    .timeline-grid { scrollbar-color: rgba(171,192,223,.34) transparent; }
+    .events-track {
+      mask-image: linear-gradient(90deg, transparent, #000 10px, #000 calc(100% - 10px), transparent);
+      -webkit-mask-image: linear-gradient(90deg, transparent, #000 10px, #000 calc(100% - 10px), transparent);
     }
     #sidebar-toggle-btn {
       position: absolute;
@@ -1912,6 +1952,18 @@
       body:not([data-mobile-mode="on"]) .world { left: 342px; }
       body:not([data-mobile-mode="on"]) .hud { left: 342px; }
     }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
+      .functional-glass, button, a[href], [role="button"] { transition: opacity 160ms ease !important; }
+      :where(button, a[href], [role="button"])[data-pressed="true"] { scale: 1; }
+    }
+    @media (prefers-reduced-transparency: reduce) {
+      .functional-glass { background: rgba(17,31,48,.97); backdrop-filter: none; -webkit-backdrop-filter: none; }
+      .panel { background: var(--material-content); }
+    }
+    @media (prefers-contrast: more) {
+      .functional-glass, .panel { border-color: #b8d8ff; background-color: #07111f; }
+    }
   </style>
 </head>
 <body data-locale="en-US" data-mobile-mode="off" data-sidebar-open="true">
@@ -1955,7 +2007,7 @@
           <div class="agents-layer" id="agents-layer"></div>
         </div>
       </div>
-      <div class="camera-controls" aria-label="World camera controls">
+      <div class="camera-controls functional-glass" aria-label="World camera controls">
         <button type="button" id="zoom-in-btn" aria-label="Zoom in">+</button>
         <button type="button" id="zoom-reset-btn" aria-label="Reset zoom">1:1</button>
         <button type="button" id="zoom-out-btn" aria-label="Zoom out">−</button>
@@ -1976,7 +2028,7 @@
               </div>
             </div>
             <div class="muted" id="last-sync"></div>
-            <div class="panel lang-switch">
+            <div class="lang-switch functional-glass">
               <span class="muted" id="language-label"></span>
               <select id="locale-select" aria-label="language selector"></select>
               <button type="button" id="mobile-mode-btn" aria-pressed="false"></button>
@@ -1984,7 +2036,7 @@
               <button type="button" id="save-furniture-btn" hidden></button>
               <button type="button" id="cancel-furniture-btn" hidden></button>
             </div>
-            <div class="panel exposure-switch">
+            <div class="exposure-switch functional-glass">
               <span class="muted" id="exposure-label"></span>
               <select id="exposure-select" aria-label="exposure selector"></select>
               <button type="button" id="copy-exposure-btn" title="Copy URL" aria-label="Copy URL">📋</button>
@@ -2042,7 +2094,7 @@
 
     </aside>
 
-    <button type="button" id="sidebar-toggle-btn" aria-expanded="false" aria-controls="dashboard-sidebar" aria-label="Toggle sidebar">›</button>
+    <button type="button" id="sidebar-toggle-btn" class="functional-glass" aria-expanded="false" aria-controls="dashboard-sidebar" aria-label="Toggle sidebar">›</button>
 
     <section class="events-belt panel" id="event-timeline-belt" data-resizable-panel="timeline">
       <div class="belt-title" data-drag-handle>
