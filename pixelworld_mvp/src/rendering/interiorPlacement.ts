@@ -204,6 +204,29 @@ export function navigationCells(
   return [...unique.values()].sort((a, b) => a.y - b.y || a.x - b.x);
 }
 
+const gridKey = ({ x, y }: GridPoint): string => `${x},${y}`;
+const samePoint = (first: GridPoint | undefined, second: GridPoint): boolean => (
+  Boolean(first) && first!.x === second.x && first!.y === second.y
+);
+
+export function navigationBlockedCellKeys(
+  furniture: readonly FurnitureDefinition[],
+  target: GridPoint,
+  stationId?: string,
+): Set<string> {
+  const station = stationId ? furniture.find(({ id }) => id === stationId) : undefined;
+  const exempt = new Set(furniture.filter((item) => (
+    item.id === station?.id
+    || (Boolean(station?.prefabInstanceId)
+      && item.prefabInstanceId === station!.prefabInstanceId
+      && samePoint(item.interactionPoint, target))
+  )).map(({ id }) => id));
+  return new Set(furniture
+    .filter(({ id }) => !exempt.has(id))
+    .flatMap(navigationCells)
+    .map(gridKey));
+}
+
 export function diagnoseFinePlacement(
   room: InteriorDefinition,
   candidate: FurnitureDefinition,

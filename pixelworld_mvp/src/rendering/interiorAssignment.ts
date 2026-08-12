@@ -6,7 +6,7 @@ import type {
   InteriorDefinition,
   WorldEventKind,
 } from '../world/types';
-import { navigationCells } from './interiorPlacement';
+import { navigationBlockedCellKeys } from './interiorPlacement';
 import { interiorInteractionPoint } from './prefabGeometry';
 
 export interface InteriorAgentSnapshot {
@@ -38,12 +38,11 @@ const isSeatedFurniture = (kind: string): boolean => [
   'sofa', 'bed', 'computer', 'reading-desk', 'response-desk', 'radio-console', 'dispatch-pod',
 ].includes(kind);
 
-const reachable = (interior: InteriorDefinition, targetPoint: GridPoint): boolean => {
+const reachable = (interior: InteriorDefinition, targetPoint: GridPoint, stationId: string): boolean => {
   const start = { x: Math.floor(interior.width / 2), y: interior.height - 1 };
   const target = { x: Math.round(targetPoint.x), y: Math.round(targetPoint.y) };
-  const blocked = new Set(interior.furniture.flatMap(navigationCells).map(pointKey));
+  const blocked = navigationBlockedCellKeys(interior.furniture, targetPoint, stationId);
   blocked.delete(pointKey(start));
-  blocked.delete(pointKey(target));
   const queue = [start];
   const visited = new Set([pointKey(start)]);
   while (queue.length > 0) {
@@ -85,7 +84,7 @@ export function assignInteriorOccupants(
       const compatible = interior.furniture
         .filter(({ supportedActions }) => supportedActions.includes(snapshot.action))
         .map((furniture) => ({ furniture, point: interiorInteractionPoint(interior, furniture) }))
-        .filter(({ point }) => reachable(interior, point))
+        .filter(({ furniture, point }) => reachable(interior, point, furniture.id))
         .sort((first, second) => first.furniture.id.localeCompare(second.furniture.id));
       const offset = compatible.length > 0 ? stableHash(`${snapshot.agentId}:${snapshot.eventId}`) % compatible.length : 0;
       const ordered = compatible.map((_, index) => compatible[(index + offset) % compatible.length]!);

@@ -46,10 +46,11 @@ describe('interior marquee selection and prefabs', () => {
   });
 
   it('moves a selected arrangement without changing relative spacing', () => {
-    const desk = furniture('desk', 225, 2, 2);
+    const desk = { ...furniture('desk', 225, 2, 2), interactionPoint: { x: 2.5, y: 4 } };
     const monitor = furniture('monitor', 129, 2.5, 2.25);
     const moved = moveSelection([desk, monitor], ['desk', 'monitor'], { x: 1.25, y: -0.5 });
     expect(moved.map(({ point }) => point)).toEqual([{ x: 3.25, y: 1.5 }, { x: 3.75, y: 1.75 }]);
+    expect(moved[0]!.interactionPoint).toEqual({ x: 3.75, y: 3.5 });
   });
 
   it('returns every selected furniture instance to the shelf', () => {

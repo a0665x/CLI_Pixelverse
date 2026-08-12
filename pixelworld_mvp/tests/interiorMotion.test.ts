@@ -74,6 +74,38 @@ describe('interior motion timeline', () => {
     expect(route.at(-1)!.id).toBe('terminal-b');
   });
 
+  it('appends an orthogonal fractional approach and settles on the exact authored point', () => {
+    const maker = INTERIOR_DEFINITIONS['maker-workshop'];
+    const furniture = maker.furniture.find(({ id }) => id === 'maker-work-tool-wall')!;
+    const assignment = {
+      ...toolSnapshot(0), point: { ...furniture.interactionPoint! }, facing: furniture.facing,
+      furnitureId: furniture.id, icon: furniture.icon, seated: false,
+    };
+    const motion = interiorMotionAt(toolSnapshot(0), maker, assignment, 0);
+
+    expect(motion.path.at(-1)).toEqual({ x: 10.5, y: 7 });
+    expect(motion.path.every((point, index, path) => index === 0
+      || (point.x === path[index - 1]!.x || point.y === path[index - 1]!.y))).toBe(true);
+    const settledAt = (motion.path.length - 1) * 240 + 100;
+    expect(interiorMotionAt(toolSnapshot(settledAt), maker, assignment, settledAt).point).toEqual(assignment.point);
+  });
+
+  it('does not route through an unrelated blocker occupying the target cell', () => {
+    const station = {
+      id: 'station', kind: 'computer' as const, assetId: 225, point: { x: 2, y: 2 },
+      facing: 'down' as const, supportedActions: ['terminal' as const], icon: 'tool' as const,
+      blocksNavigation: true, interactionPoint: { x: 2, y: 2 },
+    };
+    const blocker = {
+      id: 'blocker', kind: 'chair' as const, assetId: 101, point: { x: 2, y: 2 },
+      facing: 'up' as const, supportedActions: [], icon: 'generic' as const, blocksNavigation: true,
+    };
+    const room = { ...interior, width: 6, height: 6, furniture: [station, blocker], overflow: [] };
+    const path = interiorPath(room, { x: 3, y: 5 }, station.interactionPoint, station.id);
+
+    expect(path).toEqual([{ x: 3, y: 5 }]);
+  });
+
   it('adds a subtle breathing bob while an Agent remains at a work point', () => {
     const snapshot = Array.from({ length: 40 }, (_, index) => toolSnapshot(8_000 + index * 500))
       .find((candidate) => !interiorMotionAt(candidate, interior, assignInteriorOccupants(interior, [candidate], 'tool-smithy')[0]!, 20_000).walking)!;

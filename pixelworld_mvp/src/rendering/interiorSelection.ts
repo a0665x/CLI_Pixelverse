@@ -42,9 +42,19 @@ export function moveSelection(
   delta: GridPoint,
 ): FurnitureDefinition[] {
   const selected = new Set(selectedIds);
-  return layout.map((item) => selected.has(item.id)
-    ? { ...cloneFurniture(item), point: snapFurniturePoint({ x: item.point.x + delta.x, y: item.point.y + delta.y }) }
-    : cloneFurniture(item));
+  return layout.map((item) => {
+    if (!selected.has(item.id)) return cloneFurniture(item);
+    const point = snapFurniturePoint({ x: item.point.x + delta.x, y: item.point.y + delta.y });
+    const applied = { x: point.x - item.point.x, y: point.y - item.point.y };
+    return {
+      ...cloneFurniture(item),
+      point,
+      ...(item.interactionPoint ? { interactionPoint: {
+        x: item.interactionPoint.x + applied.x,
+        y: item.interactionPoint.y + applied.y,
+      } } : {}),
+    };
+  });
 }
 
 export interface SelectionMutationResult {

@@ -76,6 +76,7 @@ export class InteriorCutawayDomOverlay {
   private labelLayer: HTMLDivElement | undefined;
   private locale: VillageLocale = 'zh-TW';
   private model: CutawayDomModel | undefined;
+  private roomLabels: CutawayRoomLabel[] = [];
 
   constructor(private readonly canvasRect: () => DOMRect | undefined) {
     this.host = typeof document === 'undefined'
@@ -234,6 +235,7 @@ export class InteriorCutawayDomOverlay {
 
   relayout(layout: CutawayLayout): void {
     this.position(layout);
+    this.renderRoomLabels();
   }
 
   setLocale(locale: VillageLocale): void {
@@ -244,10 +246,15 @@ export class InteriorCutawayDomOverlay {
   setStatus(message: string): void { if (this.status) this.status.textContent = message; }
 
   setRoomLabels(labels: readonly CutawayRoomLabel[]): void {
+    this.roomLabels = labels.map((label) => ({ ...label }));
+    this.renderRoomLabels();
+  }
+
+  private renderRoomLabels(): void {
     if (!this.labelLayer) return;
     const rect = this.canvasRect();
     if (!rect) return;
-    this.labelLayer.replaceChildren(...labels.map((item) => {
+    this.labelLayer.replaceChildren(...this.roomLabels.map((item) => {
       const label = document.createElement('div');
       label.className = `cutaway-room-label cutaway-room-label--${item.kind}`;
       label.dataset.labelId = item.id;
@@ -264,6 +271,7 @@ export class InteriorCutawayDomOverlay {
     this.panel = undefined;
     this.labelLayer = undefined;
     this.handlers = undefined;
+    this.roomLabels = [];
   }
 
   destroy(): void { this.close(); }

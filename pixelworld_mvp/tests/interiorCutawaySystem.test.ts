@@ -16,6 +16,7 @@ import {
   stableInteriorAgentIndex,
 } from '../src/rendering/InteriorCutawaySystem';
 import {
+  InteriorCutawayDomOverlay,
   selectionCapabilities,
   type CutawayDomHandlers,
   type CutawayDomModel,
@@ -88,6 +89,7 @@ class FakeObject {
 
 const fakeScene = () => {
   const objects: FakeObject[] = [];
+  const inputHandlers = new Map<string, Array<(...args: unknown[]) => void>>();
   const make = (texture = '') => { const object = new FakeObject(texture); objects.push(object); return object; };
   return {
     objects,
@@ -97,9 +99,20 @@ const fakeScene = () => {
         image: vi.fn((_x, _y, texture: string) => make(texture)), graphics: vi.fn(() => make()), zone: vi.fn(() => make()),
       },
       tweens: { add: vi.fn(() => ({ stop: vi.fn() })), killTweensOf: vi.fn() },
-      input: { keyboard: { on: vi.fn(), off: vi.fn() }, setDraggable: vi.fn() },
+      input: {
+        keyboard: { on: vi.fn(), off: vi.fn() }, setDraggable: vi.fn(),
+        on: vi.fn((event: string, handler: (...args: unknown[]) => void) => {
+          inputHandlers.set(event, [...(inputHandlers.get(event) ?? []), handler]);
+        }),
+        off: vi.fn((event: string, handler: (...args: unknown[]) => void) => {
+          inputHandlers.set(event, (inputHandlers.get(event) ?? []).filter((candidate) => candidate !== handler));
+        }),
+      },
       time: { now: 0 },
       cameras: { main: { scrollX: 0, scrollY: 0, zoom: 1 } },
+    },
+    emitInput: (event: string, ...args: unknown[]) => {
+      for (const handler of inputHandlers.get(event) ?? []) handler(...args);
     },
   };
 };
@@ -122,7 +135,7 @@ const captureCutawayHandlers = (cutaway: InteriorCutawaySystem) => {
       handlers = nextHandlers;
     }),
     update: vi.fn((nextModel: CutawayDomModel) => { model = nextModel; }),
-    setLocale: vi.fn(), setRoomLabels: vi.fn(), close: vi.fn(), destroy: vi.fn(),
+    setLocale: vi.fn(), setRoomLabels: vi.fn(), relayout: vi.fn(), close: vi.fn(), destroy: vi.fn(),
   };
   Object.assign(cutaway, { domOverlay: overlay });
   return {
@@ -236,6 +249,8 @@ describe('InteriorCutawaySystem', () => {
     const cell = roomCellForLayout({ width: 80, height: 40 }, layout);
     expect(cell * 80).toBeLessThanOrEqual(layout.width - 24);
     expect(cell * 40).toBeLessThanOrEqual(layout.height - 110);
+    const subpixel = roomCellForLayout({ width: 1_000, height: 1_000 }, layout);
+    expect(subpixel * 1_000).toBeLessThanOrEqual(layout.height - 110);
   });
 
   it('keeps panel pointer events available for room marquee input', () => {
@@ -450,6 +465,95 @@ describe('InteriorCutawaySystem', () => {
     expect(internal.root).not.toBe(firstRoot);
     expect(internal.roomCell).not.toBe(firstCell);
     expect(internal.activeInterior.furniture.some(({ id }) => id === 'unsaved-marker')).toBe(true);
+  });
+
+  it('refreshes the DOM overlay without rebuilding Phaser inside the same breakpoint', () => {
+    const fake = fakeScene();
+    const viewport = { width: 1_280, height: 720 };
+    const cutaway = new InteriorCutawaySystem(fake.scene as never, WORLD_DEFINITION, () => viewport);
+    const capture = captureCutawayHandlers(cutaway);
+    cutaway.open('rest-cabin');
+    const firstRoot = (cutaway as unknown as { root: FakeObject }).root;
+    viewport.width = 1_100;
+
+    cutaway.open('rest-cabin');
+
+    expect((cutaway as unknown as { root: FakeObject }).root).toBe(firstRoot);
+    expect(capture.overlay.relayout).toHaveBeenCalledWith(cutawayLayoutForViewport(1_100, 720));
+  });
+
+  it('reprojects cached room labels when the canvas CSS rectangle changes', () => {
+    let rect = { left: 10, top: 20, width: 768, height: 512 } as DOMRect;
+    const overlay = new InteriorCutawayDomOverlay(() => rect);
+    const replaceChildren = vi.fn();
+    Object.assign(overlay, { labelLayer: { replaceChildren }, panel: { style: {} } });
+    vi.stubGlobal('document', {
+      createElement: () => ({ className: '', dataset: {}, textContent: '', style: { transform: '' } }),
+    });
+    try {
+      overlay.setRoomLabels([{ id: 'agent:a', text: 'A', x: 384, y: 256, kind: 'agent' }]);
+      const first = replaceChildren.mock.calls.at(-1)![0].style.transform;
+      rect = { left: 30, top: 40, width: 384, height: 256 } as DOMRect;
+
+      overlay.relayout(cutawayLayoutForViewport(1_280, 720));
+
+      const second = replaceChildren.mock.calls.at(-1)![0].style.transform;
+      expect(replaceChildren).toHaveBeenCalledTimes(2);
+      expect(second).not.toBe(first);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('converts camera and root coordinates before marquee selection', () => {
+    const fake = fakeScene();
+    fake.scene.cameras.main.scrollX = 40;
+    fake.scene.cameras.main.scrollY = 25;
+    fake.scene.cameras.main.zoom = 2;
+    const cutaway = new InteriorCutawaySystem(fake.scene as never, WORLD_DEFINITION, () => ({ width: 1_280, height: 720 }));
+    cutaway.open('rest-cabin');
+    const target = {
+      id: 'marquee-target', kind: 'plant' as const, assetId: 98, point: { x: 2, y: 2 },
+      facing: 'up' as const, supportedActions: [], icon: 'generic' as const, blocksNavigation: false,
+    };
+    const room: InteriorDefinition = {
+      id: 'rest-cabin', label: 'Marquee', width: 14, height: 9,
+      floor: 'wood', wall: 'cream', furniture: [target], overflow: [],
+    };
+    const internal = cutaway as unknown as {
+      editMode: boolean; activeInterior: InteriorDefinition; activeDefinition: InteriorDefinition;
+      root: FakeObject; roomOrigin: { x: number; y: number }; roomCell: number;
+      selectedFurnitureIds: Set<string>;
+      renderFurniture(interior: InteriorDefinition, layout: ReturnType<typeof cutawayLayoutForViewport>): void;
+    };
+    internal.editMode = true;
+    internal.activeInterior = room;
+    internal.activeDefinition = room;
+    internal.renderFurniture(room, cutawayLayoutForViewport(1_280, 720));
+    internal.root.x = 30;
+    internal.root.y = 15;
+    internal.root.scale = 1.5;
+    const pointerForLocal = (local: { x: number; y: number }) => {
+      const world = {
+        x: internal.root.x + local.x * internal.root.scale,
+        y: internal.root.y + local.y * internal.root.scale,
+      };
+      const raw = {
+        x: (world.x - fake.scene.cameras.main.scrollX) * fake.scene.cameras.main.zoom,
+        y: (world.y - fake.scene.cameras.main.scrollY) * fake.scene.cameras.main.zoom,
+      };
+      return {
+        ...raw, camera: fake.scene.cameras.main,
+        positionToCamera: () => ({
+          x: fake.scene.cameras.main.scrollX + raw.x / fake.scene.cameras.main.zoom,
+          y: fake.scene.cameras.main.scrollY + raw.y / fake.scene.cameras.main.zoom,
+        }),
+      };
+    };
+    fake.emitInput('pointerdown', pointerForLocal(roomScreenPoint(internal.roomOrigin, { x: 1, y: 1 }, internal.roomCell)), []);
+    fake.emitInput('pointerup', pointerForLocal(roomScreenPoint(internal.roomOrigin, { x: 4, y: 4 }, internal.roomCell)));
+
+    expect([...internal.selectedFurnitureIds]).toEqual([target.id]);
   });
 
   it('previews without mutation or storage, applies a valid compact template in memory, and undoes it', () => {

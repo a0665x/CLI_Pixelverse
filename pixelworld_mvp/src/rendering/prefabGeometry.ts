@@ -8,6 +8,7 @@ import type {
 } from '../world/types';
 import {
   furnitureBlocksNavigation,
+  navigationBlockedCellKeys,
   navigationCells,
   rotateGridPoint,
   resolvedFurnitureAsset,
@@ -235,14 +236,14 @@ const validatePlacedItems = (
   }
 
   const blocked = new Set([...existingBlocked, ...transformedBlocked]);
+  const combinedFurniture = [...layout, ...transformed];
   const requiredAnchors = interactionAnchors.filter(({ actions }) => actions.length > 0);
   const everyHookHasAnchor = hookActions.every((action) => requiredAnchors.some(({ actions }) => hasAction(actions, action)));
   if (!hasTwoTileMainAisle(room, blocked) || !everyHookHasAnchor || requiredAnchors.some(({ point }) => {
     const target = { x: Math.round(point.x), y: Math.round(point.y) };
     const assigned = transformed.filter((item) => item.interactionPoint
-      && Math.round(item.interactionPoint.x) === target.x && Math.round(item.interactionPoint.y) === target.y);
-    const allowed = new Set(blocked);
-    assigned.flatMap(navigationCells).forEach((cell) => allowed.delete(key(cell)));
+      && item.interactionPoint.x === point.x && item.interactionPoint.y === point.y);
+    const allowed = navigationBlockedCellKeys(combinedFurniture, point, assigned[0]?.id);
     return !reaches(room, allowed, target);
   })) {
     appendDiagnostic(diagnostics, 'unreachable-interaction-anchor');
@@ -313,11 +314,7 @@ export function officeLayoutIssues(room: InteriorDefinition): Array<{
   if (!hasTwoTileMainAisle(room, blocked)) issues.push({ diagnostic: 'unreachable-interaction-anchor', point: door });
   for (const furniture of room.furniture.filter(({ supportedActions }) => supportedActions.length > 0)) {
     const point = interiorInteractionPoint(room, furniture);
-    const allowed = new Set(blocked);
-    room.furniture.filter((item) => item.interactionPoint
-      && Math.round(item.interactionPoint.x) === Math.round(point.x)
-      && Math.round(item.interactionPoint.y) === Math.round(point.y))
-      .flatMap(navigationCells).forEach((cell) => allowed.delete(key(cell)));
+    const allowed = navigationBlockedCellKeys(room.furniture, point, furniture.id);
     if (!reaches(room, allowed, { x: Math.round(point.x), y: Math.round(point.y) })) {
       issues.push({ diagnostic: 'unreachable-interaction-anchor', furnitureId: furniture.id, point });
     }

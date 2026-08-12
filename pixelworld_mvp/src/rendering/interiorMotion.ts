@@ -1,6 +1,6 @@
 import type { Facing, FurnitureDefinition, GridPoint, InteriorDefinition } from '../world/types';
 import type { InteriorAgentSnapshot, InteriorOccupantAssignment } from './interiorAssignment';
-import { furnitureCells } from './interiorLayoutEditor';
+import { navigationBlockedCellKeys } from './interiorPlacement';
 import { interiorInteractionPoint } from './prefabGeometry';
 
 export { interiorInteractionPoint } from './prefabGeometry';
@@ -69,12 +69,30 @@ export function interiorRouteFor(
 const key = ({ x, y }: GridPoint): string => `${x},${y}`;
 const distance = (from: GridPoint, to: GridPoint): number => Math.abs(to.x - from.x) + Math.abs(to.y - from.y);
 
-export function interiorPath(interior: InteriorDefinition, from: GridPoint, to: GridPoint): GridPoint[] {
+const appendOrthogonal = (
+  path: GridPoint[],
+  target: GridPoint,
+  blocked: ReadonlySet<string>,
+): GridPoint[] => {
+  const from = path.at(-1)!;
+  if (from.x === target.x && from.y === target.y) return path;
+  if (from.x === target.x || from.y === target.y) return [...path, { ...target }];
+  const candidates = [{ x: target.x, y: from.y }, { x: from.x, y: target.y }];
+  const intermediate = candidates.find((point) => !blocked.has(key({ x: Math.round(point.x), y: Math.round(point.y) })));
+  return intermediate ? [...path, intermediate, { ...target }] : path;
+};
+
+export function interiorPath(
+  interior: InteriorDefinition,
+  from: GridPoint,
+  to: GridPoint,
+  stationFurnitureId?: string,
+): GridPoint[] {
   const start = { x: Math.round(from.x), y: Math.round(from.y) };
   const goal = { x: Math.round(to.x), y: Math.round(to.y) };
-  const blocked = new Set(interior.furniture.flatMap(furnitureCells).map(key));
+  const blocked = navigationBlockedCellKeys(interior.furniture, to, stationFurnitureId);
   blocked.delete(key(start));
-  blocked.delete(key(goal));
+  if (blocked.has(key(goal))) return [{ ...from }];
   const open: GridPoint[] = [start];
   const cameFrom = new Map<string, GridPoint>();
   const g = new Map([[key(start), 0]]);
@@ -88,7 +106,10 @@ export function interiorPath(interior: InteriorDefinition, from: GridPoint, to: 
         cursor = cameFrom.get(key(cursor))!;
         path.push(cursor);
       }
-      return path.reverse();
+      const gridPath = path.reverse();
+      const withStart = appendOrthogonal([{ ...from }], start, blocked);
+      const joined = [...withStart, ...gridPath.slice(1)];
+      return appendOrthogonal(joined, to, blocked);
     }
     const neighbors = [
       { x: current.x + 1, y: current.y }, { x: current.x - 1, y: current.y },
@@ -102,7 +123,7 @@ export function interiorPath(interior: InteriorDefinition, from: GridPoint, to: 
       if (!open.some((item) => key(item) === key(neighbor))) open.push(neighbor);
     }
   }
-  return [start];
+  return [{ ...from }];
 }
 
 function pointAlongPath(path: readonly GridPoint[], progress: number): InteriorMotionState['point'] {
@@ -141,7 +162,7 @@ export function interiorMotionAt(
       : interiorInteractionPoint(interior, item)
   );
   const target = { ...assignment.point };
-  const ingressPath = interiorPath(interior, door, target);
+  const ingressPath = interiorPath(interior, door, target, assignment.furnitureId);
   const ingressDuration = Math.max(STEP_MS, (ingressPath.length - 1) * STEP_MS);
   const bob = Math.sin(nowMs / 280) * 0.85;
   const bubbleText = eventBubble(snapshot);
@@ -161,7 +182,7 @@ export function interiorMotionAt(
   const to = route[nextIndex]!;
   const fromPoint = pointForRouteItem(from);
   const toPoint = pointForRouteItem(to);
-  const workPath = interiorPath(interior, fromPoint, toPoint);
+  const workPath = interiorPath(interior, fromPoint, toPoint, to.id === 'interior-overflow' ? undefined : to.id);
   const transition = Math.max(0, Math.min(1, (segmentElapsed - (WORK_STOP_MS - WORK_TRANSITION_MS)) / WORK_TRANSITION_MS));
   const point = pointAlongPath(workPath, transition);
   const walking = transition > 0 && workPath.length > 1;

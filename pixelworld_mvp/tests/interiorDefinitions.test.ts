@@ -80,9 +80,7 @@ describe('Smallville-style authored interiors', () => {
       expect(officeLayoutIssues(room), buildingId).toEqual([]);
       room.furniture.filter(({ supportedActions }) => supportedActions.length > 0).forEach((item) => {
         const target = interiorInteractionPoint(room, item);
-        expect(interiorPath(room, door, target).at(-1), `${buildingId}:${item.id}`).toEqual({
-          x: Math.round(target.x), y: Math.round(target.y),
-        });
+        expect(interiorPath(room, door, target, item.id).at(-1), `${buildingId}:${item.id}`).toEqual(target);
       });
     },
   );
@@ -125,10 +123,8 @@ describe('Smallville-style authored interiors', () => {
       const door = { x: 9, y: 11 };
       room.furniture.filter(({ supportedActions }) => supportedActions.length > 0).forEach((item) => {
         const target = interiorInteractionPoint(room, item);
-        const path = interiorPath(room, door, target);
-        expect(path.at(-1), `${themeId}:${item.id} target ${target.x},${target.y}`).toEqual({
-          x: Math.round(target.x), y: Math.round(target.y),
-        });
+        const path = interiorPath(room, door, target, item.id);
+        expect(path.at(-1), `${themeId}:${item.id} target ${target.x},${target.y}`).toEqual(target);
       });
     },
   );
@@ -143,7 +139,7 @@ describe('Smallville-style authored interiors', () => {
     ] as const) {
       const target = interiorInteractionPoint(room, room.furniture.find((item) => item.id === id)!);
       expect(target).toEqual(expected);
-      expect(interiorPath(room, { x: 9, y: 11 }, target).at(-1)).toEqual({ x: Math.round(target.x), y: Math.round(target.y) });
+      expect(interiorPath(room, { x: 9, y: 11 }, target, id).at(-1)).toEqual(target);
     }
   });
 });

@@ -372,6 +372,10 @@ export function readInteriorLayout(
   const parsed = parseSavedInteriorLayout(read.value);
   if (!parsed) return { layout: fallback, storageRead: 'success' };
   const authoredIds = new Set(room.furniture.map(({ id }) => id));
+  const authoredFor = (item: FurnitureDefinition): FurnitureDefinition | undefined => fallback.find((candidate) => (
+    candidate.id === item.id
+    || Boolean(item.requirementId) && candidate.requirementId === item.requirementId
+  ));
   const candidates = parsed.legacy
     ? [...fallback, ...parsed.furniture.filter((candidate) => (
       candidate && typeof candidate === 'object'
@@ -391,11 +395,15 @@ export function readInteriorLayout(
       || !Array.isArray(item.supportedActions)
       || !SAVED_FURNITURE_KINDS.includes(item.kind)
     ) continue;
+    const authored = authoredFor(item);
+    const hydrated = !item.interactionPoint && authored?.interactionPoint
+      ? { ...item, interactionPoint: { ...authored.interactionPoint } }
+      : item;
     const normalized = normalizeRoomLayout(room, [{
-      ...item,
-      point: { ...item.point },
-      scale: normalizeFurnitureScale(item.scale),
-      rotation: normalizeRotation(item.rotation ?? rotationFromFacing(item.facing)),
+      ...hydrated,
+      point: { ...hydrated.point },
+      scale: normalizeFurnitureScale(hydrated.scale),
+      rotation: normalizeRotation(hydrated.rotation ?? rotationFromFacing(hydrated.facing)),
     }])[0]!;
     if (canPlaceFurniture(room, normalized, accepted)) accepted.push(normalized);
   }

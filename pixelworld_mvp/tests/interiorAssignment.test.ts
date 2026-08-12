@@ -56,11 +56,11 @@ describe('interior occupant assignment', () => {
     const furniture = maker.furniture.find(({ id }) => id === assigned.furnitureId)!;
     const anchor = interiorInteractionPoint(maker, furniture);
     const door = { x: Math.floor(maker.width / 2), y: maker.height - 1 };
-    const path = interiorPath(maker, door, anchor);
+    const path = interiorPath(maker, door, anchor, furniture.id);
 
     expect(furniture.supportedActions).toContain('terminal');
     expect(assigned.point).toEqual(anchor);
-    expect(path.at(-1)).toEqual({ x: Math.round(anchor.x), y: Math.round(anchor.y) });
+    expect(path.at(-1)).toEqual(anchor);
   });
 
   it('uses the authored point of the selected item when same-action terminals coexist', () => {
@@ -89,5 +89,30 @@ describe('interior occupant assignment', () => {
     assignments.forEach((assignment) => {
       expect(assignment.point).toEqual(room.furniture.find(({ id }) => id === assignment.furnitureId)!.interactionPoint);
     });
+  });
+
+  it('exempts only the selected station at its anchor and rejects an unrelated target blocker', () => {
+    const station = {
+      id: 'blocking-station', kind: 'computer' as const, assetId: 225,
+      point: { x: 2, y: 2 }, facing: 'down' as const,
+      supportedActions: ['terminal' as const], icon: 'tool' as const, blocksNavigation: true,
+      interactionPoint: { x: 2, y: 2 },
+    };
+    const baseRoom = {
+      ...INTERIOR_DEFINITIONS['rest-cabin'], width: 6, height: 6,
+      furniture: [station], overflow: [{ x: 1, y: 4 }],
+    };
+    const work = snapshot({ buildingId: 'test-room', action: 'terminal', eventId: 'blocking-station' });
+
+    expect(assignInteriorOccupants(baseRoom, [work], 'test-room')[0]?.furnitureId).toBe(station.id);
+
+    const unrelated = {
+      id: 'unrelated-blocker', kind: 'chair' as const, assetId: 101,
+      point: { x: 2, y: 2 }, facing: 'up' as const,
+      supportedActions: [], icon: 'generic' as const, blocksNavigation: true,
+    };
+    const blocked = assignInteriorOccupants({ ...baseRoom, furniture: [station, unrelated] }, [work], 'test-room')[0]!;
+    expect(blocked.furnitureId).toBeUndefined();
+    expect(blocked.point).toEqual({ x: 1, y: 4 });
   });
 });

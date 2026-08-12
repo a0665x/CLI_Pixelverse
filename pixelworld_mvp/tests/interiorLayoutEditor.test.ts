@@ -123,6 +123,40 @@ describe('interior furniture editor model', () => {
     expect(loaded.interactionPoint).not.toBe(item.interactionPoint);
   });
 
+  it('hydrates a pre-anchor v5 authored item without changing its saved fields', () => {
+    const workRoom = INTERIOR_DEFINITIONS['maker-workshop'];
+    const authored = workRoom.furniture.find(({ id }) => id === 'maker-work-tool-wall')!;
+    const { interactionPoint: _oldAnchor, ...authoredBeforeAnchor } = structuredClone(authored);
+    const saved = {
+      ...authoredBeforeAnchor,
+      scale: authoredBeforeAnchor.scale ?? 1,
+      rotation: authoredBeforeAnchor.rotation ?? 0,
+      requirementId: authoredBeforeAnchor.requirementId ?? `${workRoom.id}:${authoredBeforeAnchor.id}`,
+    };
+    const memory = new Map([[
+      'pixelworld:interior-layout:old-work-house',
+      JSON.stringify({ version: 5, authoredRevision: INTERIOR_LAYOUT_REVISION, furniture: [saved] }),
+    ]]);
+    const storage = { getItem: (key: string) => memory.get(key) ?? null, setItem: () => undefined };
+
+    expect(loadInteriorLayout('old-work-house', workRoom, storage)[0]).toEqual({
+      ...saved,
+      interactionPoint: authored.interactionPoint,
+    });
+  });
+
+  it('does not invent an authored anchor for unmatched custom v5 furniture', () => {
+    const custom = {
+      id: 'custom-terminal', kind: 'computer' as const, point: { x: 2, y: 2 }, facing: 'down' as const,
+      supportedActions: ['terminal' as const], icon: 'tool' as const, assetId: 225, blocksNavigation: true,
+    };
+    const raw = JSON.stringify({ version: 5, authoredRevision: INTERIOR_LAYOUT_REVISION, furniture: [custom] });
+    const storage = { getItem: () => raw, setItem: () => undefined };
+
+    expect(loadInteriorLayout('custom-work-house', INTERIOR_DEFINITIONS['maker-workshop'], storage)[0])
+      .not.toHaveProperty('interactionPoint');
+  });
+
   it('migrates legacy arrays and falls back from corrupted saved layouts', () => {
     const memory = new Map<string, string>();
     const storage = {

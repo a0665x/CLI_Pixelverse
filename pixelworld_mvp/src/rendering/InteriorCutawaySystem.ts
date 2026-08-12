@@ -116,7 +116,8 @@ export function roomCellForLayout(
 ): number {
   const contentWidth = layout.width - 24;
   const contentHeight = layout.height - ROOM_CONTENT_TOP - ROOM_CONTENT_BOTTOM;
-  return Math.max(1, Math.floor(Math.min(contentWidth / room.width, contentHeight / room.height)));
+  const fitted = Math.min(contentWidth / room.width, contentHeight / room.height);
+  return fitted < 1 ? fitted : Math.floor(fitted);
 }
 
 export function roomOriginForLayout(
@@ -462,6 +463,7 @@ export class InteriorCutawaySystem {
       resize: (delta) => this.resizeSelected(interior, layout, delta),
       rotate: (delta) => this.rotateSelected(interior, layout, delta),
     });
+    this.syncRoomLabels();
   }
 
   setLocale(locale: VillageLocale): void { this.domOverlay.setLocale(locale); }
@@ -491,8 +493,8 @@ export class InteriorCutawaySystem {
       WORLD_PIXELS.width / 2, WORLD_PIXELS.height / 2,
       WORLD_PIXELS.width, WORLD_PIXELS.height, 0x071018, 0.78,
     ).setScrollFactor(0).setInteractive({ useHandCursor: true }).on('pointerdown', (pointer: unknown) => {
-      const point = pointer as Partial<GridPoint>;
-      if (!cutawayContainsPointer(this.currentLayout ?? layout, { x: point.x ?? -1, y: point.y ?? -1 })) this.close();
+      const point = this.pointerScreenPoint(pointer) ?? { x: -1, y: -1 };
+      if (!cutawayContainsPointer(this.currentLayout ?? layout, point)) this.close();
     });
     const panel = this.scene.add.rectangle(
       layout.x + layout.width / 2, layout.y + layout.height / 2,
@@ -539,12 +541,12 @@ export class InteriorCutawaySystem {
     if (!this.activeInterior || !this.root) return;
     const size = this.viewportProvider();
     const layout = cutawayLayoutForViewport(size.width, size.height);
+    (this.domOverlay as InteriorCutawayDomOverlay & { relayout?: (next: CutawayLayout) => void }).relayout?.(layout);
     if (this.currentLayout && Object.keys(layout).every((key) => (
       layout[key as keyof CutawayLayout] === this.currentLayout![key as keyof CutawayLayout]
     ))) return;
     this.clearRenderedShell();
     this.rebuildShell(this.activeInterior, layout);
-    (this.domOverlay as InteriorCutawayDomOverlay & { relayout?: (next: CutawayLayout) => void }).relayout?.(layout);
     this.syncRoomLabels();
   }
 
@@ -763,10 +765,11 @@ export class InteriorCutawaySystem {
           }
         }
       });
-      sprite.on('drag', (_pointer: unknown, dragX: number, dragY: number) => {
+      sprite.on('drag', (pointer: unknown, dragX: number, dragY: number) => {
+        const screen = this.pointerScreenPoint(pointer) ?? { x: dragX, y: dragY };
         this.currentDragCandidate = resolvePlacementCandidate(
           interior, interior.furniture, furniture,
-          furniturePointFromRenderPoint(furniture, this.roomPoint(dragX, dragY)), furniture.id,
+          furniturePointFromRenderPoint(furniture, this.roomPoint(screen.x, screen.y)), furniture.id,
         );
         const fitted = furnitureRenderScreenPoint(this.roomOrigin, this.currentDragCandidate.furniture, this.roomCell);
         sprite.setPosition(fitted.x, fitted.y);
@@ -819,14 +822,7 @@ export class InteriorCutawaySystem {
     const palette = this.scene.add.container(0, 0);
     this.paletteLayer = palette;
     root.add(palette);
-    const rootPointForPointer = (pointer: unknown): GridPoint | undefined => {
-      const value = pointer as Phaser.Input.Pointer | undefined;
-      if (!value || typeof value.positionToCamera !== 'function') return undefined;
-      const camera = value.camera ?? this.scene.cameras.main;
-      const worldPoint = value.positionToCamera(camera) as GridPoint;
-      const point = root.getLocalPoint(worldPoint.x, worldPoint.y, undefined, camera);
-      return Number.isFinite(point.x) && Number.isFinite(point.y) ? { x: point.x, y: point.y } : undefined;
-    };
+    const rootPointForPointer = (pointer: unknown): GridPoint | undefined => this.pointerScreenPoint(pointer);
     const page = catalogPage(this.catalogCategory, this.catalogPageIndex, 12);
     const required = requiredHookInventory(this.activeDefinition ?? interior, interior.furniture);
     const startX = layout.x + (layout.width - 12 * 34) / 2 + 17;
@@ -942,13 +938,14 @@ export class InteriorCutawaySystem {
           .setScale(this.roomCell / BASE_ROOM_CELL).setAlpha(0.88);
         furnitureLayer.add(dragClone);
       });
-      item.on('drag', (_pointer: unknown, dragX: number, dragY: number) => {
+      item.on('drag', (pointer: unknown, dragX: number, dragY: number) => {
         if (!dragClone) {
           dragClone = this.scene.add.image(dragX, dragY, catalog.key).setOrigin(originX, originY)
             .setScale(this.roomCell / BASE_ROOM_CELL).setAlpha(0.88);
           furnitureLayer.add(dragClone);
         }
-        const renderPoint = this.roomPoint(dragX, dragY);
+        const screen = this.pointerScreenPoint(pointer) ?? { x: dragX, y: dragY };
+        const renderPoint = this.roomPoint(screen.x, screen.y);
         const preview: FurnitureDefinition = {
           id: `custom-office-${catalog.id}-${Date.now()}`, kind: 'decor', point: { x: 0, y: 0 },
           facing: 'up', supportedActions: [], icon: 'generic', scale: 1, rotation: 0,
@@ -982,6 +979,16 @@ export class InteriorCutawaySystem {
     return roomPointForScreen(this.roomOrigin, { x, y }, this.roomCell);
   }
 
+  private pointerScreenPoint(pointer: unknown): GridPoint | undefined {
+    const value = pointer as Phaser.Input.Pointer | undefined;
+    const root = this.root;
+    if (!root || !value || typeof value.positionToCamera !== 'function') return undefined;
+    const camera = value.camera ?? this.scene.cameras.main;
+    const worldPoint = value.positionToCamera(camera) as GridPoint;
+    const point = root.getLocalPoint(worldPoint.x, worldPoint.y, undefined, camera);
+    return Number.isFinite(point.x) && Number.isFinite(point.y) ? { x: point.x, y: point.y } : undefined;
+  }
+
   private wireFurnitureSource(
     item: Phaser.GameObjects.Image,
     template: FurnitureDefinition,
@@ -1001,10 +1008,11 @@ export class InteriorCutawaySystem {
         .setScale(normalizeFurnitureScale(template.scale) * this.roomCell / BASE_ROOM_CELL).setAlpha(0.88);
       furnitureLayer.add(dragClone);
     });
-    item.on('drag', (_pointer: unknown, dragX: number, dragY: number) => {
+    item.on('drag', (pointer: unknown, dragX: number, dragY: number) => {
+      const screen = this.pointerScreenPoint(pointer) ?? { x: dragX, y: dragY };
       const preview: FurnitureDefinition = {
         ...template,
-        point: furniturePointFromRenderPoint(template, this.roomPoint(dragX, dragY)),
+        point: furniturePointFromRenderPoint(template, this.roomPoint(screen.x, screen.y)),
         requirementId: template.requirementId ?? `${interior.id}:${template.id}`,
       };
       this.currentDragCandidate = resolvePlacementCandidate(interior, interior.furniture, preview, preview.point);
@@ -1038,8 +1046,8 @@ export class InteriorCutawaySystem {
     furnitureLayer.add(marquee);
     let start: GridPoint | undefined;
     const pointOf = (pointer: unknown): GridPoint => {
-      const value = pointer as { x?: number; y?: number };
-      return this.roomPoint(value.x ?? 0, value.y ?? 0);
+      const point = this.pointerScreenPoint(pointer) ?? { x: 0, y: 0 };
+      return this.roomPoint(point.x, point.y);
     };
     const inside = (point: GridPoint): boolean => point.x >= -0.5 && point.y >= -0.5
       && point.x <= interior.width - 0.5 && point.y <= interior.height - 0.5;
