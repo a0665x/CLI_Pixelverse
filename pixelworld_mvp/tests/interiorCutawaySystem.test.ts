@@ -161,10 +161,22 @@ describe('InteriorCutawaySystem', () => {
     expect(hookFurnitureLabel({
       id: 'hook', kind: 'computer', point: { x: 1, y: 1 }, facing: 'up', icon: 'web',
       supportedActions: ['signal', 'terminal'],
-    })).toBe('WEB / MCP / 工具調用');
+    })).toBe('查詢網路 / 執行工具');
     expect(hookFurnitureLabel({
       id: 'decor', kind: 'plant', point: { x: 1, y: 1 }, facing: 'up', icon: 'generic', supportedActions: [],
     })).toBe('');
+  });
+
+  it.each([
+    ['zh-TW', '查詢網路 / 執行工具'],
+    ['en-US', 'Browsing sources / Using tools'],
+    ['ja-JP', '情報検索中 / ツール実行中'],
+    ['ko-KR', '자료 검색 중 / 도구 실행 중'],
+  ] as const)('localizes Hook action labels in %s', (locale, expected) => {
+    expect(hookFurnitureLabel({
+      id: 'hook', kind: 'computer', point: { x: 1, y: 1 }, facing: 'up', icon: 'web',
+      supportedActions: ['signal', 'terminal'],
+    }, locale)).toBe(expected);
   });
 
   it('uses the approved centered desktop and narrow viewport layouts', () => {
@@ -644,6 +656,114 @@ describe('InteriorCutawaySystem', () => {
     fake.emitInput('pointerup', pointerForLocal(roomScreenPoint(internal.roomOrigin, { x: 4, y: 4 }, internal.roomCell)));
 
     expect([...internal.selectedFurnitureIds]).toEqual([target.id]);
+  });
+
+  it('treats a clicked prefab instance atomically through move, scale, rotate, layer, z, duplicate, return, dissolve, and undo', () => {
+    const fake = fakeScene();
+    const cutaway = new InteriorCutawaySystem(fake.scene as never, WORLD_DEFINITION, () => ({ width: 1_280, height: 720 }));
+    const capture = captureCutawayHandlers(cutaway);
+    cutaway.open('maker-workshop');
+    capture.handlers().toggleEdit();
+    const internal = cutaway as unknown as {
+      activeInterior: InteriorDefinition;
+      activeDefinition: InteriorDefinition;
+      roomCell: number;
+      undoStore: { reset(layout: InteriorDefinition['furniture']): void };
+      renderFurniture(interior: InteriorDefinition, layout: ReturnType<typeof cutawayLayoutForViewport>): void;
+    };
+    const group = [
+      {
+        id: 'atomic-a', kind: 'plant' as const, assetId: 98, point: { x: 4, y: 3 }, facing: 'up' as const,
+        supportedActions: [], icon: 'generic' as const, scale: 1 as const, rotation: 0 as const,
+        layer: 'surface' as const, zIndex: 2, blocksNavigation: false, prefabInstanceId: 'atomic-instance',
+        interactionPoint: { x: 4, y: 4 }, visualOffset: { x: 0.25, y: 0 },
+      },
+      {
+        id: 'atomic-b', kind: 'display' as const, assetId: 129, point: { x: 6, y: 3 }, facing: 'up' as const,
+        supportedActions: [], icon: 'generic' as const, scale: 1 as const, rotation: 0 as const,
+        layer: 'surface' as const, zIndex: 4, blocksNavigation: false, prefabInstanceId: 'atomic-instance',
+      },
+    ];
+    const peer = {
+      id: 'atomic-peer', kind: 'plant' as const, assetId: 98, point: { x: 10, y: 3 }, facing: 'up' as const,
+      supportedActions: [], icon: 'generic' as const, scale: 1 as const, rotation: 0 as const,
+      layer: 'surface' as const, zIndex: 9, blocksNavigation: false,
+    };
+    internal.activeInterior.furniture = structuredClone([...group, peer]);
+    internal.activeDefinition = internal.activeInterior;
+    internal.undoStore.reset(internal.activeInterior.furniture);
+    internal.renderFurniture(internal.activeInterior, cutawayLayoutForViewport(1_280, 720));
+
+    const placed = (texture: string) => fake.objects.find((object) => (
+      object.texture === texture && object.interactive && !object.destroyed && object.depth > 0
+    ))!;
+    const selectGroup = () => placed('modern-office-v1.2-single-98').emit('pointerdown', pointerAt(0, 0));
+    const currentGroup = () => internal.activeInterior.furniture.filter(({ prefabInstanceId }) => prefabInstanceId === 'atomic-instance');
+
+    selectGroup();
+    expect(capture.model()).toMatchObject({ selectedCount: 2, canDuplicate: true, canDissolve: true });
+
+    const first = placed('modern-office-v1.2-single-98');
+    const beforeMove = structuredClone(currentGroup());
+    first.emit('dragstart', pointerAt(first.x, first.y));
+    first.emit('drag', pointerAt(first.x + internal.roomCell, first.y), first.x + internal.roomCell, first.y);
+    first.emit('dragend');
+    expect(currentGroup().map(({ point }) => point)).toEqual(beforeMove.map(({ point }) => ({ x: point.x + 1, y: point.y })));
+    expect(currentGroup()[1]!.point.x - currentGroup()[0]!.point.x).toBe(2);
+    capture.handlers().undo();
+    expect(currentGroup()).toEqual(group);
+
+    selectGroup();
+    capture.handlers().resize(1);
+    expect(currentGroup().map(({ scale }) => scale)).toEqual([1.25, 1.25]);
+    expect(currentGroup()[1]!.point.x - currentGroup()[0]!.point.x).toBe(2.5);
+    capture.handlers().undo();
+
+    selectGroup();
+    capture.handlers().rotate(90);
+    expect(currentGroup().map(({ point }) => point)).toEqual([{ x: 5, y: 2 }, { x: 5, y: 4 }]);
+    expect(currentGroup().map(({ rotation }) => rotation)).toEqual([90, 90]);
+    expect(currentGroup()[0]!.interactionPoint).toEqual({ x: 4, y: 2 });
+    capture.handlers().undo();
+
+    selectGroup();
+    capture.handlers().shiftLayer('next');
+    expect(currentGroup().map(({ layer }) => layer)).toEqual(['wall', 'wall']);
+    capture.handlers().shiftLayer('next');
+    expect(currentGroup().map(({ layer }) => layer)).toEqual(['wall', 'wall']);
+    expect(capture.model().statusId).toBe('layerShiftRejected');
+    capture.handlers().undo();
+
+    selectGroup();
+    capture.handlers().reorder('front');
+    expect(currentGroup().map(({ zIndex }) => zIndex)).toEqual([10, 12]);
+    capture.handlers().undo();
+
+    selectGroup();
+    capture.handlers().duplicate();
+    const duplicated = internal.activeInterior.furniture.filter(({ prefabInstanceId }) => (
+      prefabInstanceId && prefabInstanceId !== 'atomic-instance'
+    ));
+    expect(duplicated).toHaveLength(2);
+    expect(duplicated.every(({ id }) => !group.some((source) => source.id === id))).toBe(true);
+    expect(new Set(duplicated.map(({ prefabInstanceId }) => prefabInstanceId)).size).toBe(1);
+    capture.handlers().undo();
+
+    selectGroup();
+    capture.handlers().returnToShelf();
+    expect(currentGroup()).toEqual([]);
+    capture.handlers().undo();
+    expect(currentGroup()).toEqual(group);
+
+    selectGroup();
+    capture.handlers().dissolveGroup();
+    expect(internal.activeInterior.furniture.filter(({ id }) => group.some((source) => source.id === id))
+      .every(({ prefabInstanceId }) => prefabInstanceId === undefined)).toBe(true);
+    placed('modern-office-v1.2-single-98').emit('pointerdown', pointerAt(0, 0));
+    expect(capture.model().selectedCount).toBe(1);
+    capture.handlers().returnToShelf();
+    expect(internal.activeInterior.furniture.some(({ id }) => id === 'atomic-a')).toBe(false);
+    expect(internal.activeInterior.furniture.some(({ id }) => id === 'atomic-b')).toBe(true);
   });
 
   it('previews without mutation or storage, applies a valid compact template in memory, and undoes it', () => {

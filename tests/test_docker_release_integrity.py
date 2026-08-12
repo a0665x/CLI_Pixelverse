@@ -93,9 +93,26 @@ def test_build_fingerprint_inputs_cover_pixelworld_and_container_configuration()
         "pixelworld_mvp/tsconfig.json",
         "pixelworld_mvp/src",
         "pixelworld_mvp/public",
+        ".dockerignore",
+        "global_map",
         "Dockerfile",
         "docker-compose.yml",
     } <= inputs
+
+
+@pytest.mark.parametrize("relative", [".dockerignore", "global_map/default.yaml", "global_map/default.png"])
+def test_release_context_edit_changes_default_build_fingerprint(tmp_path: Path, relative: str) -> None:
+    module = _load_metadata_module()
+    root = tmp_path / "repo"
+    target = root / relative
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(b"first")
+
+    before = module.build_fingerprint(root)
+    target.write_bytes(b"second")
+    after = module.build_fingerprint(root)
+
+    assert before != after
 
 
 @pytest.mark.skipif(

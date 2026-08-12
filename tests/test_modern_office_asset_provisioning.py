@@ -160,6 +160,43 @@ def test_corrupt_existing_png_is_repaired_instead_of_treated_as_complete(tmp_pat
     assert corrupt.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
 
 
+def test_existing_png_corrupted_after_ihdr_is_repaired(tmp_path: Path) -> None:
+    required = _required_names()
+    archive = tmp_path / "licensed.zip"
+    destination = tmp_path / "private-assets"
+    _write_fixture_archive(archive, required)
+    first = _run("--archive", str(archive), "--destination", str(destination))
+    assert first.returncode == 0, first.stderr
+    corrupt = destination / min(required)
+    damaged = bytearray(corrupt.read_bytes())
+    damaged[-1] ^= 0xFF
+    corrupt.write_bytes(damaged)
+
+    repaired = _run("--archive", str(archive), "--destination", str(destination))
+
+    assert repaired.returncode == 0, repaired.stderr
+    assert corrupt.read_bytes() == _png_bytes()
+
+
+def test_rejects_archive_png_corrupted_after_ihdr_before_extracting(tmp_path: Path) -> None:
+    required = _required_names()
+    archive = tmp_path / "corrupt-after-ihdr.zip"
+    destination = tmp_path / "private-assets"
+    corrupt = min(required)
+    _write_fixture_archive(archive, required - {corrupt})
+    damaged = bytearray(_png_bytes())
+    damaged[-1] ^= 0xFF
+    with ZipFile(archive, "a") as bundle:
+        bundle.writestr(corrupt, damaged)
+
+    result = _run("--archive", str(archive), "--destination", str(destination))
+
+    assert result.returncode == 2
+    assert corrupt in result.stderr
+    assert "checksum" in result.stderr.lower()
+    assert not destination.exists()
+
+
 def test_missing_archive_fails_with_configurable_path_guidance(tmp_path: Path) -> None:
     archive = tmp_path / "missing.zip"
 

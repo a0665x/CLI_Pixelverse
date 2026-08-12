@@ -94,4 +94,40 @@ describe('StatusOverlaySystem failure transitions', () => {
     overlay.setLocale('en-US');
     expect(created[1]!.text).toBe('Planning');
   });
+
+  it.each([
+    ['zh-TW', '⚠ 工作區已滿'],
+    ['en-US', '⚠ Work area full'],
+    ['ja-JP', '⚠ 作業エリアが満員です'],
+    ['ko-KR', '⚠ 작업 공간이 가득 찼습니다'],
+  ] as const)('localizes success and error bubbles at runtime in %s', (locale, expectedError) => {
+    const created: ReturnType<typeof textObject>[] = [];
+    const scene = { time: { now: 100 }, add: { text: vi.fn(() => { const text = textObject(); created.push(text); return text; }) } };
+    const overlay = new StatusOverlaySystem(scene as never, []);
+    const agent = { agentId: 'main', role: 'main', sprite: { x: 8, y: 8 }, presence: () => ({ kind: 'outside' }) } as AgentController;
+    overlay.setLocale(locale);
+    overlay.publish(agent, {
+      eventId: 'e', timestamp: 1, source: 'demo', agentId: 'main', agentRole: 'main', kind: 'plan', phase: 'working', activityLabel: '規劃',
+    }, { destinationId: 'planning-board', preserveLocation: false, action: 'plan', bubblePolicy: 'persistent', bubbleText: '規劃中', priority: 40 });
+    overlay.showError(agent, 'station-full');
+
+    expect(created[0]!.text).toBe(`main · ${expectedError}`);
+    expect(created[1]!.text).toBe(expectedError);
+  });
+
+  it('serializes no CJK operational copy after switching an active overlay to English', () => {
+    const created: ReturnType<typeof textObject>[] = [];
+    const scene = { time: { now: 100 }, add: { text: vi.fn(() => { const text = textObject(); created.push(text); return text; }) } };
+    const overlay = new StatusOverlaySystem(scene as never, []);
+    const agent = { agentId: 'main', role: 'main', sprite: { x: 8, y: 8 }, presence: () => ({ kind: 'outside' }) } as AgentController;
+    overlay.publish(agent, {
+      eventId: 'e', timestamp: 1, source: 'demo', agentId: 'main', agentRole: 'main', kind: 'plan', phase: 'working', activityLabel: '規劃',
+    }, { destinationId: 'planning-board', preserveLocation: false, action: 'plan', bubblePolicy: 'persistent', bubbleText: '規劃中', priority: 40 });
+    overlay.showError(agent, 'no-path');
+
+    overlay.setLocale('en-US');
+
+    expect(JSON.stringify(created.map(({ text }) => text))).not.toMatch(/[\u3400-\u9fff]/);
+    expect(created[1]!.text).toBe('⚠ Cannot reach destination');
+  });
 });

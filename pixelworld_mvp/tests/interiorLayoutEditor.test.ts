@@ -123,6 +123,34 @@ describe('interior furniture editor model', () => {
     expect(loaded.interactionPoint).not.toBe(item.interactionPoint);
   });
 
+  it('round-trips a complete prefab instance without changing IDs, metadata, or relative geometry', () => {
+    const memory = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => memory.get(key) ?? null,
+      setItem: (key: string, value: string) => { memory.set(key, value); },
+    };
+    const instance = [
+      {
+        id: 'saved-prefab-a', kind: 'plant' as const, assetId: 98, point: { x: 3, y: 3 }, facing: 'right' as const,
+        supportedActions: [], icon: 'generic' as const, scale: 1.25 as const, rotation: 90 as const,
+        layer: 'surface' as const, zIndex: 2, blocksNavigation: false, prefabInstanceId: 'saved-prefab-instance',
+        interactionPoint: { x: 3, y: 4 }, visualOffset: { x: -0.25, y: 0.5 },
+      },
+      {
+        id: 'saved-prefab-b', kind: 'display' as const, assetId: 129, point: { x: 5.5, y: 3 }, facing: 'right' as const,
+        supportedActions: [], icon: 'generic' as const, scale: 1.25 as const, rotation: 90 as const,
+        layer: 'surface' as const, zIndex: 4, blocksNavigation: false, prefabInstanceId: 'saved-prefab-instance',
+      },
+    ];
+
+    saveInteriorLayout('prefab-roundtrip-house', instance, storage);
+    const restored = loadInteriorLayout('prefab-roundtrip-house', room, storage);
+
+    expect(restored).toEqual(instance);
+    expect(restored[1]!.point.x - restored[0]!.point.x).toBe(2.5);
+    expect(new Set(restored.map(({ prefabInstanceId }) => prefabInstanceId))).toEqual(new Set(['saved-prefab-instance']));
+  });
+
   it.each([
     ['unchanged', { x: 10.5, y: 4 }, 0, 1, { x: 10.5, y: 7 }],
     ['translated', { x: 11.5, y: 5 }, 0, 1, { x: 11.5, y: 8 }],

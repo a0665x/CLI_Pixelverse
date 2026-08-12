@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import type { VillageLocale } from '../i18n/villageLocale';
+import { type VillageLocale, villageCopy } from '../i18n/villageLocale';
 import { AgentRegistry } from '../agents/AgentRegistry';
 import type { AgentPresence } from '../agents/agentPresence';
 import { DebugOverlay, type DebugLayerName } from '../debug/DebugOverlay';
@@ -77,8 +77,8 @@ export class WorldScene extends Phaser.Scene {
         down = undefined;
       });
     });
-    this.statusOverlay = new StatusOverlaySystem(this, this.worldDefinition.buildings);
-    this.agents.all().forEach((agent) => this.statusOverlay.attachAgent(agent));
+    this.attachStatusOverlay(new StatusOverlaySystem(this, this.worldDefinition.buildings));
+    this.agents.all().forEach((agent) => this.statusOverlay?.attachAgent(agent));
     this.depthSystem = new DepthOcclusionSystem(this, this.renderedForegrounds, () => this.agents.all());
     this.debugOverlay = new DebugOverlay(this, this.navigationGrid, this.worldDefinition, () => this.agents.all());
     this.agents.all().forEach((agent) => this.bindAgentSelection(agent));
@@ -138,7 +138,7 @@ export class WorldScene extends Phaser.Scene {
         return { ok: false, reason: 'clone-queue' };
       }
       const effectiveRoute = allocation.assignment.kind === 'queue'
-        ? { ...result.route, action: 'queue' as const, bubblePolicy: 'persistent' as const, bubbleText: '等待工作位', priority: 80 }
+        ? { ...result.route, action: 'queue' as const, bubblePolicy: 'persistent' as const, bubbleText: villageCopy(this.locale).actions.queue, priority: 80 }
         : result.route;
       const reservesClone = canSpawnClone && normalizedEvent.kind === 'clone' && allocation.assignment.kind === 'interaction';
       if (reservesClone) this.pendingCloneAgents.add(normalizedEvent.agentId);
@@ -257,12 +257,17 @@ export class WorldScene extends Phaser.Scene {
   setLocale(locale: VillageLocale): void {
     this.locale = locale;
     this.cutawaySystem?.setLocale(locale);
+    this.statusOverlay?.setLocale(locale);
   }
   onRosterChanged(listener: () => void): () => void { this.listeners.add(listener); return () => this.listeners.delete(listener); }
 
   private notifyRoster(): void { this.listeners.forEach((listener) => listener()); }
   private attachCutawaySystem(system: InteriorCutawaySystem): void {
     this.cutawaySystem = system;
+    system.setLocale(this.locale);
+  }
+  private attachStatusOverlay(system: StatusOverlaySystem): void {
+    this.statusOverlay = system;
     system.setLocale(this.locale);
   }
 

@@ -2,7 +2,14 @@ import { WORLD_PIXELS } from '../game/constants';
 import type { CutawayLayout } from './InteriorCutawaySystem';
 import type { ModernOfficeCategory } from './modernOfficeCatalog';
 import type { FurnitureDefinition, FurnitureLayer, FurnitureRotation } from '../world/types';
-import { type VillageLocale, villageCopy } from '../i18n/villageLocale';
+import {
+  cutawayMessage,
+  furnitureLayerLabel,
+  renderCutawayMessageState,
+  type CutawayMessageState,
+  type VillageLocale,
+  villageCopy,
+} from '../i18n/villageLocale';
 
 export function selectionCapabilities(selection: readonly FurnitureDefinition[]): {
   canDuplicate: boolean;
@@ -10,13 +17,19 @@ export function selectionCapabilities(selection: readonly FurnitureDefinition[])
 } {
   const ordinaryCount = selection.filter(({ supportedActions, requirementId }) =>
     supportedActions.length === 0 && !requirementId).length;
-  return { canDuplicate: selection.length === 1, canGroup: ordinaryCount >= 2 };
+  const instanceId = selection[0]?.prefabInstanceId;
+  const oneAtomicSelection = selection.length === 1 || Boolean(
+    instanceId && selection.every(({ prefabInstanceId }) => prefabInstanceId === instanceId),
+  );
+  return {
+    canDuplicate: oneAtomicSelection,
+    canGroup: ordinaryCount >= 2 && selection.every(({ prefabInstanceId }) => !prefabInstanceId),
+  };
 }
 
-export interface CutawayDomModel {
+interface CutawayDomModelBase {
   titleId: keyof ReturnType<typeof villageCopy>['cutaway']['titles'];
   title: string;
-  status: string;
   editMode: boolean;
   category: ModernOfficeCategory;
   page: number;
@@ -34,9 +47,9 @@ export interface CutawayDomModel {
   templatePreviewing: boolean;
   templateValid: boolean;
   templateDiagnostics: Array<'templateInvalid' | 'unreachableHook'>;
-  statusId?: 'storageFailed' | 'undoApplied' | 'templatePreviewReady' | 'templateApplied' | 'groupDissolved';
   selected?: { label: string; scale: number; rotation: FurnitureRotation; layer: FurnitureLayer };
 }
+export type CutawayDomModel = CutawayDomModelBase & CutawayMessageState;
 
 export interface CutawayDomHandlers {
   close(): void;
@@ -95,15 +108,15 @@ export class InteriorCutawayDomOverlay {
         <div><h2></h2><p class="cutaway-dom-status"></p></div>
         <div class="cutaway-dom-actions">
           <button type="button" data-action="edit"></button>
-          <button type="button" data-action="collect">全部收回</button>
-          <button type="button" data-action="revert">取消配置</button>
-          <button type="button" data-action="copy">複製格局</button>
-          <button type="button" data-action="paste">貼上格局</button>
+          <button type="button" data-action="collect"></button>
+          <button type="button" data-action="revert"></button>
+          <button type="button" data-action="copy"></button>
+          <button type="button" data-action="paste"></button>
           <button type="button" data-action="undo"></button>
           <button type="button" data-action="preview-template"></button>
           <button type="button" data-action="apply-template"></button>
-          <button type="button" data-action="save">儲存配置</button>
-          <button type="button" data-action="close" aria-label="關閉室內">×</button>
+          <button type="button" data-action="save"></button>
+          <button type="button" data-action="close">×</button>
         </div>
       </header>
       <section class="cutaway-dom-catalog">
@@ -143,9 +156,7 @@ export class InteriorCutawayDomOverlay {
     if (!this.panel) return;
     const localeCopy = villageCopy(this.locale).cutaway;
     if (this.title) this.title.textContent = localeCopy.titles[model.titleId] ?? model.title;
-    if (this.status) this.status.textContent = model.statusId
-      ? localeCopy.status[model.statusId]
-      : this.locale === 'zh-TW' ? model.status : (model.editMode ? localeCopy.status.editing : localeCopy.status.ready);
+    if (this.status) this.status.textContent = renderCutawayMessageState(this.locale, model);
     if (this.editButton) this.editButton.textContent = model.editMode ? localeCopy.actions.done : localeCopy.actions.edit;
     const actionLabels = {
       collect: localeCopy.actions.collect,
@@ -185,7 +196,7 @@ export class InteriorCutawayDomOverlay {
           ? localeCopy.status.furniture : model.selected.label;
         label.textContent = model.selectedCount > 1
           ? `${model.selectedCount} ${localeCopy.status.selected} · ${localeCopy.status.batch}`
-          : `${selectedLabel} · ${Math.round(model.selected.scale * 100)}% · ${model.selected.rotation}° · ${model.selected.layer}`;
+          : `${selectedLabel} · ${Math.round(model.selected.scale * 100)}% · ${model.selected.rotation}° · ${furnitureLayerLabel(this.locale, model.selected.layer)}`;
         const controls: Array<[string, () => void]> = [
           [localeCopy.actions.cancel, () => this.handlers?.cancelSelection()],
           ...(model.canDuplicate ? [[localeCopy.actions.duplicate, () => this.handlers?.duplicate()] as [string, () => void]] : []),
@@ -223,12 +234,10 @@ export class InteriorCutawayDomOverlay {
       applyTemplate.disabled = !model.templateValid;
     }
     if (this.status && model.editMode) {
-      const diagnostics = model.templateDiagnostics.map((id) => localeCopy.status[id]);
+      const diagnostics = model.templateDiagnostics.map((id) => cutawayMessage(this.locale, id));
       const status = diagnostics.length > 0
         ? diagnostics.join(' · ')
-        : model.statusId
-          ? localeCopy.status[model.statusId]
-          : this.locale === 'zh-TW' ? model.status : localeCopy.status.editing;
+        : renderCutawayMessageState(this.locale, model);
       this.status.textContent = `${status} · ${localeCopy.status.hook} ${model.requiredPlaced}/${model.requiredTotal} · ${localeCopy.status.prefab} ${model.prefabCount}`;
     }
   }
@@ -242,8 +251,6 @@ export class InteriorCutawayDomOverlay {
     this.locale = locale;
     if (this.model) this.update(this.model);
   }
-
-  setStatus(message: string): void { if (this.status) this.status.textContent = message; }
 
   setRoomLabels(labels: readonly CutawayRoomLabel[]): void {
     this.roomLabels = labels.map((label) => ({ ...label }));

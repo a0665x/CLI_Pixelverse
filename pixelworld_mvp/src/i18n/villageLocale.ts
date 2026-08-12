@@ -1,7 +1,20 @@
-import type { AgentAction } from '../world/types';
+import type { AgentAction, FurnitureLayer } from '../world/types';
 
 export const VILLAGE_LOCALES = ['zh-TW', 'en-US', 'ja-JP', 'ko-KR'] as const;
 export type VillageLocale = typeof VILLAGE_LOCALES[number];
+export type StatusFailureReason = 'station-full' | 'no-path' | 'clone-queue' | 'agent-cap';
+
+export const CUTAWAY_OPERATION_MESSAGE_IDS = [
+  'empty', 'editingEnabled', 'editingDisabled', 'saved', 'collectedAll', 'reverted',
+  'layoutCopied', 'layoutPasted', 'layoutPasteRejected', 'houseEmpty', 'houseOccupied',
+  'resizeApplied', 'moveApplied', 'placementRejected', 'prefabPlaced', 'prefabRejected',
+  'catalogAdded', 'hookPlaced', 'hookRejected', 'marqueeSelecting', 'selectionCompleted',
+  'resizeRejected', 'rotateApplied', 'rotateRejected', 'layerUpApplied', 'layerDownApplied', 'layerShiftRejected',
+  'reordered', 'prefabNamePrompt', 'prefabDefaultName', 'prefabNeedsTwo', 'prefabCreated',
+  'duplicateApplied', 'duplicateRejected', 'returnedToShelf', 'selectionCleared',
+] as const;
+export type CutawayOperationMessageId = typeof CUTAWAY_OPERATION_MESSAGE_IDS[number];
+export type CutawayPlacementDiagnostic = 'valid' | 'outside-room' | 'blocks-door' | 'overlap' | 'invalid-asset';
 
 const buildingIds = [
   'arrival-lodge', 'thinkers-cottage', 'archive-library', 'network-lab', 'heartbeat-tower',
@@ -20,6 +33,35 @@ type VillageCopy = {
     status: { ready: string; editing: string; selected: string; batch: string; hook: string; prefab: string; furniture: string; templateInvalid: string; unreachableHook: string; storageFailed: string; undoApplied: string; templatePreviewReady: string; templateApplied: string; groupDissolved: string };
   };
 };
+
+export type CutawayStatusMessageId = keyof VillageCopy['cutaway']['status'];
+export type CutawayMessageId = CutawayStatusMessageId | CutawayOperationMessageId;
+
+interface ParameterizedCutawayMessages {
+  houseOccupied: { count: number };
+  resizeApplied: { percent: number };
+  placementRejected: { diagnostic: CutawayPlacementDiagnostic };
+  prefabPlaced: { name: string };
+  catalogAdded: { label: string };
+  hookPlaced: { label: string };
+  selectionCompleted: { count: number };
+  prefabDefaultName: { count: number };
+  prefabCreated: { name: string };
+  returnedToShelf: { count: number };
+}
+
+export type CutawayMessageParamsById = ParameterizedCutawayMessages & {
+  [K in Exclude<CutawayMessageId, keyof ParameterizedCutawayMessages>]: undefined;
+};
+export type CutawayMessageParams<K extends CutawayMessageId> = CutawayMessageParamsById[K];
+export type CutawayMessageArgs<K extends CutawayMessageId> = CutawayMessageParams<K> extends undefined
+  ? []
+  : [params: CutawayMessageParams<K>];
+export type CutawayMessageState = {
+  [K in CutawayMessageId]: CutawayMessageParams<K> extends undefined
+    ? { statusId: K; statusParams?: never }
+    : { statusId: K; statusParams: CutawayMessageParams<K> };
+}[CutawayMessageId];
 
 const cutawayCopy = (
   titles: VillageCopy['cutaway']['titles'], categories: VillageCopy['cutaway']['categories'],
@@ -88,6 +130,160 @@ export function normalizeVillageLocale(value: unknown): VillageLocale {
 }
 
 export function villageCopy(locale: unknown): VillageCopy { return CATALOG[normalizeVillageLocale(locale)]; }
+
+type CutawayOperationTemplates = Record<CutawayOperationMessageId, string>;
+const CUTAWAY_OPERATION_COPY: Record<VillageLocale, CutawayOperationTemplates> = {
+  'zh-TW': {
+    empty: 'EMPTY · 點擊關閉或按 ESC', editingEnabled: '編輯模式 · 拖曳家具或下方素材到房間',
+    editingDisabled: '家具配置已暫存，按儲存保存', saved: '✓ 家具配置已保存，下次開啟仍會保留',
+    collectedAll: '全部家具已收回下方貨架 · 尚未儲存', reverted: '已取消未儲存變更，回到最後保存版本',
+    layoutCopied: '格局已複製（Hook 家具不會被帶走）', layoutPasted: '格局已貼上 · 請補齊左側 Hook 家具後儲存',
+    layoutPasteRejected: '⚠ 格局超出這間房，未套用', houseEmpty: 'EMPTY HOUSE · 目前沒有 Agent',
+    houseOccupied: '{count} AGENT INSIDE · LIVE', resizeApplied: '已調整為 {percent}% · 按儲存配置',
+    moveApplied: '家具已移動 · 按儲存配置', placementRejected: '⚠ {diagnostic} · 已回復原位',
+    prefabPlaced: '組裝件「{name}」已放置', prefabRejected: '⚠ 組裝件超出房間或擋門',
+    catalogAdded: '{label} 已加入 · 按儲存配置', hookPlaced: '{label} 已放置 · 按儲存配置',
+    hookRejected: '⚠ Hook 家具超出房間或擋門', marqueeSelecting: '框選中 · 放開滑鼠建立多選範圍',
+    selectionCompleted: '已框選 {count} 件 · 可建立組裝件', resizeRejected: '⚠ 尺寸調整後會超界或擋門',
+    rotateApplied: '已批次旋轉家具 · 按儲存配置', rotateRejected: '⚠ 旋轉後會超界或擋門',
+    layerUpApplied: '選取家具已移到上一層', layerDownApplied: '選取家具已移到下一層', layerShiftRejected: '⚠ 群組已在圖層邊界，未變更任何家具',
+    reordered: '選取家具顯示順序已調整 · 按儲存配置', prefabNamePrompt: '替這個組裝件命名',
+    prefabDefaultName: '組裝件 {count}', prefabNeedsTwo: '⚠ 至少框選兩件一般家具；Hook 家具不會加入組裝件',
+    prefabCreated: '組裝件「{name}」已加入下方貨架', duplicateApplied: '家具已複製 · 複本已選取',
+    duplicateRejected: '⚠ 附近沒有可放置複本的位置', returnedToShelf: '{count} 件家具已放回下排 · 尚未儲存',
+    selectionCleared: '已取消家具選取',
+  },
+  'en-US': {
+    empty: 'EMPTY · Click close or press ESC', editingEnabled: 'Edit mode · Drag furniture or shelf items into the room',
+    editingDisabled: 'Furniture changes are in the draft · Save to keep them', saved: '✓ Furniture layout saved for the next visit',
+    collectedAll: 'All furniture returned to the shelf · Not saved', reverted: 'Unsaved changes discarded · Restored the last saved layout',
+    layoutCopied: 'Layout copied (Hook furniture is excluded)', layoutPasted: 'Layout pasted · Restore the required Hooks, then save',
+    layoutPasteRejected: '⚠ Layout does not fit this room · Nothing changed', houseEmpty: 'EMPTY HOUSE · No agents inside',
+    houseOccupied: '{count} AGENT INSIDE · LIVE', resizeApplied: 'Resized to {percent}% · Save the layout',
+    moveApplied: 'Furniture moved · Save the layout', placementRejected: '⚠ {diagnostic} · Restored the original position',
+    prefabPlaced: 'Assembly “{name}” placed', prefabRejected: '⚠ Assembly is outside the room or blocks the door',
+    catalogAdded: '{label} added · Save the layout', hookPlaced: '{label} placed · Save the layout',
+    hookRejected: '⚠ Hook furniture is outside the room or blocks the door', marqueeSelecting: 'Selecting · Release to finish the marquee',
+    selectionCompleted: '{count} items selected · Ready to create an assembly', resizeRejected: '⚠ Resizing would cross the room boundary or block the door',
+    rotateApplied: 'Furniture rotated · Save the layout', rotateRejected: '⚠ Rotation would cross the room boundary or block the door',
+    layerUpApplied: 'Selected furniture moved up one layer', layerDownApplied: 'Selected furniture moved down one layer', layerShiftRejected: '⚠ The group is at a layer boundary · Nothing changed',
+    reordered: 'Selected furniture display order changed · Save the layout', prefabNamePrompt: 'Name this assembly',
+    prefabDefaultName: 'Assembly {count}', prefabNeedsTwo: '⚠ Select at least two ordinary items; Hook furniture is excluded',
+    prefabCreated: 'Assembly “{name}” added to the shelf', duplicateApplied: 'Furniture duplicated · Copy selected',
+    duplicateRejected: '⚠ No nearby space for a copy', returnedToShelf: '{count} items returned to the shelf · Not saved',
+    selectionCleared: 'Furniture selection cleared',
+  },
+  'ja-JP': {
+    empty: 'EMPTY・閉じるをクリックするか ESC を押してください', editingEnabled: '編集モード・家具や棚の素材を部屋へドラッグ',
+    editingDisabled: '家具配置は下書きに保持されています・保存すると確定します', saved: '✓ 家具配置を保存しました・次回も保持されます',
+    collectedAll: 'すべての家具を棚に戻しました・未保存', reverted: '未保存の変更を破棄し、最後の保存状態に戻しました',
+    layoutCopied: '配置をコピーしました（Hook 家具は含まれません）', layoutPasted: '配置を貼り付けました・必要な Hook を戻して保存してください',
+    layoutPasteRejected: '⚠ この部屋に収まらないため適用しませんでした', houseEmpty: 'EMPTY HOUSE・エージェントはいません',
+    houseOccupied: '{count} AGENT INSIDE・LIVE', resizeApplied: '{percent}% に変更しました・配置を保存してください',
+    moveApplied: '家具を移動しました・配置を保存してください', placementRejected: '⚠ {diagnostic}・元の位置に戻しました',
+    prefabPlaced: '組立品「{name}」を配置しました', prefabRejected: '⚠ 組立品が部屋の外にあるか扉を塞いでいます',
+    catalogAdded: '{label} を追加しました・配置を保存してください', hookPlaced: '{label} を配置しました・配置を保存してください',
+    hookRejected: '⚠ Hook 家具が部屋の外にあるか扉を塞いでいます', marqueeSelecting: '範囲選択中・離すと確定します',
+    selectionCompleted: '{count} 個を選択しました・組立品を作成できます', resizeRejected: '⚠ サイズ変更すると部屋の外に出るか扉を塞ぎます',
+    rotateApplied: '家具を回転しました・配置を保存してください', rotateRejected: '⚠ 回転すると部屋の外に出るか扉を塞ぎます',
+    layerUpApplied: '選択した家具を一つ上のレイヤーへ移動しました', layerDownApplied: '選択した家具を一つ下のレイヤーへ移動しました', layerShiftRejected: '⚠ グループがレイヤー境界にあるため、変更しませんでした',
+    reordered: '選択した家具の表示順を変更しました・配置を保存してください', prefabNamePrompt: 'この組立品に名前を付けてください',
+    prefabDefaultName: '組立品 {count}', prefabNeedsTwo: '⚠ 通常家具を2個以上選択してください・Hook 家具は含まれません',
+    prefabCreated: '組立品「{name}」を棚に追加しました', duplicateApplied: '家具を複製しました・複製を選択中',
+    duplicateRejected: '⚠ 近くに複製を置ける場所がありません', returnedToShelf: '{count} 個の家具を棚に戻しました・未保存',
+    selectionCleared: '家具の選択を解除しました',
+  },
+  'ko-KR': {
+    empty: 'EMPTY · 닫기를 누르거나 ESC 키를 누르세요', editingEnabled: '편집 모드 · 가구나 선반 항목을 방으로 드래그하세요',
+    editingDisabled: '가구 배치가 초안에 보관되었습니다 · 저장하면 유지됩니다', saved: '✓ 가구 배치를 저장했습니다 · 다음에도 유지됩니다',
+    collectedAll: '모든 가구를 선반으로 돌려보냈습니다 · 저장되지 않음', reverted: '저장하지 않은 변경을 취소하고 마지막 저장 상태로 돌아갔습니다',
+    layoutCopied: '배치를 복사했습니다(Hook 가구 제외)', layoutPasted: '배치를 붙여넣었습니다 · 필요한 Hook을 복원한 뒤 저장하세요',
+    layoutPasteRejected: '⚠ 이 방에 맞지 않아 적용하지 않았습니다', houseEmpty: 'EMPTY HOUSE · 내부에 에이전트가 없습니다',
+    houseOccupied: '{count} AGENT INSIDE · LIVE', resizeApplied: '{percent}%로 조정했습니다 · 배치를 저장하세요',
+    moveApplied: '가구를 이동했습니다 · 배치를 저장하세요', placementRejected: '⚠ {diagnostic} · 원래 위치로 복원했습니다',
+    prefabPlaced: '조립품 “{name}”을 배치했습니다', prefabRejected: '⚠ 조립품이 방 밖에 있거나 문을 막습니다',
+    catalogAdded: '{label} 추가됨 · 배치를 저장하세요', hookPlaced: '{label} 배치됨 · 배치를 저장하세요',
+    hookRejected: '⚠ Hook 가구가 방 밖에 있거나 문을 막습니다', marqueeSelecting: '범위 선택 중 · 놓으면 선택이 완료됩니다',
+    selectionCompleted: '{count}개 선택됨 · 조립품을 만들 수 있습니다', resizeRejected: '⚠ 크기를 바꾸면 방을 벗어나거나 문을 막습니다',
+    rotateApplied: '가구를 회전했습니다 · 배치를 저장하세요', rotateRejected: '⚠ 회전하면 방을 벗어나거나 문을 막습니다',
+    layerUpApplied: '선택한 가구를 한 레이어 위로 이동했습니다', layerDownApplied: '선택한 가구를 한 레이어 아래로 이동했습니다', layerShiftRejected: '⚠ 그룹이 레이어 경계에 있어 변경하지 않았습니다',
+    reordered: '선택한 가구의 표시 순서를 바꿨습니다 · 배치를 저장하세요', prefabNamePrompt: '이 조립품의 이름을 입력하세요',
+    prefabDefaultName: '조립품 {count}', prefabNeedsTwo: '⚠ 일반 가구를 두 개 이상 선택하세요. Hook 가구는 제외됩니다',
+    prefabCreated: '조립품 “{name}”을 선반에 추가했습니다', duplicateApplied: '가구를 복제했습니다 · 복제본 선택됨',
+    duplicateRejected: '⚠ 근처에 복제본을 둘 공간이 없습니다', returnedToShelf: '{count}개 가구를 선반으로 돌려보냈습니다 · 저장되지 않음',
+    selectionCleared: '가구 선택을 해제했습니다',
+  },
+};
+
+const PLACEMENT_DIAGNOSTIC_COPY: Record<VillageLocale, Record<CutawayPlacementDiagnostic, string>> = {
+  'zh-TW': { valid: '可放置', 'outside-room': '超出房間範圍', 'blocks-door': '不能擋住房門', overlap: '會與其他家具重疊', 'invalid-asset': '素材資料不完整' },
+  'en-US': { valid: 'Placement valid', 'outside-room': 'Outside the room', 'blocks-door': 'Cannot block the door', overlap: 'Overlaps other furniture', 'invalid-asset': 'Asset data is incomplete' },
+  'ja-JP': { valid: '配置できます', 'outside-room': '部屋の外です', 'blocks-door': '扉を塞げません', overlap: 'ほかの家具と重なります', 'invalid-asset': '素材データが不完全です' },
+  'ko-KR': { valid: '배치 가능', 'outside-room': '방 범위를 벗어남', 'blocks-door': '문을 막을 수 없음', overlap: '다른 가구와 겹침', 'invalid-asset': '소재 데이터가 불완전함' },
+};
+
+const STATUS_FAILURE_COPY: Record<VillageLocale, Record<StatusFailureReason, string>> = {
+  'zh-TW': { 'station-full': '⚠ 工作區已滿', 'no-path': '⚠ 無法抵達', 'clone-queue': '⚠ Clone 工作位已滿', 'agent-cap': '⚠ Agent 已達上限' },
+  'en-US': { 'station-full': '⚠ Work area full', 'no-path': '⚠ Cannot reach destination', 'clone-queue': '⚠ Clone workstation full', 'agent-cap': '⚠ Agent limit reached' },
+  'ja-JP': { 'station-full': '⚠ 作業エリアが満員です', 'no-path': '⚠ 目的地に到達できません', 'clone-queue': '⚠ Clone 作業席が満員です', 'agent-cap': '⚠ エージェント上限に達しました' },
+  'ko-KR': { 'station-full': '⚠ 작업 공간이 가득 찼습니다', 'no-path': '⚠ 목적지에 도달할 수 없습니다', 'clone-queue': '⚠ Clone 작업석이 가득 찼습니다', 'agent-cap': '⚠ 에이전트 한도에 도달했습니다' },
+};
+
+const FURNITURE_LAYER_COPY: Record<VillageLocale, Record<FurnitureLayer, string>> = {
+  'zh-TW': { floor: '地板層', furniture: '家具層', surface: '表面層', wall: '牆面層' },
+  'en-US': { floor: 'Floor layer', furniture: 'Furniture layer', surface: 'Surface layer', wall: 'Wall layer' },
+  'ja-JP': { floor: '床レイヤー', furniture: '家具レイヤー', surface: '表面レイヤー', wall: '壁レイヤー' },
+  'ko-KR': { floor: '바닥 레이어', furniture: '가구 레이어', surface: '표면 레이어', wall: '벽 레이어' },
+};
+
+const renderCutawayMessage = (
+  locale: unknown,
+  id: CutawayMessageId,
+  params?: Exclude<CutawayMessageParamsById[CutawayMessageId], undefined>,
+): string => {
+  const normalized = normalizeVillageLocale(locale);
+  const status = CATALOG[normalized].cutaway.status as Record<string, string>;
+  if (id in status) return status[id]!;
+  const values = params as Partial<{
+    count: number; name: string; percent: number; label: string; diagnostic: CutawayPlacementDiagnostic;
+  }> | undefined;
+  const diagnostic = PLACEMENT_DIAGNOSTIC_COPY[normalized][values?.diagnostic ?? 'outside-room'];
+  return CUTAWAY_OPERATION_COPY[normalized][id as CutawayOperationMessageId]
+    .replaceAll('{count}', String(values?.count ?? 0))
+    .replaceAll('{name}', values?.name ?? '')
+    .replaceAll('{percent}', String(values?.percent ?? 100))
+    .replaceAll('{label}', values?.label ?? '')
+    .replaceAll('{diagnostic}', diagnostic);
+};
+
+export function cutawayMessage<K extends CutawayMessageId>(
+  locale: unknown,
+  id: K,
+  ...args: CutawayMessageArgs<K>
+): string {
+  return renderCutawayMessage(locale, id, args[0]);
+}
+
+export function cutawayMessageState<K extends CutawayMessageId>(
+  id: K,
+  ...args: CutawayMessageArgs<K>
+): Extract<CutawayMessageState, { statusId: K }> {
+  return (args.length === 0 ? { statusId: id } : { statusId: id, statusParams: args[0] }) as
+    Extract<CutawayMessageState, { statusId: K }>;
+}
+
+export function renderCutawayMessageState(locale: unknown, state: CutawayMessageState): string {
+  const params = 'statusParams' in state ? state.statusParams : undefined;
+  return renderCutawayMessage(locale, state.statusId, params);
+}
+
+export function statusFailureMessage(locale: unknown, reason: StatusFailureReason): string {
+  return STATUS_FAILURE_COPY[normalizeVillageLocale(locale)][reason];
+}
+
+export function furnitureLayerLabel(locale: unknown, layer: FurnitureLayer): string {
+  return FURNITURE_LAYER_COPY[normalizeVillageLocale(locale)][layer];
+}
 
 export function localeMessage(value: unknown): { locale: VillageLocale; sequence: number } | undefined {
   if (!value || typeof value !== 'object') return undefined;

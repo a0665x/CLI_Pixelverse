@@ -3,7 +3,14 @@ import type { AgentController } from '../agents/AgentController';
 import { ACTION_ICONS, aggregateBuildingActivity, type AgentActivity, withBuildingPresence } from '../status/buildingActivity';
 import type { AgentWorldEvent, BehaviorRoute, WorldBuilding } from '../world/types';
 import { DomStatusOverlay } from './domStatusOverlay';
-import { type VillageLocale, villageCopy } from '../i18n/villageLocale';
+import {
+  statusFailureMessage,
+  type StatusFailureReason,
+  type VillageLocale,
+  villageCopy,
+} from '../i18n/villageLocale';
+
+export type { StatusFailureReason } from '../i18n/villageLocale';
 
 interface AgentOverlay {
   chip: Phaser.GameObjects.Text;
@@ -11,20 +18,13 @@ interface AgentOverlay {
   bubbleExpiresAt: number;
 }
 
-export type StatusFailureReason = 'station-full' | 'no-path' | 'clone-queue' | 'agent-cap';
-const FAILURE_COPY: Record<StatusFailureReason, string> = {
-  'station-full': '⚠ 工作區已滿',
-  'no-path': '⚠ 無法抵達',
-  'clone-queue': '⚠ Clone 工作位已滿',
-  'agent-cap': '⚠ Agent 已達上限',
-};
-
 export class StatusOverlaySystem {
   private readonly overlays = new Map<string, AgentOverlay>();
   private readonly activities = new Map<string, AgentActivity>();
   private readonly buildingBadges = new Map<string, Phaser.GameObjects.Text>();
   private readonly domOverlay: DomStatusOverlay;
   private readonly buildings: WorldBuilding[];
+  private readonly failures = new Map<string, StatusFailureReason>();
   private locale: VillageLocale = 'zh-TW';
 
   constructor(private readonly scene: Phaser.Scene, buildings: WorldBuilding[]) {
@@ -49,15 +49,25 @@ export class StatusOverlaySystem {
     this.activities.forEach((activity, agentId) => {
       const text = villageCopy(locale).actions[activity.action];
       activity.bubbleText = text;
-      this.overlays.get(agentId)?.bubble.setText(text);
+      const overlay = this.overlays.get(agentId);
+      overlay?.chip.setText(`${agentId === 'main' ? 'main' : agentId} · ${ACTION_ICONS[activity.action]} ${text}`);
+      overlay?.bubble.setText(text);
       this.domOverlay.setAgentBubble(agentId, text);
+    });
+    this.failures.forEach((reason, agentId) => {
+      const message = statusFailureMessage(locale, reason);
+      const prefix = agentId === 'main' ? 'main' : agentId;
+      this.overlays.get(agentId)?.chip.setText(`${prefix} · ${message}`);
+      this.overlays.get(agentId)?.bubble.setText(message);
+      this.domOverlay.setAgentBubble(agentId, message);
     });
     this.refreshBuildings();
   }
 
   attachAgent(agent: AgentController): void {
     if (this.overlays.has(agent.agentId)) return;
-    const chip = this.scene.add.text(agent.sprite.x, agent.sprite.y - 16, agent.role === 'main' ? 'main · idle' : agent.agentId, {
+    const prefix = agent.role === 'main' ? 'main' : agent.agentId;
+    const chip = this.scene.add.text(agent.sprite.x, agent.sprite.y - 16, `${prefix} · ${villageCopy(this.locale).actions.idle}`, {
       fontFamily: 'monospace', fontSize: agent.role === 'main' ? '8px' : '7px', color: '#fff5c7', backgroundColor: '#27452ddd', padding: { x: 3, y: 1 },
     }).setOrigin(0.5, 1).setDepth(20_000);
     const bubble = this.scene.add.text(agent.sprite.x, agent.sprite.y - 34, '', {
@@ -72,6 +82,7 @@ export class StatusOverlaySystem {
     overlay?.bubble.destroy();
     this.overlays.delete(agentId);
     this.activities.delete(agentId);
+    this.failures.delete(agentId);
     this.domOverlay.removeAgent(agentId);
     this.refreshBuildings();
   }
@@ -81,7 +92,9 @@ export class StatusOverlaySystem {
     const overlay = this.overlays.get(agent.agentId)!;
     const currentActivity = this.activities.get(agent.agentId);
     const prefix = agent.role === 'main' ? 'main' : agent.agentId;
-    overlay.chip.setText(`${prefix} · ${ACTION_ICONS[route.action]} ${event.activityLabel}`);
+    const localizedActivity = villageCopy(this.locale).actions[route.action];
+    this.failures.delete(agent.agentId);
+    overlay.chip.setText(`${prefix} · ${ACTION_ICONS[route.action]} ${localizedActivity}`);
     let bubbleExpiresAt = 0;
     if (route.bubblePolicy === 'none') {
       overlay.bubble.setVisible(false);
@@ -97,7 +110,7 @@ export class StatusOverlaySystem {
       ...currentActivity,
       agentId: agent.agentId,
       action: route.action,
-      label: event.activityLabel,
+      label: localizedActivity,
       bubbleText: villageCopy(this.locale).actions[route.action],
       bubblePolicy: route.bubblePolicy,
       priority: route.priority,
@@ -106,7 +119,7 @@ export class StatusOverlaySystem {
     });
     this.domOverlay.publish(
       agent,
-      `${prefix} · ${ACTION_ICONS[route.action]} ${event.activityLabel}`,
+      `${prefix} · ${ACTION_ICONS[route.action]} ${localizedActivity}`,
       villageCopy(this.locale).actions[route.action],
       route.bubblePolicy !== 'none',
     );
@@ -124,7 +137,8 @@ export class StatusOverlaySystem {
   showError(agent: AgentController, reason: StatusFailureReason): void {
     this.attachAgent(agent);
     const overlay = this.overlays.get(agent.agentId)!;
-    const message = FAILURE_COPY[reason];
+    const message = statusFailureMessage(this.locale, reason);
+    this.failures.set(agent.agentId, reason);
     const prefix = agent.role === 'main' ? 'main' : agent.agentId;
     overlay.chip.setText(`${prefix} · ${message}`);
     overlay.bubble.setText(message).setVisible(true);
@@ -153,6 +167,7 @@ export class StatusOverlaySystem {
     this.buildingBadges.forEach((badge) => badge.destroy());
     this.overlays.clear();
     this.activities.clear();
+    this.failures.clear();
     this.buildingBadges.clear();
     this.domOverlay.destroy();
   }

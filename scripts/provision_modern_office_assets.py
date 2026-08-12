@@ -58,6 +58,40 @@ def _validate_png_header(header: bytes, name: str) -> None:
         raise ValueError(f"{name} has invalid PNG dimensions {width}x{height}")
 
 
+def _validate_png(stream, name: str) -> None:
+    signature = stream.read(len(PNG_SIGNATURE))
+    if signature != PNG_SIGNATURE:
+        raise ValueError(f"{name} does not have a valid PNG signature/IHDR")
+    first = True
+    saw_iend = False
+    while not saw_iend:
+        chunk_header = stream.read(8)
+        if len(chunk_header) != 8:
+            raise ValueError(f"{name} has a truncated PNG chunk header")
+        length, chunk_type = struct.unpack(">I4s", chunk_header)
+        if length > MAX_FILE_SIZE:
+            raise ValueError(f"{name} has an oversized PNG chunk")
+        data = stream.read(length)
+        checksum = stream.read(4)
+        if len(data) != length or len(checksum) != 4:
+            raise ValueError(f"{name} has a truncated PNG chunk")
+        expected_crc = struct.unpack(">I", checksum)[0]
+        if zlib.crc32(chunk_type + data) & 0xFFFFFFFF != expected_crc:
+            decoded = chunk_type.decode("ascii", errors="replace")
+            raise ValueError(f"{name} has a corrupt PNG {decoded} checksum")
+        if first:
+            _validate_png_header(signature + chunk_header + data + checksum, name)
+            first = False
+        elif chunk_type == b"IHDR":
+            raise ValueError(f"{name} has more than one PNG IHDR chunk")
+        if chunk_type == b"IEND":
+            if length != 0:
+                raise ValueError(f"{name} has an invalid PNG IEND chunk")
+            saw_iend = True
+    if stream.read(1):
+        raise ValueError(f"{name} has trailing data after PNG IEND")
+
+
 def _valid_existing_png(path: Path, expected_size: int | None = None) -> bool:
     try:
         size = path.stat().st_size
@@ -66,7 +100,7 @@ def _valid_existing_png(path: Path, expected_size: int | None = None) -> bool:
         if expected_size is not None and size != expected_size:
             return False
         with path.open("rb") as stream:
-            _validate_png_header(stream.read(33), path.name)
+            _validate_png(stream, path.name)
     except (OSError, ValueError):
         return False
     return True
@@ -108,7 +142,7 @@ def _archive_members(archive: ZipFile, required: set[str]) -> dict[str, ZipInfo]
         raise ValueError(f"archive required assets exceed total size limit: {total_size}")
     for name, member in selected.items():
         with archive.open(member) as source:
-            _validate_png_header(source.read(33), name)
+            _validate_png(source, name)
     return selected
 
 

@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { localeMessage, normalizeVillageLocale, villageCopy } from '../src/i18n/villageLocale';
+import {
+  CUTAWAY_OPERATION_MESSAGE_IDS,
+  cutawayMessage,
+  furnitureLayerLabel,
+  localeMessage,
+  normalizeVillageLocale,
+  statusFailureMessage,
+  villageCopy,
+} from '../src/i18n/villageLocale';
 
 describe('village locale catalog', () => {
   it('validates supported locale messages and falls back safely', () => {
@@ -49,5 +57,46 @@ describe('village locale catalog', () => {
       status.storageFailed,
     ]).size).toBe(5);
     if (locale === 'en-US') expect(JSON.stringify(status)).not.toMatch(/[\u3400-\u9fff]/);
+  });
+
+  it.each(['zh-TW', 'en-US', 'ja-JP', 'ko-KR'] as const)(
+    'provides parameterized operational editor, selection, storage, and error copy for %s',
+    (locale) => {
+      expect(cutawayMessage(locale, 'selectionCompleted', { count: 3 })).toContain('3');
+      expect(cutawayMessage(locale, 'prefabPlaced', { name: 'Desk Set' })).toContain('Desk Set');
+      expect(cutawayMessage(locale, 'resizeApplied', { percent: 125 })).toContain('125');
+      expect(cutawayMessage(locale, 'returnedToShelf', { count: 2 })).toContain('2');
+      expect(cutawayMessage(locale, 'storageFailed')).toBe(villageCopy(locale).cutaway.status.storageFailed);
+      expect(statusFailureMessage(locale, 'no-path')).toBeTruthy();
+    },
+  );
+
+  it('requires parameters exactly for placeholder-bearing operation messages', () => {
+    // @ts-expect-error selectionCompleted requires a count.
+    void cutawayMessage('en-US', 'selectionCompleted');
+    // @ts-expect-error ready has no parameter bag.
+    void cutawayMessage('en-US', 'ready', { count: 1 });
+  });
+
+  it('contains no CJK in any serialized English operational UI message', () => {
+    const rendered = [
+      ...CUTAWAY_OPERATION_MESSAGE_IDS.map((id) => cutawayMessage('en-US', id, {
+        count: 2, name: 'Desk Set', percent: 125, label: 'Office 001', diagnostic: 'blocks-door',
+      })),
+      cutawayMessage('en-US', 'ready'),
+      cutawayMessage('en-US', 'selectionCompleted', { count: 2 }),
+      cutawayMessage('en-US', 'placementRejected', { diagnostic: 'blocks-door' }),
+      cutawayMessage('en-US', 'prefabCreated', { name: 'Desk Set' }),
+      cutawayMessage('en-US', 'returnedToShelf', { count: 2 }),
+      statusFailureMessage('en-US', 'station-full'),
+      statusFailureMessage('en-US', 'no-path'),
+      statusFailureMessage('en-US', 'clone-queue'),
+      statusFailureMessage('en-US', 'agent-cap'),
+      furnitureLayerLabel('en-US', 'floor'),
+      furnitureLayerLabel('en-US', 'furniture'),
+      furnitureLayerLabel('en-US', 'surface'),
+      furnitureLayerLabel('en-US', 'wall'),
+    ];
+    expect(JSON.stringify(rendered)).not.toMatch(/[\u3400-\u9fff]/);
   });
 });

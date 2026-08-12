@@ -1,11 +1,8 @@
 import type Phaser from 'phaser';
 import { WORLD_PIXELS } from '../game/constants';
 import type {
-  AgentAction,
   FurnitureDefinition,
   FurnitureKind,
-  FurnitureScale,
-  FurnitureRotation,
   FurnitureLayer,
   FurniturePrefab,
   GridPoint,
@@ -29,12 +26,19 @@ import {
   selectionCapabilities,
   type CutawayRoomLabel,
 } from './InteriorCutawayDomOverlay';
-import type { VillageLocale } from '../i18n/villageLocale';
+import {
+  cutawayMessage,
+  cutawayMessageState,
+  type CutawayMessageArgs,
+  type CutawayMessageId,
+  type CutawayMessageState,
+  type VillageLocale,
+  villageCopy,
+} from '../i18n/villageLocale';
 import {
   commitPlacementCandidate,
   furniturePointFromRenderPoint,
   furnitureRenderGeometry,
-  furnitureWithRotation,
   resolvePlacementCandidate,
   resolvedFurnitureAsset,
   snapFurniturePoint,
@@ -47,21 +51,24 @@ import {
 } from './interiorAssignment';
 import { interiorMotionAt } from './interiorMotion';
 import {
-  FURNITURE_SCALES,
   readInteriorLayout,
   normalizeFurnitureScale,
-  resizeFurniture,
   saveInteriorLayout,
   collectAllFurniture,
   requiredHookInventory,
-  reorderFurniture,
 } from './interiorLayoutEditor';
 import {
   createFurniturePrefab,
-  duplicateFurniture,
+  duplicateSelection,
+  expandSelection,
+  moveSelectionAtomically,
   removeSelection,
+  reorderSelection,
+  resizeSelectionAtomically,
+  rotateSelectionAtomically,
   selectedFurnitureIds,
-  transformSelectionAtomically,
+  shiftSelectionLayer,
+  type SelectionMutationResult,
 } from './interiorSelection';
 import {
   copyDecorativeLayout,
@@ -241,23 +248,12 @@ const furnitureLabel = (kind: FurnitureKind): string => ({
   'beverage-station': 'DRINK', printer: 'PRINT',
 })[kind];
 
-const hookActionLabels: Record<AgentAction, string> = {
-  arrive: '抵達', ponder: '思考', plan: '規劃', read: '查閱', type: '編輯', terminal: '工具調用',
-  signal: 'WEB / MCP', dispatch: '分派 AGENT', respond: '回覆', queue: '等待', repair: '修復',
-  rest: '休息', offline: '離線', pulse: '心跳',
-};
-
-export const hookFurnitureLabel = (furniture: FurnitureDefinition): string => (
-  [...new Set(furniture.supportedActions.map((action) => hookActionLabels[action]))].join(' / ')
+export const hookFurnitureLabel = (
+  furniture: FurnitureDefinition,
+  locale: VillageLocale = 'zh-TW',
+): string => (
+  [...new Set(furniture.supportedActions.map((action) => villageCopy(locale).actions[action]))].join(' / ')
 );
-
-const placementMessage = (diagnostic: PlacementCandidate['diagnostic']): string => ({
-  valid: '可放置',
-  'outside-room': '超出房間範圍',
-  'blocks-door': '不能擋住房門',
-  overlap: '會與其他家具重疊',
-  'invalid-asset': '素材資料不完整',
-})[diagnostic];
 
 export function modernOfficeKindForFurniture(kind: FurnitureKind): ModernOfficeFurnitureKind {
   const aliases: Record<FurnitureKind, ModernOfficeFurnitureKind> = {
@@ -296,11 +292,12 @@ export class InteriorCutawaySystem {
   private roomCell = BASE_ROOM_CELL;
   private currentLayout: CutawayLayout | undefined;
   private currentDragCandidate: PlacementCandidate | undefined;
+  private currentDragMutation: SelectionMutationResult | undefined;
   private catalogCategory: ModernOfficeCategory = 'workstations';
   private catalogPageIndex = 0;
   private readonly domOverlay: InteriorCutawayDomOverlay;
-  private statusMessage = '';
-  private statusId: 'storageFailed' | 'undoApplied' | 'templatePreviewReady' | 'templateApplied' | 'groupDissolved' | undefined;
+  private locale: VillageLocale = 'zh-TW';
+  private status: CutawayMessageState = { statusId: 'ready' };
   private readonly undoStore = new InteriorUndoStore([], 20);
   private templatePreview: FurnitureDefinition[] | undefined;
   private templateDiagnostics: Array<'templateInvalid' | 'unreachableHook'> = [];
@@ -373,28 +370,26 @@ export class InteriorCutawaySystem {
     const layout = cutawayLayoutForViewport(size.width, size.height);
     this.rebuildShell(interior, layout);
 
-    this.statusMessage = 'EMPTY · 點擊關閉或按 ESC';
-    if (this.layoutStorageReadFailed || this.prefabStorageReadFailed || this.clipboardStorageReadFailed) {
-      this.statusId = 'storageFailed';
-    }
+    this.status = this.layoutStorageReadFailed || this.prefabStorageReadFailed || this.clipboardStorageReadFailed
+      ? { statusId: 'storageFailed' } : { statusId: 'empty' };
     this.domOverlay.open(layout, this.overlayModel(), {
       close: () => this.close(),
       toggleEdit: () => {
         this.editMode = !this.editMode;
         if (!this.editMode) this.clearTemplatePreview();
-        this.setStatus(this.editMode ? '編輯模式 · 拖曳家具或下方素材到房間' : '家具配置已暫存，按儲存保存');
+        this.setStatus(this.editMode ? 'editingEnabled' : 'editingDisabled');
         if (this.activeInterior) this.renderFurniture(this.activeInterior, layout);
       },
       save: () => {
         if (this.layoutStorageReadFailed) {
-          this.setStatus('', 'storageFailed');
+          this.setStatus('storageFailed');
           return;
         }
         try {
           if (this.openId && this.activeInterior) saveInteriorLayout(this.openId, this.activeInterior.furniture);
-          this.setStatus('✓ 家具配置已保存，下次開啟仍會保留');
+          this.setStatus('saved');
         } catch {
-          this.setStatus('', 'storageFailed');
+          this.setStatus('storageFailed');
         }
       },
       undo: () => this.undo(interior, layout),
@@ -404,7 +399,7 @@ export class InteriorCutawaySystem {
         this.commitFurnitureMutation(interior, collectAllFurniture(interior.furniture));
         this.selectedFurnitureIds.clear();
         this.selectedFurnitureId = undefined;
-        this.setStatus('全部家具已收回下方貨架 · 尚未儲存');
+        this.setStatus('collectedAll');
         this.renderFurniture(interior, layout);
       },
       revert: () => {
@@ -412,7 +407,7 @@ export class InteriorCutawaySystem {
         const read = readInteriorLayout(this.openId, definition);
         if (read.storageRead === 'failed') {
           this.layoutStorageReadFailed = true;
-          this.setStatus('', 'storageFailed');
+          this.setStatus('storageFailed');
           return;
         }
         this.layoutStorageReadFailed = false;
@@ -421,13 +416,13 @@ export class InteriorCutawaySystem {
         this.clearTemplatePreview();
         this.selectedFurnitureIds.clear();
         this.selectedFurnitureId = undefined;
-        this.setStatus('已取消未儲存變更，回到最後保存版本');
+        this.setStatus('reverted');
         this.renderFurniture(interior, layout);
       },
       copy: () => {
         if (!this.openId) return;
         if (this.clipboardStorageReadFailed) {
-          this.setStatus('', 'storageFailed');
+          this.setStatus('storageFailed');
           return;
         }
         try {
@@ -435,10 +430,10 @@ export class InteriorCutawaySystem {
           saveLayoutClipboard(clipboard);
           this.clipboard = clipboard;
           this.clipboardStorageReadFailed = false;
-          this.setStatus('格局已複製（Hook 家具不會被帶走）');
+          this.setStatus('layoutCopied');
           this.close();
         } catch {
-          this.setStatus('', 'storageFailed');
+          this.setStatus('storageFailed');
         }
       },
       paste: () => {
@@ -446,7 +441,7 @@ export class InteriorCutawaySystem {
         if (!clipboard) return;
         const result = pasteDecorativeLayout(interior, interior.furniture, clipboard);
         if (result.accepted) this.commitFurnitureMutation(interior, result.layout);
-        this.setStatus(result.accepted ? '格局已貼上 · 請補齊左側 Hook 家具後儲存' : '⚠ 格局超出這間房，未套用');
+        this.setStatus(result.accepted ? 'layoutPasted' : 'layoutPasteRejected');
         this.renderFurniture(interior, layout);
       },
       group: () => this.createSelectedPrefab(interior, layout),
@@ -472,7 +467,13 @@ export class InteriorCutawaySystem {
     this.syncRoomLabels();
   }
 
-  setLocale(locale: VillageLocale): void { this.domOverlay.setLocale(locale); }
+  setLocale(locale: VillageLocale): void {
+    this.locale = locale;
+    this.domOverlay.setLocale(locale);
+    if (this.activeInterior && this.root && this.currentLayout) {
+      this.renderFurniture(this.activeInterior, this.currentLayout);
+    }
+  }
 
   private clearRenderedShell(): void {
     this.marqueeCleanup?.();
@@ -572,10 +573,10 @@ export class InteriorCutawaySystem {
     this.currentAssignments = [];
     this.assignmentSignature = '';
     this.currentDragCandidate = undefined;
+    this.currentDragMutation = undefined;
     this.roomCell = BASE_ROOM_CELL;
     this.currentLayout = undefined;
-    this.statusMessage = '';
-    this.statusId = undefined;
+    this.status = { statusId: 'ready' };
     this.undoStore.reset([]);
     this.templatePreview = undefined;
     this.templateDiagnostics = [];
@@ -607,9 +608,8 @@ export class InteriorCutawaySystem {
       const layer = this.furnitureLayer;
       if (!layer) return;
       this.occupantLayer = layer;
-      this.setStatus(assignments.length === 0
-        ? 'EMPTY HOUSE · 目前沒有 Agent'
-        : `${assignments.length} AGENT${assignments.length === 1 ? '' : 'S'} INSIDE · LIVE`);
+      if (assignments.length === 0) this.setStatus('houseEmpty');
+      else this.setStatus('houseOccupied', { count: assignments.length });
       if (assignments.length === 0) {
         this.occupantDomLabels = [];
         this.syncRoomLabels();
@@ -625,7 +625,8 @@ export class InteriorCutawaySystem {
         const icon = this.scene.add.text(0, 0, actionSymbols[assignment.icon], {
           fontFamily: 'sans-serif', fontSize: '8px', color: '#fff4c2', backgroundColor: '#315348', padding: { x: 3, y: 1 },
         }).setOrigin(0.5).setDepth(CUTAWAY_DEPTH + 20);
-        const bubble = this.scene.add.text(0, 0, motion.bubbleText, {
+        const localizedBubble = villageCopy(this.locale).actions[assignment.action];
+        const bubble = this.scene.add.text(0, 0, localizedBubble, {
           fontFamily: 'sans-serif', fontSize: '8px', color: '#263323', backgroundColor: '#fff5c7', padding: { x: 4, y: 2 },
         }).setOrigin(0.5, 1).setDepth(CUTAWAY_DEPTH + 21);
         const name = this.scene.add.text(0, 0, assignment.agentId, {
@@ -659,7 +660,7 @@ export class InteriorCutawaySystem {
         stableInteriorAgentIndex(this.currentAssignments, assignment.agentId),
       ));
       view.icon.setPosition(x, y - 21 * pixelScale);
-      view.bubble.setPosition(x, y - 31 * pixelScale).setText(motion.bubbleText);
+      view.bubble.setPosition(x, y - 31 * pixelScale).setText(villageCopy(this.locale).actions[assignment.action]);
       view.name.setPosition(x, y + 9 * pixelScale);
     });
     this.occupantDomLabels = assignments.map((assignment) => {
@@ -667,7 +668,7 @@ export class InteriorCutawaySystem {
       const motion = interiorMotionAt(snapshot, interior, assignment, this.scene.time.now);
       return {
         id: `agent:${assignment.agentId}`,
-        text: `${actionSymbols[assignment.icon]} ${motion.bubbleText}\n${assignment.agentId}`,
+        text: `${actionSymbols[assignment.icon]} ${villageCopy(this.locale).actions[assignment.action]}\n${assignment.agentId}`,
         x: roomScreenPoint(this.roomOrigin, motion.point, this.roomCell).x,
         y: roomScreenPoint(this.roomOrigin, motion.point, this.roomCell).y - this.roomCell / 2 - 2 * this.roomCell / BASE_ROOM_CELL,
         kind: 'agent' as const,
@@ -694,6 +695,7 @@ export class InteriorCutawaySystem {
   private renderFurniture(interior: InteriorDefinition, layout: CutawayLayout): void {
     layout = this.currentLayout ?? layout;
     this.currentDragCandidate = undefined;
+    this.currentDragMutation = undefined;
     this.marqueeCleanup?.();
     this.marqueeCleanup = undefined;
     this.furnitureLayer?.removeAll(true);
@@ -737,11 +739,21 @@ export class InteriorCutawaySystem {
       );
     };
 
+    const drawSelectionPreview = (items: readonly FurnitureDefinition[], valid: boolean): void => {
+      placementPreview.clear();
+      placementPreview.fillStyle(valid ? 0x65d47e : 0xe05b54, 0.42);
+      items.forEach((item) => {
+        const bounds = furnitureRenderScreenGeometry(this.roomOrigin, item, this.roomCell).bounds;
+        placementPreview.fillRect(bounds.x, bounds.y, bounds.width, bounds.height);
+      });
+    };
+
     const sortedFurniture = [...interior.furniture].sort((a, b) => {
       const layer = LAYER_ORDER[a.layer ?? 'furniture'] - LAYER_ORDER[b.layer ?? 'furniture'];
       return layer || (a.zIndex ?? 0) - (b.zIndex ?? 0);
     });
     const furnitureSprites = new Set<Phaser.GameObjects.Image>();
+    const furnitureSpritesById = new Map<string, Phaser.GameObjects.Image>();
     for (const furniture of sortedFurniture) {
       const geometry = furnitureRenderScreenGeometry(this.roomOrigin, furniture, this.roomCell);
       const point = geometry.point;
@@ -756,23 +768,16 @@ export class InteriorCutawaySystem {
       if (!this.editMode) continue;
       sprite.setInteractive({ useHandCursor: true, draggable: true });
       furnitureSprites.add(sprite);
+      furnitureSpritesById.set(furniture.id, sprite);
       this.scene.input.setDraggable(sprite);
       let dragGrabOffset: GridPoint | undefined;
       sprite.on('pointerdown', (pointer: unknown) => {
         this.selectedFurnitureId = furniture.id;
         this.selectedFurnitureIds.clear();
-        this.selectedFurnitureIds.add(furniture.id);
+        expandSelection(interior.furniture, [furniture.id]).forEach((id) => this.selectedFurnitureIds.add(id));
         this.syncOverlay();
         if ((pointer as { event?: { detail?: number } }).event?.detail === 2) {
-          const scale = normalizeFurnitureScale(furniture.scale);
-          const nextIndex = (FURNITURE_SCALES.indexOf(scale) + 1) % FURNITURE_SCALES.length;
-          const nextScale = FURNITURE_SCALES[nextIndex]!;
-          const resized = resizeFurniture(interior, interior.furniture, furniture.id, nextScale);
-          if (normalizeFurnitureScale(resized.find(({ id }) => id === furniture.id)?.scale) === nextScale) {
-            this.commitFurnitureMutation(interior, resized);
-            this.setStatus(`雙擊調整為 ${Math.round(nextScale * 100)}% · 按儲存配置`);
-            this.renderFurniture(interior, layout);
-          }
+          this.resizeSelected(interior, layout, 1);
         }
       });
       sprite.on('dragstart', (pointer: unknown) => {
@@ -787,21 +792,33 @@ export class InteriorCutawaySystem {
               y: pointerPoint.y - (dragGrabOffset?.y ?? 0),
             }
           : { x: dragX, y: dragY };
+        const requested = furniturePointFromRenderPoint(furniture, this.roomPoint(screen.x, screen.y));
         this.currentDragCandidate = resolvePlacementCandidate(
-          interior, interior.furniture, furniture,
-          furniturePointFromRenderPoint(furniture, this.roomPoint(screen.x, screen.y)), furniture.id,
+          interior, interior.furniture, furniture, requested, furniture.id,
         );
-        const fitted = furnitureRenderScreenPoint(this.roomOrigin, this.currentDragCandidate.furniture, this.roomCell);
-        sprite.setPosition(fitted.x, fitted.y);
-        drawPlacementPreview(this.currentDragCandidate);
+        this.currentDragMutation = moveSelectionAtomically(interior, interior.furniture, [furniture.id], {
+          x: requested.x - furniture.point.x,
+          y: requested.y - furniture.point.y,
+        });
+        const selected = new Set(expandSelection(interior.furniture, [furniture.id]));
+        const preview = this.currentDragMutation.layout.filter(({ id }) => selected.has(id));
+        const draggedPreview = preview.find(({ id }) => id === furniture.id);
+        if (draggedPreview) this.currentDragCandidate = { ...this.currentDragCandidate, furniture: draggedPreview };
+        preview.forEach((item) => {
+          const point = furnitureRenderScreenPoint(this.roomOrigin, item, this.roomCell);
+          furnitureSpritesById.get(item.id)?.setPosition(point.x, point.y);
+        });
+        drawSelectionPreview(preview, this.currentDragMutation.accepted);
       });
       sprite.on('dragend', () => {
-        const candidate = this.currentDragCandidate;
-        const accepted = candidate?.diagnostic === 'valid';
-        if (candidate && accepted) {
-          this.commitFurnitureMutation(interior, commitPlacementCandidate(interior, interior.furniture, candidate));
-        }
-        this.setStatus(accepted ? '家具已移動 · 按儲存配置' : `⚠ ${placementMessage(candidate?.diagnostic ?? 'outside-room')} · 已回復原位`);
+        const mutation = this.currentDragMutation;
+        const accepted = mutation?.accepted === true;
+        if (mutation && accepted) this.commitFurnitureMutation(interior, mutation.layout);
+        if (accepted) this.setStatus('moveApplied');
+        else this.setStatus('placementRejected', {
+          diagnostic: this.currentDragCandidate?.diagnostic ?? 'outside-room',
+        });
+        this.currentDragMutation = undefined;
         this.currentDragCandidate = undefined;
         dragGrabOffset = undefined;
         this.renderFurniture(interior, layout);
@@ -826,7 +843,7 @@ export class InteriorCutawaySystem {
       ...this.currentAssignments.map(({ furnitureId }) => furnitureId),
     ].filter((id): id is string => Boolean(id)));
     this.furnitureDomLabels = interior.furniture.flatMap((furniture): CutawayRoomLabel[] => {
-      const label = hookFurnitureLabel(furniture);
+      const label = hookFurnitureLabel(furniture, this.locale);
       if (!label || !contextualFurnitureIds.has(furniture.id)) return [];
       return [{
         id: `hook:${furniture.id}`, text: label,
@@ -855,7 +872,7 @@ export class InteriorCutawaySystem {
       const originX = catalog ? (catalog.opaqueBounds.x + catalog.opaqueBounds.width / 2) / 32 : 0.5;
       const originY = catalog ? (catalog.opaqueBounds.y + catalog.opaqueBounds.height / 2) / 48 : 0.5;
       const item = this.scene.add.image(startX + index * 34, shelfY, assetKey).setOrigin(originX, originY).setScale(0.68).setTint(0xffd36b);
-      this.wireFurnitureSource(item, furniture, assetKey, originX, originY, interior, layout, furnitureLayer, `Hook: ${hookFurnitureLabel(furniture)}`);
+      this.wireFurnitureSource(item, furniture, assetKey, originX, originY, interior, layout, furnitureLayer, `Hook: ${hookFurnitureLabel(furniture, this.locale)}`);
       palette.add(item);
     });
     const prefabOffset = Math.min(12, missingRequired.length);
@@ -937,7 +954,8 @@ export class InteriorCutawaySystem {
           ? placeOfficePrefab(interior, interior.furniture, prefab, snapFurniturePoint(anchor.room))
           : undefined;
         if (result?.accepted) this.commitFurnitureMutation(interior, result.layout);
-        this.setStatus(result?.accepted ? `組裝件「${prefab.name}」已放置` : '⚠ 組裝件超出房間或擋門');
+        if (result?.accepted) this.setStatus('prefabPlaced', { name: prefab.name });
+        else this.setStatus('prefabRejected');
         ghosts.forEach((ghost) => ghost.destroy());
         ghosts = [];
         lastPointerAnchor = undefined;
@@ -985,7 +1003,8 @@ export class InteriorCutawaySystem {
         if (candidate && accepted) {
           this.commitFurnitureMutation(interior, commitPlacementCandidate(interior, interior.furniture, candidate));
         }
-        this.setStatus(accepted ? `${catalog.label} 已加入 · 按儲存配置` : `⚠ ${placementMessage(candidate?.diagnostic ?? 'outside-room')}`);
+        if (accepted) this.setStatus('catalogAdded', { label: catalog.label });
+        else this.setStatus('placementRejected', { diagnostic: candidate?.diagnostic ?? 'outside-room' });
         dragClone?.destroy();
         dragClone = undefined;
         this.currentDragCandidate = undefined;
@@ -1045,7 +1064,8 @@ export class InteriorCutawaySystem {
       if (candidate?.diagnostic === 'valid') {
         this.commitFurnitureMutation(interior, commitPlacementCandidate(interior, interior.furniture, candidate));
       }
-      this.setStatus(candidate?.diagnostic === 'valid' ? `${label} 已放置 · 按儲存配置` : '⚠ Hook 家具超出房間或擋門');
+      if (candidate?.diagnostic === 'valid') this.setStatus('hookPlaced', { label });
+      else this.setStatus('hookRejected');
       dragClone?.destroy();
       this.currentDragCandidate = undefined;
       this.renderFurniture(interior, layout);
@@ -1077,7 +1097,7 @@ export class InteriorCutawaySystem {
       const hits = Array.isArray(hitObjects) ? hitObjects : [];
       if (hits.some((object) => furnitureSprites.has(object as Phaser.GameObjects.Image)) || !inside(point)) return;
       start = point;
-      this.setStatus('框選中 · 放開滑鼠建立多選範圍');
+      this.setStatus('marqueeSelecting');
     };
     const move = (pointer: unknown): void => {
       if (!start) return;
@@ -1103,7 +1123,7 @@ export class InteriorCutawaySystem {
       this.selectedFurnitureId = [...this.selectedFurnitureIds][0];
       start = undefined;
       marquee.clear();
-      this.setStatus(`已框選 ${this.selectedFurnitureIds.size} 件 · 可建立組裝件`);
+      this.setStatus('selectionCompleted', { count: this.selectedFurnitureIds.size });
       this.syncOverlay();
     };
     input.on('pointerdown', down);
@@ -1125,7 +1145,8 @@ export class InteriorCutawaySystem {
     const selectedInstanceId = selection[0]?.prefabInstanceId;
     return {
       titleId: this.activeInterior?.id ?? 'rest-cabin',
-      title: this.activeInterior?.label ?? '', status: this.statusMessage, editMode: this.editMode,
+      title: this.activeInterior?.label ?? '', ...this.status,
+      editMode: this.editMode,
       category: this.catalogCategory, page: page.page, totalPages: page.totalPages,
       requiredPlaced: this.activeInterior ? requiredHookInventory(this.activeDefinition ?? this.activeInterior, this.activeInterior.furniture).filter(({ placed }) => placed).length : 0,
       requiredTotal: this.activeInterior ? requiredHookInventory(this.activeDefinition ?? this.activeInterior, this.activeInterior.furniture).length : 0,
@@ -1139,9 +1160,8 @@ export class InteriorCutawaySystem {
       templatePreviewing: Boolean(this.templatePreview),
       templateValid: Boolean(this.templatePreview) && this.templateDiagnostics.length === 0,
       templateDiagnostics: [...this.templateDiagnostics],
-      ...(this.statusId ? { statusId: this.statusId } : {}),
       ...(selected ? { selected: {
-        label: hookFurnitureLabel(selected) || catalog?.label || furnitureLabel(selected.kind),
+        label: hookFurnitureLabel(selected, this.locale) || catalog?.label || furnitureLabel(selected.kind),
         scale: normalizeFurnitureScale(selected.scale), rotation: selected.rotation ?? 0,
         layer: selected.layer ?? 'furniture',
       } } : {}),
@@ -1149,15 +1169,13 @@ export class InteriorCutawaySystem {
   }
 
   private syncOverlay(): void { this.domOverlay.update(this.overlayModel()); }
-  private setStatus(
-    message: string,
-    statusId?: 'storageFailed' | 'undoApplied' | 'templatePreviewReady' | 'templateApplied' | 'groupDissolved',
-  ): void {
-    this.statusMessage = message;
+  private setStatus<K extends CutawayMessageId>(id: K, ...args: CutawayMessageArgs<K>): void {
     const unresolvedStorageRead = this.layoutStorageReadFailed
       || this.prefabStorageReadFailed
       || this.clipboardStorageReadFailed;
-    this.statusId = statusId ?? (unresolvedStorageRead ? 'storageFailed' : undefined);
+    this.status = unresolvedStorageRead
+      ? { statusId: 'storageFailed' }
+      : cutawayMessageState(id, ...args);
     this.domOverlay.update(this.overlayModel());
   }
 
@@ -1183,7 +1201,7 @@ export class InteriorCutawaySystem {
     this.clearTemplatePreview();
     this.selectedFurnitureIds.clear();
     this.selectedFurnitureId = undefined;
-    this.setStatus('', 'undoApplied');
+    this.setStatus('undoApplied');
     this.renderFurniture(interior, layout);
   }
 
@@ -1201,7 +1219,7 @@ export class InteriorCutawaySystem {
     }
     this.templatePreview = proposed;
     this.templateDiagnostics = [...diagnostics];
-    this.setStatus('', diagnostics.size === 0 ? 'templatePreviewReady' : undefined);
+    this.setStatus(diagnostics.size === 0 ? 'templatePreviewReady' : 'templateInvalid');
     this.renderFurniture(interior, layout);
   }
 
@@ -1213,7 +1231,7 @@ export class InteriorCutawaySystem {
     this.clearTemplatePreview();
     this.selectedFurnitureIds.clear();
     this.selectedFurnitureId = undefined;
-    this.setStatus('', 'templateApplied');
+    this.setStatus('templateApplied');
     this.renderFurniture(interior, layout);
   }
 
@@ -1222,7 +1240,7 @@ export class InteriorCutawaySystem {
     const instanceId = selection[0]?.prefabInstanceId;
     if (!instanceId || !selection.every(({ prefabInstanceId }) => prefabInstanceId === instanceId)) return;
     this.commitFurnitureMutation(interior, dissolvePrefabInstance(interior.furniture, instanceId));
-    this.setStatus('', 'groupDissolved');
+    this.setStatus('groupDissolved');
     this.renderFurniture(interior, layout);
   }
 
@@ -1232,36 +1250,31 @@ export class InteriorCutawaySystem {
 
   private resizeSelected(interior: InteriorDefinition, layout: CutawayLayout, direction: -1 | 1): void {
     if (this.selectedFurnitureIds.size === 0) return;
-    const result = transformSelectionAtomically(interior, interior.furniture, [...this.selectedFurnitureIds], (item) => {
-      const scale = normalizeFurnitureScale(item.scale);
-      const nextScale = FURNITURE_SCALES[FURNITURE_SCALES.indexOf(scale) + direction] as FurnitureScale | undefined;
-      return nextScale ? { ...item, scale: nextScale } : item;
-    });
+    const result = resizeSelectionAtomically(interior, interior.furniture, [...this.selectedFurnitureIds], direction);
     if (result.accepted) this.commitFurnitureMutation(interior, result.layout);
-    this.setStatus(result.accepted ? '已批次調整家具尺寸 · 按儲存配置' : '⚠ 尺寸調整後會超界或擋門');
+    const selected = result.layout.find(({ id }) => this.selectedFurnitureIds.has(id));
+    if (result.accepted) this.setStatus('resizeApplied', {
+      percent: Math.round(normalizeFurnitureScale(selected?.scale) * 100),
+    });
+    else this.setStatus('resizeRejected');
     this.renderFurniture(interior, layout);
   }
 
   private rotateSelected(interior: InteriorDefinition, layout: CutawayLayout, delta: -90 | 90): void {
     if (this.selectedFurnitureIds.size === 0) return;
-    const result = transformSelectionAtomically(interior, interior.furniture, [...this.selectedFurnitureIds], (item) => (
-      furnitureWithRotation(item, (((item.rotation ?? 0) + delta + 360) % 360) as FurnitureRotation)
-    ));
+    const result = rotateSelectionAtomically(interior, interior.furniture, [...this.selectedFurnitureIds], delta);
     if (result.accepted) this.commitFurnitureMutation(interior, result.layout);
-    this.setStatus(result.accepted ? '已批次旋轉家具 · 按儲存配置' : '⚠ 旋轉後會超界或擋門');
+    this.setStatus(result.accepted ? 'rotateApplied' : 'rotateRejected');
     this.renderFurniture(interior, layout);
   }
 
   private shiftSelectedLayer(interior: InteriorDefinition, layout: CutawayLayout, direction: 'previous' | 'next'): void {
     if (this.selectedFurnitureIds.size === 0) return;
-    const layers: readonly FurnitureLayer[] = ['floor', 'furniture', 'surface', 'wall'];
-    const result = transformSelectionAtomically(interior, interior.furniture, [...this.selectedFurnitureIds], (item) => {
-      const current = item.layer ?? 'furniture';
-      const index = Math.max(0, Math.min(layers.length - 1, layers.indexOf(current) + (direction === 'next' ? 1 : -1)));
-      return { ...item, layer: layers[index]!, zIndex: 0 };
-    });
-    if (result.accepted) this.commitFurnitureMutation(interior, result.layout);
-    this.setStatus(direction === 'next' ? '選取家具已移到上一層' : '選取家具已移到下一層');
+    const changed = this.commitFurnitureMutation(
+      interior,
+      shiftSelectionLayer(interior.furniture, [...this.selectedFurnitureIds], direction),
+    );
+    this.setStatus(changed ? (direction === 'next' ? 'layerUpApplied' : 'layerDownApplied') : 'layerShiftRejected');
     this.renderFurniture(interior, layout);
   }
 
@@ -1271,28 +1284,28 @@ export class InteriorCutawaySystem {
     direction: 'back' | 'backward' | 'forward' | 'front',
   ): void {
     if (this.selectedFurnitureIds.size === 0) return;
-    let reordered = interior.furniture;
-    for (const id of this.selectedFurnitureIds) reordered = reorderFurniture(reordered, id, direction);
+    const reordered = reorderSelection(interior.furniture, [...this.selectedFurnitureIds], direction);
     this.commitFurnitureMutation(interior, reordered);
-    this.setStatus('選取家具顯示順序已調整 · 按儲存配置');
+    this.setStatus('reordered');
     this.renderFurniture(interior, layout);
   }
 
   private createSelectedPrefab(interior: InteriorDefinition, layout: CutawayLayout): void {
     if (this.prefabStorageReadFailed) {
-      this.setStatus('', 'storageFailed');
+      this.setStatus('storageFailed');
       return;
     }
     const userPrefabCount = this.prefabs.filter((prefab) => !isBuiltInPrefab(prefab)).length;
-    const name = typeof window === 'undefined' ? `組裝件 ${userPrefabCount + 1}`
-      : window.prompt('替這個組裝件命名', `組裝件 ${userPrefabCount + 1}`)?.trim();
+    const defaultName = cutawayMessage(this.locale, 'prefabDefaultName', { count: userPrefabCount + 1 });
+    const name = typeof window === 'undefined' ? defaultName
+      : window.prompt(cutawayMessage(this.locale, 'prefabNamePrompt'), defaultName)?.trim();
     if (!name) return;
     const selection = interior.furniture.filter(({ id }) => this.selectedFurnitureIds.has(id));
     let prefab: FurniturePrefab;
     try {
       prefab = createFurniturePrefab(name, selection);
     } catch {
-      this.setStatus('⚠ 至少框選兩件一般家具；Hook 家具不會加入組裝件');
+      this.setStatus('prefabNeedsTwo');
       return;
     }
     try {
@@ -1300,45 +1313,45 @@ export class InteriorCutawaySystem {
       const read = readAvailablePrefabs();
       if (read.storageRead === 'failed') {
         this.prefabStorageReadFailed = true;
-        this.setStatus('', 'storageFailed');
+        this.setStatus('storageFailed');
         return;
       }
       this.prefabs = read.value;
-      this.setStatus(`組裝件「${name}」已加入下方貨架`);
+      this.setStatus('prefabCreated', { name });
     } catch {
-      this.setStatus('', 'storageFailed');
+      this.setStatus('storageFailed');
     }
     this.renderFurniture(interior, layout);
   }
 
   private duplicateSelected(interior: InteriorDefinition, layout: CutawayLayout): void {
-    if (this.selectedFurnitureIds.size !== 1) return;
-    const sourceId = [...this.selectedFurnitureIds][0]!;
-    const result = duplicateFurniture(interior, interior.furniture, sourceId);
+    if (this.selectedFurnitureIds.size === 0) return;
+    const result = duplicateSelection(interior, interior.furniture, [...this.selectedFurnitureIds]);
     if (result.accepted) {
       this.commitFurnitureMutation(interior, result.layout);
       this.selectedFurnitureIds.clear();
       result.selectedIds.forEach((id) => this.selectedFurnitureIds.add(id));
       this.selectedFurnitureId = result.selectedIds[0];
     }
-    this.setStatus(result.accepted ? '家具已複製 · 原件與複本已選取' : '⚠ 附近沒有可放置複本的位置');
+    this.setStatus(result.accepted ? 'duplicateApplied' : 'duplicateRejected');
     this.renderFurniture(interior, layout);
   }
 
   private returnSelectedToShelf(interior: InteriorDefinition, layout: CutawayLayout): void {
     if (this.selectedFurnitureIds.size === 0) return;
-    const count = this.selectedFurnitureIds.size;
-    this.commitFurnitureMutation(interior, removeSelection(interior.furniture, [...this.selectedFurnitureIds]));
+    const selection = expandSelection(interior.furniture, [...this.selectedFurnitureIds]);
+    const count = selection.length;
+    this.commitFurnitureMutation(interior, removeSelection(interior.furniture, selection));
     this.selectedFurnitureIds.clear();
     this.selectedFurnitureId = undefined;
-    this.setStatus(`${count} 件家具已放回下排 · 尚未儲存`);
+    this.setStatus('returnedToShelf', { count });
     this.renderFurniture(interior, layout);
   }
 
   private cancelSelection(): void {
     this.selectedFurnitureIds.clear();
     this.selectedFurnitureId = undefined;
-    this.setStatus('已取消家具選取');
+    this.setStatus('selectionCleared');
     if (this.activeInterior && this.root) {
       const size = this.viewportProvider();
       this.renderFurniture(this.activeInterior, cutawayLayoutForViewport(size.width, size.height));

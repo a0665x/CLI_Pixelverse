@@ -12,6 +12,7 @@ from typing import Iterable
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD_INPUTS = (
+    ".dockerignore",
     "Dockerfile",
     "docker-compose.yml",
     "requirements.txt",
@@ -21,6 +22,7 @@ BUILD_INPUTS = (
     "public",
     "agent_bridges",
     "scripts",
+    "global_map",
     "pixelworld_mvp/package.json",
     "pixelworld_mvp/package-lock.json",
     "pixelworld_mvp/index.html",
