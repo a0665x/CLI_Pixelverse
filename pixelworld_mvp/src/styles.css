@@ -2,8 +2,9 @@
 * { box-sizing: border-box; }
 html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #111d16; }
 #app-shell { position: relative; width: 100vw; height: 100vh; }
-#game-root { width: 100%; height: 100%; min-width: 0; min-height: 0; display: grid; place-items: center; overflow: hidden; background: #213722; image-rendering: pixelated; }
-#game-root canvas { image-rendering: pixelated; image-rendering: crisp-edges; }
+#game-root { position: relative; width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: hidden; background: radial-gradient(circle at 50% 45%, #29472d, #14291b 78%); image-rendering: pixelated; cursor: grab; touch-action: none; }
+#game-root[data-panning='true'] { cursor: grabbing; }
+#game-root canvas { position: absolute; top: 0; left: 0; image-rendering: pixelated; image-rendering: crisp-edges; transform-origin: top left; will-change: transform, width, height; }
 #village-zoom-controls { position: absolute; right: 12px; top: 12px; z-index: 24; display: flex; align-items: stretch; overflow: hidden; border: 1px solid var(--material-glass-border); border-radius: 12px; background: var(--material-glass); box-shadow: 0 10px 30px rgb(4 15 8 / 30%), inset 0 1px rgb(255 255 255 / 34%); backdrop-filter: blur(20px) saturate(155%); -webkit-backdrop-filter: blur(20px) saturate(155%); }
 #village-zoom-controls button { min-width: 34px; min-height: 34px; padding: 0 10px; border: 0; border-right: 1px solid rgb(214 234 217 / 18%); color: #f6f2d2; background: transparent; font: 650 12px/1 Inter, "Noto Sans TC", system-ui, sans-serif; cursor: pointer; transition: background-color .14s ease, scale .12s ease; }
 #village-zoom-controls button:last-child { border-right: 0; }

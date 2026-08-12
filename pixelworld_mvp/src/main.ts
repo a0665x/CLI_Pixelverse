@@ -5,6 +5,7 @@ import { mountTestPanel } from './ui/TestPanel';
 import { LiveWorldClient } from './live/LiveWorldClient';
 import {
   readVillageCamera,
+  shouldStartVillagePan,
   writeVillageCamera,
   type VillageViewportController,
 } from './game/VillageViewportController';
@@ -64,8 +65,11 @@ function mountViewportControls(viewport: VillageViewportController): void {
   }, { passive: false });
   let drag: { pointerId: number; x: number; y: number; committed: boolean } | undefined;
   gameRoot.addEventListener('pointerdown', (event) => {
-    if (event.button !== 0 || (event.target as HTMLElement).closest('#village-zoom-controls')) return;
-    if (document.querySelector('.cutaway-dom-panel')) return;
+    if (!shouldStartVillagePan({
+      button: event.button,
+      overControls: Boolean((event.target as HTMLElement).closest('#village-zoom-controls')),
+      cutawayOpen: Boolean(document.querySelector('.cutaway-dom-panel')),
+    })) return;
     drag = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, committed: false };
   }, true);
   gameRoot.addEventListener('pointermove', (event) => {

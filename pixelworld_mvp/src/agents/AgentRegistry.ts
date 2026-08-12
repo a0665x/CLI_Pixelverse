@@ -4,7 +4,13 @@ import { AGENT_SKINS } from '../rendering/assetManifest';
 import type { GridPoint } from '../world/types';
 import { AgentController } from './AgentController';
 
-const MAX_SUBAGENTS = 10;
+const MAX_AGENTS = 64;
+
+function stableSkinIndex(agentId: string): number {
+  let hash = 0;
+  for (const character of agentId) hash = ((hash << 5) - hash + character.charCodeAt(0)) | 0;
+  return Math.abs(hash) % 2;
+}
 
 export class AgentRegistry {
   private readonly agents = new Map<string, AgentController>();
@@ -16,19 +22,41 @@ export class AgentRegistry {
   }
 
   createSubagent(spawn: GridPoint): AgentController | undefined {
-    if (this.agents.size >= MAX_SUBAGENTS + 1) return undefined;
     const agentId = `subagent-${this.nextSubagent++}`;
-    const skin = Number(agentId.split('-')[1]) % 2 === 0 ? AGENT_SKINS.branch : AGENT_SKINS.subagent;
-    const agent = new AgentController(this.scene, agentId, 'subagent', spawn, this.grid, skin);
-    this.agents.set(agentId, agent);
-    return agent;
+    return this.ensure(agentId, 'subagent', spawn)?.agent;
   }
 
-  canCreateSubagent(reserved = 0): boolean { return this.agents.size + reserved < MAX_SUBAGENTS + 1; }
+  ensure(agentId: string, role: 'main' | 'subagent', spawn: GridPoint): { agent: AgentController; created: boolean } | undefined {
+    const existing = this.agents.get(agentId);
+    if (existing) return { agent: existing, created: false };
+    if (this.agents.size >= MAX_AGENTS) return undefined;
+
+    const skin = role === 'main'
+      ? AGENT_SKINS.main
+      : stableSkinIndex(agentId) === 0 ? AGENT_SKINS.branch : AGENT_SKINS.subagent;
+    const agent = new AgentController(this.scene, agentId, role, spawn, this.grid, skin);
+    this.agents.set(agentId, agent);
+    return { agent, created: true };
+  }
+
+  remove(agentId: string): boolean {
+    const agent = this.agents.get(agentId);
+    if (!agent) return false;
+    agent.destroy();
+    this.agents.delete(agentId);
+    if (this.selectedId === agentId) this.selectedId = this.agents.keys().next().value ?? '';
+    return true;
+  }
+
+  canCreateSubagent(reserved = 0): boolean { return this.agents.size + reserved < MAX_AGENTS; }
 
   get(agentId: string): AgentController | undefined { return this.agents.get(agentId); }
   all(): AgentController[] { return [...this.agents.values()]; }
-  selected(): AgentController { return this.agents.get(this.selectedId)!; }
+  selected(): AgentController {
+    const selected = this.agents.get(this.selectedId) ?? this.agents.values().next().value;
+    if (!selected) throw new Error('AgentRegistry has no agents');
+    return selected;
+  }
   select(agentId: string): boolean {
     if (!this.agents.has(agentId)) return false;
     this.selectedId = agentId;

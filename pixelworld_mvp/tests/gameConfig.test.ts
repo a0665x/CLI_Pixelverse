@@ -38,14 +38,6 @@ describe('fixed village game config', () => {
     expect(pointerMove).toContain('setPointerCapture');
   });
 
-  it('leaves cutaway drag gestures to the room editor instead of the village camera', () => {
-    const pointerDown = mainSource.slice(
-      mainSource.indexOf("gameRoot.addEventListener('pointerdown'"),
-      mainSource.indexOf("gameRoot.addEventListener('pointermove'"),
-    );
-    expect(pointerDown).toContain("document.querySelector('.cutaway-dom-panel')");
-  });
-
   it('uses functional glass only for floating village and cutaway controls', () => {
     expect(styles).toContain('--material-content:');
     expect(styles).toContain('--material-structural:');

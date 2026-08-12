@@ -6,10 +6,9 @@ export const WORLD_PIXELS = Object.freeze({
 });
 
 export function displayScaleFor(availableWidth: number, availableHeight: number): number {
-  const fittingScale = Math.min(
+  return Math.min(
     availableWidth / WORLD_PIXELS.width,
     availableHeight / WORLD_PIXELS.height,
+    1.5,
   );
-  if (fittingScale >= 1.5) return 1.5;
-  return Math.max(1, Math.floor(fittingScale));
 }

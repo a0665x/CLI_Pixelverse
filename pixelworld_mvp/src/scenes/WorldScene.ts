@@ -18,6 +18,13 @@ import { StatusOverlaySystem } from '../rendering/StatusOverlaySystem';
 import { VillageRenderer } from '../rendering/VillageRenderer';
 import { StationAllocator } from '../stations/stationAllocator';
 import { createDemoEvent } from '../ui/demoEvents';
+import {
+  backendAgentRole,
+  backendAgentSignature,
+  isBackendWorldSnapshot,
+  worldEventForBackendAgent,
+  type BackendWorldSnapshot,
+} from '../live/backendSnapshot';
 import type { AgentWorldEvent, WorldEventKind } from '../world/types';
 import { WORLD_DEFINITION } from '../world/worldDefinition';
 import { validateWorld } from '../world/validateWorld';
@@ -41,6 +48,7 @@ export class WorldScene extends Phaser.Scene {
   private sceneReady = false;
   private readonly listeners = new Set<() => void>();
   private lastError = '';
+  private readonly liveAgentSignatures = new Map<string, string>();
   private locale: VillageLocale = 'zh-TW';
 
   constructor() { super('world'); }
@@ -62,7 +70,12 @@ export class WorldScene extends Phaser.Scene {
     this.agents = new AgentRegistry(this, this.navigationGrid, this.worldDefinition.spawn);
     this.attachCutawaySystem(new InteriorCutawaySystem(this, this.worldDefinition));
     village.hitRegions.forEach(({ buildingId, object }) => {
-      object.on('pointerdown', () => this.cutawaySystem?.open(buildingId));
+      let down: { x: number; y: number } | undefined;
+      object.on('pointerdown', (pointer: Phaser.Input.Pointer) => { down = { x: pointer.x, y: pointer.y }; });
+      object.on('pointerup', (pointer: Phaser.Input.Pointer) => {
+        if (down && Phaser.Math.Distance.Between(down.x, down.y, pointer.x, pointer.y) < 6) this.cutawaySystem?.open(buildingId);
+        down = undefined;
+      });
     });
     this.statusOverlay = new StatusOverlaySystem(this, this.worldDefinition.buildings);
     this.agents.all().forEach((agent) => this.statusOverlay.attachAgent(agent));
@@ -83,7 +96,7 @@ export class WorldScene extends Phaser.Scene {
     this.debugOverlay?.update();
   }
 
-  dispatchWorldEvent(event: AgentWorldEvent): { ok: boolean; reason?: string } {
+  dispatchWorldEvent(event: AgentWorldEvent, options: { spawnClone?: boolean } = {}): { ok: boolean; reason?: string } {
     const result = this.ingress.ingest(event);
     if (!result.accepted) return { ok: false, reason: result.reason };
     const normalizedEvent = result.event;
@@ -98,7 +111,8 @@ export class WorldScene extends Phaser.Scene {
     }
 
     this.releasePendingClone(normalizedEvent.agentId);
-    if (normalizedEvent.kind === 'clone' && !this.agents.canCreateSubagent(this.pendingCloneAgents.size)) {
+    const canSpawnClone = options.spawnClone !== false;
+    if (canSpawnClone && normalizedEvent.kind === 'clone' && !this.agents.canCreateSubagent(this.pendingCloneAgents.size)) {
       agent.cancel();
       this.allocator.releaseAgent(normalizedEvent.agentId);
       this.statusOverlay.showError(agent, 'agent-cap');
@@ -117,7 +131,7 @@ export class WorldScene extends Phaser.Scene {
         return { ok: false, reason };
       }
       triedAnchor = true;
-      if (normalizedEvent.kind === 'clone' && allocation.assignment.kind === 'queue') {
+      if (canSpawnClone && normalizedEvent.kind === 'clone' && allocation.assignment.kind === 'queue') {
         agent.cancel();
         this.allocator.releaseAgent(normalizedEvent.agentId);
         this.statusOverlay.showError(agent, 'clone-queue');
@@ -126,7 +140,7 @@ export class WorldScene extends Phaser.Scene {
       const effectiveRoute = allocation.assignment.kind === 'queue'
         ? { ...result.route, action: 'queue' as const, bubblePolicy: 'persistent' as const, bubbleText: '等待工作位', priority: 80 }
         : result.route;
-      const reservesClone = normalizedEvent.kind === 'clone' && allocation.assignment.kind === 'interaction';
+      const reservesClone = canSpawnClone && normalizedEvent.kind === 'clone' && allocation.assignment.kind === 'interaction';
       if (reservesClone) this.pendingCloneAgents.add(normalizedEvent.agentId);
       const departurePresence = agent.presence();
       const travelPlan = planAgentTravel(this.worldDefinition, departurePresence, allocation.assignment);
@@ -170,6 +184,40 @@ export class WorldScene extends Phaser.Scene {
       excluded.add(allocation.assignment.anchorId);
       this.allocator.releaseAgent(normalizedEvent.agentId);
     }
+  }
+
+  syncLiveSnapshot(snapshot: BackendWorldSnapshot, sequence = Date.now()): { added: number; removed: number; dispatched: number } {
+    if (!this.sceneReady || !isBackendWorldSnapshot(snapshot)) return { added: 0, removed: 0, dispatched: 0 };
+    const liveIds = new Set(snapshot.agents.map(({ agent }) => agent));
+    let added = 0;
+    let removed = 0;
+    let dispatched = 0;
+
+    for (const backendAgent of snapshot.agents) {
+      const ensured = this.agents.ensure(backendAgent.agent, backendAgentRole(backendAgent), this.worldDefinition?.spawn ?? WORLD_DEFINITION.spawn);
+      if (!ensured) continue;
+      if (ensured.created) {
+        added += 1;
+        this.statusOverlay.attachAgent(ensured.agent);
+        this.bindAgentSelection(ensured.agent);
+      }
+      const signature = backendAgentSignature(backendAgent);
+      if (this.liveAgentSignatures.get(backendAgent.agent) === signature) continue;
+      this.liveAgentSignatures.set(backendAgent.agent, signature);
+      this.dispatchWorldEvent(worldEventForBackendAgent(backendAgent, sequence), { spawnClone: false });
+      dispatched += 1;
+    }
+
+    for (const agent of this.agents.all()) {
+      if (liveIds.has(agent.agentId)) continue;
+      this.releasePendingClone(agent.agentId);
+      this.allocator.releaseAgent(agent.agentId);
+      this.statusOverlay.detachAgent(agent.agentId);
+      this.liveAgentSignatures.delete(agent.agentId);
+      if (this.agents.remove(agent.agentId)) removed += 1;
+    }
+    if (added || removed) this.notifyRoster();
+    return { added, removed, dispatched };
   }
 
   agentList(): Array<{ id: string; role: 'main' | 'subagent' }> {
@@ -233,6 +281,7 @@ export class WorldScene extends Phaser.Scene {
     this.cutawaySystem = undefined;
     this.agents?.destroy();
     this.pendingCloneAgents.clear();
+    this.liveAgentSignatures?.clear();
     this.listeners.clear();
   }
 

@@ -3,6 +3,7 @@ import type { AgentController } from '../agents/AgentController';
 import { ACTION_ICONS, aggregateBuildingActivity, type AgentActivity, withBuildingPresence } from '../status/buildingActivity';
 import type { AgentWorldEvent, BehaviorRoute, WorldBuilding } from '../world/types';
 import { DomStatusOverlay } from './domStatusOverlay';
+import { type VillageLocale, villageCopy } from '../i18n/villageLocale';
 
 interface AgentOverlay {
   chip: Phaser.GameObjects.Text;
@@ -24,6 +25,7 @@ export class StatusOverlaySystem {
   private readonly buildingBadges = new Map<string, Phaser.GameObjects.Text>();
   private readonly domOverlay: DomStatusOverlay;
   private readonly buildings: WorldBuilding[];
+  private locale: VillageLocale = 'zh-TW';
 
   constructor(private readonly scene: Phaser.Scene, buildings: WorldBuilding[]) {
     this.buildings = buildings;
@@ -41,6 +43,18 @@ export class StatusOverlaySystem {
     }
   }
 
+  setLocale(locale: VillageLocale): void {
+    this.locale = locale;
+    this.domOverlay.setLocale(locale);
+    this.activities.forEach((activity, agentId) => {
+      const text = villageCopy(locale).actions[activity.action];
+      activity.bubbleText = text;
+      this.overlays.get(agentId)?.bubble.setText(text);
+      this.domOverlay.setAgentBubble(agentId, text);
+    });
+    this.refreshBuildings();
+  }
+
   attachAgent(agent: AgentController): void {
     if (this.overlays.has(agent.agentId)) return;
     const chip = this.scene.add.text(agent.sprite.x, agent.sprite.y - 16, agent.role === 'main' ? 'main · idle' : agent.agentId, {
@@ -50,6 +64,16 @@ export class StatusOverlaySystem {
       fontFamily: 'monospace', fontSize: '8px', color: '#29351e', backgroundColor: '#fff0badd', padding: { x: 4, y: 3 },
     }).setOrigin(0.5, 1).setDepth(20_002).setVisible(false);
     this.overlays.set(agent.agentId, { chip, bubble, bubbleExpiresAt: 0 });
+  }
+
+  detachAgent(agentId: string): void {
+    const overlay = this.overlays.get(agentId);
+    overlay?.chip.destroy();
+    overlay?.bubble.destroy();
+    this.overlays.delete(agentId);
+    this.activities.delete(agentId);
+    this.domOverlay.removeAgent(agentId);
+    this.refreshBuildings();
   }
 
   publish(agent: AgentController, event: AgentWorldEvent, route: BehaviorRoute): void {
@@ -63,7 +87,7 @@ export class StatusOverlaySystem {
       overlay.bubble.setVisible(false);
       overlay.bubbleExpiresAt = 0;
     } else {
-      overlay.bubble.setText(route.bubbleText).setVisible(true);
+      overlay.bubble.setText(villageCopy(this.locale).actions[route.action]).setVisible(true);
       bubbleExpiresAt = route.bubblePolicy === 'persistent'
         ? Number.POSITIVE_INFINITY
         : this.scene.time.now + 4000;
@@ -74,7 +98,7 @@ export class StatusOverlaySystem {
       agentId: agent.agentId,
       action: route.action,
       label: event.activityLabel,
-      bubbleText: route.bubbleText,
+      bubbleText: villageCopy(this.locale).actions[route.action],
       bubblePolicy: route.bubblePolicy,
       priority: route.priority,
       updatedAt: event.timestamp,
@@ -83,7 +107,7 @@ export class StatusOverlaySystem {
     this.domOverlay.publish(
       agent,
       `${prefix} · ${ACTION_ICONS[route.action]} ${event.activityLabel}`,
-      route.bubbleText,
+      villageCopy(this.locale).actions[route.action],
       route.bubblePolicy !== 'none',
     );
     this.syncAgentVisibility(agent, overlay);
@@ -157,7 +181,7 @@ export class StatusOverlaySystem {
     const outside = agent.presence().kind === 'outside';
     const bubbleActive = overlay.bubbleExpiresAt === Number.POSITIVE_INFINITY
       || this.scene.time.now < overlay.bubbleExpiresAt;
-    overlay.chip.setVisible(outside && !this.domOverlay.isActive());
+    overlay.chip.setVisible(false);
     overlay.bubble.setVisible(outside && bubbleActive && !this.domOverlay.isActive());
     this.domOverlay.positionAgent(agent, outside, outside && bubbleActive);
   }

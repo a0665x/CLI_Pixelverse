@@ -1,11 +1,13 @@
 import Phaser from 'phaser';
 import { WorldScene } from '../scenes/WorldScene';
-import { WORLD_PIXELS, displayScaleFor } from './constants';
+import { WORLD_PIXELS } from './constants';
+import { VillageViewportController } from './VillageViewportController';
 import { subscribeWorldReady } from './worldReady';
 
 export function buildGameConfig(
   parent: string,
   onWorldReady?: (world: WorldScene) => void,
+  onViewportReady?: (viewport: VillageViewportController) => void,
 ): Phaser.Types.Core.GameConfig {
   return {
     type: Phaser.AUTO,
@@ -32,11 +34,14 @@ export function buildGameConfig(
           : () => undefined;
         const root = document.getElementById(parent);
         if (!root) throw new Error(`Missing #${parent}`);
-        const resize = () => {
-          const scale = displayScaleFor(root.clientWidth, root.clientHeight);
-          game.canvas.style.width = `${WORLD_PIXELS.width * scale}px`;
-          game.canvas.style.height = `${WORLD_PIXELS.height * scale}px`;
-        };
+        const embedded = new URLSearchParams(window.location.search).get('embed') === '1';
+        const viewport = new VillageViewportController(({ width, height, offsetX, offsetY }) => {
+          game.canvas.style.width = `${width}px`;
+          game.canvas.style.height = `${height}px`;
+          game.canvas.style.transform = `translate3d(${offsetX}px, ${offsetY}px, 0)`;
+        }, embedded ? 'cover' : 'fit');
+        onViewportReady?.(viewport);
+        const resize = () => viewport.resize(root.clientWidth, root.clientHeight);
         const observer = new ResizeObserver(resize);
         observer.observe(root);
         game.events.once(Phaser.Core.Events.DESTROY, () => {
@@ -53,6 +58,7 @@ export function buildGameConfig(
 export function createGame(
   parent = 'game-root',
   onWorldReady?: (world: WorldScene) => void,
+  onViewportReady?: (viewport: VillageViewportController) => void,
 ): Phaser.Game {
-  return new Phaser.Game(buildGameConfig(parent, onWorldReady));
+  return new Phaser.Game(buildGameConfig(parent, onWorldReady, onViewportReady));
 }

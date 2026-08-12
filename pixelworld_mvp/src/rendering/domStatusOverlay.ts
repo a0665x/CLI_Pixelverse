@@ -1,6 +1,7 @@
 import { TILE_SIZE, WORLD_PIXELS } from '../game/constants';
 import type { AgentController } from '../agents/AgentController';
 import type { WorldBuilding } from '../world/types';
+import { type VillageLocale, villageCopy } from '../i18n/villageLocale';
 
 export interface OverlayRect { left: number; top: number; width: number; height: number }
 
@@ -25,6 +26,7 @@ export class DomStatusOverlay {
   private readonly agents = new Map<string, AgentDomView>();
   private readonly buildings = new Map<string, HTMLDivElement>();
   private readonly buildingLabels = new Map<string, HTMLDivElement>();
+  private locale: VillageLocale = 'zh-TW';
 
   constructor(
     buildings: readonly WorldBuilding[],
@@ -37,7 +39,7 @@ export class DomStatusOverlay {
     buildings.forEach((building) => {
       const label = document.createElement('div');
       label.className = 'world-building-label';
-      label.textContent = building.label;
+      label.textContent = villageCopy(this.locale).buildings[building.id as keyof ReturnType<typeof villageCopy>['buildings']] || building.label;
       label.dataset.buildingId = building.id;
       const badge = document.createElement('div');
       badge.className = 'world-building-badge';
@@ -51,6 +53,19 @@ export class DomStatusOverlay {
 
   isActive(): boolean { return this.root !== undefined; }
 
+  setLocale(locale: VillageLocale): void {
+    this.locale = locale;
+    const copy = villageCopy(locale);
+    this.buildingLabels.forEach((label, id) => {
+      label.textContent = copy.buildings[id as keyof typeof copy.buildings] || id;
+    });
+  }
+
+  setAgentBubble(agentId: string, text: string): void {
+    const view = this.agents.get(agentId);
+    if (view) view.bubble.textContent = text;
+  }
+
   attachAgent(agent: AgentController): void {
     if (!this.root || this.agents.has(agent.agentId)) return;
     const root = document.createElement('div');
@@ -60,7 +75,7 @@ export class DomStatusOverlay {
     bubble.className = 'world-agent-bubble';
     const chip = document.createElement('div');
     chip.className = 'world-agent-chip';
-    root.append(bubble, chip);
+    root.append(bubble);
     this.root.append(root);
     this.agents.set(agent.agentId, { root, chip, bubble });
   }
@@ -83,6 +98,11 @@ export class DomStatusOverlay {
     view.root.style.transform = `translate3d(${Math.round(position.x)}px, ${Math.round(position.y)}px, 0)`;
     view.root.hidden = !visible;
     view.bubble.hidden = !bubbleVisible;
+  }
+
+  removeAgent(agentId: string): void {
+    this.agents.get(agentId)?.root.remove();
+    this.agents.delete(agentId);
   }
 
   setBuilding(building: WorldBuilding, text: string, visible: boolean): void {

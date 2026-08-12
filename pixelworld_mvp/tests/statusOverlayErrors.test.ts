@@ -58,7 +58,7 @@ describe('StatusOverlaySystem failure transitions', () => {
     expect(created[0]!.visible).toBe(true);
   });
 
-  it('hides individual overlays inside and restores valid bubbles outside', () => {
+  it('keeps long agent chips hidden and restores only valid bubbles outside', () => {
     const created: ReturnType<typeof textObject>[] = [];
     const scene = { time: { now: 100 }, add: { text: vi.fn(() => { const text = textObject(); created.push(text); return text; }) } };
     const overlay = new StatusOverlaySystem(scene as never, []);
@@ -78,7 +78,20 @@ describe('StatusOverlaySystem failure transitions', () => {
 
     inside = false;
     overlay.update([agent]);
-    expect(created[0]!.visible).toBe(true);
+    expect(created[0]!.visible).toBe(false);
     expect(created[1]!.visible).toBe(true);
+  });
+
+  it('relocalizes an existing map bubble without waiting for another event', () => {
+    const created: ReturnType<typeof textObject>[] = [];
+    const scene = { time: { now: 100 }, add: { text: vi.fn(() => { const text = textObject(); created.push(text); return text; }) } };
+    const overlay = new StatusOverlaySystem(scene as never, []);
+    const agent = { agentId: 'main', role: 'main', sprite: { x: 8, y: 8 }, presence: () => ({ kind: 'outside' }) } as AgentController;
+    overlay.publish(agent, {
+      eventId: 'e', timestamp: 1, source: 'demo', agentId: 'main', agentRole: 'main', kind: 'plan', phase: 'working', activityLabel: '規劃',
+    }, { destinationId: 'planning-board', preserveLocation: false, action: 'plan', bubblePolicy: 'persistent', bubbleText: '規劃中', priority: 40 });
+
+    overlay.setLocale('en-US');
+    expect(created[1]!.text).toBe('Planning');
   });
 });
