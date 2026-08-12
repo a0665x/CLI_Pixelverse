@@ -7,8 +7,11 @@ import argparse
 import os
 import re
 import shutil
+import stat
+import struct
 import sys
 import tempfile
+import zlib
 from pathlib import Path
 from zipfile import BadZipFile, ZipFile, ZipInfo
 
@@ -25,6 +28,10 @@ SOURCE_FILES = (
 ASSET_PATTERN = re.compile(
     r"(?:Modern_Office_(?:Singles_\d+|16x16)|Room_Builder_Office_16x16)\.png"
 )
+PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+MAX_FILE_SIZE = 2 * 1024 * 1024
+MAX_TOTAL_SIZE = 16 * 1024 * 1024
+MAX_DIMENSION = 4096
 
 
 def required_asset_names() -> set[str]:
@@ -35,22 +42,60 @@ def required_asset_names() -> set[str]:
     return required
 
 
+def _validate_png_header(header: bytes, name: str) -> None:
+    if len(header) < 33 or not header.startswith(PNG_SIGNATURE):
+        raise ValueError(f"{name} does not have a valid PNG signature/IHDR")
+    length = struct.unpack(">I", header[8:12])[0]
+    chunk_type = header[12:16]
+    if length != 13 or chunk_type != b"IHDR":
+        raise ValueError(f"{name} does not have a valid PNG IHDR")
+    ihdr = header[16:29]
+    expected_crc = struct.unpack(">I", header[29:33])[0]
+    if zlib.crc32(chunk_type + ihdr) & 0xFFFFFFFF != expected_crc:
+        raise ValueError(f"{name} has a corrupt PNG IHDR checksum")
+    width, height = struct.unpack(">II", ihdr[:8])
+    if not 0 < width <= MAX_DIMENSION or not 0 < height <= MAX_DIMENSION:
+        raise ValueError(f"{name} has invalid PNG dimensions {width}x{height}")
+
+
+def _valid_existing_png(path: Path, expected_size: int | None = None) -> bool:
+    try:
+        size = path.stat().st_size
+        if not path.is_file() or size < 33 or size > MAX_FILE_SIZE:
+            return False
+        if expected_size is not None and size != expected_size:
+            return False
+        with path.open("rb") as stream:
+            _validate_png_header(stream.read(33), path.name)
+    except (OSError, ValueError):
+        return False
+    return True
+
+
 def _complete(destination: Path, required: set[str]) -> bool:
-    return all((destination / name).is_file() for name in required)
+    return all(_valid_existing_png(destination / name) for name in required)
 
 
 def _archive_members(archive: ZipFile, required: set[str]) -> dict[str, ZipInfo]:
     selected: dict[str, ZipInfo] = {}
     duplicates: set[str] = set()
+    total_size = 0
     for member in archive.infolist():
         if member.is_dir():
             continue
         basename = Path(member.filename).name
         if basename not in required:
             continue
+        mode = member.external_attr >> 16
+        file_type = stat.S_IFMT(mode)
+        if member.create_system == 3 and file_type not in (0, stat.S_IFREG):
+            raise ValueError(f"required archive member is not a regular file: {member.filename}")
         if basename in selected:
             duplicates.add(basename)
         selected[basename] = member
+        if member.file_size < 33 or member.file_size > MAX_FILE_SIZE:
+            raise ValueError(f"{basename} has invalid uncompressed size {member.file_size}")
+        total_size += member.file_size
 
     if duplicates:
         names = ", ".join(sorted(duplicates))
@@ -59,15 +104,20 @@ def _archive_members(archive: ZipFile, required: set[str]) -> dict[str, ZipInfo]
     if missing:
         names = ", ".join(sorted(missing))
         raise ValueError(f"archive is missing required Modern Office assets: {names}")
+    if total_size > MAX_TOTAL_SIZE:
+        raise ValueError(f"archive required assets exceed total size limit: {total_size}")
+    for name, member in selected.items():
+        with archive.open(member) as source:
+            _validate_png_header(source.read(33), name)
     return selected
 
 
 def provision(archive_path: Path, destination: Path) -> int:
     required = required_asset_names()
-    if _complete(destination, required):
-        print(f"Modern Office assets already provisioned: {destination}")
-        return 0
     if not archive_path.is_file():
+        if _complete(destination, required):
+            print(f"Modern Office assets already provisioned: {destination}")
+            return 0
         raise ValueError(
             f"licensed Modern Office archive not found: {archive_path}. "
             "Set PIXELVERSE_MODERN_OFFICE_ARCHIVE to its local path."
@@ -76,9 +126,10 @@ def provision(archive_path: Path, destination: Path) -> int:
     with ZipFile(archive_path) as archive:
         members = _archive_members(archive, required)
         destination.mkdir(parents=True, exist_ok=True)
+        copied = 0
         for name in sorted(required):
             target = destination / name
-            if target.is_file():
+            if _valid_existing_png(target, members[name].file_size):
                 continue
             with archive.open(members[name]) as source, tempfile.NamedTemporaryFile(
                 dir=destination, prefix=f".{name}.", delete=False
@@ -90,8 +141,12 @@ def provision(archive_path: Path, destination: Path) -> int:
                     temporary_path.unlink(missing_ok=True)
                     raise
             os.replace(temporary_path, target)
+            copied += 1
 
-    print(f"Provisioned {len(required)} Modern Office assets into {destination}")
+    if copied == 0:
+        print(f"Modern Office assets already provisioned: {destination}")
+    else:
+        print(f"Provisioned {copied} Modern Office assets into {destination}")
     return 0
 
 

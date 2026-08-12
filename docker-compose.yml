@@ -2,8 +2,14 @@ services:
   pixelverse:
     build:
       context: .
+      args:
+        PIXELVERSE_BUILD_REVISION: ${PIXELVERSE_BUILD_REVISION:-unknown}
+        PIXELVERSE_BUILD_FINGERPRINT: ${PIXELVERSE_BUILD_FINGERPRINT:-unknown}
     image: cli-pixelverse:local
     container_name: cli-pixelverse
+    labels:
+      org.opencontainers.image.revision: ${PIXELVERSE_BUILD_REVISION:-unknown}
+      io.pixelverse.build-fingerprint: ${PIXELVERSE_BUILD_FINGERPRINT:-unknown}
     environment:
       PIXELVERSE_AGENT_KIND: ${PIXELVERSE_AGENT_KIND:-generic}
       PIXELVERSE_HOST: 0.0.0.0

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import re
+import struct
 import subprocess
 import sys
+import zlib
 from pathlib import Path
 from zipfile import ZipFile
 
@@ -27,6 +29,7 @@ def _required_names() -> set[str]:
 
 
 def _write_fixture_archive(path: Path, names: set[str]) -> None:
+    png = _png_bytes()
     with ZipFile(path, "w") as archive:
         for name in sorted(names):
             if name == "Room_Builder_Office_16x16.png":
@@ -35,7 +38,17 @@ def _write_fixture_archive(path: Path, names: set[str]) -> None:
                 member = f"4_Modern_Office_singles/16x16/{name}"
             else:
                 member = name
-            archive.writestr(member, f"fixture:{name}".encode())
+            archive.writestr(member, png)
+
+
+def _png_bytes(width: int = 16, height: int = 16) -> bytes:
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(
+            ">I", zlib.crc32(kind + data) & 0xFFFFFFFF
+        )
+
+    ihdr = struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0)
+    return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr) + chunk(b"IEND", b"")
 
 
 def _run(*args: str) -> subprocess.CompletedProcess[str]:
@@ -79,6 +92,72 @@ def test_rejects_archive_missing_a_required_member_before_extracting(tmp_path: P
     assert result.returncode == 2
     assert missing in result.stderr
     assert not destination.exists()
+
+
+def test_rejects_duplicate_required_member_before_extracting(tmp_path: Path) -> None:
+    required = _required_names()
+    archive = tmp_path / "duplicate.zip"
+    destination = tmp_path / "private-assets"
+    _write_fixture_archive(archive, required)
+    duplicate = min(required)
+    with ZipFile(archive, "a") as bundle:
+        bundle.writestr(f"duplicate/{duplicate}", _png_bytes())
+
+    result = _run("--archive", str(archive), "--destination", str(destination))
+
+    assert result.returncode == 2
+    assert "duplicate" in result.stderr.lower()
+    assert not destination.exists()
+
+
+def test_rejects_corrupt_png_header_before_extracting(tmp_path: Path) -> None:
+    required = _required_names()
+    archive = tmp_path / "corrupt.zip"
+    destination = tmp_path / "private-assets"
+    corrupt = min(required)
+    _write_fixture_archive(archive, required - {corrupt})
+    with ZipFile(archive, "a") as bundle:
+        bundle.writestr(corrupt, b"not a png")
+
+    result = _run("--archive", str(archive), "--destination", str(destination))
+
+    assert result.returncode == 2
+    assert corrupt in result.stderr
+    assert "png" in result.stderr.lower()
+    assert not destination.exists()
+
+
+def test_rejects_oversized_required_member_before_extracting(tmp_path: Path) -> None:
+    required = _required_names()
+    archive = tmp_path / "oversized.zip"
+    destination = tmp_path / "private-assets"
+    oversized = min(required)
+    _write_fixture_archive(archive, required - {oversized})
+    with ZipFile(archive, "a") as bundle:
+        bundle.writestr(oversized, _png_bytes() + b"x" * (2 * 1024 * 1024))
+
+    result = _run("--archive", str(archive), "--destination", str(destination))
+
+    assert result.returncode == 2
+    assert oversized in result.stderr
+    assert "size" in result.stderr.lower()
+    assert not destination.exists()
+
+
+def test_corrupt_existing_png_is_repaired_instead_of_treated_as_complete(tmp_path: Path) -> None:
+    required = _required_names()
+    archive = tmp_path / "licensed.zip"
+    destination = tmp_path / "private-assets"
+    _write_fixture_archive(archive, required)
+    first = _run("--archive", str(archive), "--destination", str(destination))
+    assert first.returncode == 0, first.stderr
+    corrupt = destination / min(required)
+    corrupt.write_bytes(b"not a png")
+
+    repaired = _run("--archive", str(archive), "--destination", str(destination))
+
+    assert repaired.returncode == 0, repaired.stderr
+    assert corrupt.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
 
 
 def test_missing_archive_fails_with_configurable_path_guidance(tmp_path: Path) -> None:

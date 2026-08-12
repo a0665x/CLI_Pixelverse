@@ -486,20 +486,18 @@ print_tailscale_status() {
 }
 
 docker_image_is_stale() {
-  local image_created
-  image_created="$(docker image inspect -f '{{.Created}}' cli-pixelverse:local 2>/dev/null || true)"
-  [[ -n "$image_created" ]] || return 0
-  find \
-    "$ROOT/Dockerfile" \
-    "$ROOT/requirements.txt" \
-    "$ROOT/pixelverse_server.py" \
-    "$ROOT/pixelverse_fastapi.py" \
-    "$ROOT/bridge.py" \
-    "$ROOT/public" \
-    "$ROOT/agent_bridges" \
-    "$ROOT/scripts" \
-    -type f -newermt "$image_created" -print -quit 2>/dev/null \
-    | grep -q .
+  local built_revision built_fingerprint
+  built_revision="$(docker image inspect -f '{{index .Config.Labels "org.opencontainers.image.revision"}}' cli-pixelverse:local 2>/dev/null || true)"
+  built_fingerprint="$(docker image inspect -f '{{index .Config.Labels "io.pixelverse.build-fingerprint"}}' cli-pixelverse:local 2>/dev/null || true)"
+  [[ -n "$built_revision" && "$built_revision" == "$PIXELVERSE_BUILD_REVISION" ]] || return 0
+  [[ -n "$built_fingerprint" && "$built_fingerprint" == "$PIXELVERSE_BUILD_FINGERPRINT" ]] || return 0
+  return 1
+}
+
+prepare_docker_build_metadata() {
+  PIXELVERSE_BUILD_REVISION="$(python3 "$ROOT/scripts/docker_build_metadata.py" revision)"
+  PIXELVERSE_BUILD_FINGERPRINT="$(python3 "$ROOT/scripts/docker_build_metadata.py" fingerprint)"
+  export PIXELVERSE_BUILD_REVISION PIXELVERSE_BUILD_FINGERPRINT
 }
 
 start_service() {
@@ -516,6 +514,7 @@ start_service() {
   agent_command="$(agent_command_name "$agent_kind")"
 
   provision_modern_office_assets
+  prepare_docker_build_metadata
   stop_legacy_local_processes
   echo "Starting CLI_Pixelverse Docker service for $agent_kind..."
   if [[ "${PIXELVERSE_REBUILD:-0}" == "1" ]] || docker_image_is_stale; then
