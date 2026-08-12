@@ -307,6 +307,7 @@ export class InteriorCutawaySystem {
   private furnitureDomLabels: CutawayRoomLabel[] = [];
   private occupantDomLabels: CutawayRoomLabel[] = [];
   private marqueeCleanup: (() => void) | undefined;
+  private viewportResizeObserver: ResizeObserver | undefined;
   private readonly occupantViews = new Map<string, {
     sprite: Phaser.GameObjects.Image;
     icon: Phaser.GameObjects.Text;
@@ -329,6 +330,11 @@ export class InteriorCutawaySystem {
       const canvas = this.scene.game?.canvas;
       return canvas?.getBoundingClientRect();
     });
+    const canvas = this.scene.game?.canvas;
+    if (canvas && typeof ResizeObserver !== 'undefined') {
+      this.viewportResizeObserver = new ResizeObserver(this.resizeHandler);
+      this.viewportResizeObserver.observe(canvas);
+    }
   }
 
   open(buildingId: string): void {
@@ -673,6 +679,8 @@ export class InteriorCutawaySystem {
 
   destroy(): void {
     this.close();
+    this.viewportResizeObserver?.disconnect();
+    this.viewportResizeObserver = undefined;
     this.scene.input.keyboard?.off('keydown-ESC', this.escapeHandler);
     if (typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
       window.removeEventListener('resize', this.resizeHandler);

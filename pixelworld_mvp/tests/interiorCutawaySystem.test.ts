@@ -541,6 +541,37 @@ describe('InteriorCutawaySystem', () => {
     expect(capture.overlay.relayout).toHaveBeenCalledWith(cutawayLayoutForViewport(1_100, 720));
   });
 
+  it('reflows an open cutaway when its embedded canvas changes size', () => {
+    const fake = fakeScene();
+    const viewport = { width: 1_280, height: 720 };
+    const canvas = {};
+    Object.assign(fake.scene, { game: { canvas } });
+    let resize: (() => void) | undefined;
+    const observe = vi.fn();
+    const disconnect = vi.fn();
+    vi.stubGlobal('ResizeObserver', class {
+      constructor(handler: () => void) { resize = handler; }
+      observe = observe;
+      disconnect = disconnect;
+    });
+    try {
+      const cutaway = new InteriorCutawaySystem(fake.scene as never, WORLD_DEFINITION, () => viewport);
+      const capture = captureCutawayHandlers(cutaway);
+      cutaway.open('rest-cabin');
+      viewport.width = 840;
+      viewport.height = 480;
+
+      resize?.();
+
+      expect(observe).toHaveBeenCalledWith(canvas);
+      expect(capture.overlay.relayout).toHaveBeenCalledWith(cutawayLayoutForViewport(840, 480));
+      cutaway.destroy();
+      expect(disconnect).toHaveBeenCalledOnce();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('reprojects cached room labels when the canvas CSS rectangle changes', () => {
     let rect = { left: 10, top: 20, width: 768, height: 512 } as DOMRect;
     const overlay = new InteriorCutawayDomOverlay(() => rect);
