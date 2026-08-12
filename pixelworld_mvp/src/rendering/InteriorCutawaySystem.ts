@@ -34,6 +34,7 @@ import {
   effectiveFurnitureFootprint,
   resolvePlacementCandidate,
   resolvedFurnitureAsset,
+  snapFurniturePoint,
   type PlacementCandidate,
 } from './interiorPlacement';
 import {
@@ -482,9 +483,10 @@ export class InteriorCutawaySystem {
     this.paletteLayer?.removeAll(true);
     this.paletteLayer?.destroy();
     if (!this.root) return;
+    const root = this.root;
     const furnitureLayer = this.scene.add.container(0, 0);
     this.furnitureLayer = furnitureLayer;
-    this.root.add(furnitureLayer);
+    root.add(furnitureLayer);
     const placementPreview = this.scene.add.graphics();
     furnitureLayer.add(placementPreview);
 
@@ -587,7 +589,15 @@ export class InteriorCutawaySystem {
     if (!this.editMode) return;
     const palette = this.scene.add.container(0, 0);
     this.paletteLayer = palette;
-    this.root.add(palette);
+    root.add(palette);
+    const rootPointForPointer = (pointer: unknown): GridPoint | undefined => {
+      const value = pointer as Phaser.Input.Pointer | undefined;
+      if (!value || typeof value.positionToCamera !== 'function') return undefined;
+      const camera = value.camera ?? this.scene.cameras.main;
+      const worldPoint = value.positionToCamera(camera) as GridPoint;
+      const point = root.getLocalPoint(worldPoint.x, worldPoint.y, undefined, camera);
+      return Number.isFinite(point.x) && Number.isFinite(point.y) ? { x: point.x, y: point.y } : undefined;
+    };
     const page = catalogPage(this.catalogCategory, this.catalogPageIndex, 12);
     const required = requiredHookInventory(this.activeDefinition ?? interior, interior.furniture);
     const startX = layout.x + (layout.width - 12 * 34) / 2 + 17;
@@ -629,6 +639,13 @@ export class InteriorCutawaySystem {
       item.setInteractive({ useHandCursor: true, draggable: true });
       this.scene.input.setDraggable(item);
       let ghosts: Phaser.GameObjects.Image[] = [];
+      let lastPointerAnchor: { screen: GridPoint; room: GridPoint } | undefined;
+      const capturePointerAnchor = (pointer: unknown) => {
+        const screen = rootPointForPointer(pointer);
+        if (!screen) return undefined;
+        lastPointerAnchor = { screen, room: this.roomPoint(screen.x, screen.y) };
+        return lastPointerAnchor;
+      };
       const createGhosts = (x: number, y: number): Phaser.GameObjects.Image[] => prefab.items.map((part) => {
           const partCatalog = resolvedFurnitureAsset(part);
           const partKey = partCatalog?.key ?? modernOfficeAsset(modernOfficeKindForFurniture(part.kind)).key;
@@ -643,25 +660,32 @@ export class InteriorCutawaySystem {
           furnitureLayer.add(ghost);
           return ghost;
         });
-      item.on('dragstart', () => {
-        ghosts = createGhosts(item.x, item.y);
+      item.on('dragstart', (pointer: unknown) => {
+        const anchor = capturePointerAnchor(pointer);
+        ghosts = anchor ? createGhosts(anchor.screen.x, anchor.screen.y) : [];
       });
-      item.on('drag', (_pointer: unknown, dragX: number, dragY: number) => {
-        if (ghosts.length === 0) ghosts = createGhosts(dragX, dragY);
+      item.on('drag', (pointer: unknown) => {
+        const anchor = capturePointerAnchor(pointer);
+        if (!anchor) return;
+        if (ghosts.length === 0) ghosts = createGhosts(anchor.screen.x, anchor.screen.y);
         ghosts.forEach((ghost, partIndex) => {
           const part = prefab.items[partIndex]!;
           ghost.setPosition(
-            dragX + (part.point.x - prefab.anchor.x) * ROOM_CELL,
-            dragY + (part.point.y - prefab.anchor.y) * ROOM_CELL,
+            anchor.screen.x + (part.point.x - prefab.anchor.x) * ROOM_CELL,
+            anchor.screen.y + (part.point.y - prefab.anchor.y) * ROOM_CELL,
           );
         });
       });
-      item.on('dragend', (_pointer: unknown, dragX: number, dragY: number) => {
-        const result = placeOfficePrefab(interior, interior.furniture, prefab, this.roomPoint(dragX ?? item.x, dragY ?? item.y));
-        if (result.accepted) interior.furniture = result.layout;
-        this.setStatus(result.accepted ? `組裝件「${prefab.name}」已放置` : '⚠ 組裝件超出房間或擋門');
+      item.on('dragend', (pointer: unknown) => {
+        const anchor = lastPointerAnchor ?? capturePointerAnchor(pointer);
+        const result = anchor
+          ? placeOfficePrefab(interior, interior.furniture, prefab, snapFurniturePoint(anchor.room))
+          : undefined;
+        if (result?.accepted) interior.furniture = result.layout;
+        this.setStatus(result?.accepted ? `組裝件「${prefab.name}」已放置` : '⚠ 組裝件超出房間或擋門');
         ghosts.forEach((ghost) => ghost.destroy());
         ghosts = [];
+        lastPointerAnchor = undefined;
         this.renderFurniture(interior, layout);
       });
       palette.add(item);

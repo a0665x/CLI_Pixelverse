@@ -41,6 +41,14 @@ const clonePrefab = (prefab: FurniturePrefab): FurniturePrefab => ({
   items: cloneLayout(prefab.items),
 });
 
+const deepFreeze = <T>(value: T): T => {
+  if (value && typeof value === 'object' && !Object.isFrozen(value)) {
+    Object.values(value as Record<string, unknown>).forEach(deepFreeze);
+    Object.freeze(value);
+  }
+  return value;
+};
+
 const asUserOfficePrefab = (prefab: FurniturePrefab): OfficePrefabDefinition => ({
   ...clonePrefab(prefab),
   source: 'user',
@@ -83,7 +91,7 @@ export function loadPrefabs(storage: StorageLike | undefined = browserStorage())
 
 export function availablePrefabs(storage: StorageLike | undefined = browserStorage()): OfficePrefabDefinition[] {
   return [
-    ...BUILT_IN_OFFICE_PREFABS.map(cloneOfficePrefab),
+    ...BUILT_IN_OFFICE_PREFABS.map((prefab) => deepFreeze(cloneOfficePrefab(prefab))),
     ...loadPrefabs(storage).map(asUserOfficePrefab),
   ];
 }

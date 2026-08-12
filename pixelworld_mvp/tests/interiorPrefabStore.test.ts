@@ -56,6 +56,32 @@ describe('interior prefab and room clipboard store', () => {
     expect(persisted.prefabs[0]?.id).toBe('user-desk-kit');
   });
 
+  it('deep-freezes returned built-in clones while keeping user assemblies mutable', () => {
+    const memory = storage();
+    savePrefabs([{
+      id: 'user-kit', name: 'User kit', createdAt: 1, width: 2, height: 2,
+      items: [item('a', 0, 0), item('b', 1, 1)],
+    }], memory);
+
+    const [builtIn, , , user] = availablePrefabs(memory);
+
+    expect(Object.isFrozen(builtIn)).toBe(true);
+    expect(Object.isFrozen(builtIn!.anchor)).toBe(true);
+    expect(Object.isFrozen(builtIn!.hookActions)).toBe(true);
+    expect(Object.isFrozen(builtIn!.items)).toBe(true);
+    expect(Object.isFrozen(builtIn!.items[0])).toBe(true);
+    expect(Object.isFrozen(builtIn!.items[0]!.point)).toBe(true);
+    expect(Object.isFrozen(builtIn!.items[0]!.supportedActions)).toBe(true);
+    expect(Object.isFrozen(builtIn!.items[0]!.footprint)).toBe(true);
+    expect(Object.isFrozen(builtIn!.items[0]!.visualOffset)).toBe(true);
+    expect(Object.isFrozen(builtIn!.interactionAnchors)).toBe(true);
+    expect(Object.isFrozen(builtIn!.interactionAnchors[0])).toBe(true);
+    expect(Object.isFrozen(builtIn!.interactionAnchors[0]!.point)).toBe(true);
+    expect(Object.isFrozen(builtIn!.interactionAnchors[0]!.actions)).toBe(true);
+    expect(Object.isFrozen(user)).toBe(false);
+    expect(Object.isFrozen(user!.items)).toBe(false);
+  });
+
   it('copies no Hook furniture and persists the clipboard', () => {
     const memory = storage();
     const clipboard = copyDecorativeLayout('source-house', [item('hook', 2, 2, ['terminal']), item('rug', 3, 3)], 10);

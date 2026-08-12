@@ -34,6 +34,7 @@ class FakeObject {
   setScrollFactor(): this { return this; }
   setInteractive(): this { this.interactive = true; return this; }
   setPosition(x: number, y: number): this { this.x = x; this.y = y; return this; }
+  getLocalPoint(x: number, y: number): { x: number; y: number } { return { x, y }; }
   setScale(scale: number): this { this.scale = scale; return this; }
   setSize(width: number, height: number): this { this.width = width; this.height = height; return this; }
   setAngle(): this { return this; }
@@ -86,6 +87,10 @@ const idleInside: InteriorAgentSnapshot = {
   agentId: 'main', role: 'main', buildingId: 'rest-cabin', action: 'rest',
   eventKind: 'idle', eventId: 'idle-1',
 };
+
+const pointerAt = (x: number, y: number) => ({
+  x, y, camera: {}, positionToCamera: () => ({ x, y }),
+});
 
 describe('InteriorCutawaySystem', () => {
   it('exposes contextual operations from the exact selection shape', () => {
@@ -175,7 +180,7 @@ describe('InteriorCutawaySystem', () => {
     expect(sprites.every(({ destroyed }) => !destroyed)).toBe(true);
   });
 
-  it('renders every built-in prefab part without tint and drags the group as one atomic preview', () => {
+  it('uses Pointer coordinates for smooth group ghosts and snaps the retained anchor only at commit', () => {
     const fake = fakeScene();
     const cutaway = new InteriorCutawaySystem(fake.scene as never, WORLD_DEFINITION, () => ({ width: 1_280, height: 720 }));
     cutaway.open('rest-cabin');
@@ -203,20 +208,54 @@ describe('InteriorCutawaySystem', () => {
     expect(previewParts).toHaveLength(bench.items.length);
     expect(previewParts.every(({ tinted }) => !tinted)).toBe(true);
 
-    preview!.emit('dragstart');
-    const pointer = dragPreviewScreenPoint(internal.roomOrigin, { x: 2, y: 2 });
-    preview!.emit('drag', {}, pointer.x + 0.13, pointer.y + 0.19);
+    const anchor = { x: 2.12, y: 2.12 };
+    const pointer = dragPreviewScreenPoint(internal.roomOrigin, anchor);
+    preview!.emit('dragstart', pointerAt(pointer.x - 20, pointer.y - 20));
+    preview!.emit('drag', pointerAt(pointer.x, pointer.y), -320, 850);
     const ghosts = fake.objects.filter(({ alpha, destroyed }) => alpha === 0.72 && !destroyed);
     expect(ghosts).toHaveLength(bench.items.length);
     expect(ghosts[0]).toMatchObject({
-      x: pointer.x + 0.13 + (bench.items[0]!.point.x - bench.anchor.x) * 22,
-      y: pointer.y + 0.19 + (bench.items[0]!.point.y - bench.anchor.y) * 22,
+      x: pointer.x + (bench.items[0]!.point.x - bench.anchor.x) * 22,
+      y: pointer.y + (bench.items[0]!.point.y - bench.anchor.y) * 22,
     });
 
-    preview!.emit('dragend', {}, pointer.x, pointer.y);
+    preview!.emit('dragend', pointerAt(pointer.x + 200, pointer.y + 200), 7, 9);
     expect(room.furniture).toHaveLength(bench.items.length);
+    expect(room.furniture[0]!.point).toEqual({ x: 2, y: 3 });
     expect(room.furniture.every(({ prefabInstanceId }) => prefabInstanceId === room.furniture[0]!.prefabInstanceId)).toBe(true);
     expect(room.furniture.some(({ supportedActions }) => supportedActions.length > 0)).toBe(true);
+  });
+
+  it('commits from the Pointer captured at dragstart when no drag update fires', () => {
+    const fake = fakeScene();
+    const cutaway = new InteriorCutawaySystem(fake.scene as never, WORLD_DEFINITION, () => ({ width: 1_280, height: 720 }));
+    cutaway.open('rest-cabin');
+    const room: InteriorDefinition = {
+      id: 'research-library', label: 'Shelf test', width: 18, height: 12,
+      floor: 'tile', wall: 'blue', furniture: [], overflow: [],
+    };
+    const internal = cutaway as unknown as {
+      editMode: boolean;
+      activeDefinition: InteriorDefinition;
+      activeInterior: InteriorDefinition;
+      roomOrigin: { x: number; y: number };
+      renderFurniture(interior: InteriorDefinition, layout: ReturnType<typeof cutawayLayoutForViewport>): void;
+    };
+    internal.editMode = true;
+    internal.activeDefinition = room;
+    internal.activeInterior = room;
+    internal.renderFurniture(room, cutawayLayoutForViewport(1_280, 720));
+
+    const bench = BUILT_IN_OFFICE_PREFABS[0]!;
+    const preview = fake.objects.find((object) => object.interactive &&
+      object.children.filter(({ texture }) => texture.startsWith('modern-office')).length === bench.items.length)!;
+    const pointer = dragPreviewScreenPoint(internal.roomOrigin, { x: 3.12, y: 2.88 });
+
+    preview.emit('dragstart', pointerAt(pointer.x, pointer.y));
+    preview.emit('dragend', pointerAt(pointer.x + 300, pointer.y + 300), -12, -8);
+
+    expect(room.furniture).toHaveLength(bench.items.length);
+    expect(room.furniture[0]!.point).toEqual({ x: 3, y: 4 });
   });
 
   it('keeps canvas text out of the cutaway header so DOM text stays crisp', () => {
