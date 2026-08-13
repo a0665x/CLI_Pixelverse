@@ -130,4 +130,93 @@ describe('StatusOverlaySystem failure transitions', () => {
     expect(JSON.stringify(created.map(({ text }) => text))).not.toMatch(/[\u3400-\u9fff]/);
     expect(created[1]!.text).toBe('⚠ Cannot reach destination');
   });
+
+  it('keeps dynamic exterior status hidden while focused and recomputes current presence on restore', () => {
+    const created: ReturnType<typeof textObject>[] = [];
+    const scene = { time: { now: 100 }, add: { text: vi.fn(() => { const text = textObject(); created.push(text); return text; }) } };
+    const overlay = new StatusOverlaySystem(scene as never, [{
+      id: 'build', label: 'Build', themeId: 'maker-workshop', bounds: { x: 0, y: 0, width: 1, height: 1 }, labelAnchor: { x: 0, y: 0 },
+      entrance: { outside: { x: 0, y: 1 }, threshold: { x: 0, y: 0 }, entryFacing: 'up', exitFacing: 'down' },
+    }]);
+    const agent = { agentId: 'main', role: 'main', sprite: { x: 8, y: 8 }, presence: () => ({ kind: 'outside' }) } as AgentController;
+    overlay.publish(agent, {
+      eventId: 'e', timestamp: 1, source: 'demo', agentId: 'main', agentRole: 'main', kind: 'plan', phase: 'working', activityLabel: '規劃',
+    }, { destinationId: 'planning-board', preserveLocation: false, action: 'plan', bubblePolicy: 'persistent', bubbleText: '規劃中', priority: 40 });
+    overlay.setPresence('main', 'build');
+
+    overlay.setExteriorLabelsVisible(false);
+    expect(created[0]!.visible).toBe(false);
+    expect(created[2]!.visible).toBe(false);
+
+    const insideAgent = {
+      agentId: 'main', role: 'main', sprite: { x: 8, y: 8 },
+      presence: () => ({ kind: 'inside', buildingId: 'build', threshold: { x: 0, y: 0 } }),
+    } as AgentController;
+    overlay.update([insideAgent]);
+    overlay.setExteriorLabelsVisible(true);
+    expect(created[0]!.visible).toBe(true);
+    expect(created[2]!.visible).toBe(false);
+  });
+
+  it('recomputes a transient bubble expiry instead of restoring stale visibility', () => {
+    const created: ReturnType<typeof textObject>[] = [];
+    const scene = { time: { now: 100 }, add: { text: vi.fn(() => { const text = textObject(); created.push(text); return text; }) } };
+    const overlay = new StatusOverlaySystem(scene as never, []);
+    const agent = { agentId: 'main', role: 'main', sprite: { x: 8, y: 8 }, presence: () => ({ kind: 'outside' }) } as AgentController;
+    overlay.publish(agent, {
+      eventId: 'e', timestamp: 1, source: 'demo', agentId: 'main', agentRole: 'main', kind: 'plan', phase: 'working', activityLabel: '規劃',
+    }, { destinationId: 'planning-board', preserveLocation: false, action: 'plan', bubblePolicy: 'transient', bubbleText: '規劃中', priority: 40 });
+
+    overlay.setExteriorLabelsVisible(false);
+    scene.time.now = 5_000;
+    overlay.setExteriorLabelsVisible(true);
+
+    expect(created[1]!.visible).toBe(false);
+  });
+
+  it('does not reveal a newly attached Phaser label while exterior status is hidden', () => {
+    const created: ReturnType<typeof textObject>[] = [];
+    const scene = { time: { now: 100 }, add: { text: vi.fn(() => { const text = textObject(); created.push(text); return text; }) } };
+    const overlay = new StatusOverlaySystem(scene as never, []);
+    const agent = { agentId: 'main', role: 'main', sprite: { x: 8, y: 8 }, presence: () => ({ kind: 'outside' }) } as AgentController;
+
+    overlay.setExteriorLabelsVisible(false);
+    overlay.attachAgent(agent);
+
+    expect(created[0]!.visible).toBe(false);
+  });
+
+  it('hides the DOM status host while exterior labels are focused away', () => {
+    const host = { hidden: false, append: vi.fn() };
+    const elements: Array<{ hidden: boolean; append: ReturnType<typeof vi.fn>; remove: ReturnType<typeof vi.fn>; style: Record<string, string>; dataset: Record<string, string>; textContent: string }> = [];
+    vi.stubGlobal('document', {
+      querySelector: vi.fn(() => host),
+      createElement: vi.fn(() => {
+        const element = { hidden: false, append: vi.fn(), remove: vi.fn(), style: {}, dataset: {}, textContent: '' };
+        elements.push(element);
+        return element;
+      }),
+    });
+    try {
+      const scene = { time: { now: 100 }, add: { text: vi.fn(textObject) } };
+      const overlay = new StatusOverlaySystem(scene as never, [{
+        id: 'build', label: 'Build', themeId: 'maker-workshop', bounds: { x: 0, y: 0, width: 1, height: 1 }, labelAnchor: { x: 0, y: 0 },
+        entrance: { outside: { x: 0, y: 1 }, threshold: { x: 0, y: 0 }, entryFacing: 'up', exitFacing: 'down' },
+      }]);
+      const agent = { agentId: 'main', role: 'main', sprite: { x: 8, y: 8 }, presence: () => ({ kind: 'outside' }) } as AgentController;
+
+      overlay.setExteriorLabelsVisible(false);
+      overlay.publish(agent, {
+        eventId: 'e', timestamp: 1, source: 'demo', agentId: 'main', agentRole: 'main', kind: 'plan', phase: 'working', activityLabel: '規劃',
+      }, { destinationId: 'planning-board', preserveLocation: false, action: 'plan', bubblePolicy: 'persistent', bubbleText: '規劃中', priority: 40 });
+
+      expect(host.hidden).toBe(true);
+      expect(elements).not.toHaveLength(0);
+
+      overlay.setExteriorLabelsVisible(true);
+      expect(host.hidden).toBe(false);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });

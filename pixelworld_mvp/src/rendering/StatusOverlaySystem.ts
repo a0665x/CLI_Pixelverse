@@ -22,10 +22,12 @@ export class StatusOverlaySystem {
   private readonly overlays = new Map<string, AgentOverlay>();
   private readonly activities = new Map<string, AgentActivity>();
   private readonly buildingBadges = new Map<string, Phaser.GameObjects.Text>();
+  private readonly agents = new Map<string, AgentController>();
   private readonly domOverlay: DomStatusOverlay;
   private readonly buildings: WorldBuilding[];
   private readonly failures = new Map<string, StatusFailureReason>();
   private locale: VillageLocale = 'zh-TW';
+  private exteriorLabelsVisible = true;
 
   constructor(private readonly scene: Phaser.Scene, buildings: WorldBuilding[]) {
     this.buildings = buildings;
@@ -65,11 +67,12 @@ export class StatusOverlaySystem {
   }
 
   attachAgent(agent: AgentController): void {
+    this.agents.set(agent.agentId, agent);
     if (this.overlays.has(agent.agentId)) return;
     const prefix = agent.role === 'main' ? 'main' : agent.agentId;
     const chip = this.scene.add.text(agent.sprite.x, agent.sprite.y - 16, `${prefix} · ${villageCopy(this.locale).actions.idle}`, {
       fontFamily: 'monospace', fontSize: agent.role === 'main' ? '8px' : '7px', color: '#fff5c7', backgroundColor: '#27452ddd', padding: { x: 3, y: 1 },
-    }).setOrigin(0.5, 1).setDepth(20_000);
+    }).setOrigin(0.5, 1).setDepth(20_000).setVisible(false);
     const bubble = this.scene.add.text(agent.sprite.x, agent.sprite.y - 34, '', {
       fontFamily: 'monospace', fontSize: '8px', color: '#29351e', backgroundColor: '#fff0badd', padding: { x: 4, y: 3 },
     }).setOrigin(0.5, 1).setDepth(20_002).setVisible(false);
@@ -81,9 +84,26 @@ export class StatusOverlaySystem {
     overlay?.chip.destroy();
     overlay?.bubble.destroy();
     this.overlays.delete(agentId);
+    this.agents.delete(agentId);
     this.activities.delete(agentId);
     this.failures.delete(agentId);
     this.domOverlay.removeAgent(agentId);
+    this.refreshBuildings();
+  }
+
+  setExteriorLabelsVisible(visible: boolean): void {
+    if (this.exteriorLabelsVisible === visible) return;
+    this.exteriorLabelsVisible = visible;
+    this.domOverlay.setVisible(visible);
+    if (!visible) {
+      this.overlays.forEach(({ bubble }) => bubble.setVisible(false));
+      this.buildingBadges.forEach((badge) => badge.setVisible(false));
+      return;
+    }
+    this.agents.forEach((agent, agentId) => {
+      const overlay = this.overlays.get(agentId);
+      if (overlay) this.syncAgentVisibility(agent, overlay);
+    });
     this.refreshBuildings();
   }
 
@@ -97,10 +117,9 @@ export class StatusOverlaySystem {
     overlay.chip.setText(`${prefix} · ${ACTION_ICONS[route.action]} ${localizedActivity}`);
     let bubbleExpiresAt = 0;
     if (route.bubblePolicy === 'none') {
-      overlay.bubble.setVisible(false);
       overlay.bubbleExpiresAt = 0;
     } else {
-      overlay.bubble.setText(villageCopy(this.locale).actions[route.action]).setVisible(true);
+      overlay.bubble.setText(villageCopy(this.locale).actions[route.action]);
       bubbleExpiresAt = route.bubblePolicy === 'persistent'
         ? Number.POSITIVE_INFINITY
         : this.scene.time.now + 4000;
@@ -141,7 +160,7 @@ export class StatusOverlaySystem {
     this.failures.set(agent.agentId, reason);
     const prefix = agent.role === 'main' ? 'main' : agent.agentId;
     overlay.chip.setText(`${prefix} · ${message}`);
-    overlay.bubble.setText(message).setVisible(true);
+    overlay.bubble.setText(message);
     overlay.bubbleExpiresAt = Number.POSITIVE_INFINITY;
     this.domOverlay.publish(agent, `${prefix} · ${message}`, message, true);
     this.syncAgentVisibility(agent, overlay);
@@ -150,6 +169,7 @@ export class StatusOverlaySystem {
 
   update(agents: AgentController[]): void {
     for (const agent of agents) {
+      this.agents.set(agent.agentId, agent);
       const overlay = this.overlays.get(agent.agentId);
       if (!overlay) continue;
       overlay.chip.setPosition(agent.sprite.x, agent.sprite.y - 16);
@@ -166,6 +186,7 @@ export class StatusOverlaySystem {
     });
     this.buildingBadges.forEach((badge) => badge.destroy());
     this.overlays.clear();
+    this.agents.clear();
     this.activities.clear();
     this.failures.clear();
     this.buildingBadges.clear();
@@ -186,7 +207,7 @@ export class StatusOverlaySystem {
         .map(([action, count]) => `${ACTION_ICONS[action as keyof typeof ACTION_ICONS]}${count}`)
         .join(' ');
       const text = `👥${summary.count} ${counts}${summary.message ? `\n${summary.message}` : ''}`;
-      badge.setText(text).setVisible(!this.domOverlay.isActive());
+      badge.setText(text).setVisible(this.exteriorLabelsVisible && !this.domOverlay.isActive());
       const building = this.buildings.find(({ id }) => id === buildingId);
       if (building) this.domOverlay.setBuilding(building, text, true);
     }
@@ -197,7 +218,7 @@ export class StatusOverlaySystem {
     const bubbleActive = overlay.bubbleExpiresAt === Number.POSITIVE_INFINITY
       || this.scene.time.now < overlay.bubbleExpiresAt;
     overlay.chip.setVisible(false);
-    overlay.bubble.setVisible(outside && bubbleActive && !this.domOverlay.isActive());
-    this.domOverlay.positionAgent(agent, outside, outside && bubbleActive);
+    overlay.bubble.setVisible(this.exteriorLabelsVisible && outside && bubbleActive && !this.domOverlay.isActive());
+    this.domOverlay.positionAgent(agent, outside, this.exteriorLabelsVisible && outside && bubbleActive);
   }
 }

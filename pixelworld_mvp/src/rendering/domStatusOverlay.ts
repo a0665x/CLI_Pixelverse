@@ -53,6 +53,10 @@ export class DomStatusOverlay {
 
   isActive(): boolean { return this.root !== undefined; }
 
+  setVisible(visible: boolean): void {
+    if (this.root) this.root.hidden = !visible;
+  }
+
   setLocale(locale: VillageLocale): void {
     this.locale = locale;
     const copy = villageCopy(locale);
