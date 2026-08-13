@@ -1301,10 +1301,8 @@ export class InteriorCutawaySystem {
 
   private shiftSelectedLayer(interior: InteriorDefinition, layout: CutawayLayout, direction: 'previous' | 'next'): void {
     if (this.selectedFurnitureIds.size === 0) return;
-    const changed = this.commitFurnitureMutation(
-      interior,
-      shiftSelectionLayer(interior.furniture, [...this.selectedFurnitureIds], direction),
-    );
+    const result = shiftSelectionLayer(interior, interior.furniture, [...this.selectedFurnitureIds], direction);
+    const changed = result.accepted && this.commitFurnitureMutation(interior, result.layout);
     this.setStatus(changed ? (direction === 'next' ? 'layerUpApplied' : 'layerDownApplied') : 'layerShiftRejected');
     this.renderFurniture(interior, layout);
   }

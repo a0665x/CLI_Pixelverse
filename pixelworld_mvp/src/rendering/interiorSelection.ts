@@ -268,20 +268,20 @@ export function resizeSelectionAtomically(
 const LAYERS: readonly FurnitureLayer[] = ['floor', 'furniture', 'surface', 'wall'];
 
 export function shiftSelectionLayer(
+  room: InteriorDefinition,
   layout: readonly FurnitureDefinition[],
   selectedIds: readonly string[],
   direction: 'previous' | 'next',
-): FurnitureDefinition[] {
+): SelectionMutationResult {
   const selected = new Set(expandSelection(layout, selectedIds));
   const selectedItems = layout.filter(({ id }) => selected.has(id));
-  if (selectedItems.length === 0) return layout.map(cloneFurniture);
+  if (selectedItems.length === 0) return { accepted: false, layout: layout.map(cloneFurniture) };
   const delta = direction === 'next' ? 1 : -1;
   if (selectedItems.some((item) => {
     const index = LAYERS.indexOf(item.layer ?? 'furniture');
     return index + delta < 0 || index + delta >= LAYERS.length;
-  })) return layout.map(cloneFurniture);
-  return layout.map((item) => {
-    if (!selected.has(item.id)) return cloneFurniture(item);
+  })) return { accepted: false, layout: layout.map(cloneFurniture) };
+  return transformSelectionAtomically(room, layout, [...selected], (item) => {
     const current = item.layer ?? 'furniture';
     return { ...cloneFurniture(item), layer: LAYERS[LAYERS.indexOf(current) + delta]! };
   });

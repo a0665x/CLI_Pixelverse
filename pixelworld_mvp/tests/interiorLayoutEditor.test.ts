@@ -20,6 +20,7 @@ import {
   FURNITURE_SCALES,
 } from '../src/rendering/interiorLayoutEditor';
 import { modernOfficeKindForFurniture } from '../src/rendering/InteriorCutawaySystem';
+import { officeLayoutIssues } from '../src/rendering/prefabGeometry';
 import { INTERIOR_DEFINITIONS, INTERIOR_LAYOUT_REVISION } from '../src/world/interiorDefinitions';
 import type { FurnitureDefinition } from '../src/world/types';
 
@@ -149,6 +150,31 @@ describe('interior furniture editor model', () => {
     expect(restored).toEqual(instance);
     expect(restored[1]!.point.x - restored[0]!.point.x).toBe(2.5);
     expect(new Set(restored.map(({ prefabInstanceId }) => prefabInstanceId))).toEqual(new Set(['saved-prefab-instance']));
+  });
+
+  it('round-trips supported group layer metadata without breaking its support references', () => {
+    const memory = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => memory.get(key) ?? null,
+      setItem: (key: string, value: string) => { memory.set(key, value); },
+    };
+    const instance = [{
+      id: 'layer-desk', kind: 'desk' as const, assetId: 193, point: { x: 3, y: 3 }, facing: 'up' as const,
+      supportedActions: [], icon: 'generic' as const, layer: 'furniture' as const, blocksNavigation: false,
+      prefabInstanceId: 'layer-instance', scale: 1 as const, rotation: 0 as const, zIndex: 0,
+    }, {
+      id: 'layer-monitor', kind: 'display' as const, assetId: 141, point: { x: 3, y: 3 }, facing: 'up' as const,
+      supportedActions: [], icon: 'generic' as const, layer: 'surface' as const, blocksNavigation: false,
+      prefabInstanceId: 'layer-instance', supportedByIds: ['layer-desk'], scale: 1 as const, rotation: 0 as const,
+      zIndex: 0,
+    }];
+
+    saveInteriorLayout('supported-layer-house', instance, storage);
+    const restored = loadInteriorLayout('supported-layer-house', room, storage);
+
+    expect(restored).toEqual(instance);
+    expect(restored[1]?.supportedByIds).toEqual([restored[0]?.id]);
+    expect(officeLayoutIssues({ ...room, furniture: restored })).toEqual([]);
   });
 
   it.each([

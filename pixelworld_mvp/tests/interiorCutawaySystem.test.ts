@@ -870,6 +870,35 @@ describe('InteriorCutawaySystem', () => {
     expect(internal.activeInterior.furniture.some(({ id }) => id === 'atomic-b')).toBe(true);
   });
 
+  it('rejects an invalid Research bench layer shift without runtime mutation or undo pollution', () => {
+    const fake = fakeScene();
+    const cutaway = new InteriorCutawaySystem(fake.scene as never, WORLD_DEFINITION, () => ({ width: 1_280, height: 720 }));
+    const capture = captureCutawayHandlers(cutaway);
+    cutaway.open('network-lab');
+    capture.handlers().toggleEdit();
+    const internal = cutaway as unknown as {
+      activeInterior: InteriorDefinition;
+      selectedFurnitureIds: Set<string>;
+      selectedFurnitureId?: string;
+      undoStore: { reset(layout: InteriorDefinition['furniture']): void; canUndo: boolean };
+    };
+    const bench = internal.activeInterior.furniture.filter(({ prefabInstanceId }) => (
+      prefabInstanceId?.includes('bench-four-1')
+    ));
+    const before = structuredClone(internal.activeInterior.furniture);
+    internal.selectedFurnitureIds = new Set(bench.map(({ id }) => id));
+    internal.selectedFurnitureId = bench[0]!.id;
+    internal.undoStore.reset(internal.activeInterior.furniture);
+
+    capture.handlers().shiftLayer('next');
+
+    expect(internal.activeInterior.furniture).toEqual(before);
+    expect(internal.undoStore.canUndo).toBe(false);
+    expect(capture.model().statusId).toBe('layerShiftRejected');
+    capture.handlers().undo();
+    expect(internal.activeInterior.furniture).toEqual(before);
+  });
+
   it('previews without mutation or storage, applies a valid compact template in memory, and undoes it', () => {
     const storage = { getItem: vi.fn(() => null), setItem: vi.fn() };
     vi.stubGlobal('window', { localStorage: storage, dispatchEvent: vi.fn(), prompt: vi.fn() });

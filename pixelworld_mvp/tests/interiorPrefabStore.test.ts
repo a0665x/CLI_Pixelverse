@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { FurnitureDefinition, FurniturePrefab, InteriorDefinition } from '../src/world/types';
+import { INTERIOR_DEFINITIONS } from '../src/world/interiorDefinitions';
 import {
   availablePrefabs,
   copyDecorativeLayout,
@@ -98,6 +99,80 @@ describe('interior prefab and room clipboard store', () => {
     expect(clipboard.items.map(({ id }) => id)).toEqual(['rug']);
     saveLayoutClipboard(clipboard, memory);
     expect(loadLayoutClipboard(memory)).toEqual(clipboard);
+  });
+
+  it('copies the semantic decorative closure without Hook furniture or dangling support refs', () => {
+    const hookDesk = {
+      ...deskSurfaceKit('hook-desk', 'unused')[0]!, supportedActions: ['terminal' as const],
+      requirementId: 'required-hook', blocksNavigation: true,
+    };
+    const dependent = { ...deskSurfaceKit('unused', 'dependent-monitor')[1]!, supportedByIds: ['hook-desk'] };
+    const independent = item('independent-plant', 6, 6);
+    const source = [hookDesk, dependent, independent];
+
+    const clipboard = copyDecorativeLayout('source-house', source, 11);
+
+    expect(clipboard.items.map(({ id }) => id)).toEqual(['independent-plant']);
+    expect(clipboard.items.flatMap(({ supportedByIds = [] }) => supportedByIds)).toEqual([]);
+    expect(source).toEqual([hookDesk, dependent, independent]);
+  });
+
+  it('copies and pastes every work-theme decorative closure within and across themes', () => {
+    const themes = ['research-library', 'maker-workshop', 'collaboration-barn'] as const;
+    for (const sourceId of themes) {
+      const source = INTERIOR_DEFINITIONS[sourceId];
+      const sourceBefore = structuredClone(source.furniture);
+      const clipboard = copyDecorativeLayout(`${sourceId}-source`, source.furniture, 12);
+      const copiedBefore = structuredClone(clipboard);
+      const copiedIds = new Set(clipboard.items.map(({ id }) => id));
+
+      expect(clipboard.items.length, sourceId).toBeGreaterThan(0);
+      expect(clipboard.items.every(({ supportedActions, requirementId }) => (
+        supportedActions.length === 0 && requirementId === undefined
+      )), sourceId).toBe(true);
+      expect(clipboard.items.every(({ supportedByIds = [] }) => supportedByIds.every((id) => copiedIds.has(id))), sourceId)
+        .toBe(true);
+
+      for (const targetId of themes) {
+        const target = INTERIOR_DEFINITIONS[targetId];
+        const targetBefore = structuredClone(target.furniture);
+        const result = pasteDecorativeLayout(target, target.furniture, clipboard, 120);
+        expect(result.accepted, `${sourceId}->${targetId}`).toBe(true);
+        const targetHookIds = target.furniture
+          .filter(({ supportedActions, requirementId }) => supportedActions.length > 0 || Boolean(requirementId))
+          .map(({ id }) => id);
+        expect(result.layout.slice(0, targetHookIds.length).map(({ id }) => id), `${sourceId}->${targetId}`)
+          .toEqual(targetHookIds);
+        const pasted = result.layout.slice(targetHookIds.length);
+        expect(pasted.length, `${sourceId}->${targetId}`).toBeGreaterThan(0);
+        const pastedIds = new Set(pasted.map(({ id }) => id));
+        expect(pasted.every(({ supportedByIds = [] }) => supportedByIds.every((id) => pastedIds.has(id))), `${sourceId}->${targetId}`)
+          .toBe(true);
+        expect(source.furniture, sourceId).toEqual(sourceBefore);
+        expect(target.furniture, targetId).toEqual(targetBefore);
+        expect(clipboard, sourceId).toEqual(copiedBefore);
+      }
+    }
+  });
+
+  it('skips one conflicting source dependency component while retaining target Hooks and independent decor', () => {
+    const hook = {
+      ...deskSurfaceKit('target-hook', 'unused')[0]!, point: { x: 4, y: 4 },
+      supportedActions: ['terminal' as const], requirementId: 'target:terminal', blocksNavigation: true,
+    };
+    const source = deskSurfaceKit('source-desk', 'source-monitor').map((entry) => ({
+      ...entry, point: { x: 4, y: 4 },
+    }));
+    const independent = item('source-independent', 8, 6);
+    const clipboard = copyDecorativeLayout('source', [...source, independent], 13);
+
+    const result = pasteDecorativeLayout(room, [hook], clipboard, 130);
+
+    expect(result.accepted).toBe(true);
+    expect(result.layout.map(({ id }) => id)).toEqual(['target-hook', 'pasted-130-2']);
+    expect(result.layout[0]).toEqual(hook);
+    expect(result.layout[1]).toMatchObject({ point: independent.point });
+    expect(result.layout[1]).not.toHaveProperty('supportedByIds');
   });
 
   it('falls back safely when prefab and clipboard storage reads throw', () => {

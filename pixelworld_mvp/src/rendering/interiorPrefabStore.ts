@@ -154,11 +154,24 @@ export function copyDecorativeLayout(
   layout: readonly FurnitureDefinition[],
   copiedAt: number = Date.now(),
 ): InteriorLayoutClipboard {
+  let copied = layout.filter(({ supportedActions, requirementId }) => supportedActions.length === 0 && !requirementId);
+  while (true) {
+    const copiedIds = new Set(copied.map(({ id }) => id));
+    const closed = copied.filter(({ supportedByIds }) => (
+      supportedByIds === undefined || supportedByIds.some((id) => copiedIds.has(id))
+    ));
+    if (closed.length === copied.length) break;
+    copied = closed;
+  }
+  const copiedIds = new Set(copied.map(({ id }) => id));
   return {
     version: 1,
     sourceBuildingId,
     copiedAt,
-    items: cloneLayout(layout.filter(({ supportedActions, requirementId }) => supportedActions.length === 0 && !requirementId)),
+    items: cloneLayout(copied).map((item) => item.supportedByIds ? {
+      ...item,
+      supportedByIds: item.supportedByIds.filter((id) => copiedIds.has(id)),
+    } : item),
   };
 }
 
@@ -251,6 +264,49 @@ const remapAdditions = (
   return additions;
 };
 
+const supportComponents = (
+  items: readonly FurnitureDefinition[],
+): FurnitureDefinition[][] => {
+  const itemById = new Map(items.map((item) => [item.id, item]));
+  const links = new Map(items.map(({ id }) => [id, new Set<string>()]));
+  for (const item of items) {
+    for (const supportId of item.supportedByIds ?? []) {
+      if (!itemById.has(supportId)) continue;
+      links.get(item.id)!.add(supportId);
+      links.get(supportId)!.add(item.id);
+    }
+  }
+  const visited = new Set<string>();
+  const components: FurnitureDefinition[][] = [];
+  for (const item of items) {
+    if (visited.has(item.id)) continue;
+    const pending = [item.id];
+    const componentIds = new Set<string>();
+    while (pending.length > 0) {
+      const id = pending.pop()!;
+      if (visited.has(id)) continue;
+      visited.add(id);
+      componentIds.add(id);
+      pending.push(...links.get(id) ?? []);
+    }
+    components.push(items.filter(({ id }) => componentIds.has(id)));
+  }
+  return components;
+};
+
+const compatibleAdditions = (
+  room: InteriorDefinition,
+  fixed: readonly FurnitureDefinition[],
+  additions: readonly FurnitureDefinition[],
+): FurnitureDefinition[] | undefined => {
+  if (!validateAll(room, [], additions)) return undefined;
+  const accepted: FurnitureDefinition[] = [];
+  for (const component of supportComponents(additions)) {
+    if (validateAll(room, [...fixed, ...accepted], component)) accepted.push(...component.map(cloneFurniture));
+  }
+  return accepted;
+};
+
 export function pasteDecorativeLayout(
   room: InteriorDefinition,
   targetLayout: readonly FurnitureDefinition[],
@@ -259,8 +315,10 @@ export function pasteDecorativeLayout(
 ): LayoutMutationResult {
   const hooks = cloneLayout(targetLayout.filter(({ supportedActions, requirementId }) => supportedActions.length > 0 || Boolean(requirementId)));
   const additions = remapAdditions(clipboard.items, hooks, `pasted-${now}`, (item) => item.point);
-  if (!additions || !validateAll(room, hooks, additions)) return { accepted: false, layout: cloneLayout(targetLayout) };
-  return { accepted: true, layout: [...hooks, ...additions] };
+  if (!additions) return { accepted: false, layout: cloneLayout(targetLayout) };
+  const compatible = compatibleAdditions(room, hooks, additions);
+  if (!compatible) return { accepted: false, layout: cloneLayout(targetLayout) };
+  return { accepted: true, layout: [...hooks, ...compatible] };
 }
 
 export function placePrefab(

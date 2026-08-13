@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { FurnitureDefinition, InteriorDefinition } from '../src/world/types';
+import { INTERIOR_DEFINITIONS } from '../src/world/interiorDefinitions';
+import { officeLayoutIssues } from '../src/rendering/prefabGeometry';
 import {
   createFurniturePrefab,
   duplicateSelection,
@@ -175,10 +177,11 @@ describe('interior marquee selection and prefabs', () => {
     expect(resized.layout.slice(0, 2).map(({ scale }) => scale)).toEqual([1.25, 1.25]);
     expect(resized.layout.slice(0, 2).map(({ point }) => point)).toEqual([{ x: 3.75, y: 4 }, { x: 6.25, y: 4 }]);
 
-    const layered = shiftSelectionLayer(grouped, ['group-b'], 'next');
-    expect(layered.slice(0, 2).map(({ layer }) => layer)).toEqual(['wall', 'wall']);
-    expect(layered.slice(0, 2).map(({ zIndex }) => zIndex)).toEqual([3, 5]);
-    expect(layered[2]!.layer).toBe('surface');
+    const layered = shiftSelectionLayer(room, grouped, ['group-b'], 'next');
+    expect(layered.accepted).toBe(true);
+    expect(layered.layout.slice(0, 2).map(({ layer }) => layer)).toEqual(['wall', 'wall']);
+    expect(layered.layout.slice(0, 2).map(({ zIndex }) => zIndex)).toEqual([3, 5]);
+    expect(layered.layout[2]!.layer).toBe('surface');
 
     const front = reorderSelection(grouped, ['group-a'], 'front');
     expect(front[0]!.zIndex).toBe(9);
@@ -192,7 +195,50 @@ describe('interior marquee selection and prefabs', () => {
       { ...furniture('group-b', 129, 6, 4), prefabInstanceId: 'instance-one', layer: 'wall' as const, zIndex: 5 },
     ];
 
-    expect(shiftSelectionLayer(mixed, ['group-a'], 'next')).toEqual(mixed);
+    expect(shiftSelectionLayer(room, mixed, ['group-a'], 'next')).toEqual({ accepted: false, layout: mixed });
+  });
+
+  it('atomically rejects a Research bench layer shift that would invalidate support overlap semantics', () => {
+    const research = structuredClone(INTERIOR_DEFINITIONS['research-library']);
+    const benchId = research.furniture.find(({ prefabInstanceId }) => prefabInstanceId?.includes('bench-four-1'))!.id;
+    const before = structuredClone(research.furniture);
+
+    const layered = shiftSelectionLayer(research, research.furniture, [benchId], 'next');
+
+    expect(layered).toEqual({ accepted: false, layout: before });
+    expect(officeLayoutIssues({ ...research, furniture: layered.layout })).toEqual([]);
+    const moved = moveSelectionAtomically(research, layered.layout, [benchId], { x: 0, y: 0 });
+    expect(moved.accepted).toBe(true);
+    for (const result of [
+      rotateSelectionAtomically(research, layered.layout, [benchId], 90),
+      resizeSelectionAtomically(research, layered.layout, [benchId], 1),
+    ]) {
+      if (result.accepted) expect(officeLayoutIssues({ ...research, furniture: result.layout })).toEqual([]);
+      else expect(result.layout).toEqual(before);
+    }
+    expect(research.furniture).toEqual(before);
+  });
+
+  it('keeps move, rotate, and scale interoperable after rejecting an invalid supported-group layer shift', () => {
+    const supported = [{
+      ...furniture('supported-desk', 193, 4, 4), kind: 'desk' as const, layer: 'furniture' as const,
+      prefabInstanceId: 'supported-instance', blocksNavigation: false,
+    }, {
+      ...furniture('supported-monitor', 141, 4, 4), kind: 'display' as const,
+      prefabInstanceId: 'supported-instance', supportedByIds: ['supported-desk'],
+    }];
+
+    expect(shiftSelectionLayer(room, supported, ['supported-monitor'], 'next'))
+      .toEqual({ accepted: false, layout: supported });
+    for (const result of [
+      moveSelectionAtomically(room, supported, ['supported-desk'], { x: 1, y: 0 }),
+      rotateSelectionAtomically(room, supported, ['supported-desk'], 90),
+      resizeSelectionAtomically(room, supported, ['supported-desk'], 1),
+    ]) {
+      expect(result.accepted).toBe(true);
+      expect(officeLayoutIssues({ ...room, furniture: result.layout })).toEqual([]);
+      expect(result.layout[1]?.supportedByIds).toEqual(['supported-desk']);
+    }
   });
 
   it('sends an entire group below negative duplicate peers while preserving its z gaps', () => {
