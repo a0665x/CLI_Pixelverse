@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 
 const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
 const mainSource = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8');
+const markup = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 
 describe('fixed village game config', () => {
   it('uses the expanded 48x28 world with a 1.5x desktop presentation', () => {
@@ -53,6 +54,14 @@ describe('fixed village game config', () => {
     expect(styles).toContain('@media (prefers-reduced-transparency: reduce)');
     expect(styles).toContain('@media (prefers-contrast: more)');
     expect(styles).toContain('#game-root canvas { position: absolute; top: 0; left: 0; image-rendering: pixelated; image-rendering: crisp-edges;');
+  });
+
+  it('hides the actual exterior status host without speculative label-layer selectors', () => {
+    expect(markup).toContain('id="world-status-layer"');
+    expect(styles).toMatch(/#world-status-layer\[hidden\]\s*\{\s*display:\s*none !important;\s*\}/);
+    expect(styles).not.toContain('.village-exterior-label-layer');
+    expect(styles).not.toContain('.village-exterior-status-layer');
+    expect(styles).not.toMatch(/#world-status-layer[^{}]*transition:/);
   });
 
   it('reduced motion keeps layout transforms independent from press scale', () => {
