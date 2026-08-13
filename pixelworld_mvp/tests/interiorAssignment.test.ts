@@ -48,6 +48,35 @@ describe('interior occupant assignment', () => {
     expect(first.every(({ furnitureId }) => furnitureId !== undefined)).toBe(true);
   });
 
+  it.each(['research-library', 'maker-workshop', 'collaboration-barn'] as const)(
+    '%s assigns thirteen hybrid-office occupants before overflow',
+    (themeId) => {
+      const agents = [
+        ...Array.from({ length: 11 }, (_, index) => snapshot({
+          agentId: `terminal-${index}`,
+          role: 'subagent',
+          buildingId: themeId,
+          action: 'terminal',
+          eventKind: 'tool',
+          eventId: `terminal-cycle-${index}`,
+        })),
+        ...Array.from({ length: 2 }, (_, index) => snapshot({
+          agentId: `plan-${index}`,
+          role: 'subagent',
+          buildingId: themeId,
+          action: 'plan',
+          eventKind: 'plan',
+          eventId: `plan-cycle-${index}`,
+        })),
+      ];
+      const assignments = assignInteriorOccupants(INTERIOR_DEFINITIONS[themeId], agents);
+
+      expect(assignments).toHaveLength(13);
+      expect(assignments.every(({ furnitureId }) => furnitureId !== undefined)).toBe(true);
+      expect(new Set(assignments.map(({ point }) => `${point.x},${point.y}`)).size).toBe(13);
+    },
+  );
+
   it('assigns a reachable interaction anchor shared with interior motion', () => {
     const maker = INTERIOR_DEFINITIONS['maker-workshop'];
     const assigned = assignInteriorOccupants(maker, [snapshot({

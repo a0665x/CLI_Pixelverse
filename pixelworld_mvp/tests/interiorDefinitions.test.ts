@@ -59,6 +59,25 @@ describe('Smallville-style authored interiors', () => {
     },
   );
 
+  it.each(['research-library', 'maker-workshop', 'collaboration-barn'] as const)(
+    '%s has the complete hybrid office program',
+    (themeId) => {
+      const room = INTERIOR_DEFINITIONS[themeId];
+      const instances = new Set(room.furniture.flatMap(({ prefabInstanceId }) => (
+        prefabInstanceId ? [prefabInstanceId] : []
+      )));
+      const instanceIds = [...instances];
+      const primarySeats = room.furniture.filter(({ kind, prefabInstanceId }) => (
+        kind === 'office-chair' && prefabInstanceId !== undefined
+      ));
+
+      expect(instanceIds.filter((id) => id.includes('bench-four'))).toHaveLength(2);
+      expect(instanceIds.filter((id) => id.includes('pod-l-two'))).toHaveLength(1);
+      expect(instanceIds.filter((id) => id.includes('control-m-three'))).toHaveLength(1);
+      expect(primarySeats).toHaveLength(13);
+    },
+  );
+
   it('keeps compact buildings compact independently of their outdoor visual theme', () => {
     const waitingPost = WORLD_DEFINITION.buildings.find(({ id }) => id === 'awaiting-post')!;
     const arrivalLodge = WORLD_DEFINITION.buildings.find(({ id }) => id === 'arrival-lodge')!;
@@ -96,7 +115,7 @@ describe('Smallville-style authored interiors', () => {
     expect(second.overflow[0]!.x).not.toBe(-99);
   });
 
-  it.each(['maker-workshop', 'collaboration-barn'] as const)(
+  it.each(['research-library', 'maker-workshop', 'collaboration-barn'] as const)(
     '%s preserves every canonical M-control desk action and keeps all three desks assignable',
     (themeId) => {
       const canonical = builtInPrefab('control-m-three')!;
@@ -133,9 +152,9 @@ describe('Smallville-style authored interiors', () => {
     const maker = INTERIOR_DEFINITIONS['maker-workshop'];
     const collaboration = INTERIOR_DEFINITIONS['collaboration-barn'];
     for (const [room, id, expected] of [
-      [maker, 'maker-work-tool-wall', { x: 10.5, y: 7 }],
-      [maker, 'maker-work-planning-board', { x: 16, y: 5 }],
-      [collaboration, 'collab-work-meeting', { x: 13.5, y: 8 }],
+      [maker, 'maker-support-meeting', { x: 2, y: 7 }],
+      [collaboration, 'collab-service-device', { x: 6.5, y: 3 }],
+      [collaboration, 'collab-support-meeting', { x: 2, y: 7 }],
     ] as const) {
       const target = interiorInteractionPoint(room, room.furniture.find((item) => item.id === id)!);
       expect(target).toEqual(expected);

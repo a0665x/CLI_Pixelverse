@@ -213,11 +213,12 @@ export const builtInPrefab = (id: string): OfficePrefabDefinition | undefined =>
   BUILT_IN_OFFICE_PREFABS.find((prefab) => prefab.id === id)
 );
 
+const WORK_OFFICE_PREFABS = Object.freeze([...BUILT_IN_OFFICE_PREFAB_IDS]);
 const THEME_PREFAB_IDS: Readonly<Record<BuildingThemeId, readonly string[]>> = Object.freeze({
   'rest-cabin': Object.freeze([]),
-  'research-library': Object.freeze(['bench-four', 'pod-l-two']),
-  'maker-workshop': Object.freeze(['bench-four', 'control-m-three']),
-  'collaboration-barn': Object.freeze(['pod-l-two', 'control-m-three']),
+  'research-library': WORK_OFFICE_PREFABS,
+  'maker-workshop': WORK_OFFICE_PREFABS,
+  'collaboration-barn': WORK_OFFICE_PREFABS,
 });
 
 export const prefabsForTheme = (themeId: BuildingThemeId): readonly OfficePrefabDefinition[] => (

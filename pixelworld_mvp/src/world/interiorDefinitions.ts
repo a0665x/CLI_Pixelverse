@@ -8,11 +8,16 @@ import type {
   FurnitureLayer,
   FurnitureRotation,
   FurnitureScale,
+  GridPoint,
   InteriorDefinition,
   WorldBuilding,
 } from './types';
-import { prefabsForTheme } from '../rendering/builtInOfficePrefabs';
-import { officeLayoutIssues, placeOfficePrefab } from '../rendering/prefabGeometry';
+import {
+  prefabsForTheme,
+  type BuiltInOfficePrefabId,
+} from '../rendering/builtInOfficePrefabs';
+import { navigationCells } from '../rendering/interiorPlacement';
+import { officeLayoutIssues, placeOfficePrefab, rotatePrefab } from '../rendering/prefabGeometry';
 
 export const INTERIOR_LAYOUT_REVISION = 2;
 
@@ -180,7 +185,54 @@ const COMPACT_INTERIOR_DEFINITIONS: Record<BuildingThemeId, InteriorDefinition> 
 };
 
 const WORK_THEME_SIZE = { width: 18, height: 12 } as const;
-type PrefabPlacement = readonly [prefabId: string, anchor: { x: number; y: number }];
+interface OfficeZonePlacement {
+  prefabId: BuiltInOfficePrefabId;
+  anchor: GridPoint;
+  rotation?: FurnitureRotation;
+}
+
+const HYBRID_OFFICE_ZONES = {
+  'research-library': {
+    central: [
+      { prefabId: 'bench-four', anchor: { x: 4, y: 3 } },
+      { prefabId: 'bench-four', anchor: { x: 4, y: 7 } },
+    ],
+    specialist: [
+      { prefabId: 'pod-l-two', anchor: { x: 13, y: 3 } },
+      { prefabId: 'control-m-three', anchor: { x: 13, y: 8 } },
+    ],
+  },
+  'maker-workshop': {
+    central: [
+      { prefabId: 'bench-four', anchor: { x: 4, y: 3 } },
+      { prefabId: 'bench-four', anchor: { x: 4, y: 7 } },
+    ],
+    specialist: [
+      { prefabId: 'pod-l-two', anchor: { x: 13, y: 3 } },
+      { prefabId: 'control-m-three', anchor: { x: 13, y: 8 } },
+    ],
+  },
+  'collaboration-barn': {
+    central: [
+      { prefabId: 'bench-four', anchor: { x: 4, y: 3 } },
+      { prefabId: 'bench-four', anchor: { x: 4, y: 7 } },
+    ],
+    specialist: [
+      { prefabId: 'pod-l-two', anchor: { x: 13, y: 3 } },
+      { prefabId: 'control-m-three', anchor: { x: 13, y: 8 } },
+    ],
+  },
+} satisfies Record<Exclude<BuildingThemeId, 'rest-cabin'>, {
+  central: OfficeZonePlacement[];
+  specialist: OfficeZonePlacement[];
+}>;
+
+const hybridOfficePlacements = (
+  themeId: Exclude<BuildingThemeId, 'rest-cabin'>,
+): readonly OfficeZonePlacement[] => [
+  ...HYBRID_OFFICE_ZONES[themeId].central,
+  ...HYBRID_OFFICE_ZONES[themeId].specialist,
+];
 
 const cloneFurniture = (item: FurnitureDefinition): FurnitureDefinition => ({
   ...item,
@@ -199,7 +251,7 @@ const cloneInterior = (room: InteriorDefinition): InteriorDefinition => ({
 
 const composeThemeLayout = (
   themeId: Exclude<BuildingThemeId, 'rest-cabin'>,
-  placements: readonly PrefabPlacement[],
+  placements: readonly OfficeZonePlacement[],
   supportFurniture: readonly FurnitureDefinition[],
   overflow: InteriorDefinition['overflow'],
 ): InteriorDefinition => {
@@ -212,10 +264,11 @@ const composeThemeLayout = (
   };
   const prefabs = prefabsForTheme(themeId);
   let layout: FurnitureDefinition[] = [];
-  placements.forEach(([prefabId, anchor], placementIndex) => {
+  placements.forEach(({ prefabId, anchor, rotation = 0 }, placementIndex) => {
     const prefab = prefabs.find(({ id }) => id === prefabId);
     if (!prefab) throw new Error(`Missing ${themeId} office prefab: ${prefabId}`);
-    const result = placeOfficePrefab(room, layout, prefab, anchor, placementIndex + 1);
+    const placedPrefab = rotation === 0 ? prefab : rotatePrefab(prefab, rotation);
+    const result = placeOfficePrefab(room, layout, placedPrefab, anchor, placementIndex + 1);
     if (!result.accepted) {
       throw new Error(`Invalid ${themeId} office prefab ${prefabId}: ${result.diagnostics.join(', ')}`);
     }
@@ -233,53 +286,53 @@ const composeThemeLayout = (
   });
   room.furniture = [...layout, ...supportFurniture.map(cloneFurniture)];
   const issues = officeLayoutIssues(room);
-  if (issues.length > 0) throw new Error(`Invalid ${themeId} office layout: ${JSON.stringify(issues)}`);
+  if (issues.length > 0) {
+    const issueFurnitureIds = new Set(issues.flatMap(({ furnitureId, conflictingId }) => (
+      [furnitureId, conflictingId].filter((id): id is string => id !== undefined)
+    )));
+    const itemCells = room.furniture
+      .filter(({ id }) => issueFurnitureIds.has(id))
+      .map((item) => ({ id: item.id, cells: navigationCells(item) }));
+    throw new Error(`Invalid ${themeId} office layout: ${JSON.stringify({ issues, itemCells })}`);
+  }
   return room;
 };
 
-const researchDefinition = (): InteriorDefinition => composeThemeLayout('research-library', [
-  ['bench-four', { x: 4, y: 3 }],
-  ['bench-four', { x: 4, y: 7 }],
-  ['pod-l-two', { x: 12, y: 3 }],
-], [
-  base('research-work-meeting', 'meeting-table', 12.5, 10, 'down', ['ponder', 'plan'], 'plan', 207, 1.5),
-  surface('research-work-meeting-notes', 'decor', 12.5, 10, 156),
-  wall('research-work-archive-a', 'bookcase', 15.5, 7.5, 'right', ['read'], 'read', 176),
-  wall('research-work-archive-b', 'bookcase', 15.5, 9.5, 'right', ['read'], 'read', 174),
-  { ...base('research-work-guest-chair', 'chair', 16.5, 10.5, 'up', [], 'generic', 101), blocksNavigation: false },
-  surface('research-work-plant', 'plant', 16.5, 1.25, 99),
+const researchDefinition = (): InteriorDefinition => composeThemeLayout(
+  'research-library', hybridOfficePlacements('research-library'), [
+  wall('research-service-storage', 'cabinet', 1.5, 1, 'up', [], 'generic', 174),
+  wall('research-service-bookcase', 'bookcase', 4, 1, 'up', [], 'read', 176),
+  surface('research-service-printer', 'printer', 1.5, 1, 177, 1, 3),
+  wall('research-service-planning-board', 'planning-board', 11, 1, 'up', [], 'plan', 171),
+  base('research-support-meeting', 'meeting-table', 1.5, 8.5, 'down', [], 'plan', 207, 1.5),
+  surface('research-support-meeting-notes', 'decor', 1.5, 8.5, 156),
+  { ...base('research-support-meeting-chair', 'chair', 2, 10, 'up', [], 'generic', 101), blocksNavigation: false },
+  surface('research-service-plant', 'plant', 16.5, 1, 99),
 ], [{ x: 8, y: 6 }, { x: 9, y: 6 }, { x: 10, y: 6 }, { x: 9, y: 9 }]);
 
-const makerDefinition = (): InteriorDefinition => composeThemeLayout('maker-workshop', [
-  ['control-m-three', { x: 12, y: 2 }],
-  ['bench-four', { x: 3, y: 3 }],
-  ['bench-four', { x: 3, y: 7 }],
-], [
-  base('maker-work-repair', 'repair-table', 11.5, 8.25, 'down', ['repair'], 'repair', 193, 1.5),
-  surface('maker-work-repair-printer', 'printer', 11.5, 8.25, 177),
+const makerDefinition = (): InteriorDefinition => composeThemeLayout(
+  'maker-workshop', hybridOfficePlacements('maker-workshop'), [
+  wall('maker-service-storage', 'cabinet', 1.5, 1, 'up', [], 'generic', 174),
+  { ...wall('maker-service-bookcase', 'bookcase', 4, 1, 'up', ['terminal'], 'tool', 176), interactionPoint: { x: 6, y: 2 } },
+  surface('maker-service-printer', 'printer', 1.5, 1, 177, 1, 3),
+  { ...wall('maker-service-planning-board', 'planning-board', 11, 1, 'up', ['terminal'], 'tool', 171), interactionPoint: { x: 11, y: 3 } },
   { ...wall('maker-work-tool-wall', 'tool-wall', 10.5, 4, 'up', ['terminal'], 'tool', 175), interactionPoint: { x: 10.5, y: 7 } },
-  base('maker-work-computer', 'computer', 11, 6, 'down', ['terminal'], 'tool', 193),
-  wall('maker-work-bookcase', 'bookcase', 15, 7, 'down', ['terminal'], 'tool', 176),
-  { ...wall('maker-work-planning-board', 'planning-board', 16, 10, 'down', ['terminal'], 'tool', 171), interactionPoint: { x: 16, y: 5 } },
-  { ...base('maker-work-guest-chair', 'chair', 11, 10, 'up', [], 'generic', 101), blocksNavigation: false },
-  base('maker-work-support', 'cabinet', 14, 10.5, 'left', [], 'generic', 174),
-  surface('maker-work-refresh', 'beverage-station', 14, 10.5, 173),
+  { ...base('maker-support-meeting', 'meeting-table', 1.5, 8.5, 'down', ['repair'], 'repair', 207, 1.5), interactionPoint: { x: 2, y: 7 } },
+  surface('maker-support-meeting-notes', 'decor', 1.5, 8.5, 156),
+  { ...base('maker-support-meeting-chair', 'chair', 2, 10, 'up', [], 'generic', 101), blocksNavigation: false },
+  surface('maker-service-refresh', 'beverage-station', 16.5, 1, 173),
 ], [{ x: 8, y: 6 }, { x: 9, y: 6 }, { x: 10, y: 6 }, { x: 9, y: 9 }]);
 
-const collaborationDefinition = (): InteriorDefinition => composeThemeLayout('collaboration-barn', [
-  ['control-m-three', { x: 3, y: 3 }],
-  ['pod-l-two', { x: 12, y: 2 }],
-], [
-  base('collab-work-clone-a', 'dispatch-pod', 3.5, 8, 'down', ['dispatch'], 'clone', 193, 1.5),
-  surface('collab-work-clone-screen-a', 'display', 3.5, 8, 141),
-  base('collab-work-clone-b', 'dispatch-pod', 6.5, 8, 'down', ['dispatch'], 'clone', 194, 1.5),
-  surface('collab-work-clone-screen-b', 'display', 6.5, 8, 144),
-  { ...base('collab-work-meeting', 'meeting-table', 13.5, 10, 'down', ['arrive', 'queue'], 'generic', 207, 1.5), interactionPoint: { x: 13.5, y: 8 } },
-  surface('collab-work-meeting-notes', 'decor', 13.5, 10, 156),
-  wall('collab-work-response-a', 'radio-console', 11.5, 6, 'up', ['pulse', 'respond'], 'respond', 193),
-  wall('collab-work-response-b', 'response-desk', 15.5, 6, 'up', ['respond'], 'respond', 194),
-  { ...base('collab-work-guest-chair', 'chair', 16.5, 10.5, 'up', [], 'generic', 101), blocksNavigation: false },
-  surface('collab-work-plant', 'plant', 16.5, 1.25, 98),
+const collaborationDefinition = (): InteriorDefinition => composeThemeLayout(
+  'collaboration-barn', hybridOfficePlacements('collaboration-barn'), [
+  wall('collab-service-storage', 'cabinet', 1.5, 1, 'up', [], 'generic', 174),
+  wall('collab-service-bookcase', 'bookcase', 4, 1, 'up', [], 'respond', 176),
+  { ...wall('collab-service-device', 'radio-console', 6.5, 1, 'up', ['dispatch', 'pulse', 'respond'], 'respond', 193), interactionPoint: { x: 6.5, y: 3 } },
+  wall('collab-service-planning-board', 'planning-board', 11, 1, 'up', [], 'clone', 171),
+  { ...base('collab-support-meeting', 'meeting-table', 1.5, 8.5, 'down', ['arrive', 'queue'], 'generic', 207, 1.5), interactionPoint: { x: 2, y: 7 } },
+  surface('collab-support-meeting-notes', 'decor', 1.5, 8.5, 156),
+  { ...base('collab-support-meeting-chair', 'chair', 2, 10, 'up', [], 'generic', 101), blocksNavigation: false },
+  surface('collab-service-plant', 'plant', 16.5, 1, 98),
 ], [{ x: 8, y: 6 }, { x: 9, y: 6 }, { x: 10, y: 6 }, { x: 9, y: 9 }]);
 
 const workDefinitionFactories = {

@@ -116,12 +116,13 @@ describe('built-in Modern Office prefabs', () => {
 
   it('maps work themes to their approved workstation families', () => {
     const researchPrefabs = prefabsForTheme('research-library');
+    const allWorkPrefabs = ['bench-four', 'pod-l-two', 'control-m-three'];
 
     expect(prefabsForTheme('rest-cabin')).toEqual([]);
     expect(Object.isFrozen(researchPrefabs)).toBe(true);
-    expect(researchPrefabs.map(({ id }) => id)).toEqual(['bench-four', 'pod-l-two']);
-    expect(prefabsForTheme('maker-workshop').map(({ id }) => id)).toEqual(['bench-four', 'control-m-three']);
-    expect(prefabsForTheme('collaboration-barn').map(({ id }) => id)).toEqual(['pod-l-two', 'control-m-three']);
+    expect(researchPrefabs.map(({ id }) => id)).toEqual(allWorkPrefabs);
+    expect(prefabsForTheme('maker-workshop').map(({ id }) => id)).toEqual(allWorkPrefabs);
+    expect(prefabsForTheme('collaboration-barn').map(({ id }) => id)).toEqual(allWorkPrefabs);
   });
 
   it('gives every selected asset a semantic catalog label', () => {
