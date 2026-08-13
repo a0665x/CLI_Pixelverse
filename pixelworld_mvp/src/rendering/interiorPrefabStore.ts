@@ -249,6 +249,17 @@ const remapAdditions = (
   const ids = freshIdMap(items, fixed, prefix);
   if (!ids) return undefined;
   const destinationIds = new Set([...fixed.map(({ id }) => id), ...ids.values()]);
+  const occupiedInstanceIds = new Set(fixed.flatMap(({ prefabInstanceId }) => prefabInstanceId ? [prefabInstanceId] : []));
+  const instanceIds = new Map<string, string>();
+  for (const item of items) {
+    if (!item.prefabInstanceId || instanceIds.has(item.prefabInstanceId)) continue;
+    const base = `${prefix}-instance-${instanceIds.size}`;
+    let fresh = base;
+    let suffix = 0;
+    while (occupiedInstanceIds.has(fresh)) fresh = `${base}-${++suffix}`;
+    occupiedInstanceIds.add(fresh);
+    instanceIds.set(item.prefabInstanceId, fresh);
+  }
   const additions: FurnitureDefinition[] = [];
   for (const item of items) {
     const supportedByIds = item.supportedByIds?.map((id) => ids.get(id) ?? id);
@@ -259,6 +270,7 @@ const remapAdditions = (
       point: snapFurniturePoint(pointFor(item)),
       supportedActions: [],
       ...(supportedByIds ? { supportedByIds } : {}),
+      ...(item.prefabInstanceId ? { prefabInstanceId: instanceIds.get(item.prefabInstanceId)! } : {}),
     });
   }
   return additions;
@@ -274,6 +286,19 @@ const supportComponents = (
       if (!itemById.has(supportId)) continue;
       links.get(item.id)!.add(supportId);
       links.get(supportId)!.add(item.id);
+    }
+  }
+  const instanceMembers = new Map<string, string[]>();
+  for (const item of items) {
+    if (!item.prefabInstanceId) continue;
+    instanceMembers.set(item.prefabInstanceId, [...(instanceMembers.get(item.prefabInstanceId) ?? []), item.id]);
+  }
+  for (const members of instanceMembers.values()) {
+    const first = members[0];
+    if (!first) continue;
+    for (const id of members.slice(1)) {
+      links.get(first)!.add(id);
+      links.get(id)!.add(first);
     }
   }
   const visited = new Set<string>();
@@ -307,18 +332,43 @@ const compatibleAdditions = (
   return accepted;
 };
 
+const retainedDestinationLayout = (
+  layout: readonly FurnitureDefinition[],
+): FurnitureDefinition[] => {
+  const retained = new Set(layout
+    .filter(({ supportedActions, requirementId }) => supportedActions.length > 0 || Boolean(requirementId))
+    .map(({ id }) => id));
+  while (true) {
+    const before = retained.size;
+    const retainedInstanceIds = new Set(layout
+      .filter(({ id }) => retained.has(id))
+      .flatMap(({ prefabInstanceId }) => prefabInstanceId ? [prefabInstanceId] : []));
+    for (const item of layout) {
+      if (item.prefabInstanceId && retainedInstanceIds.has(item.prefabInstanceId)) retained.add(item.id);
+      if (retained.has(item.id)) {
+        for (const supportId of item.supportedByIds ?? []) {
+          if (layout.some(({ id }) => id === supportId)) retained.add(supportId);
+        }
+      }
+      if (item.supportedByIds?.some((supportId) => retained.has(supportId))) retained.add(item.id);
+    }
+    if (retained.size === before) break;
+  }
+  return cloneLayout(layout.filter(({ id }) => retained.has(id)));
+};
+
 export function pasteDecorativeLayout(
   room: InteriorDefinition,
   targetLayout: readonly FurnitureDefinition[],
   clipboard: InteriorLayoutClipboard,
   now: number = Date.now(),
 ): LayoutMutationResult {
-  const hooks = cloneLayout(targetLayout.filter(({ supportedActions, requirementId }) => supportedActions.length > 0 || Boolean(requirementId)));
-  const additions = remapAdditions(clipboard.items, hooks, `pasted-${now}`, (item) => item.point);
+  const retained = retainedDestinationLayout(targetLayout);
+  const additions = remapAdditions(clipboard.items, retained, `pasted-${now}`, (item) => item.point);
   if (!additions) return { accepted: false, layout: cloneLayout(targetLayout) };
-  const compatible = compatibleAdditions(room, hooks, additions);
+  const compatible = compatibleAdditions(room, retained, additions);
   if (!compatible) return { accepted: false, layout: cloneLayout(targetLayout) };
-  return { accepted: true, layout: [...hooks, ...compatible] };
+  return { accepted: true, layout: [...retained, ...compatible] };
 }
 
 export function placePrefab(

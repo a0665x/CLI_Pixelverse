@@ -138,13 +138,22 @@ describe('interior prefab and room clipboard store', () => {
         const targetBefore = structuredClone(target.furniture);
         const result = pasteDecorativeLayout(target, target.furniture, clipboard, 120);
         expect(result.accepted, `${sourceId}->${targetId}`).toBe(true);
-        const targetHookIds = target.furniture
+        const requiredInstanceIds = new Set(target.furniture
           .filter(({ supportedActions, requirementId }) => supportedActions.length > 0 || Boolean(requirementId))
-          .map(({ id }) => id);
-        expect(result.layout.slice(0, targetHookIds.length).map(({ id }) => id), `${sourceId}->${targetId}`)
-          .toEqual(targetHookIds);
-        const pasted = result.layout.slice(targetHookIds.length);
+          .flatMap(({ prefabInstanceId }) => prefabInstanceId ? [prefabInstanceId] : []));
+        for (const instanceId of requiredInstanceIds) {
+          expect(result.layout.filter(({ prefabInstanceId }) => prefabInstanceId === instanceId), `${sourceId}->${targetId}:${instanceId}`)
+            .toEqual(target.furniture.filter(({ prefabInstanceId }) => prefabInstanceId === instanceId));
+        }
+        const directHooks = target.furniture
+          .filter(({ supportedActions, requirementId }) => supportedActions.length > 0 || Boolean(requirementId))
+          .map((item) => structuredClone(item));
+        expect(result.layout.filter(({ id }) => directHooks.some((hook) => hook.id === id)), `${sourceId}->${targetId}`)
+          .toEqual(directHooks);
+        const pasted = result.layout.filter(({ id }) => id.startsWith('pasted-120-'));
         expect(pasted.length, `${sourceId}->${targetId}`).toBeGreaterThan(0);
+        expect(pasted.every(({ prefabInstanceId }) => !prefabInstanceId || !requiredInstanceIds.has(prefabInstanceId)), `${sourceId}->${targetId}`)
+          .toBe(true);
         const pastedIds = new Set(pasted.map(({ id }) => id));
         expect(pasted.every(({ supportedByIds = [] }) => supportedByIds.every((id) => pastedIds.has(id))), `${sourceId}->${targetId}`)
           .toBe(true);
@@ -153,6 +162,31 @@ describe('interior prefab and room clipboard store', () => {
         expect(clipboard, sourceId).toEqual(copiedBefore);
       }
     }
+  });
+
+  it('retains an ungrouped Hook with its complete support and dependent closure', () => {
+    const supportDesk = {
+      ...deskSurfaceKit('target-support', 'unused')[0]!, point: { x: 4, y: 4 },
+    };
+    const hookSurface: FurnitureDefinition = {
+      ...deskSurfaceKit('unused', 'target-hook')[1]!, point: { x: 4, y: 4 },
+      supportedActions: ['terminal'], requirementId: 'target:terminal', supportedByIds: ['target-support'],
+    };
+    const { requirementId: _requirementId, ...surfaceWithoutRequirement } = hookSurface;
+    const dependentSurface: FurnitureDefinition = {
+      ...surfaceWithoutRequirement, id: 'target-dependent', assetId: 251, supportedActions: [],
+    };
+    const target = [supportDesk, hookSurface, dependentSurface, item('old-ordinary', 10, 7)];
+    const clipboard = copyDecorativeLayout('source', [item('new-independent', 8, 6)], 14);
+
+    const result = pasteDecorativeLayout(room, target, clipboard, 140);
+
+    expect(result.accepted).toBe(true);
+    expect(result.layout.slice(0, 3)).toEqual([supportDesk, hookSurface, dependentSurface]);
+    expect(result.layout.map(({ id }) => id)).toEqual([
+      'target-support', 'target-hook', 'target-dependent', 'pasted-140-0',
+    ]);
+    expect(target).toEqual([supportDesk, hookSurface, dependentSurface, item('old-ordinary', 10, 7)]);
   });
 
   it('skips one conflicting source dependency component while retaining target Hooks and independent decor', () => {
@@ -173,6 +207,25 @@ describe('interior prefab and room clipboard store', () => {
     expect(result.layout[0]).toEqual(hook);
     expect(result.layout[1]).toMatchObject({ point: independent.point });
     expect(result.layout[1]).not.toHaveProperty('supportedByIds');
+  });
+
+  it('skips a complete source prefab instance when any member conflicts with a target Hook', () => {
+    const hook = {
+      ...deskSurfaceKit('target-hook', 'unused')[0]!, point: { x: 4, y: 4 },
+      supportedActions: ['terminal' as const], requirementId: 'target:terminal', blocksNavigation: true,
+    };
+    const sourceGroup = [
+      { ...item('source-conflict', 4, 4), prefabInstanceId: 'source-instance' },
+      { ...item('source-clear', 8, 6), prefabInstanceId: 'source-instance' },
+    ];
+    const independent = item('source-independent', 10, 6);
+    const clipboard = copyDecorativeLayout('source', [...sourceGroup, independent], 15);
+
+    const result = pasteDecorativeLayout(room, [hook], clipboard, 150);
+
+    expect(result.accepted).toBe(true);
+    expect(result.layout.map(({ id }) => id)).toEqual(['target-hook', 'pasted-150-2']);
+    expect(result.layout.every(({ prefabInstanceId }) => prefabInstanceId !== 'pasted-150-instance-0')).toBe(true);
   });
 
   it('falls back safely when prefab and clipboard storage reads throw', () => {
