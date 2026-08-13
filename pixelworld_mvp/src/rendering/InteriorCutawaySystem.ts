@@ -836,11 +836,12 @@ export class InteriorCutawaySystem {
       sprite.on('dragend', () => {
         const mutation = this.currentDragMutation;
         const accepted = mutation?.accepted === true;
+        const diagnostic = !accepted && this.currentDragCandidate?.diagnostic === 'valid'
+          ? 'overlap'
+          : this.currentDragCandidate?.diagnostic ?? 'outside-room';
         if (mutation && accepted) this.commitFurnitureMutation(interior, mutation.layout);
         if (accepted) this.setStatus('moveApplied');
-        else this.setStatus('placementRejected', {
-          diagnostic: this.currentDragCandidate?.diagnostic ?? 'outside-room',
-        });
+        else this.setStatus('placementRejected', { diagnostic });
         this.currentDragMutation = undefined;
         this.currentDragCandidate = undefined;
         dragGrabOffset = undefined;

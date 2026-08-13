@@ -612,6 +612,7 @@ describe('InteriorCutawaySystem', () => {
   it('keeps an invalid furniture preview under the pointer until one rollback on drag end', () => {
     const fake = fakeScene();
     const cutaway = new InteriorCutawaySystem(fake.scene as never, WORLD_DEFINITION, () => ({ width: 1_280, height: 720 }));
+    const capture = captureCutawayHandlers(cutaway);
     cutaway.open('rest-cabin');
     const moving = {
       id: 'preview-moving', kind: 'plant' as const, point: { x: 3, y: 4 }, facing: 'up' as const,
@@ -658,6 +659,9 @@ describe('InteriorCutawaySystem', () => {
     expect(sprite.destroyed).toBe(true);
     expect(room.furniture).toEqual([moving, obstacle]);
     expect(internal.undoStore.canUndo).toBe(false);
+    expect(capture.model()).toMatchObject({
+      statusId: 'placementRejected', statusParams: { diagnostic: 'overlap' },
+    });
     const restored = fake.objects.find(({ texture, interactive, destroyed, depth }) =>
       texture === 'modern-office-v1.2-single-98' && interactive && !destroyed && depth > 0)!;
     expect({ x: restored.x, y: restored.y }).toEqual(origin);
