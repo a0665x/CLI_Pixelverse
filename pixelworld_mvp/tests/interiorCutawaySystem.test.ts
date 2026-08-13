@@ -609,6 +609,60 @@ describe('InteriorCutawaySystem', () => {
     expect(room.furniture.find(({ id }) => id === furniture.id)?.point).toEqual(furniture.point);
   });
 
+  it('keeps an invalid furniture preview under the pointer until one rollback on drag end', () => {
+    const fake = fakeScene();
+    const cutaway = new InteriorCutawaySystem(fake.scene as never, WORLD_DEFINITION, () => ({ width: 1_280, height: 720 }));
+    cutaway.open('rest-cabin');
+    const moving = {
+      id: 'preview-moving', kind: 'plant' as const, point: { x: 3, y: 4 }, facing: 'up' as const,
+      supportedActions: [], icon: 'generic' as const, assetId: 98, scale: 1 as const,
+      rotation: 0 as const, layer: 'surface' as const, blocksNavigation: false,
+    };
+    const obstacle = {
+      id: 'preview-obstacle', kind: 'display' as const, point: { x: 8, y: 4 }, facing: 'up' as const,
+      supportedActions: [], icon: 'generic' as const, assetId: 129, scale: 1 as const,
+      rotation: 0 as const, layer: 'surface' as const, blocksNavigation: false,
+    };
+    const room: InteriorDefinition = {
+      id: 'rest-cabin', label: 'Invalid preview', width: 14, height: 9,
+      floor: 'wood', wall: 'cream', furniture: [moving, obstacle], overflow: [],
+    };
+    const internal = cutaway as unknown as {
+      editMode: boolean; activeDefinition: InteriorDefinition; activeInterior: InteriorDefinition;
+      roomCell: number; roomOrigin: { x: number; y: number };
+      currentDragMutation?: { accepted: boolean };
+      undoStore: { canUndo: boolean; reset(layout: InteriorDefinition['furniture']): void };
+      renderFurniture(interior: InteriorDefinition, layout: ReturnType<typeof cutawayLayoutForViewport>): void;
+    };
+    internal.editMode = true;
+    internal.activeDefinition = room;
+    internal.activeInterior = room;
+    internal.undoStore.reset(room.furniture);
+    internal.renderFurniture(room, cutawayLayoutForViewport(1_280, 720));
+    const sprite = fake.objects.find(({ texture, interactive, destroyed, depth }) =>
+      texture === 'modern-office-v1.2-single-98' && interactive && !destroyed && depth > 0)!;
+    const origin = { x: sprite.x, y: sprite.y };
+    const target = furnitureRenderScreenPoint(internal.roomOrigin, { ...moving, point: obstacle.point }, internal.roomCell);
+
+    sprite.emit('dragstart', pointerAt(origin.x, origin.y));
+    sprite.emit('drag', pointerAt(target.x, target.y), target.x, target.y);
+
+    expect(internal.currentDragMutation?.accepted).toBe(false);
+    expect({ x: sprite.x, y: sprite.y }).toEqual(target);
+    expect({ x: sprite.x, y: sprite.y }).not.toEqual(origin);
+    expect(room.furniture).toEqual([moving, obstacle]);
+    expect(internal.undoStore.canUndo).toBe(false);
+
+    sprite.emit('dragend');
+
+    expect(sprite.destroyed).toBe(true);
+    expect(room.furniture).toEqual([moving, obstacle]);
+    expect(internal.undoStore.canUndo).toBe(false);
+    const restored = fake.objects.find(({ texture, interactive, destroyed, depth }) =>
+      texture === 'modern-office-v1.2-single-98' && interactive && !destroyed && depth > 0)!;
+    expect({ x: restored.x, y: restored.y }).toEqual(origin);
+  });
+
   it('refreshes an open cutaway for a changed viewport without discarding its draft', () => {
     const fake = fakeScene();
     const viewport = { width: 1_280, height: 720 };

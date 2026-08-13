@@ -9,6 +9,7 @@ import {
   expandSelection,
   moveSelection,
   moveSelectionAtomically,
+  previewSelectionMove,
   removeSelection,
   reorderSelection,
   resizeSelectionAtomically,
@@ -119,6 +120,22 @@ describe('interior marquee selection and prefabs', () => {
 
     const rejected = moveSelectionAtomically(room, grouped, ['group-b'], { x: 20, y: 0 });
     expect(rejected).toEqual({ accepted: false, layout: grouped });
+  });
+
+  it('returns an invalid proposed group layout for drag preview without mutating the committed layout', () => {
+    const grouped = [
+      { ...furniture('preview-a', 98, 3, 3), prefabInstanceId: 'preview-instance', interactionPoint: { x: 3, y: 4 } },
+      { ...furniture('preview-b', 129, 5.5, 3.25), prefabInstanceId: 'preview-instance' },
+    ];
+    const before = structuredClone(grouped);
+
+    const preview = previewSelectionMove(room, grouped, ['preview-a'], { x: 20, y: 0 });
+
+    expect(preview.accepted).toBe(false);
+    expect(preview.layout.map(({ point }) => point)).toEqual([{ x: 23, y: 3 }, { x: 25.5, y: 3.25 }]);
+    expect(preview.layout[0]?.interactionPoint).toEqual({ x: 23, y: 4 });
+    expect(preview.layout[1]!.point.x - preview.layout[0]!.point.x).toBe(2.5);
+    expect(grouped).toEqual(before);
   });
 
   it('rejects a group move that newly strands an unselected Hook interaction anchor', () => {

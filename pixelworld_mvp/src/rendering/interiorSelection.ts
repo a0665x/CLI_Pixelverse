@@ -164,6 +164,19 @@ export function moveSelectionAtomically(
   selectedIds: readonly string[],
   delta: GridPoint,
 ): SelectionMutationResult {
+  const preview = previewSelectionMove(room, layout, selectedIds, delta);
+  return {
+    accepted: preview.accepted,
+    layout: (preview.accepted ? preview.layout : layout).map(cloneFurniture),
+  };
+}
+
+export function previewSelectionMove(
+  room: InteriorDefinition,
+  layout: readonly FurnitureDefinition[],
+  selectedIds: readonly string[],
+  delta: GridPoint,
+): SelectionMutationResult {
   const selected = new Set(expandSelection(layout, selectedIds));
   if (selected.size === 0) return { accepted: false, layout: layout.map(cloneFurniture) };
   const movedWithoutFit = moveSelection(layout, [...selected], delta);
@@ -173,7 +186,7 @@ export function moveSelectionAtomically(
   ).map((item) => [item.id, item]));
   const moved = movedWithoutFit.map((item) => selected.has(item.id) ? fitted.get(item.id)! : item);
   const accepted = selectedMutationIsValid(room, layout, moved, selected);
-  return { accepted, layout: (accepted ? moved : layout).map(cloneFurniture) };
+  return { accepted, layout: moved.map(cloneFurniture) };
 }
 
 export function transformSelectionAtomically(

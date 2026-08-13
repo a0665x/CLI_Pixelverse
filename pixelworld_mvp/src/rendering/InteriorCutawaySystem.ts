@@ -63,7 +63,7 @@ import {
   createFurniturePrefab,
   duplicateSelection,
   expandSelection,
-  moveSelectionAtomically,
+  previewSelectionMove,
   removeSelection,
   reorderSelection,
   resizeSelectionAtomically,
@@ -819,7 +819,7 @@ export class InteriorCutawaySystem {
         this.currentDragCandidate = resolvePlacementCandidate(
           interior, interior.furniture, furniture, requested, furniture.id,
         );
-        this.currentDragMutation = moveSelectionAtomically(interior, interior.furniture, [furniture.id], {
+        this.currentDragMutation = previewSelectionMove(interior, interior.furniture, [furniture.id], {
           x: requested.x - furniture.point.x,
           y: requested.y - furniture.point.y,
         });
