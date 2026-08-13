@@ -8,8 +8,8 @@ import type {
 } from '../world/types';
 import { BUILT_IN_OFFICE_PREFABS } from './builtInOfficePrefabs';
 import { catalogItem } from './modernOfficeCatalog';
-import { resolvePlacementCandidate, snapFurniturePoint } from './interiorPlacement';
-import { cloneOfficePrefab } from './prefabGeometry';
+import { diagnoseFinePlacement, resolvedFurnitureAsset, snapFurniturePoint } from './interiorPlacement';
+import { cloneOfficePrefab, opaqueFurniturePairConflicts } from './prefabGeometry';
 import type { StorageReadStatus } from './interiorLayoutEditor';
 
 interface StorageLike {
@@ -53,7 +53,10 @@ const cloneLayout = (layout: readonly FurnitureDefinition[]): FurnitureDefinitio
 const isFinitePoint = (item: FurnitureDefinition): boolean => Number.isFinite(item.point?.x) && Number.isFinite(item.point?.y);
 const isValidTemplate = (item: FurnitureDefinition): boolean => (
   typeof item.id === 'string' && isFinitePoint(item) && Array.isArray(item.supportedActions) &&
-  item.supportedActions.length === 0 && !item.requirementId && (item.assetId === undefined || catalogItem(item.assetId) !== undefined)
+  item.supportedActions.length === 0 && !item.requirementId && (item.assetId === undefined || catalogItem(item.assetId) !== undefined) &&
+  (item.supportedByIds === undefined || (
+    Array.isArray(item.supportedByIds) && item.supportedByIds.every((id) => typeof id === 'string' && id.length > 0)
+  ))
 );
 
 const clonePrefab = (prefab: FurniturePrefab): FurniturePrefab => ({
@@ -192,7 +195,61 @@ const validateAll = (
   room: InteriorDefinition,
   fixed: readonly FurnitureDefinition[],
   additions: readonly FurnitureDefinition[],
-): boolean => additions.every((item) => resolvePlacementCandidate(room, fixed, item, item.point).diagnostic === 'valid');
+): boolean => {
+  const combined = [...fixed, ...additions];
+  const byId = new Map(combined.map((item) => [item.id, item]));
+  if (byId.size !== combined.length) return false;
+  const checked = [...fixed];
+  for (const item of additions) {
+    if (!resolvedFurnitureAsset(item) || diagnoseFinePlacement(room, item, [], item.id) !== 'valid') return false;
+    if (checked.some((existing) => opaqueFurniturePairConflicts(existing, item, byId))) return false;
+    checked.push(item);
+  }
+  return true;
+};
+
+const freshIdMap = (
+  items: readonly FurnitureDefinition[],
+  fixed: readonly FurnitureDefinition[],
+  prefix: string,
+): Map<string, string> | undefined => {
+  const occupied = new Set(fixed.map(({ id }) => id));
+  const ids = new Map<string, string>();
+  for (const [index, item] of items.entries()) {
+    if (ids.has(item.id)) return undefined;
+    const base = `${prefix}-${index}`;
+    let fresh = base;
+    let suffix = 0;
+    while (occupied.has(fresh)) fresh = `${base}-${++suffix}`;
+    occupied.add(fresh);
+    ids.set(item.id, fresh);
+  }
+  return ids;
+};
+
+const remapAdditions = (
+  items: readonly FurnitureDefinition[],
+  fixed: readonly FurnitureDefinition[],
+  prefix: string,
+  pointFor: (item: FurnitureDefinition) => GridPoint,
+): FurnitureDefinition[] | undefined => {
+  const ids = freshIdMap(items, fixed, prefix);
+  if (!ids) return undefined;
+  const destinationIds = new Set([...fixed.map(({ id }) => id), ...ids.values()]);
+  const additions: FurnitureDefinition[] = [];
+  for (const item of items) {
+    const supportedByIds = item.supportedByIds?.map((id) => ids.get(id) ?? id);
+    if (supportedByIds?.some((id) => !destinationIds.has(id))) return undefined;
+    additions.push({
+      ...cloneFurniture(item),
+      id: ids.get(item.id)!,
+      point: snapFurniturePoint(pointFor(item)),
+      supportedActions: [],
+      ...(supportedByIds ? { supportedByIds } : {}),
+    });
+  }
+  return additions;
+};
 
 export function pasteDecorativeLayout(
   room: InteriorDefinition,
@@ -201,13 +258,8 @@ export function pasteDecorativeLayout(
   now: number = Date.now(),
 ): LayoutMutationResult {
   const hooks = cloneLayout(targetLayout.filter(({ supportedActions, requirementId }) => supportedActions.length > 0 || Boolean(requirementId)));
-  const additions = clipboard.items.map((item, index): FurnitureDefinition => ({
-    ...cloneFurniture(item),
-    id: `pasted-${now}-${index}`,
-    point: snapFurniturePoint(item.point),
-    supportedActions: [],
-  }));
-  if (!validateAll(room, hooks, additions)) return { accepted: false, layout: cloneLayout(targetLayout) };
+  const additions = remapAdditions(clipboard.items, hooks, `pasted-${now}`, (item) => item.point);
+  if (!additions || !validateAll(room, hooks, additions)) return { accepted: false, layout: cloneLayout(targetLayout) };
   return { accepted: true, layout: [...hooks, ...additions] };
 }
 
@@ -219,12 +271,10 @@ export function placePrefab(
   now: number = Date.now(),
 ): LayoutMutationResult {
   const snapped = snapFurniturePoint(anchor);
-  const additions = prefab.items.map((item, index): FurnitureDefinition => ({
-    ...cloneFurniture(item),
-    id: `prefab-item-${now}-${index}`,
-    point: snapFurniturePoint({ x: snapped.x + item.point.x, y: snapped.y + item.point.y }),
-    supportedActions: [],
+  const additions = remapAdditions(prefab.items, layout, `prefab-item-${now}`, (item) => ({
+    x: snapped.x + item.point.x,
+    y: snapped.y + item.point.y,
   }));
-  if (!validateAll(room, layout, additions)) return { accepted: false, layout: cloneLayout(layout) };
+  if (!additions || !validateAll(room, layout, additions)) return { accepted: false, layout: cloneLayout(layout) };
   return { accepted: true, layout: [...cloneLayout(layout), ...additions] };
 }

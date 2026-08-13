@@ -30,7 +30,7 @@ export const MODERN_OFFICE_ASSETS = {
     whiteboard: single('whiteboard', 171),
     display: single('display', 129),
     desk: single('desk', 193),
-    'meeting-table': single('meeting-table', 207),
+    'meeting-table': single('meeting-table', 4),
     cabinet: single('cabinet', 175),
     plant: single('plant', 98),
     'beverage-station': single('beverage-station', 173),

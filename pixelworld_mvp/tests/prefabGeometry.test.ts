@@ -109,13 +109,37 @@ describe('office prefab geometry', () => {
     expect(first.layout[0]!.prefabInstanceId).not.toBe(second.layout[0]!.prefabInstanceId);
   });
 
-  it('permits a nonblocking surface item to share its desk footprint', () => {
+  it('rejects an undeclared nonblocking surface overlap with its prefab desk', () => {
     const overlappingSurface: OfficePrefabDefinition = {
       ...samplePrefab,
       items: [samplePrefab.items[0]!, { ...samplePrefab.items[1]!, point: { x: 0, y: 0 } }],
     };
 
-    expect(placeOfficePrefab(room, [], overlappingSurface, { x: 4, y: 3 }, 51).accepted).toBe(true);
+    expect(placeOfficePrefab(room, [], overlappingSurface, { x: 4, y: 3 }, 51)).toMatchObject({
+      accepted: false,
+      diagnostics: ['overlap'],
+    });
+  });
+
+  it('accepts declared surface support and two surfaces sharing the real prefab desk', () => {
+    const supportedSurface: OfficePrefabDefinition = {
+      ...samplePrefab,
+      items: [
+        samplePrefab.items[0]!,
+        { ...samplePrefab.items[1]!, point: { x: 0, y: 0 }, supportedByIds: ['desk'] },
+        {
+          ...samplePrefab.items[1]!, id: 'lamp', assetId: 251, point: { x: 0, y: 0 },
+          supportedByIds: ['desk'],
+        },
+      ],
+    };
+
+    const result = placeOfficePrefab(room, [], supportedSurface, { x: 4, y: 3 }, 51);
+
+    expect(result).toMatchObject({ accepted: true, diagnostics: [] });
+    const [placedDesk, placedMonitor, placedLamp] = result.layout;
+    expect(placedMonitor?.supportedByIds).toEqual([placedDesk?.id]);
+    expect(placedLamp?.supportedByIds).toEqual([placedDesk?.id]);
   });
 
   it('requires a two-cell entrance/main aisle but permits one-cell branches to Hook anchors', () => {

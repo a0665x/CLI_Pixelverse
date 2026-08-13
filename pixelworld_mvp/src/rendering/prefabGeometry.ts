@@ -240,6 +240,16 @@ const isAllowedSupportOverlap = (
   || hasSharedSupport(first, second, roomFurniture)
 );
 
+export const opaqueFurniturePairConflicts = (
+  first: FurnitureDefinition,
+  second: FurnitureDefinition,
+  roomFurniture: ReadonlyMap<string, FurnitureDefinition>,
+): boolean => (
+  first.layer !== 'floor' && second.layer !== 'floor'
+  && overlapsOpaqueBounds(first, second)
+  && !isAllowedSupportOverlap(first, second, roomFurniture)
+);
+
 const validatePlacedItems = (
   room: InteriorDefinition,
   layout: readonly FurnitureDefinition[],
@@ -249,6 +259,9 @@ const validatePlacedItems = (
 ): PrefabPlacementDiagnostic[] => {
   const diagnostics: PrefabPlacementDiagnostic[] = [];
   const door = doorPoint(room);
+  const combinedFurniture = [...layout, ...transformed];
+  const roomFurniture = new Map(combinedFurniture.map((item) => [item.id, item]));
+  const checkedFurniture = [...layout];
   for (const item of transformed) {
     if (!resolvedFurnitureAsset(item)) appendDiagnostic(diagnostics, 'invalid-asset');
     const bounds = transformedAlphaBounds(item);
@@ -258,19 +271,17 @@ const validatePlacedItems = (
     if (bounds.x < door.x + 1 && bounds.x + bounds.width > door.x && bounds.y < door.y + 1 && bounds.y + bounds.height > door.y) {
       appendDiagnostic(diagnostics, 'blocks-door');
     }
+    if (checkedFurniture.some((existing) => opaqueFurniturePairConflicts(existing, item, roomFurniture))) {
+      appendDiagnostic(diagnostics, 'overlap');
+    }
+    checkedFurniture.push(item);
   }
 
   const existingBlocking = layout.filter(furnitureBlocksNavigation);
   const existingBlocked = new Set(existingBlocking.flatMap(navigationCells).map(key));
   const transformedBlocked = new Set<string>();
-  const transformedBlocking: FurnitureDefinition[] = [];
   for (const item of transformed) {
     if (!furnitureBlocksNavigation(item)) continue;
-    if (existingBlocking.some((existing) => overlapsOpaqueBounds(existing, item))
-      || transformedBlocking.some((existing) => overlapsOpaqueBounds(existing, item))) {
-      appendDiagnostic(diagnostics, 'overlap');
-    }
-    transformedBlocking.push(item);
     for (const cell of navigationCells(item)) {
       const cellKey = key(cell);
       transformedBlocked.add(cellKey);
@@ -278,7 +289,6 @@ const validatePlacedItems = (
   }
 
   const blocked = new Set([...existingBlocked, ...transformedBlocked]);
-  const combinedFurniture = [...layout, ...transformed];
   const requiredAnchors = interactionAnchors.filter(({ actions }) => actions.length > 0);
   const everyHookHasAnchor = hookActions.every((action) => requiredAnchors.some(({ actions }) => hasAction(actions, action)));
   if (!hasTwoTileMainAisle(room, blocked) || !everyHookHasAnchor || requiredAnchors.some(({ point }) => {
@@ -350,9 +360,8 @@ export function officeLayoutIssues(room: InteriorDefinition): Array<{
     if (bounds.x < door.x + 1 && bounds.x + bounds.width > door.x && bounds.y < door.y + 1 && bounds.y + bounds.height > door.y) {
       issues.push({ diagnostic: 'blocks-door', furnitureId: item.id, bounds, cells });
     }
-    const conflicts = item.layer === 'floor' ? [] : checkedFurniture.filter((existing) => (
-      existing.layer !== 'floor' && overlapsOpaqueBounds(existing, item)
-      && !isAllowedSupportOverlap(existing, item, roomFurniture)
+    const conflicts = checkedFurniture.filter((existing) => (
+      opaqueFurniturePairConflicts(existing, item, roomFurniture)
     ));
     for (const conflict of conflicts) {
       issues.push({
