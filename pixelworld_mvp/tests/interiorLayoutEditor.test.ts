@@ -62,6 +62,50 @@ describe('interior furniture editor model', () => {
     );
   });
 
+  it.each(['right', 'left', 'down'] as const)(
+    'keeps source orientation for saved furniture facing %s when rotation is omitted',
+    (facing) => {
+      const saved = {
+        id: `custom-source-facing-${facing}`,
+        kind: 'decor' as const,
+        point: { x: 3, y: 3 },
+        facing,
+        supportedActions: [],
+        icon: 'generic' as const,
+        assetId: 120,
+      };
+      const raw = JSON.stringify({
+        version: 5,
+        authoredRevision: INTERIOR_LAYOUT_REVISION,
+        furniture: [saved],
+      });
+      const storage = { getItem: () => raw, setItem: () => undefined };
+
+      expect(loadInteriorLayout(`source-facing-${facing}`, room, storage)[0]?.rotation).toBe(0);
+    },
+  );
+
+  it('preserves an explicit saved furniture rotation independently of facing', () => {
+    const saved = {
+      id: 'custom-explicit-rotation',
+      kind: 'decor' as const,
+      point: { x: 3, y: 3 },
+      facing: 'right' as const,
+      supportedActions: [],
+      icon: 'generic' as const,
+      assetId: 120,
+      rotation: 270 as const,
+    };
+    const raw = JSON.stringify({
+      version: 5,
+      authoredRevision: INTERIOR_LAYOUT_REVISION,
+      furniture: [saved],
+    });
+    const storage = { getItem: () => raw, setItem: () => undefined };
+
+    expect(loadInteriorLayout('explicit-source-rotation', room, storage)[0]?.rotation).toBe(270);
+  });
+
   it('migrates legacy authored furniture to the current preset while preserving custom additions', () => {
     const memory = new Map<string, string>();
     const storage = {

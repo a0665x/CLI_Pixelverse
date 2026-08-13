@@ -250,16 +250,12 @@ export function hasSavedInteriorLayout(
   return read.storageRead === 'success' && read.value !== null && parseSavedInteriorLayout(read.value) !== undefined;
 }
 
-const rotationFromFacing = (facing: FurnitureDefinition['facing']): FurnitureRotation => ({
-  up: 0, right: 90, down: 180, left: 270,
-} satisfies Record<FurnitureDefinition['facing'], FurnitureRotation>)[facing];
-
 const normalizeLayout = (layout: readonly FurnitureDefinition[]): FurnitureDefinition[] =>
   cloneLayout(layout).map((item) => {
     const normalized = {
       ...item,
       scale: normalizeFurnitureScale(item.scale),
-      rotation: normalizeRotation(item.rotation ?? rotationFromFacing(item.facing)),
+      rotation: normalizeRotation(item.rotation ?? 0),
     };
     return {
       ...normalized,
@@ -401,9 +397,9 @@ export function readInteriorLayout(
       || !SAVED_FURNITURE_KINDS.includes(item.kind)
     ) continue;
     const authored = authoredFor(item);
-    const savedRotation = normalizeRotation(item.rotation ?? rotationFromFacing(item.facing));
+    const savedRotation = normalizeRotation(item.rotation ?? 0);
     const authoredRotation = authored
-      ? normalizeRotation(authored.rotation ?? rotationFromFacing(authored.facing))
+      ? normalizeRotation(authored.rotation ?? 0)
       : 0;
     const rotationDelta = (((savedRotation - authoredRotation) + 360) % 360) as FurnitureRotation;
     const authoredInteractionPoint = authored?.interactionPoint
