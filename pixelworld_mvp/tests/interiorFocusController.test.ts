@@ -62,4 +62,15 @@ describe('InteriorFocusController', () => {
 
     expect(label.visible()).toBe(true);
   });
+
+  it('never mutates the caller target array during registration or destruction', () => {
+    const label = fakeTarget(true);
+    const callerTargets = [label];
+    const controller = new InteriorFocusController(callerTargets);
+
+    controller.register(fakeTarget(true));
+    controller.destroy();
+
+    expect(callerTargets).toEqual([label]);
+  });
 });

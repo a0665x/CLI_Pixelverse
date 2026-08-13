@@ -13,6 +13,7 @@ import type { RenderedForeground } from '../rendering/buildingForeground';
 import { DepthOcclusionSystem } from '../rendering/DepthOcclusionSystem';
 import { AmbientAnimalSystem } from '../rendering/AmbientAnimalSystem';
 import { InteriorCutawaySystem } from '../rendering/InteriorCutawaySystem';
+import { InteriorFocusController, type InteriorFocusTarget } from '../rendering/InteriorFocusController';
 import { clearRenderedForegrounds } from '../rendering/renderedForegrounds';
 import { StatusOverlaySystem } from '../rendering/StatusOverlaySystem';
 import { VillageRenderer } from '../rendering/VillageRenderer';
@@ -42,6 +43,8 @@ export class WorldScene extends Phaser.Scene {
   private animalSystem: AmbientAnimalSystem | undefined;
   private cutawaySystem: InteriorCutawaySystem | undefined;
   private statusOverlay!: StatusOverlaySystem;
+  private focusController = new InteriorFocusController();
+  private statusFocusUnregister: (() => void) | undefined;
   private debugOverlay!: DebugOverlay;
   private demoSequence = 1;
   private readonly pendingCloneAgents = new Set<string>();
@@ -50,12 +53,14 @@ export class WorldScene extends Phaser.Scene {
   private lastError = '';
   private readonly liveAgentSignatures = new Map<string, string>();
   private locale: VillageLocale = 'zh-TW';
+  private cleanupComplete = false;
 
   constructor() { super('world'); }
   preload(): void { preloadVillageAssets(this); }
 
   create(): void {
     this.sceneReady = false;
+    this.cleanupComplete = false;
     clearRenderedForegrounds(this.renderedForegrounds);
     this.ingress = new EventIngress();
     this.allocator = new StationAllocator(this.worldDefinition.stations);
@@ -68,7 +73,12 @@ export class WorldScene extends Phaser.Scene {
     this.renderedForegrounds.push(...village.foregrounds);
     this.animalSystem = new AmbientAnimalSystem(this, this.worldDefinition.scenery.animals);
     this.agents = new AgentRegistry(this, this.navigationGrid, this.worldDefinition.spawn);
-    this.attachCutawaySystem(new InteriorCutawaySystem(this, this.worldDefinition));
+    this.attachCutawaySystem(new InteriorCutawaySystem(
+      this,
+      this.worldDefinition,
+      undefined,
+      { onOpenStateChange: (open) => this.setInteriorFocused(open) },
+    ));
     village.hitRegions.forEach(({ buildingId, object }) => {
       let down: { x: number; y: number } | undefined;
       object.on('pointerdown', (pointer: Phaser.Input.Pointer) => { down = { x: pointer.x, y: pointer.y }; });
@@ -254,6 +264,10 @@ export class WorldScene extends Phaser.Scene {
       : { kind: 'outside' };
   }
   selectedAgent(): import('../agents/AgentController').AgentController { return this.agents.selected(); }
+  setInteriorFocused(open: boolean): void {
+    this.focusController ??= new InteriorFocusController();
+    this.focusController.setFocused(open);
+  }
   setLocale(locale: VillageLocale): void {
     this.locale = locale;
     this.cutawaySystem?.setLocale(locale);
@@ -269,6 +283,18 @@ export class WorldScene extends Phaser.Scene {
   private attachStatusOverlay(system: StatusOverlaySystem): void {
     this.statusOverlay = system;
     system.setLocale(this.locale);
+    this.statusFocusUnregister?.();
+    if (typeof system.setExteriorLabelsVisible !== 'function') return;
+    let visible = true;
+    const target: InteriorFocusTarget = {
+      visible: () => visible,
+      setVisible: (nextVisible) => {
+        visible = nextVisible;
+        system.setExteriorLabelsVisible(nextVisible);
+      },
+    };
+    this.focusController ??= new InteriorFocusController();
+    this.statusFocusUnregister = this.focusController.register(target);
   }
 
   private releasePendingClone(agentId: string): void { this.pendingCloneAgents.delete(agentId); }
@@ -278,12 +304,16 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private cleanupAgents(): void {
+    if (this.cleanupComplete) return;
+    this.cleanupComplete = true;
     this.sceneReady = false;
+    this.cutawaySystem?.destroy();
+    this.cutawaySystem = undefined;
+    this.focusController?.destroy();
+    this.statusFocusUnregister = undefined;
     this.statusOverlay?.destroy();
     this.animalSystem?.destroy();
     this.animalSystem = undefined;
-    this.cutawaySystem?.destroy();
-    this.cutawaySystem = undefined;
     this.agents?.destroy();
     this.pendingCloneAgents.clear();
     this.liveAgentSignatures?.clear();

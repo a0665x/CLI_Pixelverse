@@ -6,8 +6,11 @@ export interface InteriorFocusTarget {
 export class InteriorFocusController {
   private focused = false;
   private readonly prior = new Map<InteriorFocusTarget, boolean>();
+  private readonly targets: InteriorFocusTarget[];
 
-  constructor(private readonly targets: InteriorFocusTarget[] = []) {}
+  constructor(targets: readonly InteriorFocusTarget[] = []) {
+    this.targets = [...targets];
+  }
 
   register(target: InteriorFocusTarget): () => void {
     if (!this.targets.includes(target)) this.targets.push(target);

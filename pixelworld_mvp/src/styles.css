@@ -14,6 +14,7 @@ html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background:
 #village-zoom-controls [data-zoom='fit'] { display: flex; align-items: center; gap: 6px; }
 #village-zoom-controls output { min-width: 34px; color: #bfd8c1; font-size: 10px; }
 #world-status-layer { position: fixed; inset: 0; z-index: 15; overflow: hidden; pointer-events: none; font-family: Inter, "Noto Sans TC", system-ui, sans-serif; }
+#world-status-layer[hidden], .village-exterior-label-layer[hidden], .village-exterior-status-layer[hidden] { display: none !important; }
 #cutaway-ui-layer { position: fixed; inset: 0; z-index: 30; overflow: hidden; pointer-events: none; font-family: Inter, "Noto Sans TC", system-ui, sans-serif; }
 .cutaway-dom-panel { position: absolute; pointer-events: none; color: #fff0bd; text-rendering: geometricPrecision; }
 .cutaway-dom-header { position: absolute; inset: 8px 10px auto; display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
@@ -53,6 +54,9 @@ html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background:
 }
 @media (prefers-reduced-transparency: reduce) {
   #village-zoom-controls, .cutaway-dom-actions, .cutaway-dom-categories, .cutaway-dom-page { background: var(--material-structural); backdrop-filter: none; -webkit-backdrop-filter: none; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  #world-status-layer, .village-exterior-label-layer { transition: opacity 120ms ease-out; }
 }
 @media (prefers-reduced-motion: reduce) {
   #village-zoom-controls button, .cutaway-dom-panel button { transition: opacity 160ms ease; }

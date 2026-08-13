@@ -311,6 +311,45 @@ describe('InteriorCutawaySystem', () => {
     expect(cutaway.openBuildingId()).toBeUndefined();
   });
 
+  it('emits one open transition, keeps focus during building switches, and emits close once', () => {
+    const fake = fakeScene();
+    const states: Array<[boolean, string | undefined]> = [];
+    const cutaway = new InteriorCutawaySystem(
+      fake.scene as never,
+      WORLD_DEFINITION,
+      () => ({ width: 1_280, height: 720 }),
+      { onOpenStateChange: (open, buildingId) => states.push([open, buildingId]) },
+    );
+
+    cutaway.open('network-lab');
+    cutaway.open('tool-smithy');
+    cutaway.close();
+    cutaway.close();
+
+    expect(states).toEqual([
+      [true, 'network-lab'],
+      [true, 'tool-smithy'],
+      [false, undefined],
+    ]);
+  });
+
+  it('closes an open interior exactly once when destroyed', () => {
+    const fake = fakeScene();
+    const states: boolean[] = [];
+    const cutaway = new InteriorCutawaySystem(
+      fake.scene as never,
+      WORLD_DEFINITION,
+      () => ({ width: 1_280, height: 720 }),
+      { onOpenStateChange: (open) => states.push(open) },
+    );
+
+    cutaway.open('network-lab');
+    cutaway.destroy();
+    cutaway.destroy();
+
+    expect(states).toEqual([true, false]);
+  });
+
   it('shows an empty layout without manufacturing an Agent or changing the world camera', () => {
     const fake = fakeScene();
     fake.scene.cameras.main.scrollX = 4;

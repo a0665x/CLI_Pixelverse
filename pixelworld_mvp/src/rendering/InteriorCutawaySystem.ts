@@ -279,6 +279,10 @@ export function modernOfficeKindForFurniture(kind: FurnitureKind): ModernOfficeF
   return aliases[kind];
 }
 
+export interface InteriorCutawaySystemOptions {
+  onOpenStateChange?: (open: boolean, buildingId?: string) => void;
+}
+
 export class InteriorCutawaySystem {
   private root: Phaser.GameObjects.Container | undefined;
   private occupantLayer: Phaser.GameObjects.Container | undefined;
@@ -329,6 +333,7 @@ export class InteriorCutawaySystem {
     private readonly scene: Phaser.Scene,
     private readonly world: WorldDefinition,
     private readonly viewportProvider: () => { width: number; height: number } = viewport,
+    private readonly options: InteriorCutawaySystemOptions = {},
   ) {
     scene.input.keyboard?.on('keydown-ESC', this.escapeHandler);
     if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
@@ -356,7 +361,7 @@ export class InteriorCutawaySystem {
       return;
     }
     const definition = interiorDefinitionForBuilding(building);
-    this.close();
+    this.closeActive(false);
     const layoutRead = readInteriorLayout(buildingId, definition);
     const prefabRead = readAvailablePrefabs();
     const clipboardRead = readLayoutClipboard();
@@ -476,6 +481,7 @@ export class InteriorCutawaySystem {
       rotate: (delta) => this.rotateSelected(interior, layout, delta),
     });
     this.syncRoomLabels();
+    this.options.onOpenStateChange?.(true, buildingId);
   }
 
   setLocale(locale: VillageLocale): void {
@@ -569,6 +575,11 @@ export class InteriorCutawaySystem {
   }
 
   close(): void {
+    this.closeActive(true);
+  }
+
+  private closeActive(notify: boolean): void {
+    const wasOpen = this.openId !== undefined || this.root !== undefined;
     this.clearRenderedShell();
     this.domOverlay.close();
     this.selectedFurnitureId = undefined;
@@ -594,6 +605,7 @@ export class InteriorCutawaySystem {
     this.furnitureDomLabels = [];
     this.occupantDomLabels = [];
     this.occupantViews.clear();
+    if (notify && wasOpen) this.options.onOpenStateChange?.(false);
   }
 
   update(snapshots: readonly InteriorAgentSnapshot[]): void {
