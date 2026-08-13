@@ -152,9 +152,9 @@ describe('Smallville-style authored interiors', () => {
     const maker = INTERIOR_DEFINITIONS['maker-workshop'];
     const collaboration = INTERIOR_DEFINITIONS['collaboration-barn'];
     for (const [room, id, expected] of [
-      [maker, 'maker-support-meeting', { x: 2, y: 7 }],
-      [collaboration, 'collab-service-device', { x: 6.5, y: 3 }],
-      [collaboration, 'collab-support-meeting', { x: 2, y: 7 }],
+      [maker, 'maker-repair-printer-station', { x: 2, y: 7 }],
+      [collaboration, 'collab-dispatch-console', { x: 1, y: 3 }],
+      [collaboration, 'collab-meeting-table-center', { x: 2, y: 6 }],
     ] as const) {
       const target = interiorInteractionPoint(room, room.furniture.find((item) => item.id === id)!);
       expect(target).toEqual(expected);

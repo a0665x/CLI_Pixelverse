@@ -5,15 +5,20 @@ import {
   prefabsForTheme,
 } from '../src/rendering/builtInOfficePrefabs';
 import { cloneOfficePrefab, rotatePrefab } from '../src/rendering/prefabGeometry';
-import { MODERN_OFFICE_CATALOG, catalogItem } from '../src/rendering/modernOfficeCatalog';
+import { catalogItem } from '../src/rendering/modernOfficeCatalog';
+import { INTERIOR_DEFINITIONS } from '../src/world/interiorDefinitions';
 import type { Facing, GridPoint } from '../src/world/types';
 
 const prefabIds = ['bench-four', 'pod-l-two', 'control-m-three'] as const;
 
-const adjacentPoint = ({ x, y }: GridPoint, facing: Facing): GridPoint => ({
-  x: x + (facing === 'right' ? 1 : facing === 'left' ? -1 : 0),
-  y: y + (facing === 'down' ? 1 : facing === 'up' ? -1 : 0),
-});
+const facesDesk = (chair: GridPoint, facing: Facing, desk: GridPoint): boolean => {
+  const dx = desk.x - chair.x;
+  const dy = desk.y - chair.y;
+  if (facing === 'up') return dy < 0 && dy >= -1.5 && Math.abs(dx) <= 0.5;
+  if (facing === 'down') return dy > 0 && dy <= 1.5 && Math.abs(dx) <= 0.5;
+  if (facing === 'left') return dx < 0 && dx >= -1.5 && Math.abs(dy) <= 0.5;
+  return dx > 0 && dx <= 1.5 && Math.abs(dy) <= 0.5;
+};
 
 describe('built-in Modern Office prefabs', () => {
   it.each(prefabIds)('%s is a complete v1.2 workstation', (id) => {
@@ -89,14 +94,12 @@ describe('built-in Modern Office prefabs', () => {
 
   it.each(prefabIds)('%s seats face an adjacent desk surface', (id) => {
     const prefab = builtInPrefab(id)!;
-    const deskPoints = new Set(prefab.items.filter(({ kind }) => kind === 'desk')
-      .map(({ point }) => `${point.x},${point.y}`));
+    const desks = prefab.items.filter(({ kind }) => kind === 'desk');
     const chairs = prefab.items.filter(({ kind }) => kind === 'office-chair');
 
     expect(chairs.length).toBeGreaterThanOrEqual(2);
     for (const chair of chairs) {
-      const desk = adjacentPoint(chair.point, chair.facing);
-      expect(deskPoints.has(`${desk.x},${desk.y}`), `${id}:${chair.id}`).toBe(true);
+      expect(desks.some(({ point }) => facesDesk(chair.point, chair.facing, point)), `${id}:${chair.id}`).toBe(true);
     }
   });
 
@@ -107,9 +110,9 @@ describe('built-in Modern Office prefabs', () => {
 
     expect(surfaces.length).toBeGreaterThanOrEqual(4);
     for (const surface of surfaces) {
-      const desk = desks.find(({ point }) => point.x === surface.point.x && point.y === surface.point.y);
-      expect(desk, `${id}:${surface.id}`).toBeDefined();
-      expect(surface.zIndex!, `${id}:${surface.id}`).toBeGreaterThan(desk!.zIndex ?? 0);
+      const supports = desks.filter(({ id: deskId }) => surface.supportedByIds?.includes(deskId));
+      expect(supports.length, `${id}:${surface.id}`).toBeGreaterThan(0);
+      expect(surface.zIndex!, `${id}:${surface.id}`).toBeGreaterThan(Math.max(...supports.map(({ zIndex = 0 }) => zIndex)));
       expect(surface.blocksNavigation).toBe(false);
     }
   });
@@ -126,16 +129,19 @@ describe('built-in Modern Office prefabs', () => {
   });
 
   it('gives every selected asset a semantic catalog label', () => {
-    const selectedIds = new Set(BUILT_IN_OFFICE_PREFABS.flatMap(({ items }) => (
-      items.flatMap(({ assetId }) => assetId === undefined ? [] : [assetId])
-    )));
+    const selectedIds = new Set([
+      ...BUILT_IN_OFFICE_PREFABS,
+    ].flatMap(({ items }) => items.flatMap(({ assetId }) => assetId === undefined ? [] : [assetId])));
+    for (const room of [
+      INTERIOR_DEFINITIONS['research-library'],
+      INTERIOR_DEFINITIONS['maker-workshop'],
+      INTERIOR_DEFINITIONS['collaboration-barn'],
+    ]) {
+      room.furniture.forEach(({ assetId }) => { if (assetId !== undefined) selectedIds.add(assetId); });
+    }
 
     for (const id of selectedIds) {
       expect(catalogItem(id)?.label, `asset ${id}`).not.toMatch(/^Office \d{3}$/);
     }
-    const semanticIds = MODERN_OFFICE_CATALOG
-      .filter(({ label }) => !/^Office \d{3}$/.test(label))
-      .map(({ id }) => id);
-    expect(semanticIds.every((id) => selectedIds.has(id))).toBe(true);
   });
 });

@@ -29,7 +29,7 @@ export interface PlacementCandidate {
 const DEFAULT_ASSET_ID: Partial<Record<FurnitureDefinition['kind'], number>> = {
   sofa: 200, bed: 200, chair: 101, 'office-chair': 101, television: 129, display: 129,
   computer: 225, 'dispatch-pod': 225, 'radio-console': 225, bookcase: 176,
-  'planning-board': 171, 'map-table': 207, 'meeting-table': 207, 'reading-desk': 193,
+  'planning-board': 171, 'map-table': 207, 'meeting-table': 4, 'reading-desk': 193,
   workbench: 193, 'repair-table': 193, 'response-desk': 193, desk: 193,
   'tool-wall': 175, cabinet: 175, decor: 98, plant: 98, 'beverage-station': 173, printer: 177,
 };
@@ -295,6 +295,7 @@ const cloneFurniture = (item: FurnitureDefinition): FurnitureDefinition => ({
   ...(item.footprint ? { footprint: { ...item.footprint } } : {}),
   ...(item.visualOffset ? { visualOffset: { ...item.visualOffset } } : {}),
   ...(item.interactionPoint ? { interactionPoint: { ...item.interactionPoint } } : {}),
+  ...(item.supportedByIds ? { supportedByIds: [...item.supportedByIds] } : {}),
 });
 
 export function commitPlacementCandidate(

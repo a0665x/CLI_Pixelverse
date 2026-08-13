@@ -8,6 +8,7 @@ import type {
 } from '../world/types';
 import {
   furnitureBlocksNavigation,
+  fineFootprintCells,
   navigationBlockedCellKeys,
   navigationCells,
   rotateGridPoint,
@@ -39,6 +40,7 @@ const cloneFurniture = (item: FurnitureDefinition): FurnitureDefinition => ({
   ...(item.footprint ? { footprint: { ...item.footprint } } : {}),
   ...(item.visualOffset ? { visualOffset: { ...item.visualOffset } } : {}),
   ...(item.interactionPoint ? { interactionPoint: { ...item.interactionPoint } } : {}),
+  ...(item.supportedByIds ? { supportedByIds: [...item.supportedByIds] } : {}),
 });
 
 const cloneFurnitureLayout = (layout: readonly FurnitureDefinition[]): FurnitureDefinition[] => layout.map(cloneFurniture);
@@ -108,11 +110,15 @@ const transformPrefabItems = (
   anchor: GridPoint,
   prefabInstanceId: string,
 ): FurnitureDefinition[] => {
+  const placedIds = new Map(prefab.items.map((item, index) => [item.id, `${prefabInstanceId}-${index}`]));
   return prefab.items.map((item, index) => ({
     ...cloneFurniture(item),
     id: `${prefabInstanceId}-${index}`,
     point: transformPoint(item.point, prefab.anchor, anchor),
     prefabInstanceId,
+    ...(item.supportedByIds ? {
+      supportedByIds: item.supportedByIds.map((id) => placedIds.get(id) ?? id),
+    } : {}),
   }));
 };
 
@@ -177,14 +183,23 @@ const reaches = (room: InteriorDefinition, blocked: ReadonlySet<string>, target:
 const isOpen = (room: InteriorDefinition, blocked: ReadonlySet<string>, point: GridPoint): boolean =>
   insideRoom(room, point) && !blocked.has(key(point));
 
-const hasTwoTileMainAisle = (room: InteriorDefinition, blocked: ReadonlySet<string>): boolean => {
+const mainAisleBlockage = (room: InteriorDefinition, blocked: ReadonlySet<string>): {
+  point: GridPoint;
+  blockedColumns: number[];
+} | undefined => {
   const door = doorPoint(room);
   const crossAisleY = Math.floor(room.height / 2);
   for (let y = door.y; y >= crossAisleY; y -= 1) {
-    if (!isOpen(room, blocked, { x: door.x, y }) || !isOpen(room, blocked, { x: door.x - 1, y })) return false;
+    const blockedColumns = [door.x - 1, door.x]
+      .filter((x) => !isOpen(room, blocked, { x, y }));
+    if (blockedColumns.length > 0) return { point: { x: blockedColumns[0]!, y }, blockedColumns };
   }
-  return true;
+  return undefined;
 };
+
+const hasTwoTileMainAisle = (room: InteriorDefinition, blocked: ReadonlySet<string>): boolean => (
+  mainAisleBlockage(room, blocked) === undefined
+);
 
 const appendDiagnostic = (diagnostics: PrefabPlacementDiagnostic[], diagnostic: PrefabPlacementDiagnostic): void => {
   if (!diagnostics.includes(diagnostic)) diagnostics.push(diagnostic);
@@ -197,6 +212,33 @@ const overlapsOpaqueBounds = (first: FurnitureDefinition, second: FurnitureDefin
   return a.x < b.x + b.width && a.x + a.width > b.x
     && a.y < b.y + b.height && a.y + a.height > b.y;
 };
+
+const explicitlySupports = (accessory: FurnitureDefinition, support: FurnitureDefinition): boolean => (
+  accessory.layer === 'surface' && support.layer !== 'surface' && support.layer !== 'floor'
+  && accessory.supportedByIds?.includes(support.id) === true
+);
+
+const hasSharedSupport = (
+  first: FurnitureDefinition,
+  second: FurnitureDefinition,
+  roomFurniture: ReadonlyMap<string, FurnitureDefinition>,
+): boolean => (
+  first.layer === 'surface' && second.layer === 'surface'
+  && first.supportedByIds?.some((id) => {
+    const support = roomFurniture.get(id);
+    return support !== undefined && support.layer !== 'surface' && support.layer !== 'floor'
+      && second.supportedByIds?.includes(id);
+  }) === true
+);
+
+const isAllowedSupportOverlap = (
+  first: FurnitureDefinition,
+  second: FurnitureDefinition,
+  roomFurniture: ReadonlyMap<string, FurnitureDefinition>,
+): boolean => (
+  explicitlySupports(first, second) || explicitlySupports(second, first)
+  || hasSharedSupport(first, second, roomFurniture)
+);
 
 const validatePlacedItems = (
   room: InteriorDefinition,
@@ -287,36 +329,78 @@ export function officeLayoutIssues(room: InteriorDefinition): Array<{
   furnitureId?: string;
   conflictingId?: string;
   point?: GridPoint;
+  bounds?: FurnitureBounds;
+  conflictingBounds?: FurnitureBounds;
+  cells?: GridPoint[];
+  conflictingCells?: GridPoint[];
+  blockedColumns?: number[];
 }> {
   const issues: ReturnType<typeof officeLayoutIssues> = [];
   const door = doorPoint(room);
   const occupants = new Map<string, string>();
-  const blockingFurniture: FurnitureDefinition[] = [];
+  const roomFurniture = new Map(room.furniture.map((item) => [item.id, item]));
+  const checkedFurniture: FurnitureDefinition[] = [];
   for (const item of room.furniture) {
-    if (!resolvedFurnitureAsset(item)) issues.push({ diagnostic: 'invalid-asset', furnitureId: item.id });
     const bounds = transformedAlphaBounds(item);
+    const cells = fineFootprintCells(item);
+    if (!resolvedFurnitureAsset(item)) issues.push({ diagnostic: 'invalid-asset', furnitureId: item.id, bounds, cells });
     if (bounds.x < 0 || bounds.y < 0 || bounds.x + bounds.width > room.width || bounds.y + bounds.height > room.height) {
-      issues.push({ diagnostic: 'outside-room', furnitureId: item.id });
+      issues.push({ diagnostic: 'outside-room', furnitureId: item.id, bounds, cells });
     }
     if (bounds.x < door.x + 1 && bounds.x + bounds.width > door.x && bounds.y < door.y + 1 && bounds.y + bounds.height > door.y) {
-      issues.push({ diagnostic: 'blocks-door', furnitureId: item.id });
+      issues.push({ diagnostic: 'blocks-door', furnitureId: item.id, bounds, cells });
     }
+    const conflicts = item.layer === 'floor' ? [] : checkedFurniture.filter((existing) => (
+      existing.layer !== 'floor' && overlapsOpaqueBounds(existing, item)
+      && !isAllowedSupportOverlap(existing, item, roomFurniture)
+    ));
+    for (const conflict of conflicts) {
+      issues.push({
+        diagnostic: 'overlap',
+        furnitureId: item.id,
+        conflictingId: conflict.id,
+        bounds,
+        conflictingBounds: transformedAlphaBounds(conflict),
+        cells,
+        conflictingCells: fineFootprintCells(conflict),
+      });
+    }
+    checkedFurniture.push(item);
     if (!furnitureBlocksNavigation(item)) continue;
-    const conflict = blockingFurniture.find((existing) => overlapsOpaqueBounds(existing, item));
-    if (conflict) issues.push({ diagnostic: 'overlap', furnitureId: item.id, conflictingId: conflict.id });
-    blockingFurniture.push(item);
     for (const cell of navigationCells(item)) {
       const cellKey = key(cell);
       if (!occupants.has(cellKey)) occupants.set(cellKey, item.id);
     }
   }
   const blocked = new Set(occupants.keys());
-  if (!hasTwoTileMainAisle(room, blocked)) issues.push({ diagnostic: 'unreachable-interaction-anchor', point: door });
+  const aisleBlockage = mainAisleBlockage(room, blocked);
+  if (aisleBlockage) {
+    const blockedIds = [...new Set(aisleBlockage.blockedColumns.flatMap((x) => (
+      occupants.get(key({ x, y: aisleBlockage.point.y })) ?? []
+    )))];
+    const first = room.furniture.find(({ id }) => id === blockedIds[0]);
+    const second = room.furniture.find(({ id }) => id === blockedIds[1]);
+    issues.push({
+      diagnostic: 'unreachable-interaction-anchor',
+      point: aisleBlockage.point,
+      blockedColumns: aisleBlockage.blockedColumns,
+      ...(first ? { furnitureId: first.id } : {}),
+      ...(second ? { conflictingId: second.id } : {}),
+      ...(first ? { bounds: transformedAlphaBounds(first), cells: fineFootprintCells(first) } : {}),
+      ...(second ? {
+        conflictingBounds: transformedAlphaBounds(second),
+        conflictingCells: fineFootprintCells(second),
+      } : {}),
+    });
+  }
   for (const furniture of room.furniture.filter(({ supportedActions }) => supportedActions.length > 0)) {
     const point = interiorInteractionPoint(room, furniture);
     const allowed = navigationBlockedCellKeys(room.furniture, point, furniture.id);
     if (!reaches(room, allowed, { x: Math.round(point.x), y: Math.round(point.y) })) {
-      issues.push({ diagnostic: 'unreachable-interaction-anchor', furnitureId: furniture.id, point });
+      issues.push({
+        diagnostic: 'unreachable-interaction-anchor', furnitureId: furniture.id, point,
+        bounds: transformedAlphaBounds(furniture), cells: fineFootprintCells(furniture),
+      });
     }
   }
   return issues;

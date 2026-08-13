@@ -33,6 +33,7 @@ const cloneFurniture = (item: FurnitureDefinition): FurnitureDefinition => ({
   ...(item.footprint ? { footprint: { ...item.footprint } } : {}),
   ...(item.visualOffset ? { visualOffset: { ...item.visualOffset } } : {}),
   ...(item.interactionPoint ? { interactionPoint: { ...item.interactionPoint } } : {}),
+  ...(item.supportedByIds ? { supportedByIds: [...item.supportedByIds] } : {}),
 });
 
 export function selectedFurnitureIds(
@@ -349,6 +350,7 @@ export function duplicateFurniture(
     requirementId: _requirementId,
     blocksNavigation: _blocksNavigation,
     interactionPoint: _interactionPoint,
+    supportedByIds: _supportedByIds,
     ...visualSource
   } = cloneFurniture(source);
   const occupiedIds = new Set(layout.map(({ id }) => id));
@@ -407,11 +409,15 @@ export function duplicateSelection(
     instanceId = `prefab-${now}-duplicate-${sourceInstanceId}-${++suffix}`;
   }
   const copiedIds = source.map((item, index) => `${instanceId}-${index}`);
+  const copiedIdBySourceId = new Map(source.map((item, index) => [item.id, copiedIds[index]!]));
   for (const offset of duplicateOffsets()) {
     const copied = source.map((item, index) => ({
       ...translateFurniture(item, offset),
       id: copiedIds[index]!,
       prefabInstanceId: instanceId,
+      ...(item.supportedByIds ? {
+        supportedByIds: item.supportedByIds.map((id) => copiedIdBySourceId.get(id) ?? id),
+      } : {}),
     }));
     const candidate = [...layout.map(cloneFurniture), ...copied];
     const copiedSet = new Set(copiedIds);
@@ -435,6 +441,7 @@ export function createFurniturePrefab(
   const bottom = Math.max(...bounds.map((item) => item.y + item.height));
   const left = Math.min(...bounds.map(({ x }) => x));
   const top = Math.min(...bounds.map(({ y }) => y));
+  const templateIds = new Map(ordinary.map((item) => [item.id, `template-${item.id}`]));
   return {
     id: `prefab-${createdAt}-${ordinary.map(({ assetId }) => assetId ?? 0).join('-')}`,
     name: name.trim() || '未命名組裝件',
@@ -445,9 +452,12 @@ export function createFurniturePrefab(
       const { requirementId: _requirementId, interactionPoint: _interactionPoint, ...template } = cloneFurniture(item);
       return {
         ...template,
-        id: `template-${item.id}`,
+        id: templateIds.get(item.id)!,
         point: snapFurniturePoint({ x: item.point.x - minX, y: item.point.y - minY }),
         supportedActions: [],
+        ...(item.supportedByIds ? {
+          supportedByIds: item.supportedByIds.flatMap((id) => templateIds.get(id) ?? []),
+        } : {}),
       };
     }),
   };

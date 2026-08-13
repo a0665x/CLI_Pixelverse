@@ -51,6 +51,7 @@ const cloneLayout = (layout: readonly FurnitureDefinition[]): FurnitureDefinitio
   supportedActions: [...item.supportedActions],
   ...(item.visualOffset ? { visualOffset: { ...item.visualOffset } } : {}),
   ...(item.interactionPoint ? { interactionPoint: { ...item.interactionPoint } } : {}),
+  ...(item.supportedByIds ? { supportedByIds: [...item.supportedByIds] } : {}),
 }));
 
 export function furnitureCells(item: Pick<
@@ -216,7 +217,10 @@ const isSavedFurniture = (value: unknown): value is FurnitureDefinition => {
     && optionalString(item.requirementId)
     && (item.visualOffset === undefined || finitePoint(item.visualOffset))
     && (item.interactionPoint === undefined || finitePoint(item.interactionPoint))
-    && optionalString(item.prefabInstanceId);
+    && optionalString(item.prefabInstanceId)
+    && (item.supportedByIds === undefined || (
+      Array.isArray(item.supportedByIds) && item.supportedByIds.every((id) => typeof id === 'string' && id.length > 0)
+    ));
 };
 
 const parseSavedInteriorLayout = (raw: string): ParsedSavedInteriorLayout | undefined => {

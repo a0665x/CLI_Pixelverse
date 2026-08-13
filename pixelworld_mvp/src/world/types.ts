@@ -81,6 +81,7 @@ export interface FurnitureDefinition {
   visualOffset?: FurnitureVisualOffset;
   interactionPoint?: GridPoint;
   prefabInstanceId?: string;
+  supportedByIds?: string[];
 }
 export interface FurniturePrefab {
   id: string;
