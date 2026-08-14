@@ -112,9 +112,22 @@ export const AGENT_SKINS = {
     animation: 'adam-16x32',
     renderScale: 1.1,
   },
-  subagent: { sheet: AGENT_ATLAS.subagent.key, idleRow: 0, walkRows: [0, 1, 2, 3] },
-  branch: { sheet: AGENT_ATLAS.branch.key, idleRow: 0, walkRows: [0, 1, 2, 3] },
+  ninja: { sheet: AGENT_ATLAS.main.key, idleRow: 0, walkRows: [0, 1, 2, 3], renderScale: 1.35 },
+  subagent: { sheet: AGENT_ATLAS.subagent.key, idleRow: 0, walkRows: [0, 1, 2, 3], renderScale: 1.35 },
+  branch: { sheet: AGENT_ATLAS.branch.key, idleRow: 0, walkRows: [0, 1, 2, 3], renderScale: 1.35 },
 } as const satisfies Record<string, AgentSkin>;
+
+const SUBAGENT_SKINS = [AGENT_SKINS.ninja, AGENT_SKINS.subagent, AGENT_SKINS.branch] as const;
+
+export function agentSkinFor(agentId: string, role: 'main' | 'subagent'): AgentSkin {
+  if (role === 'main') return AGENT_SKINS.main;
+  let hash = 2166136261;
+  for (const character of agentId) {
+    hash ^= character.charCodeAt(0);
+    hash = Math.imul(hash, 16777619);
+  }
+  return SUBAGENT_SKINS[(hash >>> 0) % SUBAGENT_SKINS.length]!;
+}
 
 const FACING_FRAME_COLUMNS: Record<Facing, number> = { down: 0, up: 1, left: 2, right: 3 };
 const AGENT_FRAME_COLUMNS = 4;

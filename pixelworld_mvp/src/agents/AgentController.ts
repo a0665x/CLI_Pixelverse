@@ -2,16 +2,14 @@ import Phaser from 'phaser';
 import { TILE_SIZE } from '../game/constants';
 import { findPathVia } from '../navigation/aStar';
 import { NavigationGrid } from '../navigation/navigationGrid';
-import { AGENT_SKINS, agentFrameIndex, type AgentSkin } from '../rendering/assetManifest';
-import { agentAnimationFrame } from '../rendering/agentAnimation';
+import { AGENT_SKINS, type AgentSkin } from '../rendering/assetManifest';
+import { agentFrameForSkin } from '../rendering/agentAnimation';
 import type { StationAssignment } from '../stations/stationAllocator';
 import type { AgentWorldEvent, BehaviorRoute, Facing, GridPoint } from '../world/types';
 import { ActionController } from './ActionController';
 import type { AgentPresence, AgentTravelPlan } from './agentPresence';
 import { PathFollower } from './pathFollower';
 import type { InteriorAgentSnapshot } from '../rendering/interiorAssignment';
-
-const WALK_FRAME_MS = 100;
 
 export class AgentController {
   readonly sprite: Phaser.GameObjects.Image;
@@ -219,9 +217,6 @@ export class AgentController {
   }
 
   private frameFor(facing: Facing, walking: boolean): number {
-    if (this.skin.animation === 'adam-16x32') return agentAnimationFrame(facing, walking, this.walkClockMs);
-    if (!walking) return agentFrameIndex(this.skin, facing);
-    const row = this.skin.walkRows[Math.floor(this.walkClockMs / WALK_FRAME_MS) % this.skin.walkRows.length];
-    return agentFrameIndex(this.skin, facing, row);
+    return agentFrameForSkin(this.skin, facing, walking, this.walkClockMs);
   }
 }

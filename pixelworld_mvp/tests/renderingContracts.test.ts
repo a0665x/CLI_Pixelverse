@@ -9,6 +9,7 @@ import {
   WORLD_ATLAS,
   WORLD_ATLAS_FALLBACK_KEY,
   agentFrameIndex,
+  agentSkinFor,
   ensureWorldAtlasTexture,
   preloadVillageAssets,
 } from '../src/rendering/assetManifest';
@@ -66,6 +67,19 @@ describe('village asset manifest', () => {
     expect(agentFrameIndex(AGENT_SKINS.main, 'left')).toBe(2);
     expect(agentFrameIndex(AGENT_SKINS.main, 'right')).toBe(0);
     expect(agentFrameIndex(AGENT_SKINS.subagent, 'right', AGENT_SKINS.subagent.walkRows[1])).toBe(7);
+  });
+
+  it('assigns stable varied character sheets by agent identity', () => {
+    expect(agentSkinFor('main', 'main')).toBe(AGENT_SKINS.main);
+    expect(agentSkinFor('reviewer-2', 'subagent')).toBe(agentSkinFor('reviewer-2', 'subagent'));
+    const sheets = new Set(Array.from({ length: 18 }, (_, index) => (
+      agentSkinFor(`subagent-${index + 1}`, 'subagent').sheet
+    )));
+    expect(sheets).toEqual(new Set([
+      AGENT_SKINS.ninja.sheet,
+      AGENT_SKINS.subagent.sheet,
+      AGENT_SKINS.branch.sheet,
+    ]));
   });
 
   it('installs and reports an explicit diagnostic texture when the Puny atlas is missing', () => {

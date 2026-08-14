@@ -1,16 +1,10 @@
 import Phaser from 'phaser';
 import { NavigationGrid } from '../navigation/navigationGrid';
-import { AGENT_SKINS } from '../rendering/assetManifest';
+import { AGENT_SKINS, agentSkinFor } from '../rendering/assetManifest';
 import type { GridPoint } from '../world/types';
 import { AgentController } from './AgentController';
 
 const MAX_AGENTS = 64;
-
-function stableSkinIndex(agentId: string): number {
-  let hash = 0;
-  for (const character of agentId) hash = ((hash << 5) - hash + character.charCodeAt(0)) | 0;
-  return Math.abs(hash) % 2;
-}
 
 export class AgentRegistry {
   private readonly agents = new Map<string, AgentController>();
@@ -31,9 +25,7 @@ export class AgentRegistry {
     if (existing) return { agent: existing, created: false };
     if (this.agents.size >= MAX_AGENTS) return undefined;
 
-    const skin = role === 'main'
-      ? AGENT_SKINS.main
-      : stableSkinIndex(agentId) === 0 ? AGENT_SKINS.branch : AGENT_SKINS.subagent;
+    const skin = agentSkinFor(agentId, role);
     const agent = new AgentController(this.scene, agentId, role, spawn, this.grid, skin);
     this.agents.set(agentId, agent);
     return { agent, created: true };

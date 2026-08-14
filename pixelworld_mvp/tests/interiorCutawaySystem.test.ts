@@ -27,6 +27,7 @@ import { BUILT_IN_OFFICE_PREFABS } from '../src/rendering/builtInOfficePrefabs';
 import type { InteriorDefinition } from '../src/world/types';
 import { transformedAlphaBounds } from '../src/rendering/interiorPlacement';
 import { WORLD_DEFINITION } from '../src/world/worldDefinition';
+import { agentSkinFor } from '../src/rendering/assetManifest';
 
 class FakeObject {
   x = 0;
@@ -37,6 +38,7 @@ class FakeObject {
   interactive = false;
   text = '';
   texture = '';
+  frame = 0;
   scale = 1;
   resolution = 1;
   tinted = false;
@@ -61,7 +63,11 @@ class FakeObject {
   setAngle(): this { return this; }
   setResolution(resolution: number): this { this.resolution = resolution; return this; }
   setTint(): this { this.tinted = true; return this; }
-  setTexture(): this { return this; }
+  setTexture(texture?: string, frame?: number): this {
+    if (texture !== undefined) this.texture = texture;
+    if (frame !== undefined) this.frame = frame;
+    return this;
+  }
   setAlpha(alpha: number): this { this.alpha = alpha; return this; }
   setVisible(visible: boolean): this { this.visible = visible; return this; }
   setText(text: string): this { this.text = text; return this; }
@@ -99,7 +105,7 @@ const fakeScene = () => {
     scene: {
       add: {
         container: vi.fn(() => make()), rectangle: vi.fn(() => make()), text: vi.fn((_x, _y, text: string) => { const object = make(); object.text = text; return object; }),
-        image: vi.fn((_x, _y, texture: string) => make(texture)), graphics: vi.fn(() => make()), zone: vi.fn(() => make()),
+        image: vi.fn((_x, _y, texture: string, frame?: number) => { const object = make(texture); object.frame = frame ?? 0; return object; }), graphics: vi.fn(() => make()), zone: vi.fn(() => make()),
       },
       tweens: { add: vi.fn(() => ({ stop: vi.fn() })), killTweensOf: vi.fn() },
       input: {
@@ -351,6 +357,34 @@ describe('InteriorCutawaySystem', () => {
     cutaway.close();
     expect(cutaway.isOpen()).toBe(false);
     expect(cutaway.openBuildingId()).toBeUndefined();
+  });
+
+  it('keeps distinct agent identities and advances walk frames inside the room', () => {
+    const fake = fakeScene();
+    const cutaway = new InteriorCutawaySystem(fake.scene as never, WORLD_DEFINITION, () => ({ width: 1_280, height: 720 }));
+    cutaway.open('network-lab');
+    const candidateIds = Array.from({ length: 12 }, (_, index) => `subagent-${index + 1}`);
+    const firstId = candidateIds[0]!;
+    const firstSheet = agentSkinFor(firstId, 'subagent').sheet;
+    const secondId = candidateIds.find((id) => agentSkinFor(id, 'subagent').sheet !== firstSheet)!;
+    const snapshots: InteriorAgentSnapshot[] = [firstId, secondId].map((agentId, index) => ({
+      agentId, role: 'subagent', buildingId: 'network-lab', action: 'terminal',
+      eventKind: 'web', eventId: `web-${index}`, interiorElapsedMs: 0,
+    }));
+
+    fake.scene.time.now = 0;
+    cutaway.update(snapshots);
+    const internal = cutaway as unknown as { occupantViews: Map<string, { sprite: FakeObject }> };
+    const firstView = internal.occupantViews.get(firstId)!;
+    const secondView = internal.occupantViews.get(secondId)!;
+    expect(firstView.sprite.texture).toBe(agentSkinFor(firstId, 'subagent').sheet);
+    expect(secondView.sprite.texture).toBe(agentSkinFor(secondId, 'subagent').sheet);
+    expect(firstView.sprite.texture).not.toBe(secondView.sprite.texture);
+    const firstFrame = firstView.sprite.frame;
+
+    fake.scene.time.now = 120;
+    cutaway.update(snapshots);
+    expect(firstView.sprite.frame).not.toBe(firstFrame);
   });
 
   it('emits one open transition, keeps focus during building switches, and emits close once', () => {

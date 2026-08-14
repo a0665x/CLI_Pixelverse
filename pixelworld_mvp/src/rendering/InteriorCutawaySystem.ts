@@ -13,8 +13,8 @@ import type {
 } from '../world/types';
 import { interiorDefinitionForBuilding } from '../world/interiorDefinitions';
 import { CUTAWAY_OPEN_EVENT } from '../ui/TestPanel';
-import { AGENT_SKINS, agentFrameIndex } from './assetManifest';
-import { agentAnimationFrame } from './agentAnimation';
+import { agentSkinFor } from './assetManifest';
+import { agentFrameForSkin } from './agentAnimation';
 import { modernOfficeAsset, type ModernOfficeFurnitureKind } from './modernOfficeManifest';
 import {
   catalogPage,
@@ -674,8 +674,8 @@ export class InteriorCutawaySystem {
       assignments.forEach((assignment, index) => {
         const snapshot = matchingSnapshots.find(({ agentId }) => agentId === assignment.agentId) ?? assignment;
         const motion = interiorMotionAt(snapshot, interior, assignment, this.scene.time.now);
-        const skin = assignment.role === 'main' ? AGENT_SKINS.main : AGENT_SKINS.subagent;
-        const sprite = this.scene.add.image(0, 0, skin.sheet, agentFrameIndex(skin, motion.facing))
+        const skin = agentSkinFor(assignment.agentId, assignment.role);
+        const sprite = this.scene.add.image(0, 0, skin.sheet, agentFrameForSkin(skin, motion.facing, false, 0))
           .setOrigin(0.5, 0.82).setDepth(interiorAgentRenderDepth(0, index + 1))
           .setScale(('renderScale' in skin ? skin.renderScale : 1.35) * this.roomCell / BASE_ROOM_CELL);
         const icon = this.scene.add.text(0, 0, actionSymbols[assignment.icon], {
@@ -701,10 +701,8 @@ export class InteriorCutawaySystem {
       const motion = interiorMotionAt(snapshot, interior, assignment, this.scene.time.now);
       const view = this.occupantViews.get(assignment.agentId);
       if (!view) return;
-      const skin = assignment.role === 'main' ? AGENT_SKINS.main : AGENT_SKINS.subagent;
-      const frame = 'animation' in skin && skin.animation === 'adam-16x32'
-        ? agentAnimationFrame(motion.facing, motion.walking, this.scene.time.now)
-        : agentFrameIndex(skin, motion.facing);
+      const skin = agentSkinFor(assignment.agentId, assignment.role);
+      const frame = agentFrameForSkin(skin, motion.facing, motion.walking, this.scene.time.now);
       view.sprite.setTexture(skin.sheet, frame);
       const point = roomScreenPoint(this.roomOrigin, motion.point, this.roomCell);
       const pixelScale = this.roomCell / BASE_ROOM_CELL;
