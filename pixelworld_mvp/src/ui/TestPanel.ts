@@ -19,6 +19,21 @@ const DEBUG_LAYERS: Array<[DebugLayerName, string]> = [
 ];
 const mountedPanels = new WeakMap<HTMLElement, TestPanel>();
 export const CUTAWAY_OPEN_EVENT = 'pixelworld:cutaway-open';
+export const CUTAWAY_STATE_MESSAGE = 'pixelverse.cutaway.state';
+
+interface CutawayStateMessageTarget {
+  postMessage(message: { type: typeof CUTAWAY_STATE_MESSAGE; open: boolean }, targetOrigin: string): void;
+}
+
+export function publishCutawayState(
+  target: CutawayStateMessageTarget | undefined,
+  open: boolean,
+  origin: string,
+): boolean {
+  if (!target || typeof target.postMessage !== 'function') return false;
+  target.postMessage({ type: CUTAWAY_STATE_MESSAGE, open }, origin);
+  return true;
+}
 
 export function formatAgentPresence(presence: AgentPresence, buildings: readonly WorldBuilding[]): string {
   if (presence.kind === 'outside') return 'Outdoor';

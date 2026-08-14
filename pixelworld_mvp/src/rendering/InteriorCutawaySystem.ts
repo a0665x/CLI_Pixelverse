@@ -12,7 +12,7 @@ import type {
   WorldDefinition,
 } from '../world/types';
 import { interiorDefinitionForBuilding } from '../world/interiorDefinitions';
-import { CUTAWAY_OPEN_EVENT } from '../ui/TestPanel';
+import { CUTAWAY_OPEN_EVENT, publishCutawayState } from '../ui/TestPanel';
 import { agentSkinFor } from './assetManifest';
 import { agentFrameForSkin } from './agentAnimation';
 import { modernOfficeAsset, type ModernOfficeFurnitureKind } from './modernOfficeManifest';
@@ -479,7 +479,11 @@ export class InteriorCutawaySystem {
     this.prefabStorageReadFailed = prefabRead.storageRead === 'failed';
     this.clipboardStorageReadFailed = clipboardRead.storageRead === 'failed';
     const interior = this.activeInterior;
-    if (typeof window !== 'undefined') window.dispatchEvent(new Event(CUTAWAY_OPEN_EVENT));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event(CUTAWAY_OPEN_EVENT));
+      const origin = window.location?.origin;
+      if (window.parent && window.parent !== window && origin) publishCutawayState(window.parent, true, origin);
+    }
     const layout = this.layoutForViewport();
     this.rebuildShell(interior, layout);
 
@@ -753,7 +757,13 @@ export class InteriorCutawaySystem {
     this.furnitureDomLabels = [];
     this.occupantDomLabels = [];
     this.occupantViews.clear();
-    if (notify && wasOpen) this.options.onOpenStateChange?.(false);
+    if (notify && wasOpen) {
+      if (typeof window !== 'undefined') {
+        const origin = window.location?.origin;
+        if (window.parent && window.parent !== window && origin) publishCutawayState(window.parent, false, origin);
+      }
+      this.options.onOpenStateChange?.(false);
+    }
   }
 
   update(snapshots: readonly InteriorAgentSnapshot[]): void {

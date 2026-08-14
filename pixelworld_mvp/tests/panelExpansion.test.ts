@@ -5,6 +5,7 @@ import {
   CUTAWAY_OPEN_EVENT,
   initialPanelExpanded,
   PANEL_LAYOUT,
+  publishCutawayState,
 } from '../src/ui/TestPanel';
 
 describe('initialPanelExpanded', () => {
@@ -44,5 +45,22 @@ describe('initialPanelExpanded', () => {
     cleanup();
     target.dispatchEvent(new Event(CUTAWAY_OPEN_EVENT));
     expect(setExpanded).toHaveBeenCalledTimes(1);
+  });
+
+  it('publishes cutaway visibility to the embedding dashboard', () => {
+    const target = { postMessage: vi.fn() };
+
+    expect(publishCutawayState(target, true, 'http://localhost')).toBe(true);
+    expect(publishCutawayState(target, false, 'http://localhost')).toBe(true);
+    expect(target.postMessage).toHaveBeenNthCalledWith(
+      1,
+      { type: 'pixelverse.cutaway.state', open: true },
+      'http://localhost',
+    );
+    expect(target.postMessage).toHaveBeenNthCalledWith(
+      2,
+      { type: 'pixelverse.cutaway.state', open: false },
+      'http://localhost',
+    );
   });
 });

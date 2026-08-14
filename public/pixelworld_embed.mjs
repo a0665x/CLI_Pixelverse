@@ -14,10 +14,20 @@ export function isPixelworldReadyMessage(value) {
   return Boolean(value && typeof value === 'object' && value.type === 'pixelverse.world.ready');
 }
 
+export function isPixelworldCutawayStateMessage(value) {
+  return Boolean(
+    value
+    && typeof value === 'object'
+    && value.type === 'pixelverse.cutaway.state'
+    && typeof value.open === 'boolean',
+  );
+}
+
 export function createPixelworldBridge({
   frame,
   origin = globalThis.location?.origin || '',
   now = () => Date.now(),
+  onCutawayStateChange = () => {},
 } = {}) {
   let currentLocale = null;
   let currentSnapshot = null;
@@ -54,9 +64,15 @@ export function createPixelworldBridge({
     },
     handleMessage(event) {
       if (event?.origin !== origin || event?.source !== frame?.contentWindow) return false;
-      if (!isPixelworldReadyMessage(event.data)) return false;
-      replay();
-      return true;
+      if (isPixelworldReadyMessage(event.data)) {
+        replay();
+        return true;
+      }
+      if (isPixelworldCutawayStateMessage(event.data)) {
+        onCutawayStateChange(event.data.open);
+        return true;
+      }
+      return false;
     },
   };
 }

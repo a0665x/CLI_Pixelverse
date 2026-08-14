@@ -213,3 +213,12 @@ def test_persistent_help_diagnostics_copy_and_motion_safe_tooltips_are_structura
     assert "[data-tooltip]::after" in reduced_motion.group(1)
     assert "transition: none" in reduced_motion.group(1)
     assert "transform: translateY(0)" in reduced_motion.group(1)
+
+
+def test_compact_cutaway_suppresses_host_hud_obstruction():
+    html = Path("public/index.html").read_text(encoding="utf-8")
+
+    assert 'body[data-pixelworld-cutaway="open"] .map-first-workspace .live-hud' in html
+    assert 'body[data-pixelworld-cutaway="open"] .workspace-tools' in html
+    assert 'body[data-pixelworld-cutaway="open"] .workspace-drawer' in html
+    assert 'body[data-pixelworld-cutaway="open"] .dashboard-guide' in html

@@ -95,6 +95,33 @@ test('bridge ignores readiness messages from the wrong origin or frame', () => {
   assert.deepEqual(sent, []);
 });
 
+test('bridge accepts cutaway visibility only from its own Pixelworld frame', () => {
+  const contentWindow = {};
+  const states = [];
+  const bridge = pixelworldEmbed.createPixelworldBridge({
+    frame: { contentWindow },
+    origin: 'http://localhost',
+    onCutawayStateChange: (open) => states.push(open),
+  });
+
+  assert.equal(bridge.handleMessage({
+    data: { type: 'pixelverse.cutaway.state', open: true },
+    origin: 'http://localhost',
+    source: contentWindow,
+  }), true);
+  assert.equal(bridge.handleMessage({
+    data: { type: 'pixelverse.cutaway.state', open: false },
+    origin: 'http://localhost',
+    source: contentWindow,
+  }), true);
+  assert.equal(bridge.handleMessage({
+    data: { type: 'pixelverse.cutaway.state', open: true },
+    origin: 'https://example.test',
+    source: contentWindow,
+  }), false);
+  assert.deepEqual(states, [true, false]);
+});
+
 test('bridge attachment connects iframe load and window message events and can detach cleanly', () => {
   assert.equal(typeof pixelworldEmbed.attachPixelworldBridge, 'function');
   const eventTarget = () => {

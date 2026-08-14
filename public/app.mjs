@@ -259,6 +259,9 @@ let lastDashboardInputModality = 'keyboard';
 const pixelworldBridge = createPixelworldBridge({
   frame: dom.pixelworldFrame,
   origin: window.location.origin,
+  onCutawayStateChange: (open) => {
+    dom.body.dataset.pixelworldCutaway = open ? 'open' : 'closed';
+  },
 });
 pixelworldBridge.setLocale(currentLocale);
 attachPixelworldBridge({ frame: dom.pixelworldFrame, messageTarget: window, bridge: pixelworldBridge });
