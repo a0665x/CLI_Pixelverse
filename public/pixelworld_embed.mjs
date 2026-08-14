@@ -23,6 +23,98 @@ export function isPixelworldCutawayStateMessage(value) {
   );
 }
 
+const usableRect = (rect) => Boolean(
+  rect
+  && [rect.left, rect.top, rect.right, rect.bottom].every(Number.isFinite)
+  && rect.right > rect.left
+  && rect.bottom > rect.top,
+);
+
+const rectsIntersect = (left, right) => (
+  left.left < right.right && left.right > right.left
+  && left.top < right.bottom && left.bottom > right.top
+);
+
+export function cutawayChromeCollidesWithHost({ hostRects = [], childRects = [], frameRect } = {}) {
+  if (!frameRect || !Number.isFinite(frameRect.left) || !Number.isFinite(frameRect.top)) return false;
+  const hosts = hostRects.filter(usableRect);
+  const children = childRects.filter(usableRect).map((rect) => ({
+    left: frameRect.left + rect.left,
+    top: frameRect.top + rect.top,
+    right: frameRect.left + rect.right,
+    bottom: frameRect.top + rect.bottom,
+  }));
+  return hosts.some((host) => children.some((child) => rectsIntersect(host, child)));
+}
+
+export function createCutawayStatusRailController({
+  body,
+  frame,
+  hostElements = [],
+  childSelector = '.cutaway-dom-header',
+} = {}) {
+  const clear = () => body?.classList?.remove?.('cutaway-status-rail');
+  return {
+    sync() {
+      if (body?.dataset?.pixelworldCutaway !== 'open') {
+        clear();
+        return false;
+      }
+      // Measure the unobstructed baseline. Removing and restoring the class in
+      // one task does not paint an intermediate frame, and prevents the rail's
+      // own shifted iframe/compact HUD geometry from feeding back into policy.
+      clear();
+      let childElements;
+      try {
+        childElements = [...(frame?.contentDocument?.querySelectorAll?.(childSelector) ?? [])];
+      } catch {
+        clear();
+        return false;
+      }
+      const frameRect = frame?.getBoundingClientRect?.();
+      const childRects = childElements
+        .filter((element) => !element.hidden)
+        .map((element) => element.getBoundingClientRect());
+      // InteriorCutawaySystem centers a frame capped at 720x495 with an 8px
+      // margin. Reconstruct its natural header origin from the now-full iframe;
+      // the measured header height remains authoritative.
+      const centeredChildRects = frameRect?.width > 0 && frameRect?.height > 0
+        ? childRects.map((rect) => {
+          const width = Math.min(720, Math.max(0, frameRect.width - 16));
+          const height = Math.min(495, Math.max(0, frameRect.height - 16));
+          const left = (frameRect.width - width) / 2;
+          const top = (frameRect.height - height) / 2;
+          return { left, top, right: left + width, bottom: top + (rect.bottom - rect.top) };
+        })
+        : childRects;
+      const required = cutawayChromeCollidesWithHost({
+        hostRects: hostElements
+          .map((entry) => ({
+            element: entry?.element ?? entry,
+            minimumHeight: Number(entry?.minimumHeight) || 0,
+          }))
+          .filter(({ element }) => element && !element.hidden)
+          .map(({ element, minimumHeight }) => {
+            const rect = element.getBoundingClientRect();
+            return minimumHeight > 0
+              ? {
+                left: rect.left,
+                top: rect.top,
+                right: rect.right,
+                bottom: Math.max(rect.bottom, rect.top + minimumHeight),
+              }
+              : rect;
+          }),
+        childRects: centeredChildRects,
+        frameRect,
+      });
+      body?.classList?.toggle?.('cutaway-status-rail', required);
+      return required;
+    },
+    clear,
+  };
+}
+
 export function createPixelworldBridge({
   frame,
   origin = globalThis.location?.origin || '',

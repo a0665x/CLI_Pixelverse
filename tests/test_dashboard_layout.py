@@ -215,7 +215,7 @@ def test_persistent_help_diagnostics_copy_and_motion_safe_tooltips_are_structura
     assert "transform: translateY(0)" in reduced_motion.group(1)
 
 
-def test_compact_and_short_landscape_cutaway_reserve_an_exact_status_rail_above_the_iframe():
+def test_collision_derived_cutaway_status_rail_reserves_exact_space_above_the_iframe():
     html = Path("public/index.html").read_text(encoding="utf-8")
     parser = DashboardParser()
     parser.feed(html)
@@ -224,15 +224,16 @@ def test_compact_and_short_landscape_cutaway_reserve_an_exact_status_rail_above_
     for status_id in ("heartbeat-status", "current-agent-state", "agent-count", "subagent-count"):
         assert "live-status-rail" in parser.parents[status_id]
     assert "--compact-cutaway-status-height: 48px;" in html
-    assert "@media (max-width: 720px), (max-height: 520px) and (max-width: 1024px)" in html
-    assert 'body[data-pixelworld-cutaway="open"] .map-first-workspace .map-stage {' in html
+    assert "body.cutaway-status-rail[data-pixelworld-cutaway=\"open\"]" in html
+    assert "@media (max-width: 720px), (max-height: 520px) and (max-width: 1024px)" not in html
+    assert 'body.cutaway-status-rail[data-pixelworld-cutaway="open"] .map-first-workspace .map-stage {' in html
     assert "inset: var(--compact-cutaway-status-height) 0 0;" in html
-    assert 'body[data-pixelworld-cutaway="open"] .map-first-workspace .live-hud {' in html
+    assert 'body.cutaway-status-rail[data-pixelworld-cutaway="open"] .map-first-workspace .live-hud {' in html
     assert "height: var(--compact-cutaway-status-height);" in html
     assert 'body[data-pixelworld-cutaway="open"] .map-first-workspace .live-hud,' not in html
-    assert 'body[data-pixelworld-cutaway="open"] .workspace-tools' in html
-    assert 'body[data-pixelworld-cutaway="open"] .workspace-drawer' in html
-    assert 'body[data-pixelworld-cutaway="open"] .dashboard-guide' in html
+    assert 'body.cutaway-status-rail[data-pixelworld-cutaway="open"] .workspace-tools' in html
+    assert 'body.cutaway-status-rail[data-pixelworld-cutaway="open"] .workspace-drawer' in html
+    assert 'body.cutaway-status-rail[data-pixelworld-cutaway="open"] .dashboard-guide' in html
 
 
 def test_dashboard_does_not_link_to_an_uncommitted_map_builder_route():

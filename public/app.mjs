@@ -23,7 +23,11 @@ import {
   parseStreamMessage,
   supportsEventStream,
 } from './realtime.mjs';
-import { attachPixelworldBridge, createPixelworldBridge } from './pixelworld_embed.mjs';
+import {
+  attachPixelworldBridge,
+  createCutawayStatusRailController,
+  createPixelworldBridge,
+} from './pixelworld_embed.mjs';
 import {
   legacyResizablePanels,
   setupWorkbenchLayoutController,
@@ -256,15 +260,33 @@ let dashboardDisclosure = readDashboardDisclosure(dashboardStorage);
 let dashboardTouchTooltipTimer = null;
 let dashboardGuideForcedOpen = false;
 let lastDashboardInputModality = 'keyboard';
+const cutawayStatusRail = createCutawayStatusRailController({
+  body: dom.body,
+  frame: dom.pixelworldFrame,
+  hostElements: [
+    // The full desktop heartbeat card can reach 176px even when current copy
+    // happens to be shorter; reserve that stable envelope for collision policy.
+    { element: document.getElementById('live-status-rail'), minimumHeight: 176 },
+    document.querySelector('.workspace-tools'),
+  ],
+});
+let cutawayStatusRailFrame = 0;
+const syncCutawayStatusRail = () => {
+  window.cancelAnimationFrame(cutawayStatusRailFrame);
+  cutawayStatusRailFrame = window.requestAnimationFrame(() => cutawayStatusRail.sync());
+};
 const pixelworldBridge = createPixelworldBridge({
   frame: dom.pixelworldFrame,
   origin: window.location.origin,
   onCutawayStateChange: (open) => {
     dom.body.dataset.pixelworldCutaway = open ? 'open' : 'closed';
+    if (open) syncCutawayStatusRail();
+    else cutawayStatusRail.clear();
   },
 });
 pixelworldBridge.setLocale(currentLocale);
 attachPixelworldBridge({ frame: dom.pixelworldFrame, messageTarget: window, bridge: pixelworldBridge });
+window.addEventListener('resize', syncCutawayStatusRail);
 let workbenchLayoutController = null;
 let cameraOffset = { x: 0, y: 0 };
 let cameraScale = 1;

@@ -201,3 +201,110 @@ test('bridge attachment connects iframe load and window message events and can d
   messageTarget.dispatch('message', { data: { type: 'pixelverse.world.ready' } });
   assert.deepEqual(calls, ['load', 'pixelverse.world.ready']);
 });
+
+test('cutaway status rail is derived from live host and centered cutaway chrome collisions', () => {
+  assert.equal(typeof pixelworldEmbed.cutawayChromeCollidesWithHost, 'function');
+  const matrix = [
+    [720, 495, true],
+    [800, 450, true],
+    [1024, 800, true],
+    [1280, 720, true],
+    [1366, 768, true],
+    [1440, 900, false],
+  ];
+  for (const [width, height, expected] of matrix) {
+    const cutawayWidth = Math.min(720, width - 16);
+    const cutawayHeight = Math.min(495, height - 16);
+    const cutawayHeader = {
+      left: (width - cutawayWidth) / 2,
+      top: (height - cutawayHeight) / 2,
+      right: (width + cutawayWidth) / 2,
+      bottom: (height - cutawayHeight) / 2 + 40,
+    };
+    const compactHud = width <= 720;
+    const hud = {
+      left: compactHud ? 8 : 14,
+      top: compactHud ? 8 : 14,
+      right: (compactHud ? 8 : 14) + (compactHud ? 330 : 420),
+      bottom: (compactHud ? 8 : 14) + (compactHud ? 168 : 176),
+    };
+    assert.equal(pixelworldEmbed.cutawayChromeCollidesWithHost({
+      hostRects: [hud], childRects: [cutawayHeader], frameRect: { left: 0, top: 0 },
+    }), expected, `${width}x${height}`);
+  }
+});
+
+test('status rail controller adds on collision and removes on close or safe resize', () => {
+  assert.equal(typeof pixelworldEmbed.createCutawayStatusRailController, 'function');
+  const classes = new Set();
+  const body = {
+    dataset: { pixelworldCutaway: 'open' },
+    classList: {
+      toggle(name, enabled) { enabled ? classes.add(name) : classes.delete(name); },
+      remove(name) { classes.delete(name); },
+    },
+  };
+  const hudRect = { left: 14, top: 14, right: 434, bottom: 190 };
+  const headerRect = { left: 280, top: 112, right: 1000, bottom: 152 };
+  const frame = {
+    getBoundingClientRect: () => ({ left: 0, top: 0 }),
+    contentDocument: { querySelectorAll: () => [{ hidden: false, getBoundingClientRect: () => headerRect }] },
+  };
+  const controller = pixelworldEmbed.createCutawayStatusRailController({
+    body, frame, hostElements: [{ hidden: false, getBoundingClientRect: () => hudRect }],
+  });
+
+  assert.equal(controller.sync(), true);
+  assert.equal(classes.has('cutaway-status-rail'), true);
+  headerRect.top = 203;
+  headerRect.bottom = 243;
+  assert.equal(controller.sync(), false);
+  assert.equal(classes.has('cutaway-status-rail'), false);
+  body.dataset.pixelworldCutaway = 'closed';
+  headerRect.top = 112;
+  headerRect.bottom = 152;
+  assert.equal(controller.sync(), false);
+  assert.equal(classes.has('cutaway-status-rail'), false);
+});
+
+test('status rail controller uses the HUD reserved envelope instead of transient short content', () => {
+  const classes = new Set();
+  const body = {
+    dataset: { pixelworldCutaway: 'open' },
+    classList: {
+      toggle(name, enabled) { enabled ? classes.add(name) : classes.delete(name); },
+      remove(name) { classes.delete(name); },
+    },
+  };
+  let viewport = { width: 1024, height: 800 };
+  const domRect = (values) => Object.defineProperties({}, Object.fromEntries(
+    Object.entries(values).map(([name, value]) => [name, { value, enumerable: false }]),
+  ));
+  const hud = {
+    hidden: false,
+    getBoundingClientRect: () => domRect({ left: 14, top: 14, right: 434, bottom: 138 }),
+  };
+  const frame = {
+    contentDocument: {
+      querySelectorAll: () => [{
+        hidden: false,
+        getBoundingClientRect: () => ({ left: 152, top: 152.5, right: 872, bottom: 192.5 }),
+      }],
+    },
+    getBoundingClientRect: () => ({
+      left: 0, top: 0, right: viewport.width, bottom: viewport.height,
+      width: viewport.width, height: viewport.height,
+    }),
+  };
+  const controller = pixelworldEmbed.createCutawayStatusRailController({
+    body,
+    frame,
+    hostElements: [{ element: hud, minimumHeight: 176 }],
+  });
+
+  assert.equal(controller.sync(), true);
+  assert.equal(classes.has('cutaway-status-rail'), true);
+  viewport = { width: 1440, height: 900 };
+  assert.equal(controller.sync(), false);
+  assert.equal(classes.has('cutaway-status-rail'), false);
+});

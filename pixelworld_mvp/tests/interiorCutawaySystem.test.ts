@@ -226,6 +226,8 @@ const overlayDomHarness = () => {
       },
       focus() { activeElement = target; },
       emitEvent(event: string, value: Record<string, unknown> = {}) {
+        if (event === 'mouseenter') target.dataset.testHovered = 'true';
+        if (event === 'mouseleave') delete target.dataset.testHovered;
         for (const handler of listeners.get(event) ?? []) handler(value);
       },
       contains(candidate: unknown): boolean {
@@ -239,7 +241,10 @@ const overlayDomHarness = () => {
         return undefined;
       },
       getBoundingClientRect() {
-        const expanded = target.dataset.expanded === 'true';
+        const expanded = target.dataset.expanded === 'true'
+          || target.dataset.measureExpanded === 'true'
+          || target.dataset.testHovered === 'true'
+          || activeElement === target;
         const isLabel = target.className.includes('cutaway-room-label');
         const width = isLabel ? (expanded ? 180 : 26) : 0;
         const height = isLabel ? (expanded ? (target.className.includes('--agent') ? 44 : 34) : 18) : 0;
@@ -680,6 +685,86 @@ describe('InteriorCutawaySystem', () => {
       expect(rects.every((rect) => rect.left >= roomCss.left && rect.right <= roomCss.right
         && rect.top >= roomCss.top && rect.bottom <= roomCss.bottom)).toBe(true);
       expect(intersects(rects[4]!, selectionCss)).toBe(false);
+    } finally {
+      overlay.destroy();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('keeps edge labels compact while reserving their full hover and keyboard-focus boxes', () => {
+    const { overlay, handlers, labelLayer } = overlayDomHarness();
+    try {
+      const layout = cutawayLayoutForViewport(1_280, 720);
+      const editorLayout = editorLayoutForCutaway(layout, {
+        editMode: true, catalogExpanded: true, inspectorExpanded: true,
+      });
+      const selectionBounds = {
+        x: editorLayout.room.x + editorLayout.room.width / 2 - 42,
+        y: editorLayout.room.y + editorLayout.room.height / 2 - 28,
+        width: 84,
+        height: 56,
+      };
+      overlay.open(layout, cutawayDomModel({
+        editMode: true, selected: selectedFurniture(), selectedCount: 1,
+        guideMode: false, editorLayout, selectionBounds,
+      }), handlers);
+      const roomLabels = [
+        { id: 'hook:left', text: 'Expanded Hook at the left edge', x: editorLayout.room.x - 90, y: editorLayout.room.y + 8, kind: 'hook' },
+        { id: 'hook:right', text: 'Expanded Hook at the right edge', x: editorLayout.room.x + editorLayout.room.width + 90, y: editorLayout.room.y + editorLayout.room.height - 8, kind: 'hook' },
+        { id: 'agent:top', text: 'Expanded agent at the top edge', x: editorLayout.room.x + 8, y: editorLayout.room.y - 80, kind: 'agent' },
+        { id: 'agent:bottom', text: 'Expanded agent at the bottom edge', x: editorLayout.room.x + editorLayout.room.width - 8, y: editorLayout.room.y + editorLayout.room.height + 80, kind: 'agent' },
+        { id: 'agent:selected', text: 'Expanded agent avoiding selection', x: selectionBounds.x + 12, y: selectionBounds.y + 12, kind: 'agent' },
+      ] as const;
+      overlay.setRoomLabels(roomLabels);
+
+      const roomCss = {
+        left: 0, top: 0,
+        right: editorLayout.room.width / WORLD_PIXELS.width * 768,
+        bottom: editorLayout.room.height / WORLD_PIXELS.height * 448,
+      };
+      const selectionCss = {
+        left: (selectionBounds.x - editorLayout.room.x) / WORLD_PIXELS.width * 768,
+        top: (selectionBounds.y - editorLayout.room.y) / WORLD_PIXELS.height * 448,
+        right: (selectionBounds.x + selectionBounds.width - editorLayout.room.x) / WORLD_PIXELS.width * 768,
+        bottom: (selectionBounds.y + selectionBounds.height - editorLayout.room.y) / WORLD_PIXELS.height * 448,
+      };
+      const inside = (rect: { left: number; top: number; right: number; bottom: number }) => (
+        rect.left >= roomCss.left && rect.right <= roomCss.right
+        && rect.top >= roomCss.top && rect.bottom <= roomCss.bottom
+      );
+      const intersects = (
+        first: { left: number; top: number; right: number; bottom: number },
+        second: { left: number; top: number; right: number; bottom: number },
+      ) => first.left < second.right && first.right > second.left
+        && first.top < second.bottom && first.bottom > second.top;
+
+      for (const label of labelLayer.children) {
+        expect(label.dataset.expanded).toBe('false');
+        expect(label.dataset.measureExpanded).toBeUndefined();
+        expect(label.style.maxWidth).toBeUndefined();
+        expect(label.getBoundingClientRect().width).toBe(26);
+        expect(inside(label.getBoundingClientRect())).toBe(true);
+        label.focus();
+        expect(label.getBoundingClientRect().width).toBe(180);
+        expect(inside(label.getBoundingClientRect())).toBe(true);
+        label.emitEvent('mouseenter');
+        expect(inside(label.getBoundingClientRect())).toBe(true);
+        label.emitEvent('mouseleave');
+      }
+      expect(intersects(labelLayer.children[4]!.getBoundingClientRect(), selectionCss)).toBe(false);
+
+      overlay.setRoomLabels(roomLabels.map((label, index) => ({ ...label, selected: index === 0 })));
+      expect(labelLayer.children[0]!.dataset.expanded).toBe('true');
+      expect(labelLayer.children[0]!.getBoundingClientRect().width).toBe(180);
+      expect(inside(labelLayer.children[0]!.getBoundingClientRect())).toBe(true);
+
+      overlay.update(cutawayDomModel({
+        editMode: true, selected: selectedFurniture(), selectedCount: 1,
+        guideMode: true, editorLayout, selectionBounds,
+      }));
+      overlay.setRoomLabels(roomLabels);
+      expect(labelLayer.children.every(({ dataset }) => dataset.expanded === 'true')).toBe(true);
+      expect(labelLayer.children.every((label) => inside(label.getBoundingClientRect()))).toBe(true);
     } finally {
       overlay.destroy();
       vi.unstubAllGlobals();
