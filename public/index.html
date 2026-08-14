@@ -2254,6 +2254,8 @@
       .map-first-workspace .hud.live-hud { inset: 8px auto auto 8px; width: min(330px, calc(100% - 72px)); }
       .workspace-tools { top: 8px; right: 8px; gap: 5px; }
       .workspace-tool-button { min-width: 40px; min-height: 40px; padding: 7px 8px; }
+    }
+    @media (max-width: 720px), (max-height: 520px) and (max-width: 1024px) {
       body[data-pixelworld-cutaway="open"] .map-first-workspace { --compact-cutaway-status-height: 48px; }
       body[data-pixelworld-cutaway="open"] .map-first-workspace .map-stage {
         inset: var(--compact-cutaway-status-height) 0 0;
@@ -2297,6 +2299,8 @@
       body[data-pixelworld-cutaway="open"] .workspace-tools,
       body[data-pixelworld-cutaway="open"] .workspace-drawer,
       body[data-pixelworld-cutaway="open"] .dashboard-guide { display: none !important; }
+    }
+    @media (max-width: 720px) {
       .workspace-drawer {
         inset: auto 8px 8px;
         width: auto;

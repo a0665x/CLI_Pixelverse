@@ -81,6 +81,12 @@ class FakeObject {
   setText(text: string): this { this.text = text; return this; }
   setStrokeStyle(): this { return this; }
   add(items: FakeObject | FakeObject[]): this { this.children.push(...(Array.isArray(items) ? items : [items])); return this; }
+  bringToTop(child: FakeObject): this {
+    const index = this.children.indexOf(child);
+    if (index >= 0) this.children.splice(index, 1);
+    this.children.push(child);
+    return this;
+  }
   removeAll(destroy = false): this { if (destroy) this.children.forEach((child) => child.destroy()); this.children = []; return this; }
   sort(property: keyof FakeObject): this {
     this.children.sort((first, second) => Number(first[property]) - Number(second[property]));
@@ -201,6 +207,7 @@ const overlayDomHarness = () => {
       addEventListener(event: string, handler: (event?: Record<string, unknown>) => void): void;
       click(): void; focus(): void; emitEvent(event: string, value?: Record<string, unknown>): void;
       contains(candidate: unknown): boolean; querySelector(selector: string): ReturnType<typeof element> | undefined;
+      getBoundingClientRect(): { left: number; top: number; right: number; bottom: number; width: number; height: number };
       remove(): void; append(...children: Array<ReturnType<typeof element>>): void;
       replaceChildren(...children: Array<ReturnType<typeof element>>): void;
       setAttribute(name: string, value: string): void; getAttribute(name: string): string | null;
@@ -230,6 +237,18 @@ const overlayDomHarness = () => {
           return target.children.find(({ dataset }) => dataset.contextAction === contextAction);
         }
         return undefined;
+      },
+      getBoundingClientRect() {
+        const expanded = target.dataset.expanded === 'true';
+        const isLabel = target.className.includes('cutaway-room-label');
+        const width = isLabel ? (expanded ? 180 : 26) : 0;
+        const height = isLabel ? (expanded ? (target.className.includes('--agent') ? 44 : 34) : 18) : 0;
+        const match = target.style.transform?.match(/translate3d\((-?[\d.]+)px, (-?[\d.]+)px/);
+        const anchorX = Number(match?.[1] ?? 0);
+        const anchorY = Number(match?.[2] ?? 0);
+        const left = isLabel ? anchorX - width / 2 : anchorX;
+        const top = isLabel && target.className.includes('--agent') ? anchorY - height : anchorY;
+        return { left, top, right: left + width, bottom: top + height, width, height };
       },
       remove: vi.fn(),
       append(...children) { target.children.push(...children); },
@@ -500,6 +519,35 @@ describe('InteriorCutawaySystem', () => {
     }
   });
 
+  it('moves focus to the Edit trigger when a contextual action disappears after rerendering', () => {
+    const { overlay, handlers, toolbar, actions, documentStub } = overlayDomHarness();
+    try {
+      const layout = cutawayLayoutForViewport(1_280, 720);
+      let model = cutawayDomModel({
+        editMode: true, selected: selectedFurniture(), selectedCount: 2, canGroup: true,
+        editorLayout: editorLayoutForCutaway(layout, {
+          editMode: true, catalogExpanded: false, inspectorExpanded: false,
+        }),
+        selectionBounds: { x: layout.x + 220, y: layout.y + 180, width: 64, height: 32 },
+      });
+      handlers.group = vi.fn(() => {
+        const { selected: _selected, ...withoutSelection } = model;
+        model = { ...withoutSelection, selectedCount: 0, canGroup: false };
+        overlay.update(model);
+      });
+      overlay.open(layout, model, handlers);
+      const group = toolbar.children.find(({ dataset }) => dataset.contextAction === 'group');
+      expect(group).toBeDefined();
+      group!.focus();
+      group!.click();
+      expect(handlers.group).toHaveBeenCalledOnce();
+      expect(documentStub.activeElement).toBe(actions.get('edit'));
+    } finally {
+      overlay.destroy();
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('gives the interior guide a complete focus, ARIA, dismiss, and Escape lifecycle', () => {
     const { overlay, handlers, panel, guide, actions, documentStub } = overlayDomHarness();
     try {
@@ -513,6 +561,7 @@ describe('InteriorCutawaySystem', () => {
       const help = actions.get('guide')!;
       expect(help.getAttribute('aria-controls')).toBe('cutaway-guide-popover');
       expect(help.getAttribute('aria-expanded')).toBe('false');
+      expect(guide.getAttribute('aria-label')).toBe(help.getAttribute('aria-label'));
 
       help.click();
       expect(help.getAttribute('aria-expanded')).toBe('true');
@@ -556,7 +605,7 @@ describe('InteriorCutawaySystem', () => {
       ]);
 
       expect(labelLayer.dataset.region).toBe('room');
-      expect(labelLayer.style.overflow).toBe('hidden');
+      expect(labelLayer.style.overflow).toBe('visible');
       const maximumX = editorLayout.room.width / WORLD_PIXELS.width * 768;
       const maximumY = editorLayout.room.height / WORLD_PIXELS.height * 448;
       const positions = labelLayer.children.map(({ style }) => {
@@ -567,6 +616,70 @@ describe('InteriorCutawaySystem', () => {
       const selectionTop = (selectionBounds.y - editorLayout.room.y) / WORLD_PIXELS.height * 448;
       const selectionBottom = (selectionBounds.y + selectionBounds.height - editorLayout.room.y) / WORLD_PIXELS.height * 448;
       expect(positions[1]!.y < selectionTop || positions[1]!.y > selectionBottom).toBe(true);
+    } finally {
+      overlay.destroy();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('contains the full expanded label boxes at every room edge after 1.5x zoom and pan', () => {
+    const { overlay, handlers, labelLayer } = overlayDomHarness();
+    try {
+      const layout = cutawayLayoutForViewport(1_280, 720);
+      const editorLayout = editorLayoutForCutaway(layout, {
+        editMode: true, catalogExpanded: false, inspectorExpanded: false,
+      });
+      const selectionBounds = {
+        x: editorLayout.room.x + editorLayout.room.width / 2 - 50,
+        y: editorLayout.room.y + editorLayout.room.height / 2 - 36,
+        width: 100,
+        height: 72,
+      };
+      overlay.open(layout, cutawayDomModel({
+        editMode: true, selected: selectedFurniture(), selectedCount: 1, guideMode: true,
+        editorLayout, selectionBounds,
+      }), handlers);
+      const zoomPan = (x: number, y: number) => ({
+        x: editorLayout.room.x + (x - editorLayout.room.x) * 1.5 - 37,
+        y: editorLayout.room.y + (y - editorLayout.room.y) * 1.5 + 29,
+      });
+      const leftTop = zoomPan(editorLayout.room.x - 80, editorLayout.room.y - 60);
+      const rightBottom = zoomPan(
+        editorLayout.room.x + editorLayout.room.width + 80,
+        editorLayout.room.y + editorLayout.room.height + 60,
+      );
+      const selected = zoomPan(selectionBounds.x + 10, selectionBounds.y + 10);
+      overlay.setRoomLabels([
+        { id: 'hook:left-top', text: 'Expanded Hook label at the left and top edge', ...leftTop, kind: 'hook' },
+        { id: 'hook:right-bottom', text: 'Expanded Hook label at the right and bottom edge', ...rightBottom, kind: 'hook' },
+        { id: 'agent:left-top', text: 'Expanded agent label at the left and top edge', ...leftTop, kind: 'agent' },
+        { id: 'agent:right-bottom', text: 'Expanded agent label at the right and bottom edge', ...rightBottom, kind: 'agent' },
+        { id: 'agent:selection', text: 'Expanded agent label avoiding selected furniture', ...selected, kind: 'agent' },
+      ]);
+
+      const roomCss = {
+        left: 0,
+        top: 0,
+        right: editorLayout.room.width / WORLD_PIXELS.width * 768,
+        bottom: editorLayout.room.height / WORLD_PIXELS.height * 448,
+      };
+      const selectionCss = {
+        left: (selectionBounds.x - editorLayout.room.x) / WORLD_PIXELS.width * 768,
+        top: (selectionBounds.y - editorLayout.room.y) / WORLD_PIXELS.height * 448,
+        right: (selectionBounds.x + selectionBounds.width - editorLayout.room.x) / WORLD_PIXELS.width * 768,
+        bottom: (selectionBounds.y + selectionBounds.height - editorLayout.room.y) / WORLD_PIXELS.height * 448,
+      };
+      const intersects = (
+        first: { left: number; top: number; right: number; bottom: number },
+        second: { left: number; top: number; right: number; bottom: number },
+      ) => first.left < second.right && first.right > second.left
+        && first.top < second.bottom && first.bottom > second.top;
+      const rects = labelLayer.children.map((label) => label.getBoundingClientRect());
+      expect(labelLayer.style.overflow).toBe('visible');
+      expect(labelLayer.children.every(({ dataset }) => dataset.expanded === 'true')).toBe(true);
+      expect(rects.every((rect) => rect.left >= roomCss.left && rect.right <= roomCss.right
+        && rect.top >= roomCss.top && rect.bottom <= roomCss.bottom)).toBe(true);
+      expect(intersects(rects[4]!, selectionCss)).toBe(false);
     } finally {
       overlay.destroy();
       vi.unstubAllGlobals();
@@ -1503,6 +1616,56 @@ describe('InteriorCutawaySystem', () => {
     }
   });
 
+  it('lifts dragged furniture and its outline above later furniture then restores container order on cancel', () => {
+    const fake = fakeScene();
+    const cutaway = new InteriorCutawaySystem(fake.scene as never, WORLD_DEFINITION, () => ({ width: 1_280, height: 720 }));
+    cutaway.open('rest-cabin');
+    const lower = {
+      id: 'lower-order', kind: 'plant' as const, point: { x: 3, y: 3 }, facing: 'up' as const,
+      supportedActions: [], icon: 'generic' as const, assetId: 98, scale: 1 as const,
+      rotation: 0 as const, layer: 'surface' as const, zIndex: 0, blocksNavigation: false,
+    };
+    const later = {
+      id: 'later-order', kind: 'display' as const, point: { x: 8, y: 5 }, facing: 'up' as const,
+      supportedActions: [], icon: 'generic' as const, assetId: 129, scale: 1 as const,
+      rotation: 0 as const, layer: 'surface' as const, zIndex: 1, blocksNavigation: false,
+    };
+    const room: InteriorDefinition = {
+      id: 'rest-cabin', label: 'Render order', width: 14, height: 9,
+      floor: 'wood', wall: 'cream', furniture: [lower, later], overflow: [],
+    };
+    const internal = cutaway as unknown as {
+      editMode: boolean; activeDefinition: InteriorDefinition; activeInterior: InteriorDefinition;
+      furnitureLayer: FakeObject; roomOrigin: { x: number; y: number }; roomCell: number;
+      renderFurniture(interior: InteriorDefinition, layout: ReturnType<typeof cutawayLayoutForViewport>): void;
+    };
+    internal.editMode = true;
+    internal.activeDefinition = room;
+    internal.activeInterior = room;
+    internal.renderFurniture(room, cutawayLayoutForViewport(1_280, 720));
+    const layer = internal.furnitureLayer;
+    const lowerSprite = fake.objects.find(({ texture, interactive, destroyed }) =>
+      texture === 'modern-office-v1.2-single-98' && interactive && !destroyed)!;
+    const laterSprite = fake.objects.find(({ texture, interactive, destroyed }) =>
+      texture === 'modern-office-v1.2-single-129' && interactive && !destroyed)!;
+    expect(layer.children.indexOf(lowerSprite)).toBeLessThan(layer.children.indexOf(laterSprite));
+
+    const owner = { ...pointerAt(lowerSprite.x, lowerSprite.y), id: 81 };
+    const overlap = furnitureRenderScreenPoint(internal.roomOrigin, { ...lower, point: later.point }, internal.roomCell);
+    lowerSprite.emit('pointerdown', owner);
+    lowerSprite.emit('dragstart', owner);
+    lowerSprite.emit('drag', { ...pointerAt(overlap.x, overlap.y), id: 81 }, overlap.x, overlap.y);
+    const outline = layer.children.find(({ strokeRects }) => strokeRects.length > 0)!;
+
+    expect(layer.children.indexOf(lowerSprite)).toBeGreaterThan(layer.children.indexOf(laterSprite));
+    expect(layer.children.at(-1)).toBe(outline);
+
+    fake.emitInput('pointercancel', owner);
+    expect(layer.children.indexOf(lowerSprite)).toBeLessThan(layer.children.indexOf(laterSprite));
+    expect(layer.children.indexOf(outline)).toBeLessThan(layer.children.indexOf(lowerSprite));
+    expect(layer.children.map(({ depth }) => depth).every((depth, index, values) => index === 0 || values[index - 1]! <= depth)).toBe(true);
+  });
+
   it('cancels captured furniture dragging without committing and lets furniture win over room pan', () => {
     const fake = fakeScene();
     const cutaway = new InteriorCutawaySystem(fake.scene as never, WORLD_DEFINITION, () => ({ width: 1_280, height: 720 }));
@@ -1737,7 +1900,10 @@ describe('InteriorCutawaySystem', () => {
     const replaceChildren = vi.fn();
     Object.assign(overlay, { labelLayer: { replaceChildren }, panel: { style: {} } });
     vi.stubGlobal('document', {
-      createElement: () => ({ className: '', dataset: {}, textContent: '', style: { transform: '' }, setAttribute: vi.fn() }),
+      createElement: () => ({
+        className: '', dataset: {}, textContent: '', style: { transform: '' }, setAttribute: vi.fn(),
+        getBoundingClientRect: () => ({ width: 26, height: 18 }),
+      }),
     });
     try {
       overlay.setRoomLabels([{ id: 'agent:a', text: 'A', x: 384, y: 256, kind: 'agent' }]);

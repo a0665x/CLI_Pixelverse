@@ -298,6 +298,7 @@ export class InteriorCutawayDomOverlay {
       const focusedAction = activeElement && this.contextToolbar.contains(activeElement)
         ? activeElement.dataset.contextAction
         : undefined;
+      let restoredContextFocus = false;
       this.contextToolbar.replaceChildren();
       if (!this.contextToolbar.hidden) {
         const controls: Array<[string, string, () => void, boolean?]> = [
@@ -326,11 +327,18 @@ export class InteriorCutawayDomOverlay {
           return button;
         }));
         if (focusedAction) {
-          this.contextToolbar.querySelector<HTMLButtonElement>(`[data-context-action="${focusedAction}"]`)?.focus();
+          const replacement = this.contextToolbar.querySelector<HTMLButtonElement>(`[data-context-action="${focusedAction}"]`);
+          replacement?.focus();
+          restoredContextFocus = Boolean(replacement);
         }
+      }
+      if (focusedAction && !restoredContextFocus) {
+        const roomFallback = this.roomToolbar?.querySelector<HTMLButtonElement>('button:not([hidden]):not(:disabled)');
+        (roomFallback ?? this.editButton)?.focus();
       }
     }
     if (this.guidePopover) {
+      this.guidePopover.setAttribute('aria-label', chrome.help);
       this.guidePopover.hidden = !model.guideMode;
       this.guidePopover.replaceChildren();
       if (model.guideMode) {
@@ -380,7 +388,7 @@ export class InteriorCutawayDomOverlay {
     if (!this.labelLayer) return;
     const rect = this.canvasRect();
     if (!rect) return;
-    this.labelLayer.replaceChildren(...this.roomLabels.map((item) => {
+    const rendered = this.roomLabels.map((item) => {
       const label = document.createElement('div');
       label.className = `cutaway-room-label cutaway-room-label--${item.kind}`;
       label.dataset.labelId = item.id;
@@ -388,36 +396,68 @@ export class InteriorCutawayDomOverlay {
       label.tabIndex = 0;
       label.setAttribute('aria-label', item.text.replace(/\n/g, ' · '));
       label.dataset.expanded = String(Boolean(item.selected) || Boolean(this.model?.guideMode));
+      return { item, label };
+    });
+    this.labelLayer.replaceChildren(...rendered.map(({ label }) => label));
+    const clamp = (value: number, minimum: number, maximum: number): number =>
+      maximum < minimum ? (minimum + maximum) / 2 : Math.min(maximum, Math.max(minimum, value));
+    const intersects = (first: EditorRect, second: EditorRect): boolean => (
+      first.x < second.x + second.width && first.x + first.width > second.x
+      && first.y < second.y + second.height && first.y + first.height > second.y
+    );
+    rendered.forEach(({ item, label }) => {
       const layout = this.layout;
       const room = this.model?.editorLayout?.room ?? layout;
       let x = item.x;
       let y = item.y;
       const selection = this.model?.selectionBounds;
       if (room) {
-        const horizontalPadding = Math.min(item.kind === 'agent' ? 18 : 10, room.width / 2);
-        const verticalPadding = Math.min(item.kind === 'agent' ? 18 : 8, room.height / 2);
-        const clamp = (value: number, minimum: number, maximum: number): number =>
-          maximum < minimum ? (minimum + maximum) / 2 : Math.min(maximum, Math.max(minimum, value));
-        x = clamp(x, room.x + horizontalPadding, room.x + room.width - horizontalPadding);
-        y = clamp(y, room.y + verticalPadding, room.y + room.height - verticalPadding);
-        if (selection && x >= selection.x - 48 && x <= selection.x + selection.width + 48
-          && y >= selection.y - 28 && y <= selection.y + selection.height + 28) {
-          const above = item.kind === 'agent' ? selection.y - 6 : selection.y - 30;
+        const cssScaleX = rect.width / WORLD_PIXELS.width;
+        const cssScaleY = rect.height / WORLD_PIXELS.height;
+        const roomCssWidth = room.width * cssScaleX;
+        label.style.maxWidth = `${Math.min(180, roomCssWidth)}px`;
+        const measured = label.getBoundingClientRect();
+        const labelWidth = Math.min(room.width, measured.width / cssScaleX);
+        const labelHeight = Math.min(room.height, measured.height / cssScaleY);
+        const halfWidth = labelWidth / 2;
+        const anchorBounds = (anchorX: number, anchorY: number): EditorRect => ({
+          x: anchorX - halfWidth,
+          y: item.kind === 'agent' ? anchorY - labelHeight : anchorY,
+          width: labelWidth,
+          height: labelHeight,
+        });
+        const clampAnchor = (anchorX: number, anchorY: number): { x: number; y: number } => ({
+          x: clamp(anchorX, room.x + halfWidth, room.x + room.width - halfWidth),
+          y: item.kind === 'agent'
+            ? clamp(anchorY, room.y + labelHeight, room.y + room.height)
+            : clamp(anchorY, room.y, room.y + room.height - labelHeight),
+        });
+        ({ x, y } = clampAnchor(x, y));
+        if (selection && intersects(anchorBounds(x, y), selection)) {
+          const gap = 6;
+          const above = item.kind === 'agent' ? selection.y - gap : selection.y - gap - labelHeight;
           const below = item.kind === 'agent'
-            ? selection.y + selection.height + 30
-            : selection.y + selection.height + 6;
-          const minimumY = room.y + verticalPadding;
-          const maximumY = room.y + room.height - verticalPadding;
-          y = above >= minimumY ? above : below <= maximumY ? below : clamp(above, minimumY, maximumY);
+            ? selection.y + selection.height + gap + labelHeight
+            : selection.y + selection.height + gap;
+          const candidates = [
+            clampAnchor(x, above),
+            clampAnchor(x, below),
+            clampAnchor(selection.x - gap - halfWidth, y),
+            clampAnchor(selection.x + selection.width + gap + halfWidth, y),
+          ].filter((candidate) => !intersects(anchorBounds(candidate.x, candidate.y), selection));
+          const nearest = candidates.sort((first, second) => (
+            (first.x - x) ** 2 + (first.y - y) ** 2
+            - ((second.x - x) ** 2 + (second.y - y) ** 2)
+          ))[0];
+          if (nearest) ({ x, y } = nearest);
         }
       }
       const anchor = item.kind === 'agent' ? 'translate(-50%, -100%)' : 'translate(-50%, 0)';
       const coordinateFrame = room ?? layout;
       const left = coordinateFrame ? (x - coordinateFrame.x) / WORLD_PIXELS.width * rect.width : rect.left + x / WORLD_PIXELS.width * rect.width;
       const top = coordinateFrame ? (y - coordinateFrame.y) / WORLD_PIXELS.height * rect.height : rect.top + y / WORLD_PIXELS.height * rect.height;
-      label.style.transform = `translate3d(${Math.round(left)}px, ${Math.round(top)}px, 0) ${anchor}`;
-      return label;
-    }));
+      label.style.transform = `translate3d(${left}px, ${top}px, 0) ${anchor}`;
+    });
   }
 
   close(): void {
@@ -467,7 +507,7 @@ export class InteriorCutawayDomOverlay {
     place(this.labelLayer, editorLayout.room);
     if (this.labelLayer) {
       this.labelLayer.dataset.region = 'room';
-      this.labelLayer.style.overflow = 'hidden';
+      this.labelLayer.style.overflow = 'visible';
     }
   }
 

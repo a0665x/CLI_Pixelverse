@@ -968,6 +968,13 @@ export class InteriorCutawaySystem {
     const furnitureSpritesById = new Map<string, Phaser.GameObjects.Image>();
     const furnitureSpriteScalesById = new Map<string, number>();
     const furnitureSpriteDepthsById = new Map<string, number>();
+    const restoreFurnitureOrder = (): void => { furnitureLayer.sort('depth'); };
+    const liftDragVisuals = (ids: readonly string[]): void => {
+      ids.map((id) => furnitureSpritesById.get(id)).filter((sprite): sprite is Phaser.GameObjects.Image => Boolean(sprite))
+        .sort((first, second) => first.depth - second.depth)
+        .forEach((sprite) => furnitureLayer.bringToTop(sprite));
+      furnitureLayer.bringToTop(placementPreview);
+    };
     const setCanvasDragState = (active: boolean, tone: 'neutral' | 'valid' | 'invalid' = 'neutral'): void => {
       const canvas = this.scene.game?.canvas;
       if (!canvas?.dataset) return;
@@ -994,6 +1001,8 @@ export class InteriorCutawaySystem {
         if (presentation.tone === 'neutral') sprite.clearTint().setDepth(depth);
         else sprite.setTint(presentation.tone === 'valid' ? 0x65d47e : 0xe05b54).setDepth(depth + 10_000);
       }
+      if (presentation.tone === 'neutral') restoreFurnitureOrder();
+      else liftDragVisuals(ids);
       setCanvasDragState(phase !== 'idle', presentation.tone);
     };
     const clearFurnitureDrag = (): void => {
