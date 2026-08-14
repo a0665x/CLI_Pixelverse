@@ -4,6 +4,7 @@ import {
   dragPreviewScreenPoint,
   cutawayLayoutForViewport,
   cutawayContainsPointer,
+  editorLayoutForCutaway,
   furnitureRenderScreenPoint,
   furnitureRenderScreenGeometry,
   hookFurnitureLabel,
@@ -180,7 +181,9 @@ const overlayDomHarness = () => {
     const target = {
       hidden: false, disabled: false, textContent: '', className: '', dataset: {} as Record<string, string>,
       style: {} as Record<string, string>, children: [] as object[],
-      addEventListener: vi.fn(), remove: vi.fn(), append: vi.fn(),
+      scrollHeight: 240,
+      addEventListener: vi.fn(), remove: vi.fn(),
+      append(...children: object[]) { target.children.push(...children); },
       replaceChildren(...children: object[]) { target.children = children; },
       setAttribute(name: string, value: string) {
         const values = attributes.get(target) ?? new Map<string, string>();
@@ -195,12 +198,14 @@ const overlayDomHarness = () => {
     'preview-template', 'apply-template', 'save', 'close', 'prev', 'next',
   ].map((name) => [name, element()]));
   const title = element(); const status = element(); const catalog = element(); const inspector = element();
-  const toolbar = element(); const guide = element(); const nav = element(); const page = element();
+  const header = element(); const toolbar = element(); const guide = element(); const nav = element(); const page = element();
   const panel = {
     ...element(), innerHTML: '',
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 720, height: 495 }),
     querySelector(selector: string) {
       if (selector === 'h2') return title;
       if (selector === '.cutaway-dom-status') return status;
+      if (selector === '.cutaway-dom-header') return header;
       if (selector === '.cutaway-dom-catalog') return catalog;
       if (selector === '.cutaway-dom-inspector') return inspector;
       if (selector === '.cutaway-context-toolbar') return toolbar;
@@ -223,7 +228,7 @@ const overlayDomHarness = () => {
     'copy', 'paste', 'group', 'dissolveGroup', 'shiftLayer', 'reorder', 'duplicate', 'returnToShelf',
     'cancelSelection',
   ].map((name) => [name, vi.fn()])) as unknown as CutawayDomHandlers;
-  return { overlay, handlers, panel, catalog, inspector, actions };
+  return { overlay, handlers, panel, header, catalog, inspector, toolbar, actions };
 };
 
 describe('InteriorCutawaySystem', () => {
@@ -249,6 +254,63 @@ describe('InteriorCutawaySystem', () => {
       const buttons = [...actions.values()].filter((button) => Boolean(button.getAttribute('data-tooltip')));
       expect(buttons.length).toBeGreaterThan(0);
       expect(buttons.every((button) => Boolean(button.getAttribute('aria-label')))).toBe(true);
+    } finally {
+      overlay.destroy();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('matches responsive DOM regions to the reserved editor geometry', () => {
+    const { overlay, handlers, header, catalog, inspector } = overlayDomHarness();
+    try {
+      const layout = cutawayLayoutForViewport(600, 320);
+      const editorLayout = editorLayoutForCutaway(layout, {
+        editMode: true, catalogExpanded: true, inspectorExpanded: true,
+      });
+      overlay.open(layout, cutawayDomModel({
+        editMode: true, catalogExpanded: true, inspectorExpanded: true,
+        selected: selectedFurniture(), editorLayout,
+      }), handlers);
+      expect(header.style.height).toBe(`${editorLayout.header.height / layout.height * 100}%`);
+      expect(catalog.style.height).toBe(`${editorLayout.catalog.height / layout.height * 100}%`);
+      expect(catalog.style.height).not.toBe(`${112 / layout.height * 100}%`);
+      expect(inspector.style.width).toBe('0%');
+      expect(inspector.hidden).toBe(true);
+    } finally {
+      overlay.destroy();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('localizes pagination and rotation glyphs for assistive technology', () => {
+    const { overlay, handlers, actions, toolbar } = overlayDomHarness();
+    try {
+      const layout = cutawayLayoutForViewport(1_280, 720);
+      overlay.setLocale('en-US');
+      overlay.open(layout, cutawayDomModel({
+        editMode: true, selected: selectedFurniture(), selectedCount: 1,
+        editorLayout: editorLayoutForCutaway(layout, {
+          editMode: true, catalogExpanded: false, inspectorExpanded: false,
+        }),
+        selectionBounds: { x: layout.x + 200, y: layout.y + 160, width: 32, height: 32 },
+      }), handlers);
+      expect(actions.get('prev')?.getAttribute('aria-label')).toBe('Previous page');
+      expect(actions.get('prev')?.getAttribute('data-tooltip')).toBe('Previous page');
+      expect(actions.get('next')?.getAttribute('aria-label')).toBe('Next page');
+      const rotations = (toolbar.children as Array<ReturnType<typeof actions.get>>)
+        .filter((button) => button?.textContent === '↶' || button?.textContent === '↷');
+      expect(rotations.map((button) => button?.getAttribute('aria-label'))).toEqual(['Rotate left', 'Rotate right']);
+      expect(rotations.every((button) => Boolean(button?.getAttribute('data-tooltip')))).toBe(true);
+      const room = editorLayoutForCutaway(layout, {
+        editMode: true, catalogExpanded: false, inspectorExpanded: false,
+      }).room;
+      const toolbarTop = Number.parseFloat(toolbar.style.top ?? '');
+      const toolbarHeight = Number.parseFloat(toolbar.style.height ?? '');
+      const roomTop = (room.y - layout.y) / layout.height * 100;
+      const roomBottom = (room.y + room.height - layout.y) / layout.height * 100;
+      expect(toolbar.style.overflowY).toBe('auto');
+      expect(toolbarTop).toBeGreaterThanOrEqual(roomTop);
+      expect(toolbarTop + toolbarHeight).toBeLessThanOrEqual(roomBottom);
     } finally {
       overlay.destroy();
       vi.unstubAllGlobals();
@@ -321,6 +383,22 @@ describe('InteriorCutawaySystem', () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+
+  it('places interactive catalog sprites inside the reserved canvas handoff region', () => {
+    const fake = fakeScene();
+    const cutaway = new InteriorCutawaySystem(fake.scene as never, WORLD_DEFINITION, () => ({ width: 336, height: 320 }));
+    const capture = captureCutawayHandlers(cutaway);
+    cutaway.open('rest-cabin');
+    capture.handlers().toggleEdit();
+    capture.handlers().toggleCatalog();
+    const catalog = capture.model().editorLayout!.catalog;
+    const paletteItems = (cutaway as unknown as { paletteLayer: FakeObject }).paletteLayer.children
+      .filter(({ interactive, destroyed }) => interactive && !destroyed);
+    expect(catalog.height).toBeGreaterThan(0);
+    expect(paletteItems.length).toBeGreaterThan(0);
+    expect(paletteItems.every(({ x, y }) => x >= catalog.x && x <= catalog.x + catalog.width
+      && y >= catalog.y && y <= catalog.y + catalog.height)).toBe(true);
   });
 
   it('labels only hook furniture with readable action-oriented text', () => {
@@ -981,6 +1059,12 @@ describe('InteriorCutawaySystem', () => {
 
       expect(observe).toHaveBeenCalledWith(canvas);
       expect(capture.overlay.relayout).toHaveBeenCalledWith(cutawayLayoutForViewport(840, 480));
+      expect(capture.model().editorLayout?.frame).toEqual(cutawayLayoutForViewport(840, 480));
+      capture.handlers().toggleEdit();
+      capture.handlers().toggleCatalog();
+      expect((cutaway as unknown as { currentLayout: ReturnType<typeof cutawayLayoutForViewport> }).currentLayout)
+        .toEqual(cutawayLayoutForViewport(840, 480));
+      expect(capture.overlay.relayout).toHaveBeenLastCalledWith(cutawayLayoutForViewport(840, 480));
       cutaway.destroy();
       expect(disconnect).toHaveBeenCalledOnce();
     } finally {

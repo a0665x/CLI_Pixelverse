@@ -457,17 +457,17 @@ export class InteriorCutawaySystem {
           this.disclosureState.inspectorExpanded = false;
         }
         this.setStatus(this.editMode ? 'editingEnabled' : 'editingDisabled');
-        this.refreshDisclosureLayout(layout);
+        this.refreshDisclosureLayout();
       },
       toggleCatalog: () => {
         if (!this.editMode) return;
         this.disclosureState.catalogExpanded = !this.disclosureState.catalogExpanded;
-        this.refreshDisclosureLayout(layout);
+        this.refreshDisclosureLayout();
       },
       toggleInspector: () => {
         if (!this.editMode || !this.selectedFurnitureId) return;
         this.disclosureState.inspectorExpanded = !this.disclosureState.inspectorExpanded;
-        this.refreshDisclosureLayout(layout);
+        this.refreshDisclosureLayout();
       },
       toggleGuide: () => {
         this.disclosureState.guideMode = !this.disclosureState.guideMode;
@@ -475,7 +475,9 @@ export class InteriorCutawaySystem {
         this.syncOverlay();
       },
       fitView: () => {
-        this.interiorViewport = createInteriorViewport(this.roomViewportFrame(layout));
+        const size = this.viewportProvider();
+        const current = this.currentLayout ?? cutawayLayoutForViewport(size.width, size.height);
+        this.interiorViewport = createInteriorViewport(this.roomViewportFrame(current));
         this.applyRoomViewport();
         this.syncRoomLabels();
       },
@@ -673,6 +675,7 @@ export class InteriorCutawaySystem {
     ))) return;
     this.clearRenderedShell();
     this.rebuildShell(this.activeInterior, layout);
+    this.syncOverlay();
     this.syncRoomLabels();
   }
 
@@ -996,15 +999,19 @@ export class InteriorCutawaySystem {
     const rootPointForPointer = (pointer: unknown): GridPoint | undefined => this.pointerScreenPoint(pointer);
     const page = catalogPage(this.catalogCategory, this.catalogPageIndex, 12);
     const required = requiredHookInventory(this.activeDefinition ?? interior, interior.furniture);
-    const startX = layout.x + (layout.width - 12 * 34) / 2 + 17;
-    const shelfY = layout.y + layout.height - 42;
+    const catalogBounds = editorLayoutForCutaway(layout, this.editorLayoutOptions()).catalog;
+    const slotSpacing = Math.min(34, (catalogBounds.width - 30) / 11);
+    const startX = catalogBounds.x + (catalogBounds.width - slotSpacing * 11) / 2;
+    const shelfY = catalogBounds.y + catalogBounds.height - 42;
     const missingRequired = required.filter(({ placed }) => !placed);
     missingRequired.slice(0, 12).forEach(({ furniture }, index) => {
       const catalog = resolvedFurnitureAsset(furniture);
       const assetKey = catalog?.key ?? modernOfficeAsset(modernOfficeKindForFurniture(furniture.kind)).key;
       const originX = catalog ? (catalog.opaqueBounds.x + catalog.opaqueBounds.width / 2) / 32 : 0.5;
       const originY = catalog ? (catalog.opaqueBounds.y + catalog.opaqueBounds.height / 2) / 48 : 0.5;
-      const item = this.scene.add.image(startX + index * 34, shelfY, assetKey).setOrigin(originX, originY).setScale(0.68).setTint(0xffd36b);
+      const itemX = startX + index * slotSpacing;
+      const item = this.scene.add.image(itemX, shelfY, assetKey)
+        .setPosition(itemX, shelfY).setOrigin(originX, originY).setScale(0.68).setTint(0xffd36b);
       this.wireFurnitureSource(item, furniture, assetKey, originX, originY, interior, layout, furnitureLayer, `Hook: ${hookFurnitureLabel(furniture, this.locale)}`);
       palette.add(item);
     });
@@ -1022,7 +1029,8 @@ export class InteriorCutawaySystem {
       const centerX = (minX + maxX) / 2;
       const centerY = (minY + maxY) / 2;
       const previewScale = Math.min(0.68, 26 / (Math.max(maxX - minX + 1, maxY - minY + 1) * this.roomCell));
-      const item = this.scene.add.container(startX + (prefabOffset + index) * 34, shelfY).setSize(30, 30);
+      const itemX = startX + (prefabOffset + index) * slotSpacing;
+      const item = this.scene.add.container(itemX, shelfY).setPosition(itemX, shelfY).setSize(30, 30);
       const outline = this.scene.add.graphics().lineStyle(1, 0x8ee8ff, 0.95).strokeRect(-14, -14, 28, 28);
       const nameLabel = this.scene.add.text(0, -17, prefabName, {
         fontFamily: 'sans-serif', fontSize: '7px', color: '#fff5c7', backgroundColor: '#27452dee',
@@ -1108,11 +1116,11 @@ export class InteriorCutawaySystem {
       palette.add(item);
     });
     page.items.forEach((catalog, index) => {
-      const x = startX + index * 34;
+      const x = startX + index * slotSpacing;
       const y = shelfY + 24;
       const originX = (catalog.opaqueBounds.x + catalog.opaqueBounds.width / 2) / 32;
       const originY = (catalog.opaqueBounds.y + catalog.opaqueBounds.height / 2) / 48;
-      const item = this.scene.add.image(x, y, catalog.key).setOrigin(originX, originY).setScale(0.68);
+      const item = this.scene.add.image(x, y, catalog.key).setPosition(x, y).setOrigin(originX, originY).setScale(0.68);
       item.setInteractive({ useHandCursor: true, draggable: true });
       this.scene.input.setDraggable(item);
       let dragClone: Phaser.GameObjects.Image | undefined;
@@ -1432,11 +1440,13 @@ export class InteriorCutawaySystem {
     };
   }
 
-  private refreshDisclosureLayout(layout: CutawayLayout): void {
+  private refreshDisclosureLayout(): void {
     if (!this.activeInterior || !this.root) {
       this.syncOverlay();
       return;
     }
+    const size = this.viewportProvider();
+    const layout = cutawayLayoutForViewport(size.width, size.height);
     this.clearRenderedShell();
     this.rebuildShell(this.activeInterior, layout);
     this.domOverlay.relayout(layout);

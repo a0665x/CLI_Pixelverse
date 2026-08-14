@@ -59,22 +59,24 @@ export function contextToolbarPlacement(
   size: Pick<EditorRect, 'width' | 'height'>,
 ): ContextToolbarPlacement {
   const gap = 8;
-  const above = selection.y - size.height - gap;
+  const width = Math.min(Math.max(0, size.width), room.width);
+  const height = Math.min(Math.max(0, size.height), room.height);
+  const above = selection.y - height - gap;
   const below = selection.y + selection.height + gap;
   const side: ContextToolbarSide = above >= room.y ? 'above'
-    : below + size.height <= room.y + room.height ? 'below'
+    : below + height <= room.y + room.height ? 'below'
       : selection.x + selection.width / 2 < room.x + room.width / 2 ? 'right' : 'left';
   const desiredX = side === 'right' ? selection.x + selection.width + gap
-    : side === 'left' ? selection.x - size.width - gap
-      : selection.x + (selection.width - size.width) / 2;
+    : side === 'left' ? selection.x - width - gap
+      : selection.x + (selection.width - width) / 2;
   const desiredY = side === 'above' ? above
     : side === 'below' ? below
-      : selection.y + (selection.height - size.height) / 2;
+      : selection.y + (selection.height - height) / 2;
   return {
     side,
-    x: clamp(desiredX, room.x, room.x + room.width - size.width),
-    y: clamp(desiredY, room.y, room.y + room.height - size.height),
-    width: size.width,
-    height: size.height,
+    x: clamp(desiredX, room.x, room.x + room.width - width),
+    y: clamp(desiredY, room.y, room.y + room.height - height),
+    width,
+    height,
   };
 }

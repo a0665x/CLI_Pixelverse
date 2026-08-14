@@ -75,11 +75,26 @@ describe('fixed village game config', () => {
   });
 
   it('reserves contextual editor regions and exposes keyboard tooltips', () => {
-    expect(styles).toContain('.cutaway-dom-header { position: absolute; inset: 0 0 auto; min-height: 40px; pointer-events: auto;');
-    expect(styles).toContain('.cutaway-dom-catalog { position: absolute; inset: auto 0 0; pointer-events: auto; overflow: clip;');
-    expect(styles).toContain('.cutaway-dom-inspector { position: absolute; inset: 40px 0 0 auto; pointer-events: auto; overflow: auto;');
+    expect(styles).toMatch(/\.cutaway-dom-header[^{}]*\{[^}]*position:\s*absolute;[^}]*pointer-events:\s*auto;/s);
+    expect(styles).toMatch(/\.cutaway-dom-catalog\s*\{[^}]*position:\s*absolute;[^}]*pointer-events:\s*none;[^}]*overflow:\s*clip;/s);
+    expect(styles).toMatch(/\.cutaway-dom-categories\s*\{[^}]*pointer-events:\s*auto;/s);
+    expect(styles).toMatch(/\.cutaway-dom-page\s*\{[^}]*pointer-events:\s*auto;/s);
+    expect(styles).toMatch(/\.cutaway-dom-inspector[^{}]*\{[^}]*position:\s*absolute;[^}]*pointer-events:\s*auto;[^}]*overflow:\s*auto;/s);
+    expect(styles).not.toMatch(/\.cutaway-dom-catalog\s*\{[^}]*(?:height:\s*112px|background:\s*var\(--material-structural\))/s);
+    expect(styles).not.toMatch(/\.cutaway-dom-inspector\s*\{[^}]*(?:width:\s*168px|inset:\s*40px)/s);
     expect(styles).toContain('.cutaway-context-toolbar { position: absolute; z-index: 4; display: flex; flex-wrap: wrap; pointer-events: auto;');
+    expect(styles).toMatch(/\.cutaway-context-toolbar\s*\{[^}]*overflow:\s*auto;/s);
     expect(styles).toContain('.cutaway-dom-panel button[data-tooltip]:focus-visible::after');
     expect(styles).toContain('.cutaway-context-toolbar, .cutaway-guide-popover { transition: none; }');
+  });
+
+  it('makes every contextual glass surface opaque when transparency is reduced', () => {
+    const reducedTransparency = styles.slice(
+      styles.indexOf('@media (prefers-reduced-transparency: reduce)'),
+      styles.indexOf('@media (prefers-reduced-motion: reduce)'),
+    );
+    expect(reducedTransparency).toContain('.cutaway-context-toolbar');
+    expect(reducedTransparency).toContain('.cutaway-guide-popover');
+    expect(reducedTransparency).toContain('background: #16231f');
   });
 });

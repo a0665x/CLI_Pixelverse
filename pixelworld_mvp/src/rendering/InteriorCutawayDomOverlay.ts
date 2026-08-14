@@ -99,6 +99,7 @@ export interface CutawayRoomLabel { id: string; text: string; x: number; y: numb
 export class InteriorCutawayDomOverlay {
   private readonly host: HTMLElement | undefined;
   private panel: HTMLElement | undefined;
+  private header: HTMLElement | undefined;
   private title: HTMLElement | undefined;
   private status: HTMLElement | undefined;
   private editButton: HTMLButtonElement | undefined;
@@ -148,6 +149,7 @@ export class InteriorCutawayDomOverlay {
     this.host.append(panel);
     this.labelLayer = panel.querySelector<HTMLDivElement>('.cutaway-room-labels') ?? undefined;
     this.panel = panel;
+    this.header = panel.querySelector('.cutaway-dom-header') ?? undefined;
     this.title = panel.querySelector('h2') ?? undefined;
     this.status = panel.querySelector('.cutaway-dom-status') ?? undefined;
     this.editButton = panel.querySelector('[data-action="edit"]') ?? undefined;
@@ -181,6 +183,8 @@ export class InteriorCutawayDomOverlay {
       guide: chrome.help,
       fit: chrome.fitView,
       close: localeCopy.actions.close,
+      prev: chrome.previousPage,
+      next: chrome.nextPage,
     } as const;
     Object.entries(iconActions).forEach(([action, label]) => {
       const button = this.panel?.querySelector<HTMLButtonElement>(`[data-action="${action}"]`);
@@ -201,8 +205,10 @@ export class InteriorCutawayDomOverlay {
     const catalogButton = this.panel.querySelector<HTMLButtonElement>('[data-action="catalog"]');
     const inspectorButton = this.panel.querySelector<HTMLButtonElement>('[data-action="inspector"]');
     if (catalogButton) { catalogButton.hidden = !model.editMode; catalogButton.setAttribute('aria-pressed', String(model.catalogExpanded)); }
-    if (inspectorButton) { inspectorButton.hidden = !model.editMode; inspectorButton.disabled = !model.selected; inspectorButton.setAttribute('aria-pressed', String(model.inspectorExpanded)); }
-    if (this.catalog) this.catalog.hidden = !model.editMode || !model.catalogExpanded;
+    const inspectorAvailable = (model.editorLayout?.inspector.width ?? 1) > 0;
+    const catalogAvailable = (model.editorLayout?.catalog.height ?? 1) > 0;
+    if (inspectorButton) { inspectorButton.hidden = !model.editMode; inspectorButton.disabled = !model.selected || !inspectorAvailable; inspectorButton.setAttribute('aria-pressed', String(model.inspectorExpanded)); }
+    if (this.catalog) this.catalog.hidden = !model.editMode || !model.catalogExpanded || !catalogAvailable;
     const nav = this.panel.querySelector('.cutaway-dom-categories');
     if (nav) {
       nav.replaceChildren(...Object.entries(localeCopy.categories).map(([category, label]) => {
@@ -218,7 +224,7 @@ export class InteriorCutawayDomOverlay {
     const page = this.panel.querySelector('.cutaway-dom-page span');
     if (page) page.textContent = `${model.page + 1} / ${model.totalPages}`;
     if (this.inspector) {
-      this.inspector.hidden = !model.editMode || !model.selected || !model.inspectorExpanded;
+      this.inspector.hidden = !model.editMode || !model.selected || !model.inspectorExpanded || !inspectorAvailable;
       this.inspector.replaceChildren();
       if (model.selected) {
         const label = document.createElement('strong');
@@ -256,7 +262,8 @@ export class InteriorCutawayDomOverlay {
         this.contextToolbar.append(...controls.map(([text, handler, disabled]) => {
           const button = document.createElement('button');
           button.type = 'button'; button.textContent = text; button.onclick = handler; button.disabled = Boolean(disabled);
-          button.setAttribute('aria-label', text); button.setAttribute('data-tooltip', text);
+          const semanticLabel = text === '↶' ? chrome.rotateLeft : text === '↷' ? chrome.rotateRight : text;
+          button.setAttribute('aria-label', semanticLabel); button.setAttribute('data-tooltip', semanticLabel);
           return button;
         }));
       }
@@ -285,6 +292,7 @@ export class InteriorCutawayDomOverlay {
         : renderCutawayMessageState(this.locale, model);
       this.status.textContent = `${status} · ${localeCopy.status.hook} ${model.requiredPlaced}/${model.requiredTotal} · ${localeCopy.status.prefab} ${model.prefabCount}`;
     }
+    this.positionEditorRegions();
     this.positionContextToolbar();
   }
 
@@ -336,6 +344,7 @@ export class InteriorCutawayDomOverlay {
     this.panel?.remove();
     this.labelLayer?.remove();
     this.panel = undefined;
+    this.header = undefined;
     this.labelLayer = undefined;
     this.contextToolbar = undefined;
     this.guidePopover = undefined;
@@ -353,7 +362,24 @@ export class InteriorCutawayDomOverlay {
     this.panel.style.top = `${rect.top + layout.y / WORLD_PIXELS.height * rect.height}px`;
     this.panel.style.width = `${layout.width / WORLD_PIXELS.width * rect.width}px`;
     this.panel.style.height = `${layout.height / WORLD_PIXELS.height * rect.height}px`;
+    this.positionEditorRegions();
     this.positionContextToolbar();
+  }
+
+  private positionEditorRegions(): void {
+    const layout = this.layout;
+    const editorLayout = this.model?.editorLayout;
+    if (!layout || !editorLayout) return;
+    const place = (element: HTMLElement | undefined, region: EditorRect): void => {
+      if (!element) return;
+      element.style.left = `${(region.x - layout.x) / layout.width * 100}%`;
+      element.style.top = `${(region.y - layout.y) / layout.height * 100}%`;
+      element.style.width = `${region.width / layout.width * 100}%`;
+      element.style.height = `${region.height / layout.height * 100}%`;
+    };
+    place(this.header, editorLayout.header);
+    place(this.catalog, editorLayout.catalog);
+    place(this.inspector, editorLayout.inspector);
   }
 
   private positionContextToolbar(): void {
@@ -362,11 +388,18 @@ export class InteriorCutawayDomOverlay {
     const selection = this.model?.selectionBounds;
     if (!layout || !editorLayout || !selection || !this.contextToolbar || this.contextToolbar.hidden) return;
     const width = Math.min(280, editorLayout.room.width);
-    const height = 56;
+    this.contextToolbar.style.width = `${width / layout.width * 100}%`;
+    const panelHeight = this.panel?.getBoundingClientRect().height ?? 0;
+    const measuredHeight = panelHeight > 0
+      ? this.contextToolbar.scrollHeight / panelHeight * layout.height
+      : 56;
+    const height = Math.min(Math.max(40, measuredHeight), Math.min(112, editorLayout.room.height));
     const placement = contextToolbarPlacement(selection, editorLayout.room, { width, height });
     this.contextToolbar.dataset.side = placement.side;
     this.contextToolbar.style.left = `${(placement.x - layout.x) / layout.width * 100}%`;
     this.contextToolbar.style.top = `${(placement.y - layout.y) / layout.height * 100}%`;
-    this.contextToolbar.style.maxWidth = `${width / layout.width * 100}%`;
+    this.contextToolbar.style.height = `${placement.height / layout.height * 100}%`;
+    this.contextToolbar.style.maxHeight = `${placement.height / layout.height * 100}%`;
+    this.contextToolbar.style.overflowY = 'auto';
   }
 }

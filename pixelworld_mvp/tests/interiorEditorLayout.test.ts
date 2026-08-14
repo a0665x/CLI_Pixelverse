@@ -37,4 +37,17 @@ describe('interior editor layout', () => {
       { x: 730, y: 390, width: 90, height: 35 }, room, { width: 210, height: 32 },
     ).side).toBe('above');
   });
+
+  it('contains an oversized wrapped toolbar inside the reserved room', () => {
+    const room = { x: 12, y: 48, width: 280, height: 144 };
+    const placement = contextToolbarPlacement(
+      { x: 120, y: 92, width: 32, height: 32 }, room, { width: 420, height: 260 },
+    );
+    expect(placement.width).toBeLessThanOrEqual(room.width);
+    expect(placement.height).toBeLessThanOrEqual(room.height);
+    expect(placement.x).toBeGreaterThanOrEqual(room.x);
+    expect(placement.y).toBeGreaterThanOrEqual(room.y);
+    expect(placement.x + placement.width).toBeLessThanOrEqual(room.x + room.width);
+    expect(placement.y + placement.height).toBeLessThanOrEqual(room.y + room.height);
+  });
 });

@@ -18,7 +18,7 @@ html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background:
 #cutaway-ui-layer { position: fixed; inset: 0; z-index: 30; overflow: hidden; pointer-events: none; font-family: Inter, "Noto Sans TC", system-ui, sans-serif; }
 .cutaway-dom-panel { position: absolute; pointer-events: none; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", Inter, "Noto Sans TC", system-ui, sans-serif; color: #fff0bd; text-rendering: geometricPrecision; }
 .cutaway-dom-panel [hidden] { display: none !important; }
-.cutaway-dom-header { position: absolute; inset: 0 0 auto; min-height: 40px; pointer-events: auto; display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; padding: 8px 10px; background: var(--material-glass); backdrop-filter: blur(18px) saturate(150%); -webkit-backdrop-filter: blur(18px) saturate(150%); }
+.cutaway-dom-header { position: absolute; pointer-events: auto; display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; padding: 8px 10px; background: var(--material-glass); backdrop-filter: blur(18px) saturate(150%); -webkit-backdrop-filter: blur(18px) saturate(150%); }
 .cutaway-dom-header > div:first-child { min-width: 132px; }
 .cutaway-dom-header h2 { margin: 0; font-size: 13px; font-weight: 760; line-height: 1.15; letter-spacing: -.015em; text-shadow: 0 1px 4px rgb(4 15 8 / 70%); }
 .cutaway-dom-status { margin: 3px 0 0; color: #cde6d2; font-size: 10px; font-weight: 550; line-height: 1.35; letter-spacing: .02em; text-shadow: 0 1px 3px rgb(4 15 8 / 80%); }
@@ -34,15 +34,15 @@ html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background:
 .cutaway-dom-panel button[data-tooltip]:focus-visible::after { opacity: 1; }
 .cutaway-dom-actions [data-action='save'] { background: #6b5734; }
 .cutaway-dom-actions [data-action='close'] { min-width: 25px; color: #fff; background: #9d443d; font-size: 16px; }
-.cutaway-dom-catalog { position: absolute; inset: auto 0 0; pointer-events: auto; overflow: clip; height: 112px; padding: 8px 10px; background: var(--material-structural); }
-.cutaway-dom-categories { position: absolute; bottom: 70px; left: 0; display: flex; gap: 4px; padding: 4px; border: 1px solid var(--material-glass-border); border-radius: 8px; background: var(--material-glass); box-shadow: inset 0 1px rgb(255 255 255 / 26%), 0 8px 18px rgb(4 15 8 / 22%); backdrop-filter: blur(18px) saturate(150%); -webkit-backdrop-filter: blur(18px) saturate(150%); pointer-events: auto; }
+.cutaway-dom-catalog { position: absolute; pointer-events: none; overflow: clip; padding: 8px 10px; }
+.cutaway-dom-categories { position: absolute; top: 4px; left: 0; display: flex; gap: 4px; padding: 4px; border: 1px solid var(--material-glass-border); border-radius: 8px; background: var(--material-glass); box-shadow: inset 0 1px rgb(255 255 255 / 26%), 0 8px 18px rgb(4 15 8 / 22%); backdrop-filter: blur(18px) saturate(150%); -webkit-backdrop-filter: blur(18px) saturate(150%); pointer-events: auto; }
 .cutaway-dom-categories button { min-height: 19px; padding: 2px 6px; font-size: 9px; background: #283f39; }
 .cutaway-dom-categories button[data-active='true'] { color: #263323; background: #f1d89a; }
-.cutaway-dom-page { position: absolute; right: 0; bottom: 69px; padding: 4px; border: 1px solid var(--material-glass-border); border-radius: 8px; background: var(--material-glass); box-shadow: inset 0 1px rgb(255 255 255 / 26%), 0 8px 18px rgb(4 15 8 / 22%); backdrop-filter: blur(18px) saturate(150%); -webkit-backdrop-filter: blur(18px) saturate(150%); font-size: 10px; }
+.cutaway-dom-page { position: absolute; top: 4px; right: 0; pointer-events: auto; padding: 4px; border: 1px solid var(--material-glass-border); border-radius: 8px; background: var(--material-glass); box-shadow: inset 0 1px rgb(255 255 255 / 26%), 0 8px 18px rgb(4 15 8 / 22%); backdrop-filter: blur(18px) saturate(150%); -webkit-backdrop-filter: blur(18px) saturate(150%); font-size: 10px; }
 .cutaway-dom-page button { min-width: 22px; min-height: 19px; padding: 1px 5px; }
-.cutaway-dom-inspector { position: absolute; inset: 40px 0 0 auto; pointer-events: auto; overflow: auto; width: 168px; padding: 10px; border: 1px solid rgb(190 220 198 / 28%); border-radius: 0 0 0 8px; background: var(--material-structural); box-shadow: 0 8px 18px rgb(4 15 8 / 24%); align-items: flex-start; }
+.cutaway-dom-inspector { position: absolute; pointer-events: auto; overflow: auto; padding: 10px; border: 1px solid rgb(190 220 198 / 28%); border-radius: 0 0 0 8px; background: var(--material-structural); box-shadow: 0 8px 18px rgb(4 15 8 / 24%); align-items: flex-start; }
 .cutaway-dom-inspector strong { margin-right: 3px; font-size: 10px; }
-.cutaway-context-toolbar { position: absolute; z-index: 4; display: flex; flex-wrap: wrap; pointer-events: auto; gap: 4px; padding: 5px; border: 1px solid var(--material-glass-border); border-radius: 8px; background: var(--material-glass); box-shadow: 0 8px 18px rgb(4 15 8 / 28%); transition: opacity 120ms ease-out; }
+.cutaway-context-toolbar { position: absolute; z-index: 4; display: flex; flex-wrap: wrap; pointer-events: auto; overflow: auto; gap: 4px; padding: 5px; border: 1px solid var(--material-glass-border); border-radius: 8px; background: var(--material-glass); box-shadow: 0 8px 18px rgb(4 15 8 / 28%); transition: opacity 120ms ease-out; }
 .cutaway-guide-popover { position: absolute; top: 48px; left: 50%; z-index: 5; max-width: 320px; padding: 10px; border: 1px solid var(--material-glass-border); border-radius: 9px; background: var(--material-structural); pointer-events: auto; transform: translateX(-50%); transition: opacity 120ms ease-out; }
 .cutaway-guide-popover p { margin: 0 0 8px; font-size: 11px; }
 .cutaway-room-labels { position: absolute; inset: 0; pointer-events: none; }
@@ -57,13 +57,11 @@ html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background:
   .cutaway-dom-status { margin-top: 2px; font-size: 9px; }
   .cutaway-dom-actions { max-width: 78%; gap: 3px; }
   .cutaway-dom-panel button { min-height: 20px; padding: 2px 5px; font-size: 9px; }
-  .cutaway-dom-categories { bottom: 66px; }
-  .cutaway-dom-page { bottom: 65px; }
   .cutaway-dom-inspector { padding: 6px; gap: 3px; }
 }
 @media (prefers-reduced-transparency: reduce) {
   #village-zoom-controls, .cutaway-dom-actions, .cutaway-dom-categories, .cutaway-dom-page { background: var(--material-structural); backdrop-filter: none; -webkit-backdrop-filter: none; }
-  .cutaway-dom-header, .cutaway-dom-catalog, .cutaway-dom-inspector { backdrop-filter: none; background: #16231f; }
+  .cutaway-dom-header, .cutaway-dom-inspector, .cutaway-context-toolbar, .cutaway-guide-popover { backdrop-filter: none; background: #16231f; }
 }
 @media (prefers-reduced-motion: reduce) {
   #village-zoom-controls button, .cutaway-dom-panel button { transition: opacity 160ms ease; }
