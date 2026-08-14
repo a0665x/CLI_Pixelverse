@@ -104,6 +104,7 @@ export class InteriorCutawayDomOverlay {
   private title: HTMLElement | undefined;
   private status: HTMLElement | undefined;
   private editButton: HTMLButtonElement | undefined;
+  private roomToolbar: HTMLElement | undefined;
   private catalog: HTMLElement | undefined;
   private inspector: HTMLElement | undefined;
   private contextToolbar: HTMLElement | undefined;
@@ -139,13 +140,23 @@ export class InteriorCutawayDomOverlay {
           <button type="button" data-action="close">×</button>
         </div>
       </header>
+      <nav class="cutaway-room-toolbar" aria-label="Room editing commands" hidden>
+        <button type="button" data-action="collect"></button>
+        <button type="button" data-action="revert"></button>
+        <button type="button" data-action="copy"></button>
+        <button type="button" data-action="paste"></button>
+        <button type="button" data-action="undo"></button>
+        <button type="button" data-action="preview-template"></button>
+        <button type="button" data-action="apply-template" hidden></button>
+        <button type="button" data-action="save"></button>
+      </nav>
       <div class="cutaway-context-toolbar" hidden></div>
       <aside class="cutaway-dom-inspector" hidden></aside>
       <section class="cutaway-dom-catalog" hidden>
         <nav class="cutaway-dom-categories"></nav>
         <div class="cutaway-dom-page"><button type="button" data-action="prev">‹</button><span></span><button type="button" data-action="next">›</button></div>
       </section>
-      <div class="cutaway-guide-popover" role="tooltip" hidden></div>
+      <div class="cutaway-guide-popover" id="cutaway-guide-popover" role="dialog" aria-modal="false" hidden></div>
       <div class="cutaway-room-labels"></div>`;
     this.host.append(panel);
     this.labelLayer = panel.querySelector<HTMLDivElement>('.cutaway-room-labels') ?? undefined;
@@ -154,6 +165,7 @@ export class InteriorCutawayDomOverlay {
     this.title = panel.querySelector('h2') ?? undefined;
     this.status = panel.querySelector('.cutaway-dom-status') ?? undefined;
     this.editButton = panel.querySelector('[data-action="edit"]') ?? undefined;
+    this.roomToolbar = panel.querySelector('.cutaway-room-toolbar') ?? undefined;
     this.catalog = panel.querySelector('.cutaway-dom-catalog') ?? undefined;
     this.inspector = panel.querySelector('.cutaway-dom-inspector') ?? undefined;
     this.contextToolbar = panel.querySelector('.cutaway-context-toolbar') ?? undefined;
@@ -164,13 +176,30 @@ export class InteriorCutawayDomOverlay {
     panel.querySelector('[data-action="inspector"]')?.addEventListener('click', handlers.toggleInspector);
     panel.querySelector('[data-action="guide"]')?.addEventListener('click', handlers.toggleGuide);
     panel.querySelector('[data-action="fit"]')?.addEventListener('click', handlers.fitView);
+    panel.querySelector('[data-action="collect"]')?.addEventListener('click', handlers.collect);
+    panel.querySelector('[data-action="revert"]')?.addEventListener('click', handlers.revert);
+    panel.querySelector('[data-action="copy"]')?.addEventListener('click', handlers.copy);
+    panel.querySelector('[data-action="paste"]')?.addEventListener('click', handlers.paste);
+    panel.querySelector('[data-action="undo"]')?.addEventListener('click', handlers.undo);
+    panel.querySelector('[data-action="preview-template"]')?.addEventListener('click', handlers.previewTemplate);
+    panel.querySelector('[data-action="apply-template"]')?.addEventListener('click', handlers.applyTemplate);
+    panel.querySelector('[data-action="save"]')?.addEventListener('click', handlers.save);
     panel.querySelector('[data-action="prev"]')?.addEventListener('click', () => handlers.page(-1));
     panel.querySelector('[data-action="next"]')?.addEventListener('click', () => handlers.page(1));
+    panel.addEventListener('keydown', (event) => {
+      if (event.key !== 'Escape' || !this.model?.guideMode) return;
+      event.preventDefault();
+      event.stopPropagation();
+      this.handlers?.toggleGuide();
+    });
     this.position(layout);
     this.update(model);
   }
 
   update(model: CutawayDomModel): void {
+    const previousGuideMode = Boolean(this.model?.guideMode);
+    const activeElement = typeof document === 'undefined' ? undefined : document.activeElement as HTMLElement | null;
+    const guideHadFocus = Boolean(activeElement && this.guidePopover?.contains(activeElement));
     this.model = model;
     if (!this.panel) return;
     const localeCopy = villageCopy(this.locale).cutaway;
@@ -205,10 +234,30 @@ export class InteriorCutawayDomOverlay {
     };
     const catalogButton = this.panel.querySelector<HTMLButtonElement>('[data-action="catalog"]');
     const inspectorButton = this.panel.querySelector<HTMLButtonElement>('[data-action="inspector"]');
+    const guideButton = this.panel.querySelector<HTMLButtonElement>('[data-action="guide"]');
     if (catalogButton) { catalogButton.hidden = !model.editMode; catalogButton.setAttribute('aria-pressed', String(model.catalogExpanded)); }
     const inspectorAvailable = model.editorLayout ? interiorInspectorAvailable(model.editorLayout.frame) : true;
     const catalogAvailable = (model.editorLayout?.catalog.height ?? 1) > 0;
     if (inspectorButton) { inspectorButton.hidden = !model.editMode; inspectorButton.disabled = !model.selected || !inspectorAvailable; inspectorButton.setAttribute('aria-pressed', String(model.inspectorExpanded)); }
+    if (guideButton) {
+      guideButton.setAttribute('aria-expanded', String(model.guideMode));
+      guideButton.setAttribute('aria-controls', 'cutaway-guide-popover');
+    }
+    if (this.roomToolbar) this.roomToolbar.hidden = !model.editMode || (model.editorLayout?.roomToolbar.height ?? 1) <= 0;
+    const roomActionState: Record<string, { disabled?: boolean; hidden?: boolean }> = {
+      collect: {}, revert: {}, copy: {},
+      paste: { disabled: !model.clipboardAvailable },
+      undo: { disabled: !model.canUndo },
+      'preview-template': {},
+      'apply-template': { disabled: !model.templateValid, hidden: !model.templatePreviewing },
+      save: { disabled: model.saveBlocked },
+    };
+    Object.entries(roomActionState).forEach(([action, state]) => {
+      const button = this.panel?.querySelector<HTMLButtonElement>(`[data-action="${action}"]`);
+      if (!button) return;
+      button.disabled = Boolean(state.disabled);
+      button.hidden = Boolean(state.hidden);
+    });
     if (this.catalog) this.catalog.hidden = !model.editMode || !model.catalogExpanded || !catalogAvailable;
     const nav = this.panel.querySelector('.cutaway-dom-categories');
     if (nav) {
@@ -226,6 +275,12 @@ export class InteriorCutawayDomOverlay {
     if (page) page.textContent = `${model.page + 1} / ${model.totalPages}`;
     if (this.inspector) {
       this.inspector.hidden = !model.editMode || !model.selected || !model.inspectorExpanded || !inspectorAvailable;
+      const compactBottom = Boolean(
+        model.editorLayout
+        && model.editorLayout.inspector.width === model.editorLayout.frame.width
+        && model.editorLayout.inspector.height > 0,
+      );
+      this.inspector.dataset.placement = compactBottom ? 'bottom' : 'side';
       this.inspector.replaceChildren();
       if (model.selected) {
         const label = document.createElement('strong');
@@ -240,33 +295,39 @@ export class InteriorCutawayDomOverlay {
 
     if (this.contextToolbar) {
       this.contextToolbar.hidden = !model.editMode || !model.selected;
+      const focusedAction = activeElement && this.contextToolbar.contains(activeElement)
+        ? activeElement.dataset.contextAction
+        : undefined;
       this.contextToolbar.replaceChildren();
       if (!this.contextToolbar.hidden) {
-        const controls: Array<[string, () => void, boolean?]> = [
-          [localeCopy.actions.cancel, () => this.handlers?.cancelSelection()],
-          ...(model.canDuplicate ? [[localeCopy.actions.duplicate, () => this.handlers?.duplicate()] as [string, () => void]] : []),
-          ...(model.canGroup ? [[localeCopy.actions.group, () => this.handlers?.group()] as [string, () => void]] : []),
-          ...(model.canDissolve ? [[localeCopy.actions.dissolveGroup, () => this.handlers?.dissolveGroup()] as [string, () => void]] : []),
-          [localeCopy.actions.shelf, () => this.handlers?.returnToShelf()],
-          [localeCopy.actions.smaller, () => this.handlers?.resize(-1)], [localeCopy.actions.larger, () => this.handlers?.resize(1)],
-          ['↶', () => this.handlers?.rotate(-90)], ['↷', () => this.handlers?.rotate(90)],
-          [localeCopy.actions.layerDown, () => this.handlers?.shiftLayer('previous')], [localeCopy.actions.layerUp, () => this.handlers?.shiftLayer('next')],
-          [localeCopy.actions.back, () => this.handlers?.reorder('back')], [localeCopy.actions.backward, () => this.handlers?.reorder('backward')],
-          [localeCopy.actions.forward, () => this.handlers?.reorder('forward')], [localeCopy.actions.front, () => this.handlers?.reorder('front')],
-          [localeCopy.actions.collect, () => this.handlers?.collect()], [localeCopy.actions.revert, () => this.handlers?.revert()],
-          [localeCopy.actions.copy, () => this.handlers?.copy()], [localeCopy.actions.paste, () => this.handlers?.paste(), !model.clipboardAvailable],
-          [localeCopy.actions.undo, () => this.handlers?.undo(), !model.canUndo],
-          [localeCopy.actions.previewTemplate, () => this.handlers?.previewTemplate()],
-          ...(model.templatePreviewing ? [[localeCopy.actions.applyTemplate, () => this.handlers?.applyTemplate(), !model.templateValid] as [string, () => void, boolean]] : []),
-          [localeCopy.actions.save, () => this.handlers?.save(), model.saveBlocked],
+        const controls: Array<[string, string, () => void, boolean?]> = [
+          ['cancel', localeCopy.actions.cancel, () => this.handlers?.cancelSelection()],
+          ...(model.canDuplicate ? [['duplicate', localeCopy.actions.duplicate, () => this.handlers?.duplicate()] as [string, string, () => void]] : []),
+          ...(model.canGroup ? [['group', localeCopy.actions.group, () => this.handlers?.group()] as [string, string, () => void]] : []),
+          ...(model.canDissolve ? [['dissolve', localeCopy.actions.dissolveGroup, () => this.handlers?.dissolveGroup()] as [string, string, () => void]] : []),
+          ['shelf', localeCopy.actions.shelf, () => this.handlers?.returnToShelf()],
+          ['smaller', localeCopy.actions.smaller, () => this.handlers?.resize(-1)],
+          ['larger', localeCopy.actions.larger, () => this.handlers?.resize(1)],
+          ['rotate-left', '↶', () => this.handlers?.rotate(-90)],
+          ['rotate-right', '↷', () => this.handlers?.rotate(90)],
+          ['layer-down', localeCopy.actions.layerDown, () => this.handlers?.shiftLayer('previous')],
+          ['layer-up', localeCopy.actions.layerUp, () => this.handlers?.shiftLayer('next')],
+          ['back', localeCopy.actions.back, () => this.handlers?.reorder('back')],
+          ['backward', localeCopy.actions.backward, () => this.handlers?.reorder('backward')],
+          ['forward', localeCopy.actions.forward, () => this.handlers?.reorder('forward')],
+          ['front', localeCopy.actions.front, () => this.handlers?.reorder('front')],
         ];
-        this.contextToolbar.append(...controls.map(([text, handler, disabled]) => {
+        this.contextToolbar.append(...controls.map(([action, text, handler, disabled]) => {
           const button = document.createElement('button');
           button.type = 'button'; button.textContent = text; button.onclick = handler; button.disabled = Boolean(disabled);
+          button.dataset.contextAction = action;
           const semanticLabel = text === '↶' ? chrome.rotateLeft : text === '↷' ? chrome.rotateRight : text;
           button.setAttribute('aria-label', semanticLabel); button.setAttribute('data-tooltip', semanticLabel);
           return button;
         }));
+        if (focusedAction) {
+          this.contextToolbar.querySelector<HTMLButtonElement>(`[data-context-action="${focusedAction}"]`)?.focus();
+        }
       }
     }
     if (this.guidePopover) {
@@ -279,7 +340,9 @@ export class InteriorCutawayDomOverlay {
         close.type = 'button'; close.textContent = chrome.closeGuide; close.onclick = () => this.handlers?.toggleGuide();
         close.setAttribute('aria-label', chrome.closeGuide); close.setAttribute('data-tooltip', chrome.closeGuide);
         this.guidePopover.append(copy, close);
+        if (!previousGuideMode || guideHadFocus) close.focus();
       }
+      if (previousGuideMode && !model.guideMode) guideButton?.focus();
     }
     Object.entries(actionLabels).forEach(([action, label]) => {
       const button = this.panel?.querySelector<HTMLButtonElement>(`[data-action="${action}"]`);
@@ -325,17 +388,33 @@ export class InteriorCutawayDomOverlay {
       label.tabIndex = 0;
       label.setAttribute('aria-label', item.text.replace(/\n/g, ' · '));
       label.dataset.expanded = String(Boolean(item.selected) || Boolean(this.model?.guideMode));
+      const layout = this.layout;
+      const room = this.model?.editorLayout?.room ?? layout;
       let x = item.x;
       let y = item.y;
       const selection = this.model?.selectionBounds;
-      if (item.kind === 'agent' && selection && x >= selection.x - 24 && x <= selection.x + selection.width + 24
-        && y >= selection.y - 24 && y <= selection.y + selection.height + 24) {
-        y = selection.y - 8;
+      if (room) {
+        const horizontalPadding = Math.min(item.kind === 'agent' ? 18 : 10, room.width / 2);
+        const verticalPadding = Math.min(item.kind === 'agent' ? 18 : 8, room.height / 2);
+        const clamp = (value: number, minimum: number, maximum: number): number =>
+          maximum < minimum ? (minimum + maximum) / 2 : Math.min(maximum, Math.max(minimum, value));
+        x = clamp(x, room.x + horizontalPadding, room.x + room.width - horizontalPadding);
+        y = clamp(y, room.y + verticalPadding, room.y + room.height - verticalPadding);
+        if (selection && x >= selection.x - 48 && x <= selection.x + selection.width + 48
+          && y >= selection.y - 28 && y <= selection.y + selection.height + 28) {
+          const above = item.kind === 'agent' ? selection.y - 6 : selection.y - 30;
+          const below = item.kind === 'agent'
+            ? selection.y + selection.height + 30
+            : selection.y + selection.height + 6;
+          const minimumY = room.y + verticalPadding;
+          const maximumY = room.y + room.height - verticalPadding;
+          y = above >= minimumY ? above : below <= maximumY ? below : clamp(above, minimumY, maximumY);
+        }
       }
       const anchor = item.kind === 'agent' ? 'translate(-50%, -100%)' : 'translate(-50%, 0)';
-      const layout = this.layout;
-      const left = layout ? (x - layout.x) / WORLD_PIXELS.width * rect.width : rect.left + x / WORLD_PIXELS.width * rect.width;
-      const top = layout ? (y - layout.y) / WORLD_PIXELS.height * rect.height : rect.top + y / WORLD_PIXELS.height * rect.height;
+      const coordinateFrame = room ?? layout;
+      const left = coordinateFrame ? (x - coordinateFrame.x) / WORLD_PIXELS.width * rect.width : rect.left + x / WORLD_PIXELS.width * rect.width;
+      const top = coordinateFrame ? (y - coordinateFrame.y) / WORLD_PIXELS.height * rect.height : rect.top + y / WORLD_PIXELS.height * rect.height;
       label.style.transform = `translate3d(${Math.round(left)}px, ${Math.round(top)}px, 0) ${anchor}`;
       return label;
     }));
@@ -346,6 +425,9 @@ export class InteriorCutawayDomOverlay {
     this.labelLayer?.remove();
     this.panel = undefined;
     this.header = undefined;
+    this.roomToolbar = undefined;
+    this.catalog = undefined;
+    this.inspector = undefined;
     this.labelLayer = undefined;
     this.contextToolbar = undefined;
     this.guidePopover = undefined;
@@ -370,7 +452,7 @@ export class InteriorCutawayDomOverlay {
   private positionEditorRegions(): void {
     const layout = this.layout;
     const editorLayout = this.model?.editorLayout;
-    if (!layout || !editorLayout) return;
+    if (!layout || !editorLayout || layout.width <= 0 || layout.height <= 0) return;
     const place = (element: HTMLElement | undefined, region: EditorRect): void => {
       if (!element) return;
       element.style.left = `${(region.x - layout.x) / layout.width * 100}%`;
@@ -379,8 +461,14 @@ export class InteriorCutawayDomOverlay {
       element.style.height = `${region.height / layout.height * 100}%`;
     };
     place(this.header, editorLayout.header);
+    place(this.roomToolbar, editorLayout.roomToolbar);
     place(this.catalog, editorLayout.catalog);
     place(this.inspector, editorLayout.inspector);
+    place(this.labelLayer, editorLayout.room);
+    if (this.labelLayer) {
+      this.labelLayer.dataset.region = 'room';
+      this.labelLayer.style.overflow = 'hidden';
+    }
   }
 
   private positionContextToolbar(): void {

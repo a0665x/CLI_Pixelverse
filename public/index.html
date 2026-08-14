@@ -2254,7 +2254,46 @@
       .map-first-workspace .hud.live-hud { inset: 8px auto auto 8px; width: min(330px, calc(100% - 72px)); }
       .workspace-tools { top: 8px; right: 8px; gap: 5px; }
       .workspace-tool-button { min-width: 40px; min-height: 40px; padding: 7px 8px; }
-      body[data-pixelworld-cutaway="open"] .map-first-workspace .live-hud,
+      body[data-pixelworld-cutaway="open"] .map-first-workspace { --compact-cutaway-status-height: 48px; }
+      body[data-pixelworld-cutaway="open"] .map-first-workspace .map-stage {
+        inset: var(--compact-cutaway-status-height) 0 0;
+      }
+      body[data-pixelworld-cutaway="open"] .map-first-workspace .live-hud {
+        inset: 0;
+        z-index: 60;
+        display: block !important;
+        width: 100%;
+        max-width: none;
+        height: var(--compact-cutaway-status-height);
+        overflow: hidden;
+      }
+      body[data-pixelworld-cutaway="open"] .map-first-workspace .live-hud .brand {
+        display: grid;
+        height: 100%;
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 8px;
+        padding: 5px 8px;
+        border-radius: 0;
+        touch-action: none;
+      }
+      body[data-pixelworld-cutaway="open"] .live-hud .brand-top { display: contents; }
+      body[data-pixelworld-cutaway="open"] .live-hud .brand-top > div:first-child,
+      body[data-pixelworld-cutaway="open"] .live-hud #last-sync,
+      body[data-pixelworld-cutaway="open"] .live-hud #world-summary,
+      body[data-pixelworld-cutaway="open"] .live-hud .editor-banner,
+      body[data-pixelworld-cutaway="open"] .live-hud .summary-card:first-child,
+      body[data-pixelworld-cutaway="open"] .live-hud .summary-card:last-child { display: none !important; }
+      body[data-pixelworld-cutaway="open"] .live-hud .current-agent-state {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      body[data-pixelworld-cutaway="open"] .live-hud .live-counts .summary-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(42px, 1fr));
+      }
       body[data-pixelworld-cutaway="open"] .workspace-tools,
       body[data-pixelworld-cutaway="open"] .workspace-drawer,
       body[data-pixelworld-cutaway="open"] .dashboard-guide { display: none !important; }
@@ -2330,7 +2369,7 @@
       </div>
     </section>
 
-    <aside class="hud live-hud" aria-label="Live agent status">
+    <aside class="hud live-hud" id="live-status-rail" aria-label="Live agent status">
       <div class="brand panel">
         <div class="brand-top">
           <div>
@@ -2378,7 +2417,6 @@
             <select id="locale-select" aria-label="language selector"></select>
             <button type="button" id="mobile-mode-btn" aria-pressed="false"></button>
             <button type="button" id="edit-furniture-btn"></button>
-            <a id="map-builder-tab-link" class="tool-link" href="/map_builder.html">Map Validate</a>
             <button type="button" id="save-furniture-btn" hidden></button>
             <button type="button" id="cancel-furniture-btn" hidden></button>
           </div>

@@ -157,15 +157,17 @@ export function cutawayLayoutForCanvas(
 export function editorLayoutForCutaway(
   layout: CutawayLayout,
   options: InteriorEditorLayoutOptions = { editMode: false, catalogExpanded: false, inspectorExpanded: false },
+  responsiveFrameWidth = layout.width,
 ): InteriorEditorLayout {
   const reserved = interiorEditorLayout(layout.width + 16, layout.height + 16, {
     ...options,
-  });
+  }, responsiveFrameWidth);
   const translate = ({ x, y, width, height }: InteriorViewportRect): InteriorViewportRect => ({
     x: layout.x + x - reserved.frame.x, y: layout.y + y - reserved.frame.y, width, height,
   });
   return {
-    frame: translate(reserved.frame), header: translate(reserved.header), room: translate(reserved.room),
+    frame: translate(reserved.frame), header: translate(reserved.header),
+    roomToolbar: translate(reserved.roomToolbar), room: translate(reserved.room),
     catalog: translate(reserved.catalog), inspector: translate(reserved.inspector),
   };
 }
@@ -419,7 +421,15 @@ export class InteriorCutawaySystem {
     bubble: Phaser.GameObjects.Text;
     name: Phaser.GameObjects.Text;
   }>();
-  private readonly escapeHandler = (): void => this.close();
+  private readonly escapeHandler = (): void => {
+    if (this.root && this.disclosureState.guideMode) {
+      this.disclosureState.guideMode = false;
+      persistGuideDismissal();
+      this.syncOverlay();
+      return;
+    }
+    this.close();
+  };
   private readonly resizeHandler = (): void => this.refreshLayout();
 
   constructor(
@@ -503,12 +513,22 @@ export class InteriorCutawaySystem {
       },
       toggleCatalog: () => {
         if (!this.editMode) return;
-        this.disclosureState.catalogExpanded = !this.disclosureState.catalogExpanded;
+        const opening = !this.disclosureState.catalogExpanded;
+        this.disclosureState.catalogExpanded = opening;
+        const current = this.currentLayout ?? this.layoutForViewport();
+        if (opening && this.projectedFrameWidth(current) < 620) {
+          this.disclosureState.inspectorExpanded = false;
+        }
         this.refreshDisclosureLayout();
       },
       toggleInspector: () => {
         if (!this.editMode || !this.selectedFurnitureId) return;
-        this.disclosureState.inspectorExpanded = !this.disclosureState.inspectorExpanded;
+        const opening = !this.disclosureState.inspectorExpanded;
+        this.disclosureState.inspectorExpanded = opening;
+        const current = this.currentLayout ?? this.layoutForViewport();
+        if (opening && this.projectedFrameWidth(current) < 620) {
+          this.disclosureState.catalogExpanded = false;
+        }
         this.refreshDisclosureLayout();
       },
       toggleGuide: () => {
@@ -912,9 +932,16 @@ export class InteriorCutawaySystem {
     }
 
     const drawPlacementPreview = (candidate: PlacementCandidate): void => {
+      const color = candidate.diagnostic === 'valid' ? 0x65d47e : 0xe05b54;
       placementPreview.clear();
-      placementPreview.fillStyle(candidate.diagnostic === 'valid' ? 0x65d47e : 0xe05b54, 0.42);
+      placementPreview.fillStyle(color, 0.24).lineStyle(2, color, 0.96);
       placementPreview.fillRect(
+        this.roomOrigin.x + candidate.bounds.x * this.roomCell,
+        this.roomOrigin.y + candidate.bounds.y * this.roomCell,
+        candidate.bounds.width * this.roomCell,
+        candidate.bounds.height * this.roomCell,
+      );
+      placementPreview.strokeRect(
         this.roomOrigin.x + candidate.bounds.x * this.roomCell,
         this.roomOrigin.y + candidate.bounds.y * this.roomCell,
         candidate.bounds.width * this.roomCell,
@@ -923,11 +950,13 @@ export class InteriorCutawaySystem {
     };
 
     const drawSelectionPreview = (items: readonly FurnitureDefinition[], valid: boolean): void => {
+      const color = valid ? 0x65d47e : 0xe05b54;
       placementPreview.clear();
-      placementPreview.fillStyle(valid ? 0x65d47e : 0xe05b54, 0.42);
+      placementPreview.fillStyle(color, 0.24).lineStyle(2, color, 0.96);
       items.forEach((item) => {
         const bounds = furnitureRenderScreenGeometry(this.roomOrigin, item, this.roomCell).bounds;
         placementPreview.fillRect(bounds.x, bounds.y, bounds.width, bounds.height);
+        placementPreview.strokeRect(bounds.x, bounds.y, bounds.width, bounds.height);
       });
     };
 
@@ -938,6 +967,7 @@ export class InteriorCutawaySystem {
     const furnitureSprites = new Set<Phaser.GameObjects.Image>();
     const furnitureSpritesById = new Map<string, Phaser.GameObjects.Image>();
     const furnitureSpriteScalesById = new Map<string, number>();
+    const furnitureSpriteDepthsById = new Map<string, number>();
     const setCanvasDragState = (active: boolean, tone: 'neutral' | 'valid' | 'invalid' = 'neutral'): void => {
       const canvas = this.scene.game?.canvas;
       if (!canvas?.dataset) return;
@@ -958,7 +988,11 @@ export class InteriorCutawaySystem {
       for (const id of ids) {
         const sprite = furnitureSpritesById.get(id);
         const scale = furnitureSpriteScalesById.get(id);
-        if (sprite && scale !== undefined) sprite.setScale(scale * presentation.scale).setAlpha(presentation.alpha);
+        const depth = furnitureSpriteDepthsById.get(id);
+        if (!sprite || scale === undefined || depth === undefined) continue;
+        sprite.setScale(scale * presentation.scale).setAlpha(presentation.alpha);
+        if (presentation.tone === 'neutral') sprite.clearTint().setDepth(depth);
+        else sprite.setTint(presentation.tone === 'valid' ? 0x65d47e : 0xe05b54).setDepth(depth + 10_000);
       }
       setCanvasDragState(phase !== 'idle', presentation.tone);
     };
@@ -1013,6 +1047,7 @@ export class InteriorCutawaySystem {
       furnitureSprites.add(sprite);
       furnitureSpritesById.set(furniture.id, sprite);
       furnitureSpriteScalesById.set(furniture.id, spriteScale);
+      furnitureSpriteDepthsById.set(furniture.id, sprite.depth);
       this.scene.input.setDraggable(sprite);
       sprite.on('pointerdown', (pointer: unknown) => {
         if (this.furnitureDragCapture) return;
@@ -1083,7 +1118,8 @@ export class InteriorCutawaySystem {
         const diagnostic = !accepted && this.currentDragCandidate?.diagnostic === 'valid'
           ? 'overlap'
           : this.currentDragCandidate?.diagnostic ?? 'outside-room';
-        applyDragPresentation(capture.selectedIds, diagnostic, accepted ? 'settling' : 'returning');
+        if (accepted) setCanvasDragState(true, 'valid');
+        else applyDragPresentation(capture.selectedIds, diagnostic, 'returning');
         if (mutation && accepted) this.commitFurnitureMutation(interior, mutation.layout);
         if (accepted) this.setStatus('moveApplied');
         else this.setStatus('placementRejected', { diagnostic });
@@ -1104,6 +1140,23 @@ export class InteriorCutawaySystem {
             point: furnitureRenderScreenPoint(this.roomOrigin, item, this.roomCell),
           }] : [];
         });
+        const settles = capture.selectedIds.flatMap((id) => {
+          const selectedSprite = furnitureSpritesById.get(id);
+          const scale = furnitureSpriteScalesById.get(id);
+          return selectedSprite && scale !== undefined ? [{ sprite: selectedSprite, scale }] : [];
+        });
+        if (accepted && settles.length > 0 && presentation.durationMs > 0) {
+          this.scene.tweens.add({
+            targets: settles.map(({ sprite: target }) => target),
+            scaleX: (_target: unknown, _key: string, _value: number, index: number) => settles[index]!.scale,
+            scaleY: (_target: unknown, _key: string, _value: number, index: number) => settles[index]!.scale,
+            alpha: 1,
+            duration: presentation.durationMs,
+            ease: 'Back.easeOut',
+            onComplete: finish,
+          });
+          return;
+        }
         if (!accepted && returns.length > 0 && presentation.durationMs > 0) {
           this.scene.tweens.add({
             targets: returns.map(({ sprite: target }) => target),
@@ -1163,7 +1216,7 @@ export class InteriorCutawaySystem {
     const rootPointForPointer = (pointer: unknown): GridPoint | undefined => this.pointerScreenPoint(pointer);
     const page = catalogPage(this.catalogCategory, this.catalogPageIndex, 12);
     const required = requiredHookInventory(this.activeDefinition ?? interior, interior.furniture);
-    const catalogBounds = editorLayoutForCutaway(layout, this.editorLayoutOptions()).catalog;
+    const catalogBounds = this.reservedEditorLayout(layout).catalog;
     const slotSpacing = Math.min(34, (catalogBounds.width - 30) / 11);
     const startX = catalogBounds.x + (catalogBounds.width - slotSpacing * 11) / 2;
     const shelfY = catalogBounds.y + catalogBounds.height - 42;
@@ -1486,7 +1539,7 @@ export class InteriorCutawaySystem {
       title: this.activeInterior?.label ?? '', ...this.status,
       editMode: this.editMode,
       ...this.disclosureState,
-      ...(this.currentLayout ? { editorLayout: editorLayoutForCutaway(this.currentLayout, this.editorLayoutOptions()) } : {}),
+      ...(this.currentLayout ? { editorLayout: this.reservedEditorLayout(this.currentLayout) } : {}),
       ...(selectionBounds ? { selectionBounds } : {}),
       category: this.catalogCategory, page: page.page, totalPages: page.totalPages,
       requiredPlaced: this.activeInterior ? requiredHookInventory(this.activeDefinition ?? this.activeInterior, this.activeInterior.furniture).filter(({ placed }) => placed).length : 0,
@@ -1593,7 +1646,20 @@ export class InteriorCutawaySystem {
   }
 
   private roomViewportFrame(layout: CutawayLayout): InteriorViewportRect {
-    return roomViewportFrameForLayout(layout, this.editorLayoutOptions());
+    return this.reservedEditorLayout(layout).room;
+  }
+
+  private projectedFrameWidth(layout: CutawayLayout): number {
+    const canvasRect = this.scene.game?.canvas?.getBoundingClientRect?.();
+    if (!canvasRect || !Number.isFinite(canvasRect.width) || canvasRect.width <= 0) return layout.width;
+    return layout.width / WORLD_PIXELS.width * canvasRect.width;
+  }
+
+  private reservedEditorLayout(
+    layout: CutawayLayout,
+    options: InteriorEditorLayoutOptions = this.editorLayoutOptions(),
+  ): InteriorEditorLayout {
+    return editorLayoutForCutaway(layout, options, this.projectedFrameWidth(layout));
   }
 
   private editorLayoutOptions(): InteriorEditorLayoutOptions {

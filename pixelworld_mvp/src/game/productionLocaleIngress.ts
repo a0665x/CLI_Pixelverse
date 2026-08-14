@@ -21,7 +21,7 @@ export function connectProductionLocaleIngress(
   let selectedSequence = Number.NEGATIVE_INFINITY;
   let world: LocaleWorld | undefined;
   const onMessage = (event: MessageEvent): void => {
-    if (event.origin !== host.location.origin) return;
+    if (event.origin !== host.location.origin || event.source !== host.parent as unknown as MessageEventSource) return;
     const message = localeMessage(event.data);
     if (!message || message.sequence < selectedSequence) return;
     selectedLocale = message.locale;

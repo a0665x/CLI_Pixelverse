@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { localeFromMessage, snapshotFromMessage, snapshotFromStreamData } from '../src/live/LiveWorldClient';
+import { describe, expect, it, vi } from 'vitest';
+import { LiveWorldClient, localeFromMessage, snapshotFromMessage, snapshotFromStreamData } from '../src/live/LiveWorldClient';
 
 const snapshot = { agents: [{ agent: 'codex-main', role: 'main_agent', state: 'idle' }] };
 
@@ -20,5 +20,50 @@ describe('LiveWorldClient payload parsing', () => {
     expect(snapshotFromStreamData(JSON.stringify({ id: 12, snapshot })))
       .toEqual({ snapshot, sequence: 12 });
     expect(snapshotFromStreamData('not-json')).toBeUndefined();
+  });
+
+  it('accepts locale and snapshot messages only from the exact parent window', () => {
+    let onMessage: ((event: MessageEvent) => void) | undefined;
+    const parent = { postMessage: vi.fn() };
+    const host = {
+      location: { origin: 'https://pixelverse.test' }, parent,
+      addEventListener: vi.fn((_type: string, listener: (event: MessageEvent) => void) => { onMessage = listener; }),
+      removeEventListener: vi.fn(),
+      setInterval: vi.fn(() => 1), clearInterval: vi.fn(),
+    };
+    vi.stubGlobal('window', host);
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false })));
+    try {
+      const publish = vi.fn();
+      const publishLocale = vi.fn();
+      const client = new LiveWorldClient(publish, publishLocale);
+      client.start();
+      const wrongSource = { postMessage: vi.fn() };
+
+      onMessage?.({
+        origin: host.location.origin, source: wrongSource,
+        data: { type: 'pixelverse.world.snapshot', sequence: 3, snapshot },
+      } as unknown as MessageEvent);
+      onMessage?.({
+        origin: host.location.origin, source: wrongSource,
+        data: { type: 'pixelverse.locale.update', locale: 'ja-JP', sequence: 4 },
+      } as unknown as MessageEvent);
+      expect(publish).not.toHaveBeenCalled();
+      expect(publishLocale).not.toHaveBeenCalled();
+
+      onMessage?.({
+        origin: host.location.origin, source: parent,
+        data: { type: 'pixelverse.world.snapshot', sequence: 5, snapshot },
+      } as unknown as MessageEvent);
+      onMessage?.({
+        origin: host.location.origin, source: parent,
+        data: { type: 'pixelverse.locale.update', locale: 'ko-KR', sequence: 6 },
+      } as unknown as MessageEvent);
+      expect(publish).toHaveBeenCalledWith({ snapshot, sequence: 5 });
+      expect(publishLocale).toHaveBeenCalledWith({ locale: 'ko-KR', sequence: 6 });
+      client.destroy();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

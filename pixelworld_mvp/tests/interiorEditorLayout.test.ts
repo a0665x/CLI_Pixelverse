@@ -28,6 +28,48 @@ describe('interior editor layout', () => {
     expect(layout.room.y + layout.room.height).toBeLessThanOrEqual(layout.catalog.y);
   });
 
+  it.each([
+    [1, 1],
+    [160, 180],
+    [319, 279],
+    [320, 280],
+    [640, 360],
+  ])('keeps every finite region inside a %sx%s viewport', (width, height) => {
+    const layout = interiorEditorLayout(width, height, {
+      editMode: true,
+      catalogExpanded: true,
+      inspectorExpanded: true,
+    });
+
+    for (const rect of Object.values(layout)) {
+      expect(Number.isFinite(rect.x)).toBe(true);
+      expect(Number.isFinite(rect.y)).toBe(true);
+      expect(Number.isFinite(rect.width)).toBe(true);
+      expect(Number.isFinite(rect.height)).toBe(true);
+      expect(rect.x).toBeGreaterThanOrEqual(0);
+      expect(rect.y).toBeGreaterThanOrEqual(0);
+      expect(rect.width).toBeGreaterThanOrEqual(0);
+      expect(rect.height).toBeGreaterThanOrEqual(0);
+      expect(rect.x + rect.width).toBeLessThanOrEqual(width);
+      expect(rect.y + rect.height).toBeLessThanOrEqual(height);
+    }
+  });
+
+  it('reserves a compact Properties bottom sheet instead of disabling the inspector', () => {
+    const layout = interiorEditorLayout(319, 279, {
+      editMode: true,
+      catalogExpanded: false,
+      inspectorExpanded: true,
+    });
+
+    expect(layout.inspector.width).toBe(layout.frame.width);
+    expect(layout.inspector.height).toBeGreaterThan(0);
+    expect(layout.inspector.x).toBe(layout.frame.x);
+    expect(layout.inspector.y).toBe(layout.room.y + layout.room.height);
+    expect(layout.catalog.height).toBe(0);
+    expect(layout.room.y + layout.room.height).toBeLessThanOrEqual(layout.inspector.y);
+  });
+
   it('flips the contextual toolbar away from room edges', () => {
     const room = { x: 120, y: 72, width: 720, height: 360 };
     expect(contextToolbarPlacement(

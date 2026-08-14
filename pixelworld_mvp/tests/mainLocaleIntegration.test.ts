@@ -42,8 +42,9 @@ describe('main locale integration', () => {
     await import('../src/main');
     const publishLocale = (locale: string, sequence: number) => messageListeners.forEach((listener) => listener({
       origin: host.location.origin,
+      source: host.parent,
       data: { type: 'pixelverse.locale.update', locale, sequence },
-    } as MessageEvent));
+    } as unknown as MessageEvent));
     publishLocale('ja-JP', 1);
 
     const shutdown = vi.fn();

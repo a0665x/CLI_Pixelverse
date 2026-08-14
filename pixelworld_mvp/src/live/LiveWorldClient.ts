@@ -29,7 +29,7 @@ export class LiveWorldClient {
   private eventSource?: EventSource;
   private pollTimer?: number;
   private readonly onMessage = (event: MessageEvent) => {
-    if (event.origin !== window.location.origin) return;
+    if (event.origin !== window.location.origin || event.source !== window.parent) return;
     const envelope = snapshotFromMessage(event.data);
     if (envelope) this.publish(envelope);
     const locale = localeFromMessage(event.data);

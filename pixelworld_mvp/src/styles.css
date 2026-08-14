@@ -36,6 +36,9 @@ body:has(.cutaway-dom-panel) #village-zoom-controls { display: none; }
 .cutaway-dom-panel button[data-tooltip]:focus-visible::after { opacity: 1; }
 .cutaway-dom-actions [data-action='save'] { background: #6b5734; }
 .cutaway-dom-actions [data-action='close'] { min-width: 25px; color: #fff; background: #9d443d; font-size: 16px; }
+.cutaway-room-toolbar { position: absolute; z-index: 3; display: flex; align-items: center; gap: 4px; overflow-x: auto; overflow-y: hidden; padding: 4px 6px; border-top: 1px solid rgb(238 255 240 / 18%); border-bottom: 1px solid var(--material-glass-border); background: var(--material-structural); pointer-events: auto; white-space: nowrap; scrollbar-width: thin; }
+.cutaway-room-toolbar button { flex: 0 0 auto; min-height: 22px; }
+.cutaway-room-toolbar [data-action='save'] { background: #6b5734; }
 .cutaway-dom-catalog { position: absolute; pointer-events: none; overflow: clip; padding: 8px 10px; }
 .cutaway-dom-categories { position: absolute; top: 4px; left: 0; display: flex; gap: 4px; padding: 4px; border: 1px solid var(--material-glass-border); border-radius: 8px; background: var(--material-glass); box-shadow: inset 0 1px rgb(255 255 255 / 26%), 0 8px 18px rgb(4 15 8 / 22%); backdrop-filter: blur(18px) saturate(150%); -webkit-backdrop-filter: blur(18px) saturate(150%); pointer-events: auto; }
 .cutaway-dom-categories button { min-height: 19px; padding: 2px 6px; font-size: 9px; background: #283f39; }
@@ -43,11 +46,12 @@ body:has(.cutaway-dom-panel) #village-zoom-controls { display: none; }
 .cutaway-dom-page { position: absolute; top: 4px; right: 0; pointer-events: auto; padding: 4px; border: 1px solid var(--material-glass-border); border-radius: 8px; background: var(--material-glass); box-shadow: inset 0 1px rgb(255 255 255 / 26%), 0 8px 18px rgb(4 15 8 / 22%); backdrop-filter: blur(18px) saturate(150%); -webkit-backdrop-filter: blur(18px) saturate(150%); font-size: 10px; }
 .cutaway-dom-page button { min-width: 22px; min-height: 19px; padding: 1px 5px; }
 .cutaway-dom-inspector { position: absolute; pointer-events: auto; overflow: auto; padding: 10px; border: 1px solid rgb(190 220 198 / 28%); border-radius: 0 0 0 8px; background: var(--material-structural); box-shadow: 0 8px 18px rgb(4 15 8 / 24%); align-items: flex-start; }
+.cutaway-dom-inspector[data-placement='bottom'] { border-radius: 8px 8px 0 0; }
 .cutaway-dom-inspector strong { margin-right: 3px; font-size: 10px; }
 .cutaway-context-toolbar { position: absolute; z-index: 4; display: flex; flex-wrap: wrap; pointer-events: auto; overflow: auto; gap: 4px; padding: 5px; border: 1px solid var(--material-glass-border); border-radius: 8px; background: var(--material-glass); box-shadow: 0 8px 18px rgb(4 15 8 / 28%); transition: opacity 120ms ease-out; }
 .cutaway-guide-popover { position: absolute; top: 48px; left: 50%; z-index: 5; max-width: 320px; padding: 10px; border: 1px solid var(--material-glass-border); border-radius: 9px; background: var(--material-structural); pointer-events: auto; transform: translateX(-50%); transition: opacity 120ms ease-out; }
 .cutaway-guide-popover p { margin: 0 0 8px; font-size: 11px; }
-.cutaway-room-labels { position: absolute; inset: 0; pointer-events: none; }
+.cutaway-room-labels { position: absolute; overflow: hidden; pointer-events: none; }
 .cutaway-room-label { position: absolute; top: 0; left: 0; z-index: 1; max-width: 26px; overflow: hidden; padding: 2px 5px; border: 1px solid rgb(45 55 39 / 72%); border-radius: 999px; font-weight: 700; line-height: 1.2; text-align: center; text-overflow: clip; white-space: nowrap; pointer-events: auto; transform-origin: center bottom; }
 .cutaway-room-label:hover, .cutaway-room-label:focus-visible, .cutaway-room-label[data-expanded='true'] { max-width: 180px; border-radius: 5px; white-space: pre-line; }
 .cutaway-room-label--hook { padding: 2px 5px; color: #241f1c; background: rgb(255 240 184 / 94%); font-size: 9px; transform: translate(-50%, 0); }
@@ -63,7 +67,7 @@ body:has(.cutaway-dom-panel) #village-zoom-controls { display: none; }
 }
 @media (prefers-reduced-transparency: reduce) {
   #village-zoom-controls, .cutaway-dom-actions, .cutaway-dom-categories, .cutaway-dom-page { background: var(--material-structural); backdrop-filter: none; -webkit-backdrop-filter: none; }
-  .cutaway-dom-header, .cutaway-dom-inspector, .cutaway-context-toolbar, .cutaway-guide-popover { backdrop-filter: none; background: #16231f; }
+  .cutaway-dom-header, .cutaway-room-toolbar, .cutaway-dom-inspector, .cutaway-context-toolbar, .cutaway-guide-popover { backdrop-filter: none; background: #16231f; }
 }
 @media (prefers-reduced-motion: reduce) {
   #village-zoom-controls button, .cutaway-dom-panel button { transition: opacity 160ms ease; }
