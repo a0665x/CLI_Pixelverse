@@ -14,6 +14,7 @@ import {
   roomOriginForLayout,
   roomPointForScreen,
   roomScreenPoint,
+  roomViewportFrameForLayout,
   stableInteriorAgentIndex,
 } from '../src/rendering/InteriorCutawaySystem';
 import {
@@ -28,6 +29,7 @@ import type { InteriorDefinition } from '../src/world/types';
 import { transformedAlphaBounds } from '../src/rendering/interiorPlacement';
 import { WORLD_DEFINITION } from '../src/world/worldDefinition';
 import { agentSkinFor } from '../src/rendering/assetManifest';
+import { interiorEditorLayout } from '../src/rendering/interiorEditorLayout';
 
 class FakeObject {
   x = 0;
@@ -202,9 +204,24 @@ describe('InteriorCutawaySystem', () => {
     expect(prefabDisplayName(userPrefab, 'ja-JP')).toBe('My Saved Layout');
   });
 
-  it('uses the approved centered desktop and narrow viewport layouts', () => {
-    expect(cutawayLayoutForViewport(1_280, 720)).toMatchObject({ width: 480, height: 330, x: 144, y: 59 });
-    expect(cutawayLayoutForViewport(840, 480)).toMatchObject({ width: 608, height: 360, x: 80, y: 44 });
+  it('uses the approved adaptive interior workspace layouts', () => {
+    const desktop = interiorEditorLayout(960, 560, {
+      editMode: false,
+      catalogExpanded: false,
+      inspectorExpanded: false,
+    });
+    expect(cutawayLayoutForViewport(960, 560)).toEqual({ x: 120, y: 33, width: 720, height: 495 });
+    expect(cutawayLayoutForViewport(960, 560)).toEqual(desktop.frame);
+    expect(roomViewportFrameForLayout(cutawayLayoutForViewport(960, 560))).toEqual(desktop.room);
+    expect(cutawayLayoutForViewport(800, 450)).toEqual({ x: 40, y: 8, width: 720, height: 434 });
+    expect(cutawayLayoutForViewport(640, 360)).toEqual({ x: 8, y: 8, width: 624, height: 344 });
+
+    const reserved = interiorEditorLayout(640, 360, {
+      editMode: true,
+      catalogExpanded: true,
+      inspectorExpanded: true,
+    });
+    expect(reserved.room.y + reserved.room.height).toBeLessThanOrEqual(reserved.catalog.y);
   });
 
   it('owns wheel zoom and empty-space panning inside an open room', () => {
@@ -248,9 +265,10 @@ describe('InteriorCutawaySystem', () => {
       { width: 18, height: 12 },
       { x: 80, y: 44, width: 608, height: 360 },
     );
+    const frame = roomViewportFrameForLayout({ x: 80, y: 44, width: 608, height: 360 });
     expect(cell).toBeGreaterThanOrEqual(12);
-    expect(cell * 18).toBeLessThanOrEqual(584);
-    expect(cell * 12).toBeLessThanOrEqual(250);
+    expect(cell * 18).toBeLessThanOrEqual(frame.width);
+    expect(cell * 12).toBeLessThanOrEqual(frame.height);
   });
 
   it('round-trips fractional room coordinates through the responsive room origin', () => {
@@ -317,11 +335,12 @@ describe('InteriorCutawaySystem', () => {
 
   it('returns a fitted cell instead of silently overflowing unsupported room dimensions', () => {
     const layout = { x: 80, y: 44, width: 608, height: 360 };
+    const frame = roomViewportFrameForLayout(layout);
     const cell = roomCellForLayout({ width: 80, height: 40 }, layout);
-    expect(cell * 80).toBeLessThanOrEqual(layout.width - 24);
-    expect(cell * 40).toBeLessThanOrEqual(layout.height - 110);
+    expect(cell * 80).toBeLessThanOrEqual(frame.width);
+    expect(cell * 40).toBeLessThanOrEqual(frame.height);
     const subpixel = roomCellForLayout({ width: 1_000, height: 1_000 }, layout);
-    expect(subpixel * 1_000).toBeLessThanOrEqual(layout.height - 110);
+    expect(subpixel * 1_000).toBeLessThanOrEqual(frame.height);
   });
 
   it('keeps panel pointer events available for room marquee input', () => {
@@ -769,7 +788,7 @@ describe('InteriorCutawaySystem', () => {
     expect(internal.activeInterior.furniture.some(({ id }) => id === 'unsaved-marker')).toBe(true);
   });
 
-  it('refreshes the DOM overlay without rebuilding Phaser inside the same breakpoint', () => {
+  it('rebuilds Phaser when the adaptive frame moves with the viewport', () => {
     const fake = fakeScene();
     const viewport = { width: 1_280, height: 720 };
     const cutaway = new InteriorCutawaySystem(fake.scene as never, WORLD_DEFINITION, () => viewport);
@@ -780,7 +799,7 @@ describe('InteriorCutawaySystem', () => {
 
     cutaway.open('rest-cabin');
 
-    expect((cutaway as unknown as { root: FakeObject }).root).toBe(firstRoot);
+    expect((cutaway as unknown as { root: FakeObject }).root).not.toBe(firstRoot);
     expect(capture.overlay.relayout).toHaveBeenCalledWith(cutawayLayoutForViewport(1_100, 720));
   });
 

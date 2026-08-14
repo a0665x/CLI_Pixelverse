@@ -99,10 +99,9 @@ import {
   type InteriorViewportRect,
   type InteriorViewportState,
 } from './interiorViewport';
+import { interiorEditorLayout } from './interiorEditorLayout';
 
 const BASE_ROOM_CELL = 22;
-const ROOM_CONTENT_TOP = 52;
-const ROOM_CONTENT_BOTTOM = 58;
 const CUTAWAY_DEPTH = 100_000;
 const LAYER_ORDER: Record<FurnitureLayer, number> = { floor: 0, furniture: 1, surface: 2, wall: 3 };
 
@@ -113,15 +112,25 @@ export interface CutawayLayout {
   height: number;
 }
 
-export function cutawayLayoutForViewport(viewportWidth: number, _viewportHeight: number): CutawayLayout {
-  const wide = viewportWidth >= 940;
-  const width = wide ? 480 : 608;
-  const height = wide ? 330 : 360;
+export function cutawayLayoutForViewport(viewportWidth: number, viewportHeight: number): CutawayLayout {
+  return interiorEditorLayout(viewportWidth, viewportHeight, {
+    editMode: false,
+    catalogExpanded: false,
+    inspectorExpanded: false,
+  }).frame;
+}
+
+export function roomViewportFrameForLayout(layout: CutawayLayout): InteriorViewportRect {
+  const reserved = interiorEditorLayout(layout.width + 16, layout.height + 16, {
+    editMode: false,
+    catalogExpanded: false,
+    inspectorExpanded: false,
+  });
   return {
-    x: (WORLD_PIXELS.width - width) / 2,
-    y: (WORLD_PIXELS.height - height) / 2,
-    width,
-    height,
+    x: layout.x + reserved.room.x - reserved.frame.x,
+    y: layout.y + reserved.room.y - reserved.frame.y,
+    width: reserved.room.width,
+    height: reserved.room.height,
   };
 }
 
@@ -134,9 +143,8 @@ export function roomCellForLayout(
   room: Pick<InteriorDefinition, 'width' | 'height'>,
   layout: CutawayLayout,
 ): number {
-  const contentWidth = layout.width - 24;
-  const contentHeight = layout.height - ROOM_CONTENT_TOP - ROOM_CONTENT_BOTTOM;
-  const fitted = Math.min(contentWidth / room.width, contentHeight / room.height);
+  const frame = roomViewportFrameForLayout(layout);
+  const fitted = Math.min(frame.width / room.width, frame.height / room.height);
   return fitted < 1 ? fitted : Math.floor(fitted);
 }
 
@@ -145,9 +153,10 @@ export function roomOriginForLayout(
   layout: CutawayLayout,
   cell = roomCellForLayout(room, layout),
 ): GridPoint {
+  const frame = roomViewportFrameForLayout(layout);
   return {
-    x: Math.round(layout.x + (layout.width - room.width * cell) / 2),
-    y: Math.round(layout.y + ROOM_CONTENT_TOP),
+    x: Math.round(frame.x + (frame.width - room.width * cell) / 2),
+    y: Math.round(frame.y),
   };
 }
 
@@ -1323,12 +1332,7 @@ export class InteriorCutawaySystem {
   }
 
   private roomViewportFrame(layout: CutawayLayout): InteriorViewportRect {
-    return {
-      x: layout.x + 12,
-      y: layout.y + ROOM_CONTENT_TOP,
-      width: layout.width - 24,
-      height: layout.height - ROOM_CONTENT_TOP - ROOM_CONTENT_BOTTOM,
-    };
+    return roomViewportFrameForLayout(layout);
   }
 
   private roomContentBounds(interior: InteriorDefinition): InteriorViewportRect {
