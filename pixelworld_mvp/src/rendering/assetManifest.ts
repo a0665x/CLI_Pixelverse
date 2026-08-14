@@ -121,6 +121,8 @@ const SUBAGENT_SKINS = [AGENT_SKINS.ninja, AGENT_SKINS.subagent, AGENT_SKINS.bra
 
 export function agentSkinFor(agentId: string, role: 'main' | 'subagent'): AgentSkin {
   if (role === 'main') return AGENT_SKINS.main;
+  const sequence = agentId.match(/(\d+)$/)?.[1];
+  if (sequence) return SUBAGENT_SKINS[(Math.max(1, Number(sequence)) - 1) % SUBAGENT_SKINS.length]!;
   let hash = 2166136261;
   for (const character of agentId) {
     hash ^= character.charCodeAt(0);

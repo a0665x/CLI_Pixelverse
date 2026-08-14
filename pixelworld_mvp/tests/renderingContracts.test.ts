@@ -80,6 +80,9 @@ describe('village asset manifest', () => {
       AGENT_SKINS.subagent.sheet,
       AGENT_SKINS.branch.sheet,
     ]));
+    expect(new Set(['subagent-1', 'subagent-2', 'subagent-3'].map((id) => (
+      agentSkinFor(id, 'subagent').sheet
+    ))).size).toBe(3);
   });
 
   it('installs and reports an explicit diagnostic texture when the Puny atlas is missing', () => {
