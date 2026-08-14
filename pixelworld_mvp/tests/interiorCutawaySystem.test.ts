@@ -874,6 +874,149 @@ describe('InteriorCutawaySystem', () => {
     }
   });
 
+  it('immediately reflows existing compact labels when Help opens and dismisses', () => {
+    const storage = {
+      getItem: vi.fn((key: string): string | null => key === 'pixelworld:guide-dismissed:v1' ? 'true' : null),
+      setItem: vi.fn(),
+    };
+    vi.stubGlobal('localStorage', storage);
+    vi.stubGlobal('window', { localStorage: storage, dispatchEvent: vi.fn() });
+    const { overlay, actions, guide, labelLayer } = overlayDomHarness();
+    try {
+      const fake = fakeScene();
+      const cutaway = new InteriorCutawaySystem(
+        fake.scene as never, WORLD_DEFINITION, () => ({ width: 1_280, height: 720 }),
+      );
+      Object.assign(cutaway, { domOverlay: overlay });
+      cutaway.open('rest-cabin');
+      cutaway.update([idleInside]);
+
+      expect(labelLayer.children.length).toBeGreaterThan(0);
+      expect(labelLayer.children.every((label) => label.dataset.expanded === 'false')).toBe(true);
+      expect(labelLayer.children.every((label) => label.style.maxWidth === undefined)).toBe(true);
+      expect(labelLayer.children.every((label) => label.getBoundingClientRect().width === 26)).toBe(true);
+
+      actions.get('guide')!.click();
+      expect(labelLayer.children.every((label) => label.dataset.expanded === 'true')).toBe(true);
+      expect(labelLayer.children.every((label) => label.getBoundingClientRect().width === 180)).toBe(true);
+      const layout = cutawayLayoutForViewport(1_280, 720);
+      const room = editorLayoutForCutaway(layout, {
+        editMode: false, catalogExpanded: false, inspectorExpanded: false,
+      }).room;
+      const roomCss = {
+        left: 0, top: 0,
+        right: room.width / WORLD_PIXELS.width * 768,
+        bottom: room.height / WORLD_PIXELS.height * 448,
+      };
+      expect(labelLayer.children.every((label) => {
+        const rect = label.getBoundingClientRect();
+        return rect.left >= roomCss.left && rect.right <= roomCss.right
+          && rect.top >= roomCss.top && rect.bottom <= roomCss.bottom;
+      })).toBe(true);
+
+      guide.children[1]!.click();
+      expect(labelLayer.children.every((label) => label.dataset.expanded === 'false')).toBe(true);
+      expect(labelLayer.children.every((label) => label.getBoundingClientRect().width === 26)).toBe(true);
+      expect(storage.setItem).toHaveBeenCalledWith('pixelworld:guide-dismissed:v1', 'true');
+    } finally {
+      overlay.destroy();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('compacts existing expanded labels on the first-use guide dismissal', () => {
+    const storage = { getItem: vi.fn((): string | null => null), setItem: vi.fn() };
+    vi.stubGlobal('localStorage', storage);
+    vi.stubGlobal('window', { localStorage: storage, dispatchEvent: vi.fn() });
+    const { overlay, guide, labelLayer } = overlayDomHarness();
+    try {
+      const fake = fakeScene();
+      const cutaway = new InteriorCutawaySystem(
+        fake.scene as never, WORLD_DEFINITION, () => ({ width: 1_280, height: 720 }),
+      );
+      Object.assign(cutaway, { domOverlay: overlay });
+      cutaway.open('rest-cabin');
+      cutaway.update([idleInside]);
+
+      expect(labelLayer.children.length).toBeGreaterThan(0);
+      expect(labelLayer.children.every((label) => label.dataset.expanded === 'true')).toBe(true);
+      guide.children[1]!.click();
+      expect(labelLayer.children.every((label) => label.dataset.expanded === 'false')).toBe(true);
+      expect(labelLayer.children.every((label) => label.getBoundingClientRect().width === 26)).toBe(true);
+      expect(labelLayer.children.every((label) => label.style.maxWidth === undefined)).toBe(true);
+    } finally {
+      overlay.destroy();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('reprojects selection exclusion before relocating labels after pan and zoom', () => {
+    const storage = {
+      getItem: vi.fn((key: string): string | null => key === 'pixelworld:guide-dismissed:v1' ? 'true' : null),
+      setItem: vi.fn(),
+    };
+    vi.stubGlobal('localStorage', storage);
+    vi.stubGlobal('window', { localStorage: storage, dispatchEvent: vi.fn() });
+    const { overlay, actions, labelLayer } = overlayDomHarness();
+    try {
+      const fake = fakeScene();
+      const cutaway = new InteriorCutawaySystem(
+        fake.scene as never, WORLD_DEFINITION, () => ({ width: 1_280, height: 720 }),
+      );
+      Object.assign(cutaway, { domOverlay: overlay });
+      cutaway.open('rest-cabin');
+      actions.get('edit')!.click();
+
+      const internal = cutaway as unknown as {
+        interiorViewport: { anchorX: number; anchorY: number; zoom: number; panX: number; panY: number };
+        activeInterior: InteriorDefinition;
+        currentLayout: ReturnType<typeof cutawayLayoutForViewport>;
+        selectedFurnitureId: string;
+        selectedFurnitureIds: Set<string>;
+        overlayModel(): CutawayDomModel;
+        applyRoomViewport(): void;
+        renderFurniture(interior: InteriorDefinition, layout: ReturnType<typeof cutawayLayoutForViewport>): void;
+      };
+      internal.selectedFurnitureId = 'rest-blocked-board';
+      internal.selectedFurnitureIds.add('rest-blocked-board');
+      internal.renderFurniture(internal.activeInterior, internal.currentLayout);
+      const beforeSelection = internal.overlayModel().selectionBounds!;
+      const beforeLabel = labelLayer.children.find((label) => label.dataset.expanded === 'true');
+      expect(beforeLabel).toBeDefined();
+      const beforeTransform = beforeLabel!.style.transform;
+
+      internal.interiorViewport = {
+        ...internal.interiorViewport,
+        zoom: 1.5,
+        panX: internal.interiorViewport.panX + 96,
+        panY: internal.interiorViewport.panY + 54,
+      };
+      internal.applyRoomViewport();
+
+      const afterSelection = internal.overlayModel().selectionBounds!;
+      expect(afterSelection).not.toEqual(beforeSelection);
+      const overlayState = overlay as unknown as { model?: CutawayDomModel };
+      expect(overlayState.model?.selectionBounds).toEqual(afterSelection);
+      const afterLabel = labelLayer.children.find((label) => label.dataset.expanded === 'true');
+      expect(afterLabel).toBeDefined();
+      expect(afterLabel!.style.transform).not.toBe(beforeTransform);
+      const editorRoom = internal.overlayModel().editorLayout!.room;
+      const selectionCss = {
+        left: (afterSelection.x - editorRoom.x) / WORLD_PIXELS.width * 768,
+        top: (afterSelection.y - editorRoom.y) / WORLD_PIXELS.height * 448,
+        right: (afterSelection.x + afterSelection.width - editorRoom.x) / WORLD_PIXELS.width * 768,
+        bottom: (afterSelection.y + afterSelection.height - editorRoom.y) / WORLD_PIXELS.height * 448,
+      };
+      const labelRect = afterLabel!.getBoundingClientRect();
+      const intersects = labelRect.left < selectionCss.right && labelRect.right > selectionCss.left
+        && labelRect.top < selectionCss.bottom && labelRect.bottom > selectionCss.top;
+      expect(intersects).toBe(false);
+    } finally {
+      overlay.destroy();
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('uses the first Escape to dismiss the guide before a second Escape closes the room', () => {
     const fake = fakeScene();
     const cutaway = new InteriorCutawaySystem(

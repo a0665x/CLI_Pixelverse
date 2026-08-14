@@ -426,6 +426,7 @@ export class InteriorCutawaySystem {
       this.disclosureState.guideMode = false;
       persistGuideDismissal();
       this.syncOverlay();
+      this.syncRoomLabels();
       return;
     }
     this.close();
@@ -535,12 +536,12 @@ export class InteriorCutawaySystem {
         this.disclosureState.guideMode = !this.disclosureState.guideMode;
         if (!this.disclosureState.guideMode) persistGuideDismissal();
         this.syncOverlay();
+        this.syncRoomLabels();
       },
       fitView: () => {
         const current = this.currentLayout ?? this.layoutForViewport();
         this.interiorViewport = createInteriorViewport(this.roomViewportFrame(current));
         this.applyRoomViewport();
-        this.syncRoomLabels();
       },
       save: () => {
         if (this.layoutStorageReadFailed) {
@@ -1717,6 +1718,7 @@ export class InteriorCutawaySystem {
       state.anchorX * (1 - state.zoom) + state.panX,
       state.anchorY * (1 - state.zoom) + state.panY,
     ).setScale(state.zoom);
+    this.syncOverlay();
     this.syncRoomLabels();
   }
 
