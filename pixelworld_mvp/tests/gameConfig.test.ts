@@ -73,4 +73,13 @@ describe('fixed village game config', () => {
     expect(reducedMotion).toContain('scale: 1');
     expect(styles).toContain('.cutaway-dom-panel button:active { scale: .97;');
   });
+
+  it('reserves contextual editor regions and exposes keyboard tooltips', () => {
+    expect(styles).toContain('.cutaway-dom-header { position: absolute; inset: 0 0 auto; min-height: 40px; pointer-events: auto;');
+    expect(styles).toContain('.cutaway-dom-catalog { position: absolute; inset: auto 0 0; pointer-events: auto; overflow: clip;');
+    expect(styles).toContain('.cutaway-dom-inspector { position: absolute; inset: 40px 0 0 auto; pointer-events: auto; overflow: auto;');
+    expect(styles).toContain('.cutaway-context-toolbar { position: absolute; z-index: 4; display: flex; flex-wrap: wrap; pointer-events: auto;');
+    expect(styles).toContain('.cutaway-dom-panel button[data-tooltip]:focus-visible::after');
+    expect(styles).toContain('.cutaway-context-toolbar, .cutaway-guide-popover { transition: none; }');
+  });
 });

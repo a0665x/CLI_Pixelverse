@@ -160,7 +160,101 @@ const captureCutawayHandlers = (cutaway: InteriorCutawaySystem) => {
   };
 };
 
+const cutawayDomModel = (overrides: Partial<CutawayDomModel> = {}): CutawayDomModel => ({
+  titleId: 'rest-cabin', title: 'Rest Cabin', statusId: 'ready', editMode: false,
+  catalogExpanded: false, inspectorExpanded: false, guideMode: false,
+  category: 'workstations', page: 0, totalPages: 1, requiredPlaced: 0, requiredTotal: 0,
+  prefabCount: 0, clipboardAvailable: false, saveBlocked: false, selectedCount: 0,
+  canDuplicate: false, canGroup: false, canDissolve: false, canUndo: false,
+  templatePreviewing: false, templateValid: false, templateDiagnostics: [],
+  ...overrides,
+}) as CutawayDomModel;
+
+const selectedFurniture = (): NonNullable<CutawayDomModel['selected']> => ({
+  label: 'Plant', scale: 1, rotation: 0, layer: 'furniture',
+});
+
+const overlayDomHarness = () => {
+  const attributes = new Map<object, Map<string, string>>();
+  const element = () => {
+    const target = {
+      hidden: false, disabled: false, textContent: '', className: '', dataset: {} as Record<string, string>,
+      style: {} as Record<string, string>, children: [] as object[],
+      addEventListener: vi.fn(), remove: vi.fn(), append: vi.fn(),
+      replaceChildren(...children: object[]) { target.children = children; },
+      setAttribute(name: string, value: string) {
+        const values = attributes.get(target) ?? new Map<string, string>();
+        values.set(name, value); attributes.set(target, values);
+      },
+      getAttribute(name: string) { return attributes.get(target)?.get(name) ?? null; },
+    };
+    return target;
+  };
+  const actions = new Map([
+    'edit', 'catalog', 'inspector', 'guide', 'fit', 'collect', 'revert', 'copy', 'paste', 'undo',
+    'preview-template', 'apply-template', 'save', 'close', 'prev', 'next',
+  ].map((name) => [name, element()]));
+  const title = element(); const status = element(); const catalog = element(); const inspector = element();
+  const toolbar = element(); const guide = element(); const nav = element(); const page = element();
+  const panel = {
+    ...element(), innerHTML: '',
+    querySelector(selector: string) {
+      if (selector === 'h2') return title;
+      if (selector === '.cutaway-dom-status') return status;
+      if (selector === '.cutaway-dom-catalog') return catalog;
+      if (selector === '.cutaway-dom-inspector') return inspector;
+      if (selector === '.cutaway-context-toolbar') return toolbar;
+      if (selector === '.cutaway-guide-popover') return guide;
+      if (selector === '.cutaway-dom-categories') return nav;
+      if (selector === '.cutaway-dom-page span') return page;
+      const action = selector.match(/\[data-action="([^"]+)"\]/)?.[1];
+      return action ? actions.get(action) : undefined;
+    },
+  };
+  const host = { append: vi.fn() };
+  vi.stubGlobal('document', {
+    querySelector: () => host,
+    createElement: (tag: string) => tag === 'section' && !host.append.mock.calls.length ? panel : element(),
+  });
+  const overlay = new InteriorCutawayDomOverlay(() => ({ left: 0, top: 0, width: 768, height: 448 }) as DOMRect);
+  const handlers = Object.fromEntries([
+    'close', 'toggleEdit', 'toggleCatalog', 'toggleInspector', 'toggleGuide', 'fitView', 'save', 'undo',
+    'previewTemplate', 'applyTemplate', 'category', 'page', 'resize', 'rotate', 'collect', 'revert',
+    'copy', 'paste', 'group', 'dissolveGroup', 'shiftLayer', 'reorder', 'duplicate', 'returnToShelf',
+    'cancelSelection',
+  ].map((name) => [name, vi.fn()])) as unknown as CutawayDomHandlers;
+  return { overlay, handlers, panel, catalog, inspector, actions };
+};
+
 describe('InteriorCutawaySystem', () => {
+  it('keeps room content clear until contextual drawers are requested', () => {
+    const { overlay, handlers, panel, catalog, inspector } = overlayDomHarness();
+    try {
+      overlay.open(cutawayLayoutForViewport(1_280, 720), cutawayDomModel({ editMode: true }), handlers);
+      expect(catalog.hidden).toBe(true);
+      expect(inspector.hidden).toBe(true);
+      expect(panel.innerHTML).toContain('class="cutaway-dom-header"');
+    } finally {
+      overlay.destroy();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('exposes every icon action through an accessible tooltip', () => {
+    const { overlay, handlers, actions } = overlayDomHarness();
+    try {
+      overlay.open(cutawayLayoutForViewport(1_280, 720), cutawayDomModel({
+        editMode: true, selected: selectedFurniture(),
+      }), handlers);
+      const buttons = [...actions.values()].filter((button) => Boolean(button.getAttribute('data-tooltip')));
+      expect(buttons.length).toBeGreaterThan(0);
+      expect(buttons.every((button) => Boolean(button.getAttribute('aria-label')))).toBe(true);
+    } finally {
+      overlay.destroy();
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('exposes contextual operations from the exact selection shape', () => {
     const ordinary = {
       id: 'ordinary', kind: 'decor' as const, point: { x: 1, y: 1 }, facing: 'up' as const,
@@ -170,6 +264,63 @@ describe('InteriorCutawaySystem', () => {
     expect(selectionCapabilities([ordinary])).toEqual({ canDuplicate: true, canGroup: false });
     expect(selectionCapabilities([ordinary, { ...ordinary, id: 'second' }])).toEqual({ canDuplicate: false, canGroup: true });
     expect(selectionCapabilities([ordinary, hook])).toEqual({ canDuplicate: false, canGroup: false });
+  });
+
+  it('resets room disclosure and does not open properties when furniture is selected', () => {
+    const fake = fakeScene();
+    const cutaway = new InteriorCutawaySystem(fake.scene as never, WORLD_DEFINITION, () => ({ width: 1_280, height: 720 }));
+    const capture = captureCutawayHandlers(cutaway);
+    cutaway.open('rest-cabin');
+    expect(capture.model()).toMatchObject({ catalogExpanded: false, inspectorExpanded: false });
+
+    capture.handlers().toggleEdit();
+    capture.handlers().toggleCatalog();
+    expect(capture.model()).toMatchObject({ catalogExpanded: true, inspectorExpanded: false });
+
+    const selectedBeforeClose = fake.objects.find(({ interactive, destroyed, depth }) => interactive && !destroyed && depth > 0);
+    selectedBeforeClose?.emit('pointerdown', pointerAt(0, 0));
+    expect(capture.model().selected).toBeDefined();
+    expect(capture.model().inspectorExpanded).toBe(false);
+    capture.handlers().toggleInspector();
+    expect(capture.model().inspectorExpanded).toBe(true);
+
+    cutaway.close();
+    cutaway.open('rest-cabin');
+    expect(capture.model()).toMatchObject({ catalogExpanded: false, inspectorExpanded: false });
+    capture.handlers().toggleEdit();
+    const selected = fake.objects.find(({ interactive, destroyed, depth }) => interactive && !destroyed && depth > 0);
+    selected?.emit('pointerdown', pointerAt(0, 0));
+    expect(capture.model().selected).toBeDefined();
+    expect(capture.model().inspectorExpanded).toBe(false);
+  });
+
+  it('persists only guide dismissal and fits the room without saving furniture', () => {
+    const storage = { getItem: vi.fn((_: string): string | null => null), setItem: vi.fn() };
+    vi.stubGlobal('localStorage', storage);
+    vi.stubGlobal('window', { localStorage: storage, dispatchEvent: vi.fn() });
+    try {
+      const fake = fakeScene();
+      const cutaway = new InteriorCutawaySystem(fake.scene as never, WORLD_DEFINITION, () => ({ width: 1_280, height: 720 }));
+      const capture = captureCutawayHandlers(cutaway);
+      cutaway.open('rest-cabin');
+      expect(capture.model().guideMode).toBe(true);
+
+      const internal = cutaway as unknown as { interiorViewport: { zoom: number; panX: number; panY: number } };
+      internal.interiorViewport = { ...internal.interiorViewport, zoom: 2, panX: 40, panY: -20 };
+      capture.handlers().fitView();
+      expect(internal.interiorViewport).toMatchObject({ zoom: 1, panX: 0, panY: 0 });
+      expect(storage.setItem).not.toHaveBeenCalled();
+
+      capture.handlers().toggleGuide();
+      expect(storage.setItem).toHaveBeenCalledOnce();
+      expect(storage.setItem).toHaveBeenCalledWith('pixelworld:guide-dismissed:v1', 'true');
+      storage.getItem.mockImplementation((key: string) => key === 'pixelworld:guide-dismissed:v1' ? 'true' : null);
+      cutaway.close();
+      cutaway.open('rest-cabin');
+      expect(capture.model()).toMatchObject({ catalogExpanded: false, inspectorExpanded: false, guideMode: false });
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('labels only hook furniture with readable action-oriented text', () => {
@@ -489,6 +640,7 @@ describe('InteriorCutawaySystem', () => {
       renderFurniture(interior: InteriorDefinition, layout: ReturnType<typeof cutawayLayoutForViewport>): void;
     };
     internal.editMode = true;
+    Object.assign(internal, { disclosureState: { catalogExpanded: true, inspectorExpanded: false, guideMode: false } });
     internal.activeDefinition = room;
     internal.activeInterior = room;
     internal.renderFurniture(room, cutawayLayoutForViewport(1_280, 720));
@@ -548,6 +700,7 @@ describe('InteriorCutawaySystem', () => {
       renderFurniture(interior: InteriorDefinition, layout: ReturnType<typeof cutawayLayoutForViewport>): void;
     };
     internal.editMode = true;
+    Object.assign(internal, { disclosureState: { catalogExpanded: true, inspectorExpanded: false, guideMode: false } });
     internal.activeDefinition = room;
     internal.activeInterior = room;
     internal.renderFurniture(room, cutawayLayoutForViewport(1_280, 720));
@@ -576,6 +729,7 @@ describe('InteriorCutawaySystem', () => {
     cutaway.setLocale(locale);
     cutaway.open('rest-cabin');
     capture.handlers().toggleEdit();
+    capture.handlers().toggleCatalog();
     const room: InteriorDefinition = {
       id: 'research-library', label: 'Shelf locale test', width: 18, height: 12,
       floor: 'tile', wall: 'blue', furniture: [], overflow: [],
@@ -840,7 +994,7 @@ describe('InteriorCutawaySystem', () => {
     const replaceChildren = vi.fn();
     Object.assign(overlay, { labelLayer: { replaceChildren }, panel: { style: {} } });
     vi.stubGlobal('document', {
-      createElement: () => ({ className: '', dataset: {}, textContent: '', style: { transform: '' } }),
+      createElement: () => ({ className: '', dataset: {}, textContent: '', style: { transform: '' }, setAttribute: vi.fn() }),
     });
     try {
       overlay.setRoomLabels([{ id: 'agent:a', text: 'A', x: 384, y: 256, kind: 'agent' }]);
