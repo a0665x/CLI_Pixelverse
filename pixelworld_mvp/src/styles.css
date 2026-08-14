@@ -14,6 +14,7 @@ html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background:
 #village-zoom-controls button:active { scale: .97; background: rgb(151 211 165 / 32%); }
 #village-zoom-controls [data-zoom='fit'] { display: flex; align-items: center; gap: 6px; }
 #village-zoom-controls output { min-width: 34px; color: #bfd8c1; font-size: 10px; }
+body:has(.cutaway-dom-panel) #village-zoom-controls { display: none; }
 #world-status-layer { position: fixed; inset: 0; z-index: 15; overflow: hidden; pointer-events: none; font-family: Inter, "Noto Sans TC", system-ui, sans-serif; }
 #world-status-layer[hidden] { display: none !important; }
 #cutaway-ui-layer { position: fixed; inset: 0; z-index: 30; overflow: hidden; pointer-events: none; font-family: Inter, "Noto Sans TC", system-ui, sans-serif; }

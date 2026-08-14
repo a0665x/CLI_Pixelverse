@@ -56,6 +56,10 @@ describe('fixed village game config', () => {
     expect(styles).toContain('#game-root canvas { position: absolute; top: 0; left: 0; image-rendering: pixelated; image-rendering: crisp-edges;');
   });
 
+  it('removes redundant village zoom controls while a cutaway owns the compact header', () => {
+    expect(styles).toMatch(/body:has\(\.cutaway-dom-panel\)\s+#village-zoom-controls\s*\{[^}]*display:\s*none/s);
+  });
+
   it('hides the actual exterior status host without speculative label-layer selectors', () => {
     expect(markup).toContain('id="world-status-layer"');
     expect(styles).toMatch(/#world-status-layer\[hidden\]\s*\{\s*display:\s*none !important;\s*\}/);
