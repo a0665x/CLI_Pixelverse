@@ -178,11 +178,21 @@ const selectedFurniture = (): NonNullable<CutawayDomModel['selected']> => ({
 const overlayDomHarness = () => {
   const attributes = new Map<object, Map<string, string>>();
   const element = () => {
+    const listeners = new Map<string, Array<() => void>>();
     const target = {
       hidden: false, disabled: false, textContent: '', className: '', dataset: {} as Record<string, string>,
       style: {} as Record<string, string>, children: [] as object[],
       scrollHeight: 240,
-      addEventListener: vi.fn(), remove: vi.fn(),
+      onclick: undefined as (() => void) | undefined,
+      addEventListener: vi.fn((event: string, handler: () => void) => {
+        listeners.set(event, [...(listeners.get(event) ?? []), handler]);
+      }),
+      click() {
+        if (target.disabled) return;
+        for (const handler of listeners.get('click') ?? []) handler();
+        target.onclick?.();
+      },
+      remove: vi.fn(),
       append(...children: object[]) { target.children.push(...children); },
       replaceChildren(...children: object[]) { target.children = children; },
       setAttribute(name: string, value: string) {
@@ -239,6 +249,62 @@ describe('InteriorCutawaySystem', () => {
       expect(catalog.hidden).toBe(true);
       expect(inspector.hidden).toBe(true);
       expect(panel.innerHTML).toContain('class="cutaway-dom-header"');
+    } finally {
+      overlay.destroy();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('opens Properties by clicking the selected collapsed wide-layout control', () => {
+    const { overlay, handlers, actions, inspector } = overlayDomHarness();
+    try {
+      const layout = cutawayLayoutForViewport(1_280, 720);
+      const collapsedLayout = editorLayoutForCutaway(layout, {
+        editMode: true, catalogExpanded: false, inspectorExpanded: false,
+      });
+      let model = cutawayDomModel({
+        editMode: true, selected: selectedFurniture(), editorLayout: collapsedLayout,
+      });
+      handlers.toggleInspector = vi.fn(() => {
+        model = {
+          ...model,
+          inspectorExpanded: true,
+          editorLayout: editorLayoutForCutaway(layout, {
+            editMode: true, catalogExpanded: false, inspectorExpanded: true,
+          }),
+        };
+        overlay.update(model);
+      });
+
+      overlay.open(layout, model, handlers);
+      const properties = actions.get('inspector')!;
+      expect(collapsedLayout.inspector.width).toBe(0);
+      expect(properties.disabled).toBe(false);
+      properties.click();
+      expect(handlers.toggleInspector).toHaveBeenCalledOnce();
+      expect(inspector.hidden).toBe(false);
+    } finally {
+      overlay.destroy();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('keeps Properties unavailable when the compact layout cannot reserve an inspector', () => {
+    const { overlay, handlers, actions, inspector } = overlayDomHarness();
+    try {
+      const layout = cutawayLayoutForViewport(600, 320);
+      const editorLayout = editorLayoutForCutaway(layout, {
+        editMode: true, catalogExpanded: false, inspectorExpanded: false,
+      });
+      overlay.open(layout, cutawayDomModel({
+        editMode: true, selected: selectedFurniture(), editorLayout,
+      }), handlers);
+
+      const properties = actions.get('inspector')!;
+      expect(properties.disabled).toBe(true);
+      properties.click();
+      expect(handlers.toggleInspector).not.toHaveBeenCalled();
+      expect(inspector.hidden).toBe(true);
     } finally {
       overlay.destroy();
       vi.unstubAllGlobals();

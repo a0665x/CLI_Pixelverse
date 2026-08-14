@@ -4,6 +4,7 @@ import type { ModernOfficeCategory } from './modernOfficeCatalog';
 import type { FurnitureDefinition, FurnitureLayer, FurnitureRotation } from '../world/types';
 import {
   contextToolbarPlacement,
+  interiorInspectorAvailable,
   type EditorRect,
   type InteriorEditorLayout,
 } from './interiorEditorLayout';
@@ -205,7 +206,7 @@ export class InteriorCutawayDomOverlay {
     const catalogButton = this.panel.querySelector<HTMLButtonElement>('[data-action="catalog"]');
     const inspectorButton = this.panel.querySelector<HTMLButtonElement>('[data-action="inspector"]');
     if (catalogButton) { catalogButton.hidden = !model.editMode; catalogButton.setAttribute('aria-pressed', String(model.catalogExpanded)); }
-    const inspectorAvailable = (model.editorLayout?.inspector.width ?? 1) > 0;
+    const inspectorAvailable = model.editorLayout ? interiorInspectorAvailable(model.editorLayout.frame) : true;
     const catalogAvailable = (model.editorLayout?.catalog.height ?? 1) > 0;
     if (inspectorButton) { inspectorButton.hidden = !model.editMode; inspectorButton.disabled = !model.selected || !inspectorAvailable; inspectorButton.setAttribute('aria-pressed', String(model.inspectorExpanded)); }
     if (this.catalog) this.catalog.hidden = !model.editMode || !model.catalogExpanded || !catalogAvailable;

@@ -21,6 +21,9 @@ export interface ContextToolbarPlacement extends EditorRect { side: ContextToolb
 const clamp = (value: number, minimum: number, maximum: number): number =>
   Math.min(maximum, Math.max(minimum, value));
 
+export const interiorInspectorAvailable = (frame: Pick<EditorRect, 'width'>): boolean =>
+  frame.width >= 620;
+
 export function interiorEditorLayout(
   viewportWidth: number,
   viewportHeight: number,
@@ -37,7 +40,7 @@ export function interiorEditorLayout(
   };
   const headerHeight = 40;
   const catalogHeight = options.editMode && options.catalogExpanded ? Math.min(112, height * 0.28) : 0;
-  const inspectorWidth = options.editMode && options.inspectorExpanded && width >= 620 ? 168 : 0;
+  const inspectorWidth = options.editMode && options.inspectorExpanded && interiorInspectorAvailable(frame) ? 168 : 0;
   const room = {
     x: frame.x,
     y: frame.y + headerHeight,
