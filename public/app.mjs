@@ -63,6 +63,12 @@ import {
 } from './furniture_editing.mjs';
 import { buildAgentTimelinePanels, buildHeartbeatPath, heartbeatBeatWidthPx } from './agent_timeline_graphs.mjs';
 import { setupPressFeedback } from './press_feedback.mjs';
+import {
+  readDashboardDisclosure,
+  shouldShowGuide,
+  toggleDashboardDrawer,
+  writeDashboardDisclosure,
+} from './dashboard_disclosure.mjs';
 
 const ROOM_ACTIVITY_TARGETS = {
   think_lab: {
@@ -139,6 +145,12 @@ const dom = {
   agentsLayer: document.getElementById('agents-layer'),
   cameraStage: document.getElementById('camera-stage'),
   cancelFurnitureButton: document.getElementById('cancel-furniture-btn'),
+  currentAgentState: document.getElementById('current-agent-state'),
+  dashboardDrawer: document.getElementById('workspace-drawer'),
+  dashboardDrawerButtons: Array.from(document.querySelectorAll('[data-dashboard-drawer]')),
+  dashboardDrawerPanels: Array.from(document.querySelectorAll('[data-dashboard-panel]')),
+  dashboardGuide: document.getElementById('dashboard-guide'),
+  dashboardGuideDismiss: document.getElementById('dashboard-guide-dismiss'),
   eventSummary: document.getElementById('event-summary'),
   events: document.getElementById('events'),
   exposureLabel: document.getElementById('exposure-label'),
@@ -189,6 +201,7 @@ const dom = {
   world: document.getElementById('world'),
   worldState: document.getElementById('world-state'),
   worldSummary: document.getElementById('world-summary'),
+  workspaceSettingsSummary: document.querySelector('.workspace-settings > summary'),
   zoomInButton: document.getElementById('zoom-in-btn'),
   zoomOutButton: document.getElementById('zoom-out-btn'),
   zoomResetButton: document.getElementById('zoom-reset-btn'),
@@ -214,6 +227,14 @@ const queryLocale = new URLSearchParams(window.location.search).get('lang');
 let currentLocale = normalizeLocale(queryLocale || localStorage.getItem('pixelverse:locale') || 'en-US');
 let mobileMode = localStorage.getItem('pixelverse:mobile-mode') === '1';
 let sidebarOpen = mobileMode ? localStorage.getItem('pixelverse:sidebar-open') === '1' : true;
+let dashboardStorage = null;
+try {
+  dashboardStorage = window.localStorage;
+} catch {
+  dashboardStorage = null;
+}
+let dashboardDisclosure = readDashboardDisclosure(dashboardStorage);
+let dashboardTouchTooltipTimer = null;
 let cameraOffset = { x: 0, y: 0 };
 let cameraScale = 1;
 let cameraPanning = null;
@@ -459,6 +480,55 @@ function applyMobileMode() {
     dom.sidebarToggleButton.setAttribute('aria-label', sidebarOpen ? copy.hidePanels : copy.showPanels);
   }
   if (dom.sidebarCloseButton) dom.sidebarCloseButton.textContent = copy.closePanels;
+  renderDashboardDisclosure();
+}
+
+function dashboardDrawerLabel(name) {
+  const copy = strings();
+  if (name === 'timeline') return copy.eventBeltTitle;
+  if (name === 'agents') return copy.inspectorTitle;
+  return copy.dashboardPanels;
+}
+
+function renderDashboardDisclosure() {
+  const activeDrawer = dashboardDisclosure.activeDrawer;
+  if (dom.dashboardDrawer) {
+    dom.dashboardDrawer.hidden = !activeDrawer;
+    dom.dashboardDrawer.dataset.activeDrawer = activeDrawer || '';
+  }
+  dom.body.dataset.dashboardDrawer = activeDrawer || 'none';
+  dom.dashboardDrawerPanels.forEach((panel) => {
+    panel.hidden = panel.dataset.dashboardPanel !== activeDrawer;
+  });
+  dom.dashboardDrawerButtons.forEach((button) => {
+    const name = button.dataset.dashboardDrawer;
+    const label = dashboardDrawerLabel(name);
+    const expanded = activeDrawer === name;
+    button.setAttribute('aria-expanded', String(expanded));
+    button.setAttribute('aria-label', `${expanded ? strings().hidePanels : strings().showPanels}: ${label}`);
+    button.dataset.tooltip = label;
+    button.title = label;
+  });
+  if (dom.sidebarTitle) dom.sidebarTitle.textContent = activeDrawer ? dashboardDrawerLabel(activeDrawer) : strings().dashboardPanels;
+  if (dom.sidebarCloseButton) dom.sidebarCloseButton.textContent = strings().closePanels;
+  if (dom.dashboardGuide) dom.dashboardGuide.hidden = !shouldShowGuide(dashboardDisclosure, 'pointer');
+  if (dom.dashboardGuideDismiss) dom.dashboardGuideDismiss.textContent = strings().closePanels;
+}
+
+function persistDashboardDisclosure() {
+  writeDashboardDisclosure(dashboardStorage, dashboardDisclosure);
+}
+
+function changeDashboardDrawer(requested) {
+  dashboardDisclosure = toggleDashboardDrawer(dashboardDisclosure, requested);
+  persistDashboardDisclosure();
+  renderDashboardDisclosure();
+}
+
+function dismissDashboardGuide() {
+  dashboardDisclosure = { ...dashboardDisclosure, guideDismissed: true };
+  persistDashboardDisclosure();
+  renderDashboardDisclosure();
 }
 
 function buildLiveSnapshot(snapshot = {}, nowMs = Date.now()) {
@@ -527,6 +597,25 @@ function renderHeartbeat(snapshot = {}) {
   }
 }
 
+function updateCurrentAgentState(snapshot = {}) {
+  if (!dom.currentAgentState) return;
+  const copy = strings();
+  const mainAgent = (snapshot.agents || []).find((agent) => agent.role === 'main_agent') || (snapshot.agents || [])[0];
+  if (!mainAgent) {
+    dom.currentAgentState.textContent = copy.uiStatusMissing || copy.heartbeatMissing || copy.waitingEvents;
+    return;
+  }
+  const room = getRoomCopy(mainAgent.room_key, currentLocale);
+  const roomName = room.name || mainAgent.room_label || copy.unknownRoom;
+  const task = localizeTask(mainAgent.task || mainAgent.activity_hint || '');
+  dom.currentAgentState.textContent = [
+    displayAgentName(mainAgent),
+    stateText(mainAgent.state),
+    roomName,
+    task ? short(task, 52) : '',
+  ].filter(Boolean).join(' · ');
+}
+
 function updateRefreshController() {
   const copy = strings();
   if (dom.timelineRefreshLabel) dom.timelineRefreshLabel.textContent = copy.timelineRefreshLabel;
@@ -557,6 +646,7 @@ function startLiveUiTicker() {
     const liveSnapshot = buildLiveSnapshot(currentSnapshot, nowMs);
     updateLastSyncText(currentSnapshot, nowMs);
     renderHeartbeat(liveSnapshot);
+    updateCurrentAgentState(liveSnapshot);
     renderAgents(liveSnapshot);
   }, Math.max(100, timelineRefreshMs));
 }
@@ -811,6 +901,7 @@ function applyStaticCopy() {
   dom.body.dataset.locale = currentLocale;
   setText('brand-title', copy.brandTitle);
   setText('brand-subtitle', copy.brandSubtitle);
+  setText('dashboard-guide-title', copy.worldOverview);
   setText('inspector-title', copy.inspectorTitle);
   setText('event-belt-title', copy.eventBeltTitle);
   setText('summary-title', copy.worldOverview);
@@ -834,11 +925,17 @@ function applyStaticCopy() {
   setText('legend-offline-title', copy.legendOfflineTitle);
   setText('legend-offline-body', copy.legendOfflineBody);
   setText('hook-state-title', copy.hookStateTitle);
+  if (dom.workspaceSettingsSummary) {
+    const settingsLabel = `${copy.dashboardPanels} · ${copy.languageLabel}`;
+    dom.workspaceSettingsSummary.dataset.tooltip = settingsLabel;
+    dom.workspaceSettingsSummary.setAttribute('aria-label', settingsLabel);
+  }
   renderHookStateTable();
   populateLocaleSelect();
   updateRefreshController();
   updateFurnitureToolbar();
   applyMobileMode();
+  updateCurrentAgentState(currentSnapshot || {});
   if (!selectedAgentId) {
     dom.inspectorBody.className = 'empty';
     dom.inspectorBody.textContent = copy.inspectorEmpty;
@@ -1778,6 +1875,7 @@ function renderSnapshot(snapshot) {
   dom.worldSummary.textContent = summarizeWorld(snapshot.stats, currentLocale);
   updateLastSyncText(snapshot, snapshot.server_time_ms);
   renderHeartbeat(snapshot);
+  updateCurrentAgentState(snapshot);
   renderAgents(snapshot);
   renderTimelinePanels(snapshot, { nowMs: snapshot.server_time_ms, windowMs: 20 * 60 * 1000 });
 }
@@ -2231,6 +2329,27 @@ dom.exposureSelect?.addEventListener('change', (event) => {
 
 dom.copyExposureButton?.addEventListener('click', copyExposureUrl);
 
+dom.dashboardDrawerButtons.forEach((button) => {
+  button.addEventListener('click', () => changeDashboardDrawer(button.dataset.dashboardDrawer));
+  button.addEventListener('pointerdown', (event) => {
+    if (event.pointerType !== 'touch') return;
+    if (dashboardTouchTooltipTimer) window.clearTimeout(dashboardTouchTooltipTimer);
+    dom.dashboardDrawerButtons.forEach((item) => item.removeAttribute('data-tooltip-visible'));
+    button.dataset.tooltipVisible = 'true';
+    dashboardTouchTooltipTimer = window.setTimeout(() => {
+      button.removeAttribute('data-tooltip-visible');
+      dashboardTouchTooltipTimer = null;
+    }, 1600);
+  });
+});
+
+dom.dashboardGuideDismiss?.addEventListener('click', dismissDashboardGuide);
+
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape' || !dashboardDisclosure.activeDrawer) return;
+  changeDashboardDrawer(dashboardDisclosure.activeDrawer);
+});
+
 dom.mobileModeButton?.addEventListener('click', () => {
   mobileMode = !mobileMode;
   if (mobileMode) sidebarOpen = false;
@@ -2247,6 +2366,9 @@ dom.sidebarToggleButton?.addEventListener('click', () => {
 });
 
 dom.sidebarCloseButton?.addEventListener('click', () => {
+  if (dashboardDisclosure.activeDrawer) {
+    changeDashboardDrawer(dashboardDisclosure.activeDrawer);
+  }
   sidebarOpen = false;
   localStorage.setItem('pixelverse:sidebar-open', '0');
   applyMobileMode();

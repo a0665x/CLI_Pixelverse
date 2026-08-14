@@ -11,15 +11,20 @@ class DashboardParser(HTMLParser):
         self.stack = []
         self.parents = {}
         self.ids = set()
+        self.id_counts = {}
+        self.elements_by_id = {}
         self.elements = []
 
     def handle_starttag(self, tag, attrs):
         attributes = dict(attrs)
         classes = frozenset(attributes.get("class", "").split())
-        self.elements.append({"tag": tag, "id": attributes.get("id"), "classes": classes})
+        element = {"tag": tag, "id": attributes.get("id"), "classes": classes, "attributes": attributes}
+        self.elements.append(element)
         element_id = attributes.get("id")
         if element_id:
             self.ids.add(element_id)
+            self.id_counts[element_id] = self.id_counts.get(element_id, 0) + 1
+            self.elements_by_id[element_id] = element
             self.parents[element_id] = [item for item in self.stack if item]
         if tag not in self.VOID_TAGS:
             self.stack.append(element_id)
@@ -117,3 +122,58 @@ def test_reduced_motion_preserves_layout_transforms_and_glass_groups_have_shape(
     assert 'body[data-mobile-mode="on"][data-sidebar-open="true"] #sidebar-toggle-btn' in html
     assert "transform: translateX(8px);" in html
     assert re.search(r"\.lang-switch,\s*\.exposure-switch\s*\{[^}]*border-radius:", html)
+
+
+def test_map_first_dashboard_keeps_live_state_outside_collapsed_drawers():
+    parser = DashboardParser()
+    parser.feed(Path("public/index.html").read_text(encoding="utf-8"))
+
+    core_ids = {
+        "pixelworld-frame",
+        "heartbeat-status",
+        "current-agent-state",
+        "agent-count",
+        "subagent-count",
+        "session-count",
+    }
+    assert core_ids <= parser.ids
+    for element_id in core_ids:
+        assert "workspace-drawer" not in parser.parents[element_id]
+
+    assert parser.id_counts["pixelworld-frame"] == 1
+    assert all(count == 1 for count in parser.id_counts.values())
+    assert parser.elements_by_id["current-agent-state"]["attributes"].get("aria-live") == "polite"
+
+    for panel_id in ("timeline-drawer-panel", "agents-drawer-panel", "diagnostics-drawer-panel"):
+        assert panel_id in parser.ids
+        assert "hidden" in parser.elements_by_id[panel_id]["attributes"]
+        assert "workspace-drawer" in parser.parents[panel_id]
+
+    assert "timeline-drawer-panel" in parser.parents["events"]
+    assert "agents-drawer-panel" in parser.parents["inspector-panel"]
+    assert "diagnostics-drawer-panel" in parser.parents["hook-state-panel"]
+
+
+def test_map_first_drawers_overlay_the_map_and_offer_discoverable_controls():
+    html = Path("public/index.html").read_text(encoding="utf-8")
+    parser = DashboardParser()
+    parser.feed(html)
+
+    drawer = parser.elements_by_id["workspace-drawer"]
+    assert "hidden" in drawer["attributes"]
+    for drawer_name in ("timeline", "agents", "diagnostics"):
+        button = parser.elements_by_id[f"{drawer_name}-drawer-btn"]
+        assert button["attributes"].get("aria-controls") == "workspace-drawer"
+        assert button["attributes"].get("aria-expanded") == "false"
+        assert button["attributes"].get("aria-label")
+        assert button["attributes"].get("data-tooltip")
+
+    assert "dashboard-guide" in parser.ids
+    assert "dashboard-guide-dismiss" in parser.ids
+    assert ".map-first-workspace { position: fixed; inset: 0; overflow: hidden;" in html
+    assert ".map-first-workspace .map-stage { position: absolute; inset: 0;" in html
+    assert ".workspace-drawer {" in html
+    assert "position: absolute;" in html
+    assert ".workspace-drawer[hidden] { display: none; }" in html
+    assert '[data-tooltip]:hover::after' in html
+    assert '[data-tooltip]:focus-visible::after' in html

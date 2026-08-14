@@ -1963,12 +1963,271 @@
     }
     @media (prefers-contrast: more) {
       .functional-glass, .panel { border-color: #b8d8ff; background-color: #07111f; }
+      .workbench-divider::before { background: #a9c7ef; }
+    }
+    .map-first-workspace { position: fixed; inset: 0; overflow: hidden; background: #07100d; }
+    .map-first-workspace .map-stage { position: absolute; inset: 0; min-width: 0; min-height: 0; border: 0; border-radius: 0; box-shadow: none; }
+    .map-first-workspace .world.map-stage { inset: 0; }
+    .map-first-workspace .pixelworld-frame { width: 100%; height: 100%; border: 0; display: block; }
+    .map-first-workspace .live-hud {
+      position: absolute;
+      inset: 14px auto auto 14px;
+      z-index: 46;
+      display: block;
+      width: min(420px, calc(100% - 92px));
+      pointer-events: none;
+    }
+    .map-first-workspace .hud.live-hud { inset: 14px auto auto 14px; }
+    .map-first-workspace .live-hud > * { pointer-events: auto; }
+    .map-first-workspace .live-hud .brand {
+      width: 100%;
+      max-width: none;
+      padding: 10px 12px;
+      gap: 7px;
+      touch-action: pan-y;
+    }
+    .live-hud .brand-top { align-items: center; }
+    .live-hud .title { font-size: 14px; }
+    .live-hud .heartbeat-status {
+      min-width: 0;
+      padding: 5px 9px;
+    }
+    .live-hud .heartbeat-label { font-size: 10px; }
+    .current-agent-state {
+      color: #f8fbff;
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1.45;
+    }
+    .live-counts { min-width: 0; padding: 0; gap: 5px; }
+    .live-counts .summary-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
+    .live-counts .summary-card {
+      min-width: 0;
+      padding: 5px 6px;
+      border-width: 1px;
+      font-size: 9px;
+      text-align: center;
+    }
+    .live-counts .summary-card:first-child { display: none; }
+    .live-counts .strong { display: inline-block; margin-top: 1px; font-size: 12px; }
+    .live-hud #last-sync,
+    .live-hud #world-summary { font-size: 9px; line-height: 1.35; }
+    .workspace-tools {
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      z-index: 47;
+      display: flex;
+      max-width: calc(100% - 462px);
+      gap: 7px;
+      justify-content: flex-end;
+      align-items: flex-start;
+      flex-wrap: wrap;
+      pointer-events: auto;
+    }
+    .workspace-tool-button {
+      min-width: 42px;
+      min-height: 42px;
+      padding: 8px 10px;
+      border: 1px solid rgba(137, 173, 219, .58);
+      border-radius: 12px;
+      background: var(--material-structural);
+      color: var(--text);
+      cursor: pointer;
+      box-shadow: 0 8px 20px rgba(0,0,0,.26);
+    }
+    .workspace-tool-button[aria-expanded="true"] {
+      border-color: var(--cyan);
+      color: #fff;
+      box-shadow: 0 0 0 3px rgba(110,231,249,.14), 0 8px 20px rgba(0,0,0,.26);
+    }
+    .workspace-tools .lang-switch,
+    .workspace-tools .exposure-switch { max-width: min(360px, 100%); }
+    .workspace-settings { position: relative; }
+    .workspace-settings > summary {
+      display: grid;
+      place-items: center;
+      list-style: none;
+    }
+    .workspace-settings > summary::-webkit-details-marker { display: none; }
+    .workspace-settings[open] > summary { border-color: var(--cyan); }
+    .workspace-settings-panel {
+      position: absolute;
+      top: calc(100% + 7px);
+      right: 0;
+      z-index: 2;
+      display: grid;
+      width: min(390px, calc(100vw - 28px));
+      gap: 7px;
+      justify-items: end;
+    }
+    [data-tooltip] { position: relative; }
+    [data-tooltip]::after {
+      position: absolute;
+      top: calc(100% + 7px);
+      right: 0;
+      z-index: 90;
+      width: max-content;
+      max-width: min(260px, calc(100vw - 28px));
+      padding: 6px 8px;
+      border: 1px solid rgba(137,173,219,.56);
+      border-radius: 8px;
+      background: #081321;
+      color: #f8fbff;
+      box-shadow: 0 8px 20px rgba(0,0,0,.38);
+      content: attr(data-tooltip);
+      font-size: 10px;
+      line-height: 1.35;
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(-3px);
+      transition: opacity .12s ease, transform .12s ease;
+    }
+    [data-tooltip]:hover::after,
+    [data-tooltip]:focus-visible::after,
+    [data-tooltip][data-tooltip-visible="true"]::after { opacity: 1; transform: translateY(0); }
+    .workspace-drawer {
+      position: absolute;
+      z-index: 58;
+      inset: 68px 14px 14px auto;
+      width: min(var(--sidebar-width), calc(100% - 28px));
+      overflow: auto;
+      border: 1px solid rgba(107,145,196,.7);
+      border-radius: 16px;
+      background: var(--material-structural);
+      box-shadow: 0 20px 48px rgba(0,0,0,.46);
+      padding: 10px;
+      pointer-events: auto;
+    }
+    .workspace-drawer[hidden] { display: none; }
+    .drawer-head {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      min-height: 38px;
+      margin-bottom: 8px;
+      padding: 4px 6px;
+      border-radius: 10px;
+      background: var(--material-structural);
+    }
+    .drawer-panel { min-width: 0; min-height: 0; }
+    .drawer-panel[hidden] { display: none; }
+    .map-first-workspace .workspace-drawer .dashboard-sidebar {
+      position: static;
+      display: grid;
+      width: auto;
+      min-width: 0;
+      max-width: none;
+      height: auto;
+      inset: auto;
+      grid-template-rows: auto minmax(180px, 1fr);
+      transform: none !important;
+      opacity: 1;
+      overflow: visible;
+      pointer-events: auto;
+    }
+    .map-first-workspace .workspace-drawer .events-belt {
+      position: static;
+      inset: auto;
+      width: auto;
+      height: 100%;
+      min-height: 0;
+      max-height: none;
+      resize: none;
+      overflow: hidden;
+    }
+    .map-first-workspace .workspace-drawer .events-track,
+    .map-first-workspace .workspace-drawer .timeline-grid { height: 100%; overflow: auto; }
+    .map-first-workspace .workspace-drawer .timeline-grid { grid-template-columns: minmax(0, 1fr); }
+    .map-first-workspace .workspace-drawer .inspector,
+    .map-first-workspace .workspace-drawer .hook-state-panel { position: static; width: auto; max-height: none; }
+    .workspace-drawer[data-active-drawer="timeline"] {
+      top: auto;
+      height: min(var(--timeline-height), calc(100% - 82px));
+    }
+    .workspace-drawer[data-active-drawer="timeline"] #timeline-drawer-panel { height: 100%; }
+    .map-first-workspace .workbench-divider { z-index: 59; display: none; }
+    body[data-dashboard-drawer]:not([data-dashboard-drawer="none"]) .map-first-workspace .workbench-divider--vertical {
+      display: block;
+      top: 68px;
+      right: calc(var(--sidebar-width) + 7px);
+      bottom: 14px;
+      left: auto;
+    }
+    body[data-dashboard-drawer="timeline"] .map-first-workspace .workbench-divider--horizontal {
+      display: block;
+      right: 14px;
+      bottom: calc(var(--timeline-height) + 7px);
+      left: auto;
+      width: min(var(--sidebar-width), calc(100% - 28px));
+    }
+    .dashboard-guide {
+      position: absolute;
+      left: 14px;
+      bottom: 14px;
+      z-index: 57;
+      display: grid;
+      width: min(360px, calc(100% - 28px));
+      gap: 7px;
+      padding: 11px 12px;
+      border: 1px solid rgba(110,231,249,.42);
+      border-radius: 14px;
+      background: var(--material-structural);
+      box-shadow: 0 16px 36px rgba(0,0,0,.38);
+    }
+    .dashboard-guide[hidden] { display: none; }
+    .dashboard-guide button { justify-self: end; }
+    .map-first-workspace #sidebar-close-btn { display: inline-flex !important; align-items: center; }
+    .map-first-workspace #sidebar-toggle-btn { display: none !important; }
+    .visually-hidden {
+      position: absolute !important;
+      width: 1px !important;
+      height: 1px !important;
+      padding: 0 !important;
+      margin: -1px !important;
+      overflow: hidden !important;
+      clip: rect(0, 0, 0, 0) !important;
+      white-space: nowrap !important;
+      border: 0 !important;
+    }
+    @media (max-width: 920px) {
+      .workspace-tools { max-width: calc(100% - 28px); }
+    }
+    @media (max-width: 720px) {
+      .map-first-workspace .hud.live-hud { inset: 8px auto auto 8px; width: min(330px, calc(100% - 72px)); }
+      .workspace-tools { top: 8px; right: 8px; gap: 5px; }
+      .workspace-tool-button { min-width: 40px; min-height: 40px; padding: 7px 8px; }
+      .workspace-drawer {
+        inset: auto 8px 8px;
+        width: auto;
+        height: auto !important;
+        max-height: 44vh;
+      }
+      .map-first-workspace .workbench-divider { display: none !important; }
+      .dashboard-guide { left: 8px; bottom: 8px; width: min(340px, calc(100% - 16px)); }
+    }
+    @media (prefers-reduced-transparency: reduce) {
+      .live-hud .brand,
+      .workspace-drawer,
+      .dashboard-guide { backdrop-filter: none; background: #101916; }
     }
   </style>
 </head>
 <body data-locale="en-US" data-mobile-mode="off" data-sidebar-open="true">
   <div class="app">
-    <div class="world" id="world">
+    <main class="map-first-workspace">
+    <section class="world map-stage" id="world" aria-label="Agent village">
+      <iframe
+        class="pixelworld-frame"
+        id="pixelworld-frame"
+        src="/pixelworld/index.html?embed=1"
+        title="Pixelverse agent village"
+        allow="fullscreen"
+      ></iframe>
       <div class="camera-stage" id="camera-stage">
         <div class="house-shell">
           <div class="house-boundary"></div>
@@ -2012,36 +2271,29 @@
         <button type="button" id="zoom-reset-btn" aria-label="Reset zoom">1:1</button>
         <button type="button" id="zoom-out-btn" aria-label="Zoom out">−</button>
       </div>
-    </div>
+    </section>
 
-    <div class="hud">
+    <aside class="hud live-hud" aria-label="Live agent status">
       <div class="brand panel">
         <div class="brand-top">
           <div>
             <div class="title" id="brand-title">CLI_Pixelverse</div>
-            <div class="subtitle" id="brand-subtitle"></div>
           </div>
-          <div class="top-tools">
-            <div class="heartbeat-status stale" id="heartbeat-status">
-              <div class="heartbeat-stack">
-                <span class="heartbeat-label" id="heartbeat-label"></span>
-              </div>
+          <div class="heartbeat-status stale" id="heartbeat-status">
+            <div class="heartbeat-stack">
+              <span class="heartbeat-label" id="heartbeat-label"></span>
             </div>
-            <div class="muted" id="last-sync"></div>
-            <div class="lang-switch functional-glass">
-              <span class="muted" id="language-label"></span>
-              <select id="locale-select" aria-label="language selector"></select>
-              <button type="button" id="mobile-mode-btn" aria-pressed="false"></button>
-              <button type="button" id="edit-furniture-btn"></button>
-              <button type="button" id="save-furniture-btn" hidden></button>
-              <button type="button" id="cancel-furniture-btn" hidden></button>
-            </div>
-            <div class="exposure-switch functional-glass">
-              <span class="muted" id="exposure-label"></span>
-              <select id="exposure-select" aria-label="exposure selector"></select>
-              <button type="button" id="copy-exposure-btn" title="Copy URL" aria-label="Copy URL">📋</button>
-              <span class="exposure-url" id="exposure-url"></span>
-            </div>
+          </div>
+        </div>
+        <div class="current-agent-state" id="current-agent-state" aria-live="polite" aria-atomic="true"></div>
+        <div class="muted" id="last-sync"></div>
+        <div class="summary-strip live-counts">
+          <div class="visually-hidden" id="summary-title"></div>
+          <div class="summary-grid">
+            <div class="summary-card"><span id="summary-world-label"></span><br><span class="strong" id="world-state"></span></div>
+            <div class="summary-card"><span id="summary-agent-label"></span><br><span class="strong" id="agent-count">0</span></div>
+            <div class="summary-card"><span id="summary-subagent-label"></span><br><span class="strong" id="subagent-count">0</span></div>
+            <div class="summary-card"><span id="summary-session-label"></span><br><span class="strong" id="session-count">0</span></div>
           </div>
         </div>
         <div class="subtitle" id="world-summary"></div>
@@ -2054,63 +2306,98 @@
           <div class="editor-banner-meta" id="furniture-edit-meta"></div>
         </div>
       </div>
-    </div>
-
-    <aside class="dashboard-sidebar" id="dashboard-sidebar" data-resizable-panel="sidebar">
-      <div class="sidebar-head">
-        <span class="strong" id="sidebar-title"></span>
-        <button type="button" id="sidebar-close-btn" aria-controls="dashboard-sidebar"></button>
-      </div>
-      <div class="summary-strip panel">
-        <div class="subtitle" id="summary-title" data-drag-handle></div>
-        <div class="summary-grid">
-          <div class="summary-card"><span id="summary-world-label"></span><br><span class="strong" id="world-state"></span></div>
-          <div class="summary-card"><span id="summary-agent-label"></span><br><span class="strong" id="agent-count">0</span></div>
-          <div class="summary-card"><span id="summary-subagent-label"></span><br><span class="strong" id="subagent-count">0</span></div>
-          <div class="summary-card"><span id="summary-session-label"></span><br><span class="strong" id="session-count">0</span></div>
-        </div>
-      </div>
-      <aside class="legend panel">
-      <div class="subtitle" id="legend-title" data-drag-handle></div>
-      <div class="legend-item"><span class="dot thinking"></span><div><strong id="legend-thinking-title"></strong><br><span class="muted" id="legend-thinking-body"></span></div></div>
-      <div class="legend-item"><span class="dot planning"></span><div><strong id="legend-planning-title"></strong><br><span class="muted" id="legend-planning-body"></span></div></div>
-      <div class="legend-item"><span class="dot working"></span><div><strong id="legend-working-title"></strong><br><span class="muted" id="legend-working-body"></span></div></div>
-      <div class="legend-item"><span class="dot"></span><div><strong id="legend-idle-title"></strong><br><span class="muted" id="legend-idle-body"></span></div></div>
-      <div class="legend-item"><span class="dot offline"></span><div><strong id="legend-offline-title"></strong><br><span class="muted" id="legend-offline-body"></span></div></div>
-      </aside>
-
-      <aside class="hook-state-panel panel" id="hook-state-panel" data-resizable-panel="hook-state">
-        <div class="subtitle" id="hook-state-title"></div>
-        <div class="hook-state-table" id="hook-state-table"></div>
-      </aside>
-
-      <aside class="inspector panel" id="inspector-panel" data-resizable-panel="inspector">
-      <div class="inspector-card">
-        <div class="subtitle" id="inspector-title" data-drag-handle></div>
-        <select class="inspector-agent-select" id="inspector-agent-select" aria-label="Select agent"></select>
-        <div id="inspector-body" class="empty"></div>
-      </div>
-      </aside>
-
     </aside>
 
-    <button type="button" id="sidebar-toggle-btn" class="functional-glass" aria-expanded="false" aria-controls="dashboard-sidebar" aria-label="Toggle sidebar">›</button>
+    <nav class="workspace-tools" aria-label="Workspace details">
+      <button type="button" class="workspace-tool-button" id="timeline-drawer-btn" data-dashboard-drawer="timeline" data-tooltip="Timeline" aria-label="Open timeline" aria-expanded="false" aria-controls="workspace-drawer">◫</button>
+      <button type="button" class="workspace-tool-button" id="agents-drawer-btn" data-dashboard-drawer="agents" data-tooltip="Agents" aria-label="Open agents" aria-expanded="false" aria-controls="workspace-drawer">◎</button>
+      <button type="button" class="workspace-tool-button" id="diagnostics-drawer-btn" data-dashboard-drawer="diagnostics" data-tooltip="Diagnostics" aria-label="Open diagnostics" aria-expanded="false" aria-controls="workspace-drawer">⌁</button>
+      <details class="workspace-settings">
+        <summary class="workspace-tool-button" data-tooltip="Workspace settings" aria-label="Workspace settings" role="button">⚙</summary>
+        <div class="workspace-settings-panel">
+          <div class="lang-switch functional-glass">
+            <span class="muted" id="language-label"></span>
+            <select id="locale-select" aria-label="language selector"></select>
+            <button type="button" id="mobile-mode-btn" aria-pressed="false"></button>
+            <button type="button" id="edit-furniture-btn"></button>
+            <a id="map-builder-tab-link" class="tool-link" href="/map_builder.html">Map Validate</a>
+            <button type="button" id="save-furniture-btn" hidden></button>
+            <button type="button" id="cancel-furniture-btn" hidden></button>
+          </div>
+          <div class="exposure-switch functional-glass">
+            <span class="muted" id="exposure-label"></span>
+            <select id="exposure-select" aria-label="exposure selector"></select>
+            <button type="button" id="copy-exposure-btn" title="Copy URL" aria-label="Copy URL">📋</button>
+            <span class="exposure-url" id="exposure-url"></span>
+          </div>
+        </div>
+      </details>
+    </nav>
 
-    <section class="events-belt panel" id="event-timeline-belt" data-resizable-panel="timeline">
-      <div class="belt-title" data-drag-handle>
-        <span id="event-belt-title"></span>
-        <span id="event-summary" class="muted"></span>
-        <label class="timeline-refresh-control">
-          <span id="timeline-refresh-label"></span>
-          <span class="refresh-stepper">
-            <button type="button" id="refresh-slower-btn" aria-label="Decrease refresh rate">−</button>
-            <output id="refresh-rate-output">1.0s</output>
-            <button type="button" id="refresh-faster-btn" aria-label="Increase refresh rate">+</button>
-          </span>
-        </label>
+    <aside class="workspace-drawer" id="workspace-drawer" data-resizable-panel="sidebar" aria-labelledby="sidebar-title" hidden>
+      <div class="drawer-head">
+        <span class="strong" id="sidebar-title"></span>
+        <button type="button" id="sidebar-close-btn" class="workspace-tool-button" aria-controls="workspace-drawer"></button>
       </div>
-      <div class="events-track" id="events"></div>
-    </section>
+
+      <section class="drawer-panel" id="timeline-drawer-panel" data-dashboard-panel="timeline" hidden>
+        <section class="events-belt panel" id="event-timeline-belt" data-resizable-panel="timeline">
+          <div class="belt-title" data-drag-handle>
+            <span id="event-belt-title"></span>
+            <span id="event-summary" class="muted"></span>
+            <label class="timeline-refresh-control">
+              <span id="timeline-refresh-label"></span>
+              <span class="refresh-stepper">
+                <button type="button" id="refresh-slower-btn" aria-label="Decrease refresh rate">−</button>
+                <output id="refresh-rate-output">1.0s</output>
+                <button type="button" id="refresh-faster-btn" aria-label="Increase refresh rate">+</button>
+              </span>
+            </label>
+          </div>
+          <div class="events-track" id="events"></div>
+        </section>
+      </section>
+
+      <section class="drawer-panel" id="agents-drawer-panel" data-dashboard-panel="agents" hidden>
+        <aside class="inspector panel" id="inspector-panel" data-resizable-panel="inspector">
+          <div class="inspector-card">
+            <div class="subtitle" id="inspector-title" data-drag-handle></div>
+            <select class="inspector-agent-select" id="inspector-agent-select" aria-label="Select agent"></select>
+            <div id="inspector-body" class="empty"></div>
+          </div>
+        </aside>
+      </section>
+
+      <section class="drawer-panel" id="diagnostics-drawer-panel" data-dashboard-panel="diagnostics" hidden>
+        <aside class="dashboard-sidebar" id="dashboard-sidebar">
+          <aside class="legend panel">
+            <div class="subtitle" id="legend-title" data-drag-handle></div>
+            <div class="legend-item"><span class="dot thinking"></span><div><strong id="legend-thinking-title"></strong><br><span class="muted" id="legend-thinking-body"></span></div></div>
+            <div class="legend-item"><span class="dot planning"></span><div><strong id="legend-planning-title"></strong><br><span class="muted" id="legend-planning-body"></span></div></div>
+            <div class="legend-item"><span class="dot working"></span><div><strong id="legend-working-title"></strong><br><span class="muted" id="legend-working-body"></span></div></div>
+            <div class="legend-item"><span class="dot"></span><div><strong id="legend-idle-title"></strong><br><span class="muted" id="legend-idle-body"></span></div></div>
+            <div class="legend-item"><span class="dot offline"></span><div><strong id="legend-offline-title"></strong><br><span class="muted" id="legend-offline-body"></span></div></div>
+          </aside>
+
+          <aside class="hook-state-panel panel" id="hook-state-panel" data-resizable-panel="hook-state">
+            <div class="subtitle" id="hook-state-title"></div>
+            <div class="hook-state-table" id="hook-state-table"></div>
+          </aside>
+        </aside>
+      </section>
+    </aside>
+
+    <div class="workbench-divider workbench-divider--vertical" id="sidebar-resizer" role="separator" aria-label="Resize drawer" aria-orientation="vertical" aria-valuemin="320" tabindex="0"></div>
+
+    <button type="button" id="sidebar-toggle-btn" class="functional-glass" aria-expanded="false" aria-controls="workspace-drawer" aria-label="Toggle sidebar">›</button>
+
+    <div class="workbench-divider workbench-divider--horizontal" id="timeline-resizer" role="separator" aria-label="Resize timeline" aria-orientation="horizontal" aria-valuemin="180" tabindex="0"></div>
+
+    <aside class="dashboard-guide" id="dashboard-guide" aria-labelledby="dashboard-guide-title" hidden>
+      <div class="strong" id="dashboard-guide-title">Map-first workspace</div>
+      <div class="subtitle" id="brand-subtitle"></div>
+      <button type="button" class="workspace-tool-button" id="dashboard-guide-dismiss">Got it</button>
+    </aside>
 
     <div class="dialog-backdrop" id="speech-dialog-backdrop">
       <div class="speech-dialog" id="speech-dialog">
@@ -2131,6 +2418,7 @@
         <div class="toast-body" id="furniture-toast-body"></div>
       </div>
     </div>
+    </main>
   </div>
 
   <script type="module" src="/app.mjs"></script>
