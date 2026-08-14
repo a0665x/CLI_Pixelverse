@@ -31,6 +31,7 @@ import { transformedAlphaBounds } from '../src/rendering/interiorPlacement';
 import { WORLD_DEFINITION } from '../src/world/worldDefinition';
 import { agentSkinFor } from '../src/rendering/assetManifest';
 import { interiorEditorLayout } from '../src/rendering/interiorEditorLayout';
+import { WORLD_PIXELS } from '../src/game/constants';
 
 class FakeObject {
   x = 0;
@@ -523,6 +524,37 @@ describe('InteriorCutawaySystem', () => {
       inspectorExpanded: true,
     });
     expect(reserved.room.y + reserved.room.height).toBeLessThanOrEqual(reserved.catalog.y);
+  });
+
+  it('projects the viewport-safe CSS frame into scaled Phaser canvas coordinates', () => {
+    const fake = fakeScene();
+    const canvasRect = { left: 144, top: 114, width: 1_152, height: 672 };
+    Object.assign(fake.scene, {
+      game: { canvas: { getBoundingClientRect: () => canvasRect } },
+    });
+    const cutaway = new InteriorCutawaySystem(
+      fake.scene as never,
+      WORLD_DEFINITION,
+      () => ({ width: 1_440, height: 900 }),
+    );
+    const capture = captureCutawayHandlers(cutaway);
+
+    cutaway.open('rest-cabin');
+
+    const layout = capture.overlay.open.mock.calls.at(-1)?.[0];
+    expect(layout).toMatchObject({ width: 480, height: 330 });
+    expect(layout.x).toBeCloseTo(144);
+    expect(layout.y).toBeCloseTo(59.3333333333);
+    const projected = {
+      left: canvasRect.left + layout.x / WORLD_PIXELS.width * canvasRect.width,
+      top: canvasRect.top + layout.y / WORLD_PIXELS.height * canvasRect.height,
+      width: layout.width / WORLD_PIXELS.width * canvasRect.width,
+      height: layout.height / WORLD_PIXELS.height * canvasRect.height,
+    };
+    expect(projected.left).toBeCloseTo(360);
+    expect(projected.top).toBeCloseTo(203);
+    expect(projected.width).toBeCloseTo(720);
+    expect(projected.height).toBeCloseTo(495);
   });
 
   it('owns wheel zoom and empty-space panning inside an open room', () => {

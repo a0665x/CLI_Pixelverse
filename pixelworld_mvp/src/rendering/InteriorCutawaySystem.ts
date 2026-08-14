@@ -137,6 +137,23 @@ export function cutawayLayoutForViewport(viewportWidth: number, viewportHeight: 
   }).frame;
 }
 
+export function cutawayLayoutForCanvas(
+  viewportWidth: number,
+  viewportHeight: number,
+  canvasRect?: Pick<DOMRect, 'left' | 'top' | 'width' | 'height'>,
+): CutawayLayout {
+  const displayFrame = cutawayLayoutForViewport(viewportWidth, viewportHeight);
+  if (!canvasRect || canvasRect.width <= 0 || canvasRect.height <= 0) return displayFrame;
+  const scaleX = canvasRect.width / WORLD_PIXELS.width;
+  const scaleY = canvasRect.height / WORLD_PIXELS.height;
+  return {
+    x: (displayFrame.x - canvasRect.left) / scaleX,
+    y: (displayFrame.y - canvasRect.top) / scaleY,
+    width: displayFrame.width / scaleX,
+    height: displayFrame.height / scaleY,
+  };
+}
+
 export function editorLayoutForCutaway(
   layout: CutawayLayout,
   options: InteriorEditorLayoutOptions = { editMode: false, catalogExpanded: false, inspectorExpanded: false },
@@ -463,8 +480,7 @@ export class InteriorCutawaySystem {
     this.clipboardStorageReadFailed = clipboardRead.storageRead === 'failed';
     const interior = this.activeInterior;
     if (typeof window !== 'undefined') window.dispatchEvent(new Event(CUTAWAY_OPEN_EVENT));
-    const size = this.viewportProvider();
-    const layout = cutawayLayoutForViewport(size.width, size.height);
+    const layout = this.layoutForViewport();
     this.rebuildShell(interior, layout);
 
     this.status = this.layoutStorageReadFailed || this.prefabStorageReadFailed || this.clipboardStorageReadFailed
@@ -497,8 +513,7 @@ export class InteriorCutawaySystem {
         this.syncOverlay();
       },
       fitView: () => {
-        const size = this.viewportProvider();
-        const current = this.currentLayout ?? cutawayLayoutForViewport(size.width, size.height);
+        const current = this.currentLayout ?? this.layoutForViewport();
         this.interiorViewport = createInteriorViewport(this.roomViewportFrame(current));
         this.applyRoomViewport();
         this.syncRoomLabels();
@@ -694,8 +709,7 @@ export class InteriorCutawaySystem {
 
   private refreshLayout(): void {
     if (!this.activeInterior || !this.root) return;
-    const size = this.viewportProvider();
-    const layout = cutawayLayoutForViewport(size.width, size.height);
+    const layout = this.layoutForViewport();
     (this.domOverlay as InteriorCutawayDomOverlay & { relayout?: (next: CutawayLayout) => void }).relayout?.(layout);
     if (this.currentLayout && Object.keys(layout).every((key) => (
       layout[key as keyof CutawayLayout] === this.currentLayout![key as keyof CutawayLayout]
@@ -1585,8 +1599,7 @@ export class InteriorCutawaySystem {
       this.syncOverlay();
       return;
     }
-    const size = this.viewportProvider();
-    const layout = cutawayLayoutForViewport(size.width, size.height);
+    const layout = this.layoutForViewport();
     this.clearRenderedShell();
     this.rebuildShell(this.activeInterior, layout);
     this.domOverlay.relayout(layout);
@@ -1600,6 +1613,15 @@ export class InteriorCutawaySystem {
       width: interior.width * this.roomCell + 32,
       height: interior.height * this.roomCell + 24,
     };
+  }
+
+  private layoutForViewport(): CutawayLayout {
+    const size = this.viewportProvider();
+    return cutawayLayoutForCanvas(
+      size.width,
+      size.height,
+      this.scene.game?.canvas?.getBoundingClientRect?.(),
+    );
   }
 
   private applyRoomViewport(): void {
@@ -1800,8 +1822,7 @@ export class InteriorCutawaySystem {
     this.selectedFurnitureId = undefined;
     this.setStatus('selectionCleared');
     if (this.activeInterior && this.root) {
-      const size = this.viewportProvider();
-      this.renderFurniture(this.activeInterior, cutawayLayoutForViewport(size.width, size.height));
+      this.renderFurniture(this.activeInterior, this.layoutForViewport());
     }
   }
 }
