@@ -55,6 +55,8 @@ class FakeObject {
     return { x: (x - this.x) / this.scale, y: (y - this.y) / this.scale };
   }
   setScale(scale: number): this { this.scale = scale; return this; }
+  setMask(): this { return this; }
+  createGeometryMask(): object { return {}; }
   setSize(width: number, height: number): this { this.width = width; this.height = height; return this; }
   setAngle(): this { return this; }
   setResolution(resolution: number): this { this.resolution = resolution; return this; }
@@ -127,6 +129,10 @@ const pointerAt = (x: number, y: number) => ({
   x, y, camera: {}, positionToCamera: () => ({ x, y }),
 });
 
+const viewportPointerAt = (x: number, y: number, button = 0) => ({
+  ...pointerAt(x, y), button, event: { preventDefault: vi.fn() },
+});
+
 const captureCutawayHandlers = (cutaway: InteriorCutawaySystem) => {
   let handlers: CutawayDomHandlers | undefined;
   let model: CutawayDomModel | undefined;
@@ -193,6 +199,42 @@ describe('InteriorCutawaySystem', () => {
   it('uses the approved centered desktop and narrow viewport layouts', () => {
     expect(cutawayLayoutForViewport(1_280, 720)).toMatchObject({ width: 480, height: 330, x: 144, y: 59 });
     expect(cutawayLayoutForViewport(840, 480)).toMatchObject({ width: 608, height: 360, x: 80, y: 44 });
+  });
+
+  it('owns wheel zoom and empty-space panning inside an open room', () => {
+    const fake = fakeScene();
+    const cutaway = new InteriorCutawaySystem(fake.scene as never, WORLD_DEFINITION, () => ({ width: 1280, height: 720 }));
+    cutaway.open('rest-cabin');
+    const internal = cutaway as unknown as {
+      interiorViewport: { zoom: number; panX: number; panY: number };
+      roomViewportLayer: FakeObject;
+    };
+    const center = viewportPointerAt(384, 224);
+
+    fake.emitInput('wheel', center, [], 0, -420);
+    expect(internal.interiorViewport.zoom).toBeGreaterThan(1);
+    expect(internal.roomViewportLayer.scale).toBeCloseTo(internal.interiorViewport.zoom);
+
+    fake.emitInput('pointerdown', center, []);
+    fake.emitInput('pointermove', viewportPointerAt(430, 250));
+    fake.emitInput('pointerup', viewportPointerAt(430, 250));
+    expect(Math.abs(internal.interiorViewport.panX) + Math.abs(internal.interiorViewport.panY)).toBeGreaterThan(0);
+  });
+
+  it('does not start left-button room panning while furniture edit marquee owns empty space', () => {
+    const fake = fakeScene();
+    const cutaway = new InteriorCutawaySystem(fake.scene as never, WORLD_DEFINITION, () => ({ width: 1280, height: 720 }));
+    const captured = captureCutawayHandlers(cutaway);
+    cutaway.open('rest-cabin');
+    fake.emitInput('wheel', viewportPointerAt(384, 224), [], 0, -420);
+    captured.handlers().toggleEdit();
+    const internal = cutaway as unknown as { interiorViewport: { panX: number; panY: number } };
+    const before = { ...internal.interiorViewport };
+
+    fake.emitInput('pointerdown', viewportPointerAt(384, 224), []);
+    fake.emitInput('pointermove', viewportPointerAt(440, 270));
+    fake.emitInput('pointerup', viewportPointerAt(440, 270));
+    expect(internal.interiorViewport).toMatchObject(before);
   });
 
   it('fits an 18x12 work office inside the cutaway content area with a readable cell', () => {

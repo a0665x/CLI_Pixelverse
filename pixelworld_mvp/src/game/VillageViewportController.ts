@@ -28,6 +28,10 @@ export function shouldStartVillagePan(gesture: {
   return gesture.button === 0 && !gesture.overControls && !gesture.cutawayOpen;
 }
 
+export function shouldHandleVillageWheel(gesture: { cutawayOpen: boolean; deltaY: number }): boolean {
+  return gesture.deltaY !== 0 && !gesture.cutawayOpen;
+}
+
 type ZoomStorageReader = Pick<Storage, 'getItem'>;
 type ZoomStorageWriter = Pick<Storage, 'setItem'>;
 

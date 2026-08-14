@@ -5,6 +5,7 @@ import { mountTestPanel } from './ui/TestPanel';
 import { LiveWorldClient } from './live/LiveWorldClient';
 import {
   readVillageCamera,
+  shouldHandleVillageWheel,
   shouldStartVillagePan,
   writeVillageCamera,
   type VillageViewportController,
@@ -57,7 +58,10 @@ function mountViewportControls(viewport: VillageViewportController): void {
     persistAndUpdate();
   });
   gameRoot.addEventListener('wheel', (event) => {
-    if (event.deltaY === 0) return;
+    if (!shouldHandleVillageWheel({
+      cutawayOpen: Boolean(document.querySelector('.cutaway-dom-panel')),
+      deltaY: event.deltaY,
+    })) return;
     event.preventDefault();
     const rect = gameRoot.getBoundingClientRect();
     viewport.zoomAt(event.clientX - rect.left, event.clientY - rect.top, Math.exp(-event.deltaY * .0012));

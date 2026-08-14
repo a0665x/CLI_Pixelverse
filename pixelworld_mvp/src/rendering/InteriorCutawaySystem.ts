@@ -88,6 +88,17 @@ import {
   dissolvePrefabInstance,
   InteriorUndoStore,
 } from './interiorUndoStore';
+import {
+  applyInteriorViewport,
+  clampInteriorViewport,
+  createInteriorViewport,
+  interiorPanEligible,
+  panInteriorViewport,
+  unapplyInteriorViewport,
+  zoomInteriorViewportAt,
+  type InteriorViewportRect,
+  type InteriorViewportState,
+} from './interiorViewport';
 
 const BASE_ROOM_CELL = 22;
 const ROOM_CONTENT_TOP = 52;
@@ -285,6 +296,7 @@ export interface InteriorCutawaySystemOptions {
 
 export class InteriorCutawaySystem {
   private root: Phaser.GameObjects.Container | undefined;
+  private roomViewportLayer: Phaser.GameObjects.Container | undefined;
   private occupantLayer: Phaser.GameObjects.Container | undefined;
   private roof: Phaser.GameObjects.Container | undefined;
   private roofTween: Phaser.Tweens.Tween | undefined;
@@ -320,6 +332,8 @@ export class InteriorCutawaySystem {
   private occupantDomLabels: CutawayRoomLabel[] = [];
   private marqueeCleanup: (() => void) | undefined;
   private viewportResizeObserver: ResizeObserver | undefined;
+  private viewportGestureCleanup: (() => void) | undefined;
+  private interiorViewport: InteriorViewportState = createInteriorViewport({ x: 0, y: 0, width: 0, height: 0 });
   private readonly occupantViews = new Map<string, {
     sprite: Phaser.GameObjects.Image;
     icon: Phaser.GameObjects.Text;
@@ -493,6 +507,8 @@ export class InteriorCutawaySystem {
   }
 
   private clearRenderedShell(): void {
+    this.viewportGestureCleanup?.();
+    this.viewportGestureCleanup = undefined;
     this.marqueeCleanup?.();
     this.marqueeCleanup = undefined;
     this.roofTween?.stop();
@@ -500,6 +516,7 @@ export class InteriorCutawaySystem {
     this.root?.removeAll(true);
     this.root?.destroy();
     this.root = undefined;
+    this.roomViewportLayer = undefined;
     this.occupantLayer = undefined;
     this.roof = undefined;
     this.roofTween = undefined;
@@ -510,6 +527,7 @@ export class InteriorCutawaySystem {
   }
 
   private rebuildShell(interior: InteriorDefinition, layout: CutawayLayout): void {
+    const previousLayout = this.currentLayout;
     this.currentLayout = layout;
     const root = this.scene.add.container(0, 0).setDepth(CUTAWAY_DEPTH).setScrollFactor(0);
     this.root = root;
@@ -531,6 +549,18 @@ export class InteriorCutawaySystem {
     const roomWidth = interior.width * this.roomCell;
     const roomHeight = interior.height * this.roomCell;
     const { x: roomX, y: roomY } = this.roomOrigin;
+    const viewportFrame = this.roomViewportFrame(layout);
+    const contentBounds = this.roomContentBounds(interior);
+    this.interiorViewport = previousLayout
+      ? clampInteriorViewport(this.interiorViewport, viewportFrame, contentBounds)
+      : createInteriorViewport(viewportFrame);
+    const roomViewportLayer = this.scene.add.container(0, 0);
+    this.roomViewportLayer = roomViewportLayer;
+    const roomMask = this.scene.add.graphics().fillStyle(0xffffff, 1).fillRect(
+      viewportFrame.x, viewportFrame.y, viewportFrame.width, viewportFrame.height,
+    ).setVisible(false);
+    roomViewportLayer.setMask(roomMask.createGeometryMask());
+    root.add([roomMask, roomViewportLayer]);
     const room = this.scene.add.graphics();
     const [floorA, floorB] = floorColors[interior.floor];
     room.fillStyle(wallColors[interior.wall], 1).fillRect(roomX - 7, roomY - 7, roomWidth + 14, roomHeight + 14);
@@ -542,7 +572,7 @@ export class InteriorCutawaySystem {
     }
     room.fillStyle(0x3b3430, 1).fillRect(roomX - 7, roomY - 7, roomWidth + 14, 7);
     room.lineStyle(2, 0x4d3a30, 1).strokeRect(roomX - 7, roomY - 7, roomWidth + 14, roomHeight + 14);
-    root.add(room);
+    roomViewportLayer.add(room);
     this.renderFurniture(interior, layout);
 
     const roof = this.scene.add.container(0, 0);
@@ -554,11 +584,13 @@ export class InteriorCutawaySystem {
     roofGraphics.fillStyle(roofLight, 1).fillRect(roomX - 8, roomY + 58, roomWidth + 16, 14);
     roofGraphics.fillStyle(0x5b3b2c, 1).fillRect(roomX + roomWidth / 2 - 10, roomY + roomHeight - 24, 20, 24);
     roof.add(roofGraphics);
-    root.add(roof);
+    roomViewportLayer.add(roof);
     this.roof = roof;
     this.roofTween = this.scene.tweens.add({
       targets: roof, y: roof.y - 20, alpha: 0, duration: 220, ease: 'Stepped',
     });
+    this.applyRoomViewport();
+    this.installViewportGestures(interior, layout, panel, backdrop);
   }
 
   private refreshLayout(): void {
@@ -598,6 +630,7 @@ export class InteriorCutawaySystem {
     this.currentDragMutation = undefined;
     this.roomCell = BASE_ROOM_CELL;
     this.currentLayout = undefined;
+    this.interiorViewport = createInteriorViewport({ x: 0, y: 0, width: 0, height: 0 });
     this.status = { statusId: 'ready' };
     this.undoStore.reset([]);
     this.templatePreview = undefined;
@@ -734,7 +767,7 @@ export class InteriorCutawaySystem {
     const root = this.root;
     const furnitureLayer = this.scene.add.container(0, 0);
     this.furnitureLayer = furnitureLayer;
-    root.add(furnitureLayer);
+    (this.roomViewportLayer ?? root).add(furnitureLayer);
     const placementPreview = this.scene.add.graphics();
     furnitureLayer.add(placementPreview);
 
@@ -805,7 +838,8 @@ export class InteriorCutawaySystem {
       });
       sprite.on('dragstart', (pointer: unknown) => {
         const screen = this.pointerScreenPoint(pointer);
-        dragGrabOffset = screen ? { x: screen.x - sprite.x, y: screen.y - sprite.y } : undefined;
+        const rendered = applyInteriorViewport(this.interiorViewport, { x: sprite.x, y: sprite.y });
+        dragGrabOffset = screen ? { x: screen.x - rendered.x, y: screen.y - rendered.y } : undefined;
       });
       sprite.on('drag', (pointer: unknown, dragX: number, dragY: number) => {
         const pointerPoint = this.pointerScreenPoint(pointer);
@@ -943,7 +977,10 @@ export class InteriorCutawaySystem {
       const capturePointerAnchor = (pointer: unknown) => {
         const screen = rootPointForPointer(pointer);
         if (!screen) return undefined;
-        lastPointerAnchor = { screen, room: this.roomPoint(screen.x, screen.y) };
+        lastPointerAnchor = {
+          screen: unapplyInteriorViewport(this.interiorViewport, screen),
+          room: this.roomPoint(screen.x, screen.y),
+        };
         return lastPointerAnchor;
       };
       const createGhosts = (x: number, y: number): Phaser.GameObjects.Image[] => prefab.items.map((part) => {
@@ -1048,7 +1085,11 @@ export class InteriorCutawaySystem {
   }
 
   private roomPoint(x: number, y: number): GridPoint {
-    return roomPointForScreen(this.roomOrigin, { x, y }, this.roomCell);
+    return roomPointForScreen(
+      this.roomOrigin,
+      unapplyInteriorViewport(this.interiorViewport, { x, y }),
+      this.roomCell,
+    );
   }
 
   private pointerScreenPoint(pointer: unknown): GridPoint | undefined {
@@ -1277,7 +1318,123 @@ export class InteriorCutawaySystem {
   }
 
   private syncRoomLabels(): void {
-    this.domOverlay.setRoomLabels([...this.furnitureDomLabels, ...this.occupantDomLabels]);
+    this.domOverlay.setRoomLabels([...this.furnitureDomLabels, ...this.occupantDomLabels].map((label) => ({
+      ...label,
+      ...applyInteriorViewport(this.interiorViewport, label),
+    })));
+  }
+
+  private roomViewportFrame(layout: CutawayLayout): InteriorViewportRect {
+    return {
+      x: layout.x + 12,
+      y: layout.y + ROOM_CONTENT_TOP,
+      width: layout.width - 24,
+      height: layout.height - ROOM_CONTENT_TOP - ROOM_CONTENT_BOTTOM,
+    };
+  }
+
+  private roomContentBounds(interior: InteriorDefinition): InteriorViewportRect {
+    return {
+      x: this.roomOrigin.x - 16,
+      y: this.roomOrigin.y - 12,
+      width: interior.width * this.roomCell + 32,
+      height: interior.height * this.roomCell + 24,
+    };
+  }
+
+  private applyRoomViewport(): void {
+    const layer = this.roomViewportLayer;
+    if (!layer) return;
+    const state = this.interiorViewport;
+    layer.setPosition(
+      state.anchorX * (1 - state.zoom) + state.panX,
+      state.anchorY * (1 - state.zoom) + state.panY,
+    ).setScale(state.zoom);
+    this.syncRoomLabels();
+  }
+
+  private installViewportGestures(
+    interior: InteriorDefinition,
+    layout: CutawayLayout,
+    panel: Phaser.GameObjects.Rectangle,
+    backdrop: Phaser.GameObjects.Rectangle,
+  ): void {
+    const input = this.scene.input as Phaser.Input.InputPlugin & {
+      on?: (event: string, handler: (...args: unknown[]) => void) => void;
+      off?: (event: string, handler: (...args: unknown[]) => void) => void;
+    };
+    if (!input.on || !input.off) return;
+    let drag: { pointerId: number; x: number; y: number; committed: boolean } | undefined;
+    const wheel = (pointer: unknown, _hits: unknown, _deltaX: number, deltaY: number): void => {
+      const point = this.pointerScreenPoint(pointer);
+      if (!point || !cutawayContainsPointer(this.currentLayout ?? layout, point) || deltaY === 0) return;
+      const frame = this.roomViewportFrame(this.currentLayout ?? layout);
+      if (point.y < frame.y || point.y > frame.y + frame.height) return;
+      this.interiorViewport = zoomInteriorViewportAt(
+        this.interiorViewport,
+        point,
+        this.interiorViewport.zoom * Math.exp(-deltaY * 0.0012),
+        frame,
+        this.roomContentBounds(interior),
+      );
+      (pointer as { event?: { preventDefault?: () => void } }).event?.preventDefault?.();
+      this.applyRoomViewport();
+    };
+    const down = (pointer: unknown, hitObjects: unknown): void => {
+      const value = pointer as Phaser.Input.Pointer & { button?: number; id?: number; pointerId?: number };
+      const point = this.pointerScreenPoint(pointer);
+      if (!point) return;
+      const hits = Array.isArray(hitObjects) ? hitObjects : [];
+      const overInteractive = hits.some((hit) => hit !== panel && hit !== backdrop);
+      if (!interiorPanEligible({
+        button: value.button ?? 0,
+        insideFrame: cutawayContainsPointer(this.currentLayout ?? layout, point),
+        overInteractive,
+        editMode: this.editMode,
+        zoom: this.interiorViewport.zoom,
+      })) return;
+      drag = {
+        pointerId: value.id ?? value.pointerId ?? 0,
+        x: point.x,
+        y: point.y,
+        committed: false,
+      };
+    };
+    const move = (pointer: unknown): void => {
+      if (!drag) return;
+      const value = pointer as Phaser.Input.Pointer & { id?: number; pointerId?: number };
+      if ((value.id ?? value.pointerId ?? 0) !== drag.pointerId) return;
+      const point = this.pointerScreenPoint(pointer);
+      if (!point) return;
+      const deltaX = point.x - drag.x;
+      const deltaY = point.y - drag.y;
+      if (!drag.committed && Math.hypot(deltaX, deltaY) < 6) return;
+      drag.committed = true;
+      this.interiorViewport = panInteriorViewport(
+        this.interiorViewport,
+        deltaX,
+        deltaY,
+        this.roomViewportFrame(this.currentLayout ?? layout),
+        this.roomContentBounds(interior),
+      );
+      drag.x = point.x;
+      drag.y = point.y;
+      (pointer as { event?: { preventDefault?: () => void } }).event?.preventDefault?.();
+      this.applyRoomViewport();
+    };
+    const up = (): void => { drag = undefined; };
+    input.on('wheel', wheel);
+    input.on('pointerdown', down);
+    input.on('pointermove', move);
+    input.on('pointerup', up);
+    input.on('pointercancel', up);
+    this.viewportGestureCleanup = () => {
+      input.off?.('wheel', wheel);
+      input.off?.('pointerdown', down);
+      input.off?.('pointermove', move);
+      input.off?.('pointerup', up);
+      input.off?.('pointercancel', up);
+    };
   }
 
   private resizeSelected(interior: InteriorDefinition, layout: CutawayLayout, direction: -1 | 1): void {

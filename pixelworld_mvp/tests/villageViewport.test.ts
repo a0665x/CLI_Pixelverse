@@ -5,6 +5,7 @@ import {
   clampZoomMultiplier,
   readVillageCamera,
   readVillageZoom,
+  shouldHandleVillageWheel,
   shouldStartVillagePan,
   villageViewportMetrics,
   writeVillageCamera,
@@ -17,6 +18,12 @@ describe('village viewport', () => {
     expect(shouldStartVillagePan({ button: 1, overControls: false, cutawayOpen: false })).toBe(false);
     expect(shouldStartVillagePan({ button: 0, overControls: true, cutawayOpen: false })).toBe(false);
     expect(shouldStartVillagePan({ button: 0, overControls: false, cutawayOpen: true })).toBe(false);
+  });
+
+  it('leaves wheel ownership to the interior while a cutaway is open', () => {
+    expect(shouldHandleVillageWheel({ cutawayOpen: false, deltaY: -120 })).toBe(true);
+    expect(shouldHandleVillageWheel({ cutawayOpen: true, deltaY: -120 })).toBe(false);
+    expect(shouldHandleVillageWheel({ cutawayOpen: false, deltaY: 0 })).toBe(false);
   });
 
   it('contains the entire 768x448 village at the exact available fractional scale', () => {
