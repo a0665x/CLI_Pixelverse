@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { FurnitureDefinition, InteriorDefinition } from '../src/world/types';
 import {
   commitPlacementCandidate,
+  fitBoundsDeltaToRoom,
   furniturePointFromRenderPoint,
   furnitureRenderGeometry,
   navigationCells,
@@ -22,6 +23,15 @@ const room: InteriorDefinition = {
 const sofa: FurnitureDefinition = {
   id: 'sofa', kind: 'sofa', point: { x: 1, y: 1 }, facing: 'up',
   supportedActions: [], icon: 'generic', scale: 1, rotation: 0,
+};
+
+const room18x12: InteriorDefinition = {
+  ...room, width: 18, height: 12,
+};
+
+const oneCellDesk: FurnitureDefinition = {
+  ...sofa, id: 'one-cell-desk', kind: 'desk', assetId: -1,
+  footprint: { width: 1, height: 1 }, rotation: 90,
 };
 
 describe('interior fine-grid placement', () => {
@@ -84,9 +94,28 @@ describe('interior fine-grid placement', () => {
     expect(bottom.bounds.y + bottom.bounds.height).toBeCloseTo(room.height);
   });
 
-  it('does not pull fully outside furniture into the room and still protects the door', () => {
-    expect(resolvePlacementCandidate(room, [], sofa, { x: -3, y: 2 }).diagnostic).toBe('outside-room');
+  it('pulls fully outside furniture to the closest edge and still protects the door', () => {
+    expect(resolvePlacementCandidate(room, [], sofa, { x: -3, y: 2 }).diagnostic).toBe('valid');
     expect(resolvePlacementCandidate(room, [], sofa, { x: 7, y: 9 }).diagnostic).toBe('blocks-door');
+  });
+
+  it.each([
+    [{ x: -40, y: 4 }, { x: 0, y: 4 }],
+    [{ x: 40, y: 4 }, { x: 17, y: 4 }],
+    [{ x: 4, y: -30 }, { x: 4, y: 0 }],
+    [{ x: 4, y: 30 }, { x: 4, y: 11 }],
+    [{ x: -40, y: -30 }, { x: 0, y: 0 }],
+  ])('fits a fully outside item at %j to the closest edge', (pointer, expected) => {
+    const candidate = resolvePlacementCandidate(room18x12, [], oneCellDesk, pointer);
+    expect(candidate.furniture.point).toEqual(expected);
+    expect(candidate.furniture.rotation).toBe(oneCellDesk.rotation);
+  });
+
+  it('returns one closest-edge delta for transformed opaque bounds', () => {
+    expect(fitBoundsDeltaToRoom(room18x12, { x: -42, y: 3, width: 2, height: 4 }))
+      .toEqual({ x: 42, y: 0 });
+    expect(fitBoundsDeltaToRoom(room18x12, { x: 40, y: 30, width: 2, height: 1 }))
+      .toEqual({ x: -24, y: -19 });
   });
 
   it('swaps footprint axes after a quarter turn', () => {
@@ -113,10 +142,10 @@ describe('interior fine-grid placement', () => {
     expect(source.visualOffset).toEqual({ x: -0.25, y: 0.125 });
   });
 
-  it('allows visual overlap while retaining room and door rejection', () => {
+  it('allows visual overlap while retaining edge fitting and door rejection', () => {
     const overlapping = resolvePlacementCandidate(room, [sofa], { ...sofa, id: 'chair', kind: 'chair' }, sofa.point);
     expect(overlapping.diagnostic).toBe('valid');
-    expect(resolvePlacementCandidate(room, [], sofa, { x: -3, y: 1 }).diagnostic).toBe('outside-room');
+    expect(resolvePlacementCandidate(room, [], sofa, { x: -3, y: 1 }).bounds.x).toBeCloseTo(0);
     expect(resolvePlacementCandidate(room, [], sofa, { x: 7, y: 8 }).diagnostic).toBe('blocks-door');
   });
 

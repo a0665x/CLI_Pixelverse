@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { FurnitureDefinition, InteriorDefinition } from '../src/world/types';
 import { INTERIOR_DEFINITIONS } from '../src/world/interiorDefinitions';
 import { officeLayoutIssues } from '../src/rendering/prefabGeometry';
+import { transformedAlphaBounds } from '../src/rendering/interiorPlacement';
 import {
   createFurniturePrefab,
   duplicateSelection,
@@ -106,7 +107,7 @@ describe('interior marquee selection and prefabs', () => {
     expect(expandSelection(grouped, ['group-a', 'single'])).toEqual(['group-a', 'group-b', 'single']);
   });
 
-  it('moves a prefab with one shared snapped delta and rejects the whole move if one member is invalid', () => {
+  it('moves a prefab with one shared snapped delta and fits the whole move at an edge', () => {
     const grouped = [
       { ...furniture('group-a', 98, 3, 3), prefabInstanceId: 'instance-one', interactionPoint: { x: 3, y: 4 } },
       { ...furniture('group-b', 129, 5.5, 3.25), prefabInstanceId: 'instance-one' },
@@ -118,11 +119,12 @@ describe('interior marquee selection and prefabs', () => {
     expect(moved.layout[0]!.interactionPoint).toEqual({ x: 4.25, y: 3.5 });
     expect(moved.layout[1]!.point.x - moved.layout[0]!.point.x).toBe(2.5);
 
-    const rejected = moveSelectionAtomically(room, grouped, ['group-b'], { x: 20, y: 0 });
-    expect(rejected).toEqual({ accepted: false, layout: grouped });
+    const edgeFit = moveSelectionAtomically(room, grouped, ['group-b'], { x: 20, y: 0 });
+    expect(edgeFit.accepted).toBe(true);
+    expect(edgeFit.layout[1]!.point.x - edgeFit.layout[0]!.point.x).toBe(2.5);
   });
 
-  it('returns an invalid proposed group layout for drag preview without mutating the committed layout', () => {
+  it('returns a fitted proposed group layout for drag preview without mutating the committed layout', () => {
     const grouped = [
       { ...furniture('preview-a', 98, 3, 3), prefabInstanceId: 'preview-instance', interactionPoint: { x: 3, y: 4 } },
       { ...furniture('preview-b', 129, 5.5, 3.25), prefabInstanceId: 'preview-instance' },
@@ -131,11 +133,42 @@ describe('interior marquee selection and prefabs', () => {
 
     const preview = previewSelectionMove(room, grouped, ['preview-a'], { x: 20, y: 0 });
 
-    expect(preview.accepted).toBe(false);
-    expect(preview.layout.map(({ point }) => point)).toEqual([{ x: 23, y: 3 }, { x: 25.5, y: 3.25 }]);
-    expect(preview.layout[0]?.interactionPoint).toEqual({ x: 23, y: 4 });
+    expect(preview.accepted).toBe(true);
+    expect(preview.layout[1]!.point.x - preview.layout[0]!.point.x).toBe(2.5);
+    expect(preview.layout[0]!.interactionPoint!.x - preview.layout[0]!.point.x).toBe(0);
+    expect(preview.layout[0]!.interactionPoint!.y - preview.layout[0]!.point.y).toBe(1);
+    expect(Math.max(...preview.layout.map((item) => transformedAlphaBounds(item).x + transformedAlphaBounds(item).width)))
+      .toBeCloseTo(room.width);
     expect(preview.layout[1]!.point.x - preview.layout[0]!.point.x).toBe(2.5);
     expect(grouped).toEqual(before);
+  });
+
+  it('fits a group with one shared delta and preserves geometry, rotations, and support identity', () => {
+    const grouped = [
+      {
+        ...furniture('group-desk', -1, 3, 3), kind: 'desk' as const, footprint: { width: 1, height: 1 },
+        prefabInstanceId: 'edge-group', rotation: 90 as const,
+      },
+      {
+        ...furniture('group-display', -1, 5, 3), kind: 'display' as const, footprint: { width: 1, height: 1 },
+        prefabInstanceId: 'edge-group', rotation: 270 as const, supportedByIds: ['group-desk'],
+      },
+    ];
+    const preview = previewSelectionMove({ ...room, width: 18, height: 12 }, grouped, ['group-desk'], { x: -30, y: 0 });
+    const moved = preview.layout.filter((item) => ['group-desk', 'group-display'].includes(item.id));
+
+    expect(moved[1]!.point.x - moved[0]!.point.x).toBe(grouped[1]!.point.x - grouped[0]!.point.x);
+    expect(moved.map(({ rotation }) => rotation)).toEqual(grouped.map(({ rotation }) => rotation));
+    expect(moved[1]!.supportedByIds).toEqual(['group-desk']);
+  });
+
+  it('uses the latest preview as the basis for consecutive edge moves', () => {
+    const item = { ...furniture('edge-item', -1, 3, 3), footprint: { width: 1, height: 1 } };
+    const first = previewSelectionMove(room, [item], [item.id], { x: -30, y: 0 });
+    const second = previewSelectionMove(room, first.layout, [item.id], { x: 2, y: 0 });
+
+    expect(first.layout[0]!.point).toEqual({ x: 0, y: 3 });
+    expect(second.layout[0]!.point).toEqual({ x: 2, y: 3 });
   });
 
   it('rejects a group move that newly strands an unselected Hook interaction anchor', () => {

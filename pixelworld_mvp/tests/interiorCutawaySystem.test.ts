@@ -110,7 +110,13 @@ const fakeScene = () => {
         container: vi.fn(() => make()), rectangle: vi.fn(() => make()), text: vi.fn((_x, _y, text: string) => { const object = make(); object.text = text; return object; }),
         image: vi.fn((_x, _y, texture: string, frame?: number) => { const object = make(texture); object.frame = frame ?? 0; return object; }), graphics: vi.fn(() => make()), zone: vi.fn(() => make()),
       },
-      tweens: { add: vi.fn(() => ({ stop: vi.fn() })), killTweensOf: vi.fn() },
+      tweens: {
+        add: vi.fn((config: { onComplete?: () => void }) => {
+          config.onComplete?.();
+          return { stop: vi.fn() };
+        }),
+        killTweensOf: vi.fn(),
+      },
       input: {
         keyboard: { on: vi.fn(), off: vi.fn() }, setDraggable: vi.fn(),
         on: vi.fn((event: string, handler: (...args: unknown[]) => void) => {
@@ -1049,6 +1055,9 @@ describe('InteriorCutawaySystem', () => {
 
     sprite.emit('dragend');
 
+    expect(fake.scene.tweens.add).toHaveBeenLastCalledWith(expect.objectContaining({
+      targets: expect.arrayContaining([sprite]), duration: 140,
+    }));
     expect(sprite.destroyed).toBe(true);
     expect(room.furniture).toEqual([moving, obstacle]);
     expect(internal.undoStore.canUndo).toBe(false);
@@ -1058,6 +1067,66 @@ describe('InteriorCutawaySystem', () => {
     const restored = fake.objects.find(({ texture, interactive, destroyed, depth }) =>
       texture === 'modern-office-v1.2-single-98' && interactive && !destroyed && depth > 0)!;
     expect({ x: restored.x, y: restored.y }).toEqual(origin);
+  });
+
+  it('does not persist or create undo history while previewing a furniture drag', () => {
+    const storage = { getItem: vi.fn(() => null), setItem: vi.fn() };
+    vi.stubGlobal('localStorage', storage);
+    try {
+      const fake = fakeScene();
+      const cutaway = new InteriorCutawaySystem(fake.scene as never, WORLD_DEFINITION, () => ({ width: 1_280, height: 720 }));
+      const capture = captureCutawayHandlers(cutaway);
+      cutaway.open('rest-cabin');
+      capture.handlers().toggleEdit();
+      const internal = cutaway as unknown as {
+        activeInterior: InteriorDefinition; undoStore: { canUndo: boolean }; roomCell: number;
+      };
+      const originalRotations = internal.activeInterior.furniture.map(({ rotation }) => rotation);
+      const sprite = fake.objects.find(({ interactive, destroyed, depth }) => interactive && !destroyed && depth > 0)!;
+
+      sprite.emit('dragstart', { ...pointerAt(sprite.x, sprite.y), id: 7 });
+      sprite.emit('drag', { ...pointerAt(sprite.x - internal.roomCell * 50, sprite.y), id: 7 }, -999, sprite.y);
+
+      expect(storage.setItem).not.toHaveBeenCalled();
+      expect(internal.undoStore.canUndo).toBe(false);
+      expect(internal.activeInterior.furniture.map(({ rotation }) => rotation)).toEqual(originalRotations);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('cancels captured furniture dragging without committing and lets furniture win over room pan', () => {
+    const fake = fakeScene();
+    const cutaway = new InteriorCutawaySystem(fake.scene as never, WORLD_DEFINITION, () => ({ width: 1_280, height: 720 }));
+    cutaway.open('rest-cabin');
+    const internal = cutaway as unknown as {
+      editMode: boolean; activeInterior: InteriorDefinition; roomCell: number;
+      interiorViewport: { zoom: number; panX: number; panY: number };
+      currentDragMutation?: { accepted: boolean };
+      furnitureDragCapture?: unknown;
+      undoStore: { canUndo: boolean };
+      renderFurniture(interior: InteriorDefinition, layout: ReturnType<typeof cutawayLayoutForViewport>): void;
+    };
+    internal.editMode = true;
+    internal.interiorViewport.zoom = 2;
+    internal.renderFurniture(internal.activeInterior, cutawayLayoutForViewport(1_280, 720));
+    const sprite = fake.objects.find(({ interactive, destroyed, depth }) => interactive && !destroyed && depth > 0)!;
+    const before = structuredClone(internal.activeInterior.furniture);
+    const panBefore = { x: internal.interiorViewport.panX, y: internal.interiorViewport.panY };
+    const pointer = { ...viewportPointerAt(sprite.x, sprite.y), id: 23 };
+
+    fake.emitInput('pointerdown', pointer, [sprite]);
+    sprite.emit('pointerdown', pointer);
+    sprite.emit('dragstart', pointer);
+    sprite.emit('drag', { ...viewportPointerAt(sprite.x + internal.roomCell, sprite.y), id: 23 }, sprite.x + internal.roomCell, sprite.y);
+    fake.emitInput('pointermove', { ...viewportPointerAt(sprite.x + 30, sprite.y), id: 23 });
+    fake.emitInput('pointercancel', pointer);
+
+    expect(internal.interiorViewport).toMatchObject({ panX: panBefore.x, panY: panBefore.y });
+    expect(internal.furnitureDragCapture).toBeUndefined();
+    expect(internal.currentDragMutation).toBeUndefined();
+    expect(internal.activeInterior.furniture).toEqual(before);
+    expect(internal.undoStore.canUndo).toBe(false);
   });
 
   it('refreshes an open cutaway for a changed viewport without discarding its draft', () => {

@@ -105,6 +105,7 @@ import {
   type InteriorEditorLayout,
   type InteriorEditorLayoutOptions,
 } from './interiorEditorLayout';
+import { dragPresentation } from './interiorDragPresentation';
 
 const BASE_ROOM_CELL = 22;
 const CUTAWAY_DEPTH = 100_000;
@@ -331,6 +332,25 @@ export interface InteriorCutawaySystemOptions {
   onOpenStateChange?: (open: boolean, buildingId?: string) => void;
 }
 
+interface FurnitureDragCapture {
+  pointerId: number;
+  furnitureId: string;
+  selectedIds: string[];
+  startLayout: FurnitureDefinition[];
+  grabOffset: GridPoint;
+}
+
+const pointerIdOf = (pointer: unknown): number => {
+  const value = pointer as { id?: number; pointerId?: number } | undefined;
+  return value?.id ?? value?.pointerId ?? 0;
+};
+
+const reducedMotionPreferred = (): boolean => (
+  typeof window !== 'undefined'
+  && typeof window.matchMedia === 'function'
+  && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+);
+
 export class InteriorCutawaySystem {
   private root: Phaser.GameObjects.Container | undefined;
   private roomViewportLayer: Phaser.GameObjects.Container | undefined;
@@ -360,6 +380,8 @@ export class InteriorCutawaySystem {
   private currentLayout: CutawayLayout | undefined;
   private currentDragCandidate: PlacementCandidate | undefined;
   private currentDragMutation: SelectionMutationResult | undefined;
+  private furnitureDragCapture: FurnitureDragCapture | undefined;
+  private furnitureDragCleanup: (() => void) | undefined;
   private catalogCategory: ModernOfficeCategory = 'workstations';
   private catalogPageIndex = 0;
   private readonly domOverlay: InteriorCutawayDomOverlay;
@@ -578,6 +600,11 @@ export class InteriorCutawaySystem {
   }
 
   private clearRenderedShell(): void {
+    this.furnitureDragCleanup?.();
+    this.furnitureDragCleanup = undefined;
+    this.furnitureDragCapture = undefined;
+    this.currentDragCandidate = undefined;
+    this.currentDragMutation = undefined;
     this.viewportGestureCleanup?.();
     this.viewportGestureCleanup = undefined;
     this.marqueeCleanup?.();
@@ -822,6 +849,9 @@ export class InteriorCutawaySystem {
 
   private renderFurniture(interior: InteriorDefinition, layout: CutawayLayout): void {
     layout = this.currentLayout ?? layout;
+    this.furnitureDragCleanup?.();
+    this.furnitureDragCleanup = undefined;
+    this.furnitureDragCapture = undefined;
     this.currentDragCandidate = undefined;
     this.currentDragMutation = undefined;
     this.marqueeCleanup?.();
@@ -883,6 +913,65 @@ export class InteriorCutawaySystem {
     });
     const furnitureSprites = new Set<Phaser.GameObjects.Image>();
     const furnitureSpritesById = new Map<string, Phaser.GameObjects.Image>();
+    const furnitureSpriteScalesById = new Map<string, number>();
+    const setCanvasDragState = (active: boolean, tone: 'neutral' | 'valid' | 'invalid' = 'neutral'): void => {
+      const canvas = this.scene.game?.canvas;
+      if (!canvas?.dataset) return;
+      if (active) {
+        canvas.dataset.interiorDragging = 'true';
+        canvas.dataset.interiorDragTone = tone;
+      } else {
+        delete canvas.dataset.interiorDragging;
+        delete canvas.dataset.interiorDragTone;
+      }
+    };
+    const applyDragPresentation = (
+      ids: readonly string[],
+      diagnostic: PlacementCandidate['diagnostic'],
+      phase: Parameters<typeof dragPresentation>[1],
+    ): void => {
+      const presentation = dragPresentation(diagnostic, phase, reducedMotionPreferred());
+      for (const id of ids) {
+        const sprite = furnitureSpritesById.get(id);
+        const scale = furnitureSpriteScalesById.get(id);
+        if (sprite && scale !== undefined) sprite.setScale(scale * presentation.scale).setAlpha(presentation.alpha);
+      }
+      setCanvasDragState(phase !== 'idle', presentation.tone);
+    };
+    const clearFurnitureDrag = (): void => {
+      const capture = this.furnitureDragCapture;
+      if (capture) {
+        for (const item of capture.startLayout.filter(({ id }) => capture.selectedIds.includes(id))) {
+          const point = furnitureRenderScreenPoint(this.roomOrigin, item, this.roomCell);
+          furnitureSpritesById.get(item.id)?.setPosition(point.x, point.y);
+        }
+        applyDragPresentation(capture.selectedIds, 'valid', 'idle');
+      }
+      placementPreview.clear();
+      this.furnitureDragCapture = undefined;
+      this.currentDragCandidate = undefined;
+      this.currentDragMutation = undefined;
+      setCanvasDragState(false);
+    };
+    const input = this.scene.input as Phaser.Input.InputPlugin & {
+      on?: (event: string, handler: (...args: unknown[]) => void) => void;
+      off?: (event: string, handler: (...args: unknown[]) => void) => void;
+    };
+    const cancelPointer = (pointer: unknown): void => {
+      if (!this.furnitureDragCapture || pointerIdOf(pointer) !== this.furnitureDragCapture.pointerId) return;
+      clearFurnitureDrag();
+    };
+    const releasePointer = (pointer: unknown): void => {
+      if (!this.furnitureDragCapture || this.currentDragMutation) return;
+      if (pointerIdOf(pointer) === this.furnitureDragCapture.pointerId) clearFurnitureDrag();
+    };
+    input.on?.('pointercancel', cancelPointer);
+    input.on?.('pointerup', releasePointer);
+    this.furnitureDragCleanup = () => {
+      input.off?.('pointercancel', cancelPointer);
+      input.off?.('pointerup', releasePointer);
+      clearFurnitureDrag();
+    };
     for (const furniture of sortedFurniture) {
       const geometry = furnitureRenderScreenGeometry(this.roomOrigin, furniture, this.roomCell);
       const point = geometry.point;
@@ -890,47 +979,84 @@ export class InteriorCutawaySystem {
       const assetKey = catalog?.key ?? modernOfficeAsset(modernOfficeKindForFurniture(furniture.kind)).key;
       const originX = catalog ? (catalog.opaqueBounds.x + catalog.opaqueBounds.width / 2) / 32 : 0.5;
       const originY = catalog ? (catalog.opaqueBounds.y + catalog.opaqueBounds.height / 2) / 48 : 0.5;
+      const spriteScale = normalizeFurnitureScale(furniture.scale) * this.roomCell / BASE_ROOM_CELL;
       const sprite = this.scene.add.image(point.x, point.y, assetKey).setPosition(point.x, point.y).setOrigin(originX, originY)
-        .setScale(normalizeFurnitureScale(furniture.scale) * this.roomCell / BASE_ROOM_CELL)
+        .setScale(spriteScale)
         .setAngle(furniture.rotation ?? 0).setDepth(interiorFurnitureRenderDepth(furniture, geometry.baselineY));
       furnitureLayer.add(sprite);
       if (!this.editMode) continue;
       sprite.setInteractive({ useHandCursor: true, draggable: true });
       furnitureSprites.add(sprite);
       furnitureSpritesById.set(furniture.id, sprite);
+      furnitureSpriteScalesById.set(furniture.id, spriteScale);
       this.scene.input.setDraggable(sprite);
-      let dragGrabOffset: GridPoint | undefined;
       sprite.on('pointerdown', (pointer: unknown) => {
         this.selectedFurnitureId = furniture.id;
         this.selectedFurnitureIds.clear();
-        expandSelection(interior.furniture, [furniture.id]).forEach((id) => this.selectedFurnitureIds.add(id));
+        const selectedIds = expandSelection(interior.furniture, [furniture.id]);
+        selectedIds.forEach((id) => this.selectedFurnitureIds.add(id));
+        const screen = this.pointerScreenPoint(pointer);
+        const rendered = applyInteriorViewport(this.interiorViewport, { x: sprite.x, y: sprite.y });
+        this.furnitureDragCapture = {
+          pointerId: pointerIdOf(pointer),
+          furnitureId: furniture.id,
+          selectedIds,
+          startLayout: cloneFurnitureLayout(interior.furniture),
+          grabOffset: screen ? { x: screen.x - rendered.x, y: screen.y - rendered.y } : { x: 0, y: 0 },
+        };
+        applyDragPresentation(selectedIds, 'valid', 'lifting');
         this.syncOverlay();
         if ((pointer as { event?: { detail?: number } }).event?.detail === 2) {
           this.resizeSelected(interior, layout, 1);
         }
       });
       sprite.on('dragstart', (pointer: unknown) => {
+        const selectedIds = expandSelection(interior.furniture, [furniture.id]);
         const screen = this.pointerScreenPoint(pointer);
         const rendered = applyInteriorViewport(this.interiorViewport, { x: sprite.x, y: sprite.y });
-        dragGrabOffset = screen ? { x: screen.x - rendered.x, y: screen.y - rendered.y } : undefined;
+        const grabOffset = screen ? { x: screen.x - rendered.x, y: screen.y - rendered.y } : { x: 0, y: 0 };
+        const existing = this.furnitureDragCapture;
+        if (!existing || existing.furnitureId !== furniture.id || existing.pointerId !== pointerIdOf(pointer)
+          || Math.abs(existing.grabOffset.x - grabOffset.x) > 0.001
+          || Math.abs(existing.grabOffset.y - grabOffset.y) > 0.001) {
+          this.furnitureDragCapture = {
+            pointerId: pointerIdOf(pointer), furnitureId: furniture.id, selectedIds,
+            startLayout: cloneFurnitureLayout(interior.furniture),
+            grabOffset,
+          };
+        }
+        if (this.furnitureDragCapture) {
+          applyDragPresentation(this.furnitureDragCapture.selectedIds, 'valid', 'lifting');
+        }
       });
       sprite.on('drag', (pointer: unknown, dragX: number, dragY: number) => {
+        if (!this.furnitureDragCapture) {
+          this.furnitureDragCapture = {
+            pointerId: pointerIdOf(pointer), furnitureId: furniture.id,
+            selectedIds: expandSelection(interior.furniture, [furniture.id]),
+            startLayout: cloneFurnitureLayout(interior.furniture), grabOffset: { x: 0, y: 0 },
+          };
+        }
+        const capture = this.furnitureDragCapture;
+        if (!capture || capture.furnitureId !== furniture.id || pointerIdOf(pointer) !== capture.pointerId) return;
+        const source = capture.startLayout.find(({ id }) => id === furniture.id);
+        if (!source) return;
         const pointerPoint = this.pointerScreenPoint(pointer);
         const screen = pointerPoint
           ? {
-              x: pointerPoint.x - (dragGrabOffset?.x ?? 0),
-              y: pointerPoint.y - (dragGrabOffset?.y ?? 0),
+              x: pointerPoint.x - capture.grabOffset.x,
+              y: pointerPoint.y - capture.grabOffset.y,
             }
           : { x: dragX, y: dragY };
-        const requested = furniturePointFromRenderPoint(furniture, this.roomPoint(screen.x, screen.y));
+        const requested = furniturePointFromRenderPoint(source, this.roomPoint(screen.x, screen.y));
         this.currentDragCandidate = resolvePlacementCandidate(
-          interior, interior.furniture, furniture, requested, furniture.id,
+          interior, capture.startLayout, source, requested, furniture.id,
         );
-        this.currentDragMutation = previewSelectionMove(interior, interior.furniture, [furniture.id], {
-          x: requested.x - furniture.point.x,
-          y: requested.y - furniture.point.y,
+        this.currentDragMutation = previewSelectionMove(interior, capture.startLayout, capture.selectedIds, {
+          x: requested.x - source.point.x,
+          y: requested.y - source.point.y,
         });
-        const selected = new Set(expandSelection(interior.furniture, [furniture.id]));
+        const selected = new Set(capture.selectedIds);
         const preview = this.currentDragMutation.layout.filter(({ id }) => selected.has(id));
         const draggedPreview = preview.find(({ id }) => id === furniture.id);
         if (draggedPreview) this.currentDragCandidate = { ...this.currentDragCandidate, furniture: draggedPreview };
@@ -938,21 +1064,53 @@ export class InteriorCutawaySystem {
           const point = furnitureRenderScreenPoint(this.roomOrigin, item, this.roomCell);
           furnitureSpritesById.get(item.id)?.setPosition(point.x, point.y);
         });
+        const diagnostic = this.currentDragMutation.accepted ? 'valid'
+          : this.currentDragCandidate.diagnostic === 'valid' ? 'overlap' : this.currentDragCandidate.diagnostic;
+        applyDragPresentation(capture.selectedIds, diagnostic, 'dragging');
         drawSelectionPreview(preview, this.currentDragMutation.accepted);
       });
       sprite.on('dragend', () => {
+        const capture = this.furnitureDragCapture;
+        if (!capture || capture.furnitureId !== furniture.id) return;
         const mutation = this.currentDragMutation;
         const accepted = mutation?.accepted === true;
         const diagnostic = !accepted && this.currentDragCandidate?.diagnostic === 'valid'
           ? 'overlap'
           : this.currentDragCandidate?.diagnostic ?? 'outside-room';
+        applyDragPresentation(capture.selectedIds, diagnostic, accepted ? 'settling' : 'returning');
         if (mutation && accepted) this.commitFurnitureMutation(interior, mutation.layout);
         if (accepted) this.setStatus('moveApplied');
         else this.setStatus('placementRejected', { diagnostic });
-        this.currentDragMutation = undefined;
-        this.currentDragCandidate = undefined;
-        dragGrabOffset = undefined;
-        this.renderFurniture(interior, layout);
+        const finish = (): void => {
+          if (this.furnitureDragCapture !== capture) return;
+          this.furnitureDragCapture = undefined;
+          this.currentDragMutation = undefined;
+          this.currentDragCandidate = undefined;
+          setCanvasDragState(false);
+          this.renderFurniture(interior, layout);
+        };
+        const presentation = dragPresentation(diagnostic, accepted ? 'settling' : 'returning', reducedMotionPreferred());
+        const returns = capture.selectedIds.flatMap((id) => {
+          const selectedSprite = furnitureSpritesById.get(id);
+          const item = capture.startLayout.find((candidate) => candidate.id === id);
+          return selectedSprite && item ? [{
+            sprite: selectedSprite,
+            point: furnitureRenderScreenPoint(this.roomOrigin, item, this.roomCell),
+          }] : [];
+        });
+        if (!accepted && returns.length > 0 && presentation.durationMs > 0) {
+          this.scene.tweens.add({
+            targets: returns.map(({ sprite: target }) => target),
+            x: (_target: unknown, _key: string, _value: number, index: number) => returns[index]!.point.x,
+            y: (_target: unknown, _key: string, _value: number, index: number) => returns[index]!.point.y,
+            alpha: 1,
+            duration: presentation.durationMs,
+            ease: 'Quad.easeOut',
+            onComplete: finish,
+          });
+          return;
+        }
+        finish();
       });
     }
 

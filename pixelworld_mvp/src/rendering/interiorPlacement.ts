@@ -250,13 +250,25 @@ export function fitFurniturePointToRoom(
   point: GridPoint,
 ): GridPoint {
   const bounds = transformedAlphaBounds({ ...furniture, point });
-  if (bounds.width > room.width || bounds.height > room.height) return { ...point };
-  const intersectsRoom = bounds.x < room.width && bounds.x + bounds.width > 0
-    && bounds.y < room.height && bounds.y + bounds.height > 0;
-  if (!intersectsRoom) return { ...point };
+  const delta = fitBoundsDeltaToRoom(room, bounds);
   return {
-    x: point.x + Math.max(0, -bounds.x) - Math.max(0, bounds.x + bounds.width - room.width),
-    y: point.y + Math.max(0, -bounds.y) - Math.max(0, bounds.y + bounds.height - room.height),
+    x: point.x + delta.x,
+    y: point.y + delta.y,
+  };
+}
+
+export function fitBoundsDeltaToRoom(
+  room: Pick<InteriorDefinition, 'width' | 'height'>,
+  bounds: FurnitureBounds,
+): GridPoint {
+  if (bounds.width > room.width || bounds.height > room.height) return { x: 0, y: 0 };
+  const minimumX = -bounds.x;
+  const maximumX = room.width - (bounds.x + bounds.width);
+  const minimumY = -bounds.y;
+  const maximumY = room.height - (bounds.y + bounds.height);
+  return {
+    x: minimumX > 0 ? minimumX : maximumX < 0 ? maximumX : 0,
+    y: minimumY > 0 ? minimumY : maximumY < 0 ? maximumY : 0,
   };
 }
 

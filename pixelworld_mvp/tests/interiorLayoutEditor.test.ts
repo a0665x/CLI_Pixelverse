@@ -20,6 +20,7 @@ import {
   FURNITURE_SCALES,
 } from '../src/rendering/interiorLayoutEditor';
 import { modernOfficeKindForFurniture } from '../src/rendering/InteriorCutawaySystem';
+import { transformedAlphaBounds } from '../src/rendering/interiorPlacement';
 import { officeLayoutIssues } from '../src/rendering/prefabGeometry';
 import { INTERIOR_DEFINITIONS, INTERIOR_LAYOUT_REVISION } from '../src/world/interiorDefinitions';
 import type { FurnitureDefinition } from '../src/world/types';
@@ -32,7 +33,8 @@ describe('interior furniture editor model', () => {
     const layout = normalizedRoomLayout();
     expect(moveFurniture(room, layout, 'rest-sofa-a', { x: 6, y: 1 }).find(({ id }) => id === 'rest-sofa-a')?.point)
       .toEqual({ x: 6, y: 1 });
-    expect(moveFurniture(room, layout, 'rest-sofa-a', { x: -3, y: 2 })).toEqual(layout);
+    const edgeFitted = moveFurniture(room, layout, 'rest-sofa-a', { x: -3, y: 2 });
+    expect(transformedAlphaBounds(edgeFitted.find(({ id }) => id === 'rest-sofa-a')!).x).toBeCloseTo(0);
 
     const moved = moveFurniture(room, layout, 'rest-sofa-a', { x: 3, y: 4 });
     expect(moved.find(({ id }) => id === 'rest-sofa-a')?.point).toEqual({ x: 3, y: 4 });

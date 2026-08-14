@@ -8,6 +8,7 @@ import type {
 } from '../world/types';
 import {
   diagnoseFinePlacement,
+  fitBoundsDeltaToRoom,
   furnitureBlocksNavigation,
   furnitureWithRotation,
   rotateGridPoint,
@@ -92,14 +93,7 @@ const fitSelectionToRoom = (
 ): FurnitureDefinition[] => {
   if (items.length === 0) return [];
   const bounds = selectionBounds(items);
-  if (bounds.width > room.width || bounds.height > room.height) return items.map(cloneFurniture);
-  const intersectsRoom = bounds.x < room.width && bounds.x + bounds.width > 0
-    && bounds.y < room.height && bounds.y + bounds.height > 0;
-  if (!intersectsRoom) return items.map(cloneFurniture);
-  const delta = {
-    x: Math.max(0, -bounds.x) - Math.max(0, bounds.x + bounds.width - room.width),
-    y: Math.max(0, -bounds.y) - Math.max(0, bounds.y + bounds.height - room.height),
-  };
+  const delta = fitBoundsDeltaToRoom(room, bounds);
   return items.map((item) => translateFurniture(item, delta));
 };
 
