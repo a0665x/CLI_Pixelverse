@@ -71,6 +71,46 @@ test('bridge publishes before readiness and replays the latest locale and snapsh
   ]);
 });
 
+test('new iframe documents reset stale cutaway visibility before replay without resetting on ready', () => {
+  const events = [];
+  const contentWindow = {
+    postMessage: (message) => events.push(`publish:${message.type}`),
+  };
+  const bridge = pixelworldEmbed.createPixelworldBridge({
+    frame: { contentWindow },
+    origin: 'http://localhost',
+    now: () => 91,
+    onCutawayStateChange: (open) => events.push(`cutaway:${open}`),
+  });
+
+  bridge.setLocale('ja-JP', 40);
+  bridge.setSnapshot({ server_time_ms: 44, agents: [] }, 44);
+  bridge.handleMessage({
+    data: { type: 'pixelverse.cutaway.state', open: true },
+    origin: 'http://localhost',
+    source: contentWindow,
+  });
+  events.length = 0;
+
+  assert.equal(bridge.handleLoad(), true);
+  assert.deepEqual(events, [
+    'cutaway:false',
+    'publish:pixelverse.locale.update',
+    'publish:pixelverse.world.snapshot',
+  ]);
+
+  events.length = 0;
+  assert.equal(bridge.handleMessage({
+    data: { type: 'pixelverse.world.ready' },
+    origin: 'http://localhost',
+    source: contentWindow,
+  }), true);
+  assert.deepEqual(events, [
+    'publish:pixelverse.locale.update',
+    'publish:pixelverse.world.snapshot',
+  ]);
+});
+
 test('bridge ignores readiness messages from the wrong origin or frame', () => {
   assert.equal(typeof pixelworldEmbed.createPixelworldBridge, 'function');
   const sent = [];
@@ -118,6 +158,11 @@ test('bridge accepts cutaway visibility only from its own Pixelworld frame', () 
     data: { type: 'pixelverse.cutaway.state', open: true },
     origin: 'https://example.test',
     source: contentWindow,
+  }), false);
+  assert.equal(bridge.handleMessage({
+    data: { type: 'pixelverse.cutaway.state', open: true },
+    origin: 'http://localhost',
+    source: {},
   }), false);
   assert.deepEqual(states, [true, false]);
 });

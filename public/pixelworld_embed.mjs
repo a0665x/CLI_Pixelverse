@@ -60,6 +60,7 @@ export function createPixelworldBridge({
       return publishPixelworldSnapshot(frame, snapshot, sequence, origin);
     },
     handleLoad() {
+      onCutawayStateChange(false);
       return replay();
     },
     handleMessage(event) {
