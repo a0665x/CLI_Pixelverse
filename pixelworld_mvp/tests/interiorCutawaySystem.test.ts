@@ -1088,13 +1088,18 @@ describe('InteriorCutawaySystem', () => {
       capture.handlers().toggleEdit();
       const internal = cutaway as unknown as {
         activeInterior: InteriorDefinition; undoStore: { canUndo: boolean }; roomCell: number;
+        currentDragMutation?: { accepted: boolean };
       };
       const originalRotations = internal.activeInterior.furniture.map(({ rotation }) => rotation);
       const sprite = fake.objects.find(({ interactive, destroyed, depth }) => interactive && !destroyed && depth > 0)!;
+      const owner = { ...pointerAt(sprite.x, sprite.y), id: 7 };
+      const outside = { ...pointerAt(sprite.x - internal.roomCell * 50, sprite.y), id: 7 };
 
-      sprite.emit('dragstart', { ...pointerAt(sprite.x, sprite.y), id: 7 });
-      sprite.emit('drag', { ...pointerAt(sprite.x - internal.roomCell * 50, sprite.y), id: 7 }, -999, sprite.y);
+      sprite.emit('pointerdown', owner);
+      sprite.emit('dragstart', owner);
+      sprite.emit('drag', outside, -999, sprite.y);
 
+      expect(internal.currentDragMutation).toBeDefined();
       expect(storage.setItem).not.toHaveBeenCalled();
       expect(internal.undoStore.canUndo).toBe(false);
       expect(internal.activeInterior.furniture.map(({ rotation }) => rotation)).toEqual(originalRotations);
