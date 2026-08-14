@@ -942,9 +942,12 @@ describe('InteriorCutawaySystem', () => {
     const sprite = fake.objects.find(({ texture, interactive, destroyed, depth }) =>
       texture === 'modern-office-v1.2-single-98' && interactive && !destroyed && depth > 0)!;
 
-    sprite.emit('drag', undefined, sprite.x, sprite.y);
+    const pointer = pointerAt(sprite.x, sprite.y);
+    sprite.emit('pointerdown', pointer);
+    sprite.emit('dragstart', pointer);
+    sprite.emit('drag', pointer, sprite.x, sprite.y);
     expect(internal.currentDragCandidate?.furniture.point).toEqual(furniture.point);
-    sprite.emit('dragend');
+    sprite.emit('dragend', pointer);
 
     expect(room.furniture.find(({ id }) => id === furniture.id)?.point).toEqual(furniture.point);
   });
@@ -997,8 +1000,10 @@ describe('InteriorCutawaySystem', () => {
       };
     };
     const grab = { x: sprite.x + 8, y: sprite.y - 6 };
-    sprite.emit('dragstart', pointerForLocal(grab));
-    sprite.emit('drag', pointerForLocal(grab), -999, 999);
+    const grabPointer = pointerForLocal(grab);
+    sprite.emit('pointerdown', grabPointer);
+    sprite.emit('dragstart', grabPointer);
+    sprite.emit('drag', grabPointer, -999, 999);
     expect(internal.currentDragCandidate?.furniture.point).toEqual(furniture.point);
 
     sprite.emit('drag', pointerForLocal({ x: grab.x + 2, y: grab.y - 2 }), -999, 999);
@@ -1044,8 +1049,11 @@ describe('InteriorCutawaySystem', () => {
     const origin = { x: sprite.x, y: sprite.y };
     const target = furnitureRenderScreenPoint(internal.roomOrigin, { ...moving, point: obstacle.point }, internal.roomCell);
 
-    sprite.emit('dragstart', pointerAt(origin.x, origin.y));
-    sprite.emit('drag', pointerAt(target.x, target.y), target.x, target.y);
+    const originPointer = pointerAt(origin.x, origin.y);
+    const targetPointer = pointerAt(target.x, target.y);
+    sprite.emit('pointerdown', originPointer);
+    sprite.emit('dragstart', originPointer);
+    sprite.emit('drag', targetPointer, target.x, target.y);
 
     expect(internal.currentDragMutation?.accepted).toBe(false);
     expect({ x: sprite.x, y: sprite.y }).toEqual(target);
@@ -1053,7 +1061,7 @@ describe('InteriorCutawaySystem', () => {
     expect(room.furniture).toEqual([moving, obstacle]);
     expect(internal.undoStore.canUndo).toBe(false);
 
-    sprite.emit('dragend');
+    sprite.emit('dragend', targetPointer);
 
     expect(fake.scene.tweens.add).toHaveBeenLastCalledWith(expect.objectContaining({
       targets: expect.arrayContaining([sprite]), duration: 140,
@@ -1127,6 +1135,84 @@ describe('InteriorCutawaySystem', () => {
     expect(internal.currentDragMutation).toBeUndefined();
     expect(internal.activeInterior.furniture).toEqual(before);
     expect(internal.undoStore.canUndo).toBe(false);
+  });
+
+  it('keeps the first pointer as exclusive drag owner until its own drop commits', () => {
+    const fake = fakeScene();
+    const canvas = { dataset: {} as Record<string, string> };
+    Object.assign(fake.scene, { game: { canvas } });
+    const cutaway = new InteriorCutawaySystem(fake.scene as never, WORLD_DEFINITION, () => ({ width: 1_280, height: 720 }));
+    cutaway.open('rest-cabin');
+    const first = {
+      id: 'owner-a', kind: 'plant' as const, point: { x: 3, y: 3 }, facing: 'up' as const,
+      supportedActions: [], icon: 'generic' as const, assetId: 98, rotation: 90 as const,
+      scale: 1 as const, layer: 'surface' as const, blocksNavigation: false,
+    };
+    const second = {
+      id: 'owner-b', kind: 'display' as const, point: { x: 8, y: 3 }, facing: 'up' as const,
+      supportedActions: [], icon: 'generic' as const, assetId: 129, rotation: 270 as const,
+      scale: 1 as const, layer: 'surface' as const, blocksNavigation: false,
+    };
+    const room: InteriorDefinition = {
+      id: 'rest-cabin', label: 'Pointer ownership', width: 14, height: 9,
+      floor: 'wood', wall: 'cream', furniture: [first, second], overflow: [],
+    };
+    const internal = cutaway as unknown as {
+      editMode: boolean; activeDefinition: InteriorDefinition; activeInterior: InteriorDefinition;
+      roomCell: number; selectedFurnitureId?: string;
+      furnitureDragCapture?: { pointerId: number; furnitureId: string };
+      currentDragCandidate?: { furniture: { id: string; point: { x: number; y: number } } };
+      currentDragMutation?: { accepted: boolean; layout: InteriorDefinition['furniture'] };
+      undoStore: { canUndo: boolean; reset(layout: InteriorDefinition['furniture']): void };
+      renderFurniture(interior: InteriorDefinition, layout: ReturnType<typeof cutawayLayoutForViewport>): void;
+    };
+    internal.editMode = true;
+    internal.activeDefinition = room;
+    internal.activeInterior = room;
+    internal.undoStore.reset(room.furniture);
+    internal.renderFurniture(room, cutawayLayoutForViewport(1_280, 720));
+    const firstSprite = fake.objects.find(({ texture, interactive, destroyed }) =>
+      texture === 'modern-office-v1.2-single-98' && interactive && !destroyed)!;
+    const secondSprite = fake.objects.find(({ texture, interactive, destroyed }) =>
+      texture === 'modern-office-v1.2-single-129' && interactive && !destroyed)!;
+    const firstScale = firstSprite.scale;
+    const pointerA = { ...pointerAt(firstSprite.x, firstSprite.y), id: 11 };
+    const targetA = { ...pointerAt(firstSprite.x + internal.roomCell, firstSprite.y), id: 11 };
+
+    firstSprite.emit('pointerdown', pointerA);
+    firstSprite.emit('dragstart', pointerA);
+    firstSprite.emit('drag', targetA, targetA.x, targetA.y);
+    const ownerPreview = internal.currentDragMutation;
+
+    expect(internal.furnitureDragCapture).toMatchObject({ pointerId: 11, furnitureId: first.id });
+    expect(ownerPreview?.accepted).toBe(true);
+    expect(firstSprite.scale).toBeGreaterThan(firstScale);
+    expect(firstSprite.alpha).toBe(0.94);
+    expect(canvas.dataset.interiorDragTone).toBe('valid');
+
+    const pointerB = { ...pointerAt(secondSprite.x, secondSprite.y), id: 22 };
+    secondSprite.emit('pointerdown', pointerB);
+    secondSprite.emit('dragstart', pointerB);
+    secondSprite.emit('drag', { ...pointerAt(secondSprite.x - internal.roomCell, secondSprite.y), id: 22 }, secondSprite.x - internal.roomCell, secondSprite.y);
+    fake.emitInput('pointercancel', pointerB);
+    fake.emitInput('pointerup', pointerB);
+    secondSprite.emit('dragend', pointerB);
+
+    expect(internal.furnitureDragCapture).toMatchObject({ pointerId: 11, furnitureId: first.id });
+    expect(internal.currentDragMutation).toBe(ownerPreview);
+    expect(internal.selectedFurnitureId).toBe(first.id);
+    expect(room.furniture).toEqual([first, second]);
+    expect(internal.undoStore.canUndo).toBe(false);
+
+    firstSprite.emit('dragend', pointerA);
+
+    expect(room.furniture.find(({ id }) => id === first.id)?.point).toEqual({ x: 4, y: 3 });
+    expect(room.furniture.find(({ id }) => id === second.id)).toEqual(second);
+    expect(room.furniture.map(({ rotation }) => rotation)).toEqual([90, 270]);
+    expect(internal.undoStore.canUndo).toBe(true);
+    expect(internal.furnitureDragCapture).toBeUndefined();
+    expect(internal.currentDragCandidate).toBeUndefined();
+    expect(internal.currentDragMutation).toBeUndefined();
   });
 
   it('refreshes an open cutaway for a changed viewport without discarding its draft', () => {
@@ -1321,7 +1407,11 @@ describe('InteriorCutawaySystem', () => {
     const placed = (texture: string) => fake.objects.find((object) => (
       object.texture === texture && object.interactive && !object.destroyed && object.depth > 0
     ))!;
-    const selectGroup = () => placed('modern-office-v1.2-single-98').emit('pointerdown', pointerAt(0, 0));
+    const selectGroup = () => {
+      const pointer = pointerAt(0, 0);
+      placed('modern-office-v1.2-single-98').emit('pointerdown', pointer);
+      fake.emitInput('pointerup', pointer);
+    };
     const currentGroup = () => internal.activeInterior.furniture.filter(({ prefabInstanceId }) => prefabInstanceId === 'atomic-instance');
 
     selectGroup();
@@ -1329,9 +1419,12 @@ describe('InteriorCutawaySystem', () => {
 
     const first = placed('modern-office-v1.2-single-98');
     const beforeMove = structuredClone(currentGroup());
-    first.emit('dragstart', pointerAt(first.x, first.y));
-    first.emit('drag', pointerAt(first.x + internal.roomCell, first.y), first.x + internal.roomCell, first.y);
-    first.emit('dragend');
+    const firstPointer = pointerAt(first.x, first.y);
+    const movedPointer = pointerAt(first.x + internal.roomCell, first.y);
+    first.emit('pointerdown', firstPointer);
+    first.emit('dragstart', firstPointer);
+    first.emit('drag', movedPointer, first.x + internal.roomCell, first.y);
+    first.emit('dragend', movedPointer);
     expect(currentGroup().map(({ point }) => point)).toEqual(beforeMove.map(({ point }) => ({ x: point.x + 1, y: point.y })));
     expect(currentGroup()[1]!.point.x - currentGroup()[0]!.point.x).toBe(2);
     capture.handlers().undo();

@@ -991,6 +991,7 @@ export class InteriorCutawaySystem {
       furnitureSpriteScalesById.set(furniture.id, spriteScale);
       this.scene.input.setDraggable(sprite);
       sprite.on('pointerdown', (pointer: unknown) => {
+        if (this.furnitureDragCapture) return;
         this.selectedFurnitureId = furniture.id;
         this.selectedFurnitureIds.clear();
         const selectedIds = expandSelection(interior.furniture, [furniture.id]);
@@ -1004,6 +1005,8 @@ export class InteriorCutawaySystem {
           startLayout: cloneFurnitureLayout(interior.furniture),
           grabOffset: screen ? { x: screen.x - rendered.x, y: screen.y - rendered.y } : { x: 0, y: 0 },
         };
+        this.currentDragCandidate = undefined;
+        this.currentDragMutation = undefined;
         applyDragPresentation(selectedIds, 'valid', 'lifting');
         this.syncOverlay();
         if ((pointer as { event?: { detail?: number } }).event?.detail === 2) {
@@ -1011,32 +1014,11 @@ export class InteriorCutawaySystem {
         }
       });
       sprite.on('dragstart', (pointer: unknown) => {
-        const selectedIds = expandSelection(interior.furniture, [furniture.id]);
-        const screen = this.pointerScreenPoint(pointer);
-        const rendered = applyInteriorViewport(this.interiorViewport, { x: sprite.x, y: sprite.y });
-        const grabOffset = screen ? { x: screen.x - rendered.x, y: screen.y - rendered.y } : { x: 0, y: 0 };
-        const existing = this.furnitureDragCapture;
-        if (!existing || existing.furnitureId !== furniture.id || existing.pointerId !== pointerIdOf(pointer)
-          || Math.abs(existing.grabOffset.x - grabOffset.x) > 0.001
-          || Math.abs(existing.grabOffset.y - grabOffset.y) > 0.001) {
-          this.furnitureDragCapture = {
-            pointerId: pointerIdOf(pointer), furnitureId: furniture.id, selectedIds,
-            startLayout: cloneFurnitureLayout(interior.furniture),
-            grabOffset,
-          };
-        }
-        if (this.furnitureDragCapture) {
-          applyDragPresentation(this.furnitureDragCapture.selectedIds, 'valid', 'lifting');
-        }
+        const capture = this.furnitureDragCapture;
+        if (!capture || capture.furnitureId !== furniture.id || capture.pointerId !== pointerIdOf(pointer)) return;
+        applyDragPresentation(capture.selectedIds, 'valid', 'lifting');
       });
       sprite.on('drag', (pointer: unknown, dragX: number, dragY: number) => {
-        if (!this.furnitureDragCapture) {
-          this.furnitureDragCapture = {
-            pointerId: pointerIdOf(pointer), furnitureId: furniture.id,
-            selectedIds: expandSelection(interior.furniture, [furniture.id]),
-            startLayout: cloneFurnitureLayout(interior.furniture), grabOffset: { x: 0, y: 0 },
-          };
-        }
         const capture = this.furnitureDragCapture;
         if (!capture || capture.furnitureId !== furniture.id || pointerIdOf(pointer) !== capture.pointerId) return;
         const source = capture.startLayout.find(({ id }) => id === furniture.id);
@@ -1069,9 +1051,9 @@ export class InteriorCutawaySystem {
         applyDragPresentation(capture.selectedIds, diagnostic, 'dragging');
         drawSelectionPreview(preview, this.currentDragMutation.accepted);
       });
-      sprite.on('dragend', () => {
+      sprite.on('dragend', (pointer: unknown) => {
         const capture = this.furnitureDragCapture;
-        if (!capture || capture.furnitureId !== furniture.id) return;
+        if (!capture || capture.furnitureId !== furniture.id || capture.pointerId !== pointerIdOf(pointer)) return;
         const mutation = this.currentDragMutation;
         const accepted = mutation?.accepted === true;
         const diagnostic = !accepted && this.currentDragCandidate?.diagnostic === 'valid'
