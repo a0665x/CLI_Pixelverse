@@ -25,6 +25,7 @@ import {
 } from './realtime.mjs';
 import { attachPixelworldBridge, createPixelworldBridge } from './pixelworld_embed.mjs';
 import {
+  legacyResizablePanels,
   setupWorkbenchLayoutController,
   workbenchTopFor,
 } from './workbench_layout.mjs';
@@ -70,9 +71,12 @@ import { buildAgentTimelinePanels, buildHeartbeatPath, heartbeatBeatWidthPx } fr
 import { setupPressFeedback } from './press_feedback.mjs';
 import {
   applyMapLayerVisibility,
+  dashboardDrawerLabel as localizedDashboardDrawerLabel,
   dashboardGuideVisible,
   dashboardInputModality,
   readDashboardDisclosure,
+  renderDashboardDrawerControl,
+  restoreDashboardHelpFocus,
   toggleDashboardDrawer,
   updateLiveRegionText,
   writeDashboardDisclosure,
@@ -513,10 +517,7 @@ function applyMobileMode() {
 }
 
 function dashboardDrawerLabel(name) {
-  const copy = strings();
-  if (name === 'timeline') return copy.eventBeltTitle;
-  if (name === 'agents') return copy.inspectorTitle;
-  return copy.dashboardPanels;
+  return localizedDashboardDrawerLabel(strings(), name);
 }
 
 function renderDashboardDisclosure() {
@@ -531,12 +532,7 @@ function renderDashboardDisclosure() {
   });
   dom.dashboardDrawerButtons.forEach((button) => {
     const name = button.dataset.dashboardDrawer;
-    const label = dashboardDrawerLabel(name);
-    const expanded = activeDrawer === name;
-    button.setAttribute('aria-expanded', String(expanded));
-    button.setAttribute('aria-label', `${expanded ? strings().hidePanels : strings().showPanels}: ${label}`);
-    button.dataset.tooltip = label;
-    button.title = label;
+    renderDashboardDrawerControl(button, { name, activeDrawer, copy: strings() });
   });
   if (dom.sidebarTitle) dom.sidebarTitle.textContent = activeDrawer ? dashboardDrawerLabel(activeDrawer) : strings().dashboardPanels;
   if (dom.sidebarCloseButton) dom.sidebarCloseButton.textContent = strings().closePanels;
@@ -565,6 +561,7 @@ function dismissDashboardGuide() {
   dashboardDisclosure = { ...dashboardDisclosure, guideDismissed: true };
   persistDashboardDisclosure();
   renderDashboardDisclosure();
+  restoreDashboardHelpFocus(dom.dashboardHelpButton);
 }
 
 function openDashboardGuide() {
@@ -2264,36 +2261,26 @@ function setupDraggablePanels() {
 }
 
 function setupResizablePanels() {
-  const root = document.documentElement;
+  const legacyPanels = legacyResizablePanels(dom.resizablePanels);
   const restore = (panel) => {
     const key = panel.dataset.resizablePanel;
     const saved = Number(localStorage.getItem(`pixelverse:size:${key}`));
     if (!Number.isFinite(saved) || saved <= 0) return;
-    if (key === 'sidebar') {
-      root.style.setProperty('--sidebar-width', `${saved}px`);
-      panel.style.width = `${saved}px`;
-    } else if (key === 'timeline') {
-      root.style.setProperty('--timeline-height', `${saved}px`);
-      panel.style.height = `${saved}px`;
-    } else {
-      panel.style.height = `${saved}px`;
-    }
+    panel.style.height = `${saved}px`;
   };
-  dom.resizablePanels.forEach(restore);
+  legacyPanels.forEach(restore);
   if (!window.ResizeObserver) return;
   const observer = new ResizeObserver((entries) => {
     entries.forEach(({ target }) => {
       if (mobileMode) return;
       const key = target.dataset.resizablePanel;
       const bounds = target.getBoundingClientRect();
-      const size = key === 'sidebar' ? bounds.width : bounds.height;
+      const size = bounds.height;
       if (!key || !Number.isFinite(size) || size <= 0) return;
       localStorage.setItem(`pixelverse:size:${key}`, String(Math.round(size)));
-      if (key === 'sidebar') root.style.setProperty('--sidebar-width', `${Math.round(size)}px`);
-      if (key === 'timeline') root.style.setProperty('--timeline-height', `${Math.round(size)}px`);
     });
   });
-  dom.resizablePanels.forEach((panel) => observer.observe(panel));
+  legacyPanels.forEach((panel) => observer.observe(panel));
 }
 
 function setupWorkbenchLayout() {
@@ -2302,6 +2289,8 @@ function setupWorkbenchLayout() {
   workbenchLayoutController = setupWorkbenchLayoutController({
     sidebarHandle: dom.sidebarResizer,
     timelineHandle: dom.timelineResizer,
+    sidebarPanel: dom.resizablePanels.find((panel) => panel.dataset.resizablePanel === 'sidebar'),
+    timelinePanel: dom.resizablePanels.find((panel) => panel.dataset.resizablePanel === 'timeline'),
     root: document.documentElement,
     body: dom.body,
     storage: dashboardStorage,
@@ -2434,7 +2423,7 @@ document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape' && dashboardGuideForcedOpen) {
     dashboardGuideForcedOpen = false;
     renderDashboardDisclosure();
-    dom.dashboardHelpButton?.focus();
+    restoreDashboardHelpFocus(dom.dashboardHelpButton);
     return;
   }
   if (event.key !== 'Escape' || !dashboardDisclosure.activeDrawer) return;

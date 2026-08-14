@@ -53,6 +53,16 @@ function fakeClassList() {
   };
 }
 
+function fakeStyle(initial = {}) {
+  const properties = new Map(Object.entries(initial));
+  return {
+    properties,
+    setProperty: (name, value) => properties.set(name, String(value)),
+    removeProperty: (name) => properties.delete(name),
+    getPropertyValue: (name) => properties.get(name) || '',
+  };
+}
+
 test('workbench dimensions preserve useful space at viewport bounds', () => {
   assert.equal(clampSidebarWidth(100, 1280), 320);
   assert.equal(clampSidebarWidth(900, 1280), 576);
@@ -136,4 +146,83 @@ test('controller handles right-edge pointer and keyboard resizing and persists b
 
   controller.destroy();
   assert.equal((resizeTarget.listeners.get('resize') || []).length, 0);
+});
+
+test('legacy sidebar and timeline sizes migrate once into the bounded controller without inline competition', () => {
+  const sidebarHandle = new FakeTarget();
+  const timelineHandle = new FakeTarget();
+  const resizeTarget = new FakeTarget();
+  const rootStyle = fakeStyle();
+  const root = { style: rootStyle };
+  const body = { classList: fakeClassList() };
+  const sidebarPanel = { dataset: { resizablePanel: 'sidebar' }, style: fakeStyle({ width: '910px' }) };
+  const timelinePanel = { dataset: { resizablePanel: 'timeline' }, style: fakeStyle({ height: '680px' }) };
+  const inspectorPanel = { dataset: { resizablePanel: 'inspector' }, style: fakeStyle({ height: '300px' }) };
+  const values = new Map([
+    ['pixelverse:size:sidebar', '9999'],
+    ['pixelverse:size:timeline', '9999'],
+  ]);
+  const storage = {
+    getItem: (key) => values.get(key) ?? null,
+    setItem: (key, value) => values.set(key, value),
+    removeItem: (key) => values.delete(key),
+  };
+
+  assert.equal(typeof workbenchLayout.legacyResizablePanels, 'function');
+  assert.deepEqual(
+    workbenchLayout.legacyResizablePanels([sidebarPanel, timelinePanel, inspectorPanel]),
+    [inspectorPanel],
+  );
+  const controller = workbenchLayout.setupWorkbenchLayoutController({
+    sidebarHandle,
+    timelineHandle,
+    sidebarPanel,
+    timelinePanel,
+    resizeTarget,
+    root,
+    body,
+    storage,
+    sidebarEdge: 'right',
+    viewport: () => ({ width: 1280, height: 720, workbenchTop: 138 }),
+  });
+
+  assert.equal(rootStyle.getPropertyValue('--sidebar-width'), '576px');
+  assert.equal(rootStyle.getPropertyValue('--timeline-height'), '374px');
+  assert.equal(sidebarPanel.style.getPropertyValue('width'), '');
+  assert.equal(timelinePanel.style.getPropertyValue('height'), '');
+  assert.equal(values.has('pixelverse:size:sidebar'), false);
+  assert.equal(values.has('pixelverse:size:timeline'), false);
+  assert.deepEqual(readWorkbenchLayout(storage), { sidebarWidth: 576, timelineHeight: 374 });
+
+  sidebarHandle.dispatch('pointerdown', { clientX: 100 });
+  sidebarHandle.dispatch('pointermove', { clientX: 130 });
+  sidebarHandle.dispatch('pointerup', { clientX: 130 });
+  timelineHandle.dispatch('keydown', { key: 'ArrowDown' });
+  assert.equal(rootStyle.getPropertyValue('--sidebar-width'), '546px');
+  assert.equal(rootStyle.getPropertyValue('--timeline-height'), '362px');
+  assert.equal(sidebarPanel.style.getPropertyValue('width'), '');
+  assert.equal(timelinePanel.style.getPropertyValue('height'), '');
+  assert.deepEqual(readWorkbenchLayout(storage), { sidebarWidth: 546, timelineHeight: 362 });
+
+  controller.destroy();
+
+  values.set('pixelverse:size:sidebar', '320');
+  values.set('pixelverse:size:timeline', '180');
+  const restoredController = workbenchLayout.setupWorkbenchLayoutController({
+    sidebarHandle,
+    timelineHandle,
+    sidebarPanel,
+    timelinePanel,
+    resizeTarget,
+    root,
+    body,
+    storage,
+    sidebarEdge: 'right',
+    viewport: () => ({ width: 1280, height: 720, workbenchTop: 138 }),
+  });
+  assert.equal(rootStyle.getPropertyValue('--sidebar-width'), '546px');
+  assert.equal(rootStyle.getPropertyValue('--timeline-height'), '362px');
+  assert.equal(values.has('pixelverse:size:sidebar'), false);
+  assert.equal(values.has('pixelverse:size:timeline'), false);
+  restoredController.destroy();
 });

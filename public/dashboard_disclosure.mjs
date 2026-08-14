@@ -46,6 +46,29 @@ export function dashboardGuideVisible(state, modality, forcedOpen = false) {
   return forcedOpen || shouldShowGuide(state, modality);
 }
 
+export function restoreDashboardHelpFocus(helpButton) {
+  if (typeof helpButton?.focus !== 'function') return false;
+  helpButton.focus();
+  return true;
+}
+
+export function dashboardDrawerLabel(copy, name) {
+  if (name === 'timeline') return copy.eventBeltTitle;
+  if (name === 'agents') return copy.inspectorTitle;
+  if (name === 'diagnostics') return copy.diagnosticsLabel;
+  return copy.dashboardPanels;
+}
+
+export function renderDashboardDrawerControl(button, { name, activeDrawer, copy }) {
+  const label = dashboardDrawerLabel(copy, name);
+  const expanded = activeDrawer === name;
+  button.setAttribute('aria-expanded', String(expanded));
+  button.setAttribute('aria-label', `${expanded ? copy.hidePanels : copy.showPanels}: ${label}`);
+  button.dataset.tooltip = label;
+  button.title = label;
+  return label;
+}
+
 export function updateLiveRegionText(node, text) {
   if (!node || node.textContent === text) return false;
   node.textContent = text;

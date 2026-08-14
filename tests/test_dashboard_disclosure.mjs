@@ -81,6 +81,15 @@ test('persistent Help reopens guidance after first-use dismissal', () => {
   assert.equal(dashboardDisclosure.dashboardGuideVisible({ guideDismissed: false }, 'touch', false), true);
 });
 
+test('the explicit Help dismiss action restores focus to the persistent Help control', () => {
+  assert.equal(typeof dashboardDisclosure.restoreDashboardHelpFocus, 'function');
+  let focusCount = 0;
+  const helpButton = { focus: () => { focusCount += 1; } };
+  assert.equal(dashboardDisclosure.restoreDashboardHelpFocus(helpButton), true);
+  assert.equal(focusCount, 1);
+  assert.equal(dashboardDisclosure.restoreDashboardHelpFocus(null), false);
+});
+
 test('live-region helper only writes when meaningful text changes', () => {
   assert.equal(typeof dashboardDisclosure.updateLiveRegionText, 'function');
   let writes = 0;
@@ -126,5 +135,29 @@ test('every locale provides persistent help and a diagnostic-specific explanatio
     assert.equal(typeof copy.dashboardGuideTitle, 'string');
     assert.equal(typeof copy.diagnosticsExplanation, 'string');
     assert.equal(copy.diagnosticsExplanation.length > copy.dashboardPanels.length, true);
+  }
+});
+
+test('diagnostics drawer controls render a diagnostics-specific localized label', () => {
+  assert.equal(typeof dashboardDisclosure.renderDashboardDrawerControl, 'function');
+  for (const locale of ['zh-TW', 'en-US', 'ja-JP', 'ko-KR']) {
+    const copy = getLocaleStrings(locale);
+    const attributes = new Map();
+    const button = {
+      dataset: { dashboardDrawer: 'diagnostics' },
+      title: '',
+      setAttribute: (name, value) => attributes.set(name, String(value)),
+    };
+    const label = dashboardDisclosure.renderDashboardDrawerControl(button, {
+      name: 'diagnostics',
+      activeDrawer: null,
+      copy,
+    });
+    assert.equal(typeof copy.diagnosticsLabel, 'string');
+    assert.equal(label, copy.diagnosticsLabel);
+    assert.equal(button.dataset.tooltip, copy.diagnosticsLabel);
+    assert.equal(button.title, copy.diagnosticsLabel);
+    assert.equal(attributes.get('aria-expanded'), 'false');
+    assert.equal(attributes.get('aria-label'), `${copy.showPanels}: ${copy.diagnosticsLabel}`);
   }
 });

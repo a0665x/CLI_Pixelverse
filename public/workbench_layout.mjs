@@ -1,6 +1,10 @@
 export const WORKBENCH_LAYOUT_KEY = 'pixelverse:workbench-layout:v1';
 export const DEFAULT_WORKBENCH_LAYOUT = Object.freeze({ sidebarWidth: 440, timelineHeight: 260 });
 export const MIN_VILLAGE_HEIGHT = 180;
+const LEGACY_SIZE_KEYS = Object.freeze({
+  sidebar: 'pixelverse:size:sidebar',
+  timeline: 'pixelverse:size:timeline',
+});
 
 const finite = (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback;
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
@@ -38,17 +42,21 @@ export function layoutFromPointer(axis, startValue, startPointer, currentPointer
     );
 }
 
-export function readWorkbenchLayout(storage = localStorage) {
+function storedWorkbenchLayout(storage) {
   try {
-    const parsed = JSON.parse(storage.getItem(WORKBENCH_LAYOUT_KEY) || 'null');
-    if (!parsed || typeof parsed !== 'object') return { ...DEFAULT_WORKBENCH_LAYOUT };
+    const parsed = JSON.parse(storage?.getItem(WORKBENCH_LAYOUT_KEY) || 'null');
+    if (!parsed || typeof parsed !== 'object') return null;
     const sidebarWidth = finite(parsed.sidebarWidth, NaN);
     const timelineHeight = finite(parsed.timelineHeight, NaN);
-    if (!Number.isFinite(sidebarWidth) || !Number.isFinite(timelineHeight)) return { ...DEFAULT_WORKBENCH_LAYOUT };
+    if (!Number.isFinite(sidebarWidth) || !Number.isFinite(timelineHeight)) return null;
     return { sidebarWidth, timelineHeight };
   } catch {
-    return { ...DEFAULT_WORKBENCH_LAYOUT };
+    return null;
   }
+}
+
+export function readWorkbenchLayout(storage = localStorage) {
+  return storedWorkbenchLayout(storage) || { ...DEFAULT_WORKBENCH_LAYOUT };
 }
 
 export function writeWorkbenchLayout(storage, layout) {
@@ -63,9 +71,63 @@ export function writeWorkbenchLayout(storage, layout) {
   return true;
 }
 
+function legacySize(storage, key) {
+  try {
+    const raw = storage?.getItem(key);
+    return { present: raw != null, value: Number(raw) };
+  } catch {
+    return { present: false, value: NaN };
+  }
+}
+
+export function migrateLegacyWorkbenchLayout(storage, viewport) {
+  const stored = storedWorkbenchLayout(storage);
+  const sidebar = legacySize(storage, LEGACY_SIZE_KEYS.sidebar);
+  const timeline = legacySize(storage, LEGACY_SIZE_KEYS.timeline);
+  const base = stored || {
+    sidebarWidth: sidebar.value > 0 ? sidebar.value : DEFAULT_WORKBENCH_LAYOUT.sidebarWidth,
+    timelineHeight: timeline.value > 0 ? timeline.value : DEFAULT_WORKBENCH_LAYOUT.timelineHeight,
+  };
+  const layout = {
+    sidebarWidth: clampSidebarWidth(base.sidebarWidth, viewport.width),
+    timelineHeight: clampTimelineHeight(base.timelineHeight, viewport.height, viewport.workbenchTop),
+  };
+  if ((sidebar.present || timeline.present) && writeWorkbenchLayout(storage, layout)) {
+    try {
+      storage?.removeItem(LEGACY_SIZE_KEYS.sidebar);
+      storage?.removeItem(LEGACY_SIZE_KEYS.timeline);
+    } catch {
+      // The bounded v1 layout remains authoritative even if privacy settings block cleanup.
+    }
+  }
+  return layout;
+}
+
+function clearOwnedInlineSize(panel, property) {
+  if (typeof panel?.style?.removeProperty === 'function') panel.style.removeProperty(property);
+  else if (panel?.style) panel.style[property] = '';
+}
+
+export function legacyResizablePanels(panels = []) {
+  return Array.from(panels).filter((panel) => {
+    const key = panel?.dataset?.resizablePanel;
+    if (key === 'sidebar') {
+      clearOwnedInlineSize(panel, 'width');
+      return false;
+    }
+    if (key === 'timeline') {
+      clearOwnedInlineSize(panel, 'height');
+      return false;
+    }
+    return true;
+  });
+}
+
 export function setupWorkbenchLayoutController({
   sidebarHandle,
   timelineHandle,
+  sidebarPanel,
+  timelinePanel,
   root = globalThis.document?.documentElement,
   body = globalThis.document?.body,
   storage = globalThis.localStorage,
@@ -84,7 +146,8 @@ export function setupWorkbenchLayoutController({
     return { destroy() {}, getLayout: () => ({ ...DEFAULT_WORKBENCH_LAYOUT }) };
   }
 
-  let layout = readWorkbenchLayout(storage);
+  legacyResizablePanels([sidebarPanel, timelinePanel]);
+  let layout = migrateLegacyWorkbenchLayout(storage, viewport());
   let dragging = null;
   const removers = [];
   const listen = (target, type, listener) => {
