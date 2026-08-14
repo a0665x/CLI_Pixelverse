@@ -7,7 +7,8 @@
   <style>
     :root {
       --sidebar-width: 440px;
-      --timeline-height: 320px;
+      --timeline-height: 260px;
+      --workbench-top: 138px;
       --material-content: #07111f;
       --material-structural: rgba(8, 19, 34, .96);
       --material-glass: rgba(207, 229, 250, .16);
@@ -1897,6 +1898,50 @@
       mask-image: linear-gradient(90deg, transparent, #000 10px, #000 calc(100% - 10px), transparent);
       -webkit-mask-image: linear-gradient(90deg, transparent, #000 10px, #000 calc(100% - 10px), transparent);
     }
+    .workbench-divider {
+      position: absolute;
+      z-index: 43;
+      border: 0;
+      padding: 0;
+      background: transparent;
+      touch-action: none;
+      user-select: none;
+    }
+    .workbench-divider::before {
+      position: absolute;
+      content: "";
+      border-radius: 999px;
+      background: rgba(171, 192, 223, .28);
+      box-shadow: 0 0 0 1px rgba(3, 8, 16, .35);
+      transition: background-color .12s ease, box-shadow .12s ease;
+    }
+    .workbench-divider:hover::before,
+    .workbench-divider:focus-visible::before,
+    .workbench-divider[data-active="true"]::before {
+      background: rgba(110, 231, 249, .88);
+      box-shadow: 0 0 0 4px rgba(110, 231, 249, .14);
+    }
+    .workbench-divider:focus-visible { outline: none; }
+    .workbench-divider--vertical {
+      top: var(--workbench-top);
+      bottom: calc(var(--timeline-height) + 28px);
+      left: calc(var(--sidebar-width) + 17px);
+      width: 14px;
+      cursor: col-resize;
+    }
+    .workbench-divider--vertical::before { top: 8px; bottom: 8px; left: 6px; width: 2px; }
+    .workbench-divider--horizontal {
+      right: 12px;
+      bottom: calc(var(--timeline-height) + 17px);
+      left: 12px;
+      height: 14px;
+      cursor: row-resize;
+    }
+    .workbench-divider--horizontal::before { top: 6px; right: 8px; left: 8px; height: 2px; }
+    body.workbench-resizing { user-select: none; }
+    body.workbench-resizing--sidebar { cursor: col-resize; }
+    body.workbench-resizing--timeline { cursor: row-resize; }
+    body.workbench-resizing .pixelworld-frame { pointer-events: none; }
     #sidebar-toggle-btn {
       position: absolute;
       left: 0;
@@ -1951,11 +1996,14 @@
       }
       body:not([data-mobile-mode="on"]) .world { left: 342px; }
       body:not([data-mobile-mode="on"]) .hud { left: 342px; }
+      .workbench-divider { display: none; }
     }
+    body[data-mobile-mode="on"] .workbench-divider { display: none; }
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
       .functional-glass, button, a[href], [role="button"] { transition: opacity 160ms ease !important; }
       :where(button, a[href], [role="button"])[data-pressed="true"] { scale: 1; }
+      [data-tooltip]::after { transition: none !important; transform: translateY(0) !important; }
     }
     @media (prefers-reduced-transparency: reduce) {
       .functional-glass { background: rgba(17,31,48,.97); backdrop-filter: none; -webkit-backdrop-filter: none; }
@@ -1968,7 +2016,11 @@
     .map-first-workspace { position: fixed; inset: 0; overflow: hidden; background: #07100d; }
     .map-first-workspace .map-stage { position: absolute; inset: 0; min-width: 0; min-height: 0; border: 0; border-radius: 0; box-shadow: none; }
     .map-first-workspace .world.map-stage { inset: 0; }
-    .map-first-workspace .pixelworld-frame { width: 100%; height: 100%; border: 0; display: block; }
+    .map-first-workspace .pixelworld-frame { position: absolute; inset: 0; z-index: 2; width: 100%; height: 100%; border: 0; display: block; pointer-events: auto; }
+    .map-first-workspace .camera-stage,
+    .map-first-workspace .camera-controls { z-index: 1; }
+    .map-first-workspace .camera-stage[hidden],
+    .map-first-workspace .camera-controls[hidden] { display: none; pointer-events: none; }
     .map-first-workspace .live-hud {
       position: absolute;
       inset: 14px auto auto 14px;
@@ -2035,6 +2087,7 @@
       color: var(--text);
       cursor: pointer;
       box-shadow: 0 8px 20px rgba(0,0,0,.26);
+      touch-action: manipulation;
     }
     .workspace-tool-button[aria-expanded="true"] {
       border-color: var(--cyan);
@@ -2228,7 +2281,7 @@
         title="Pixelverse agent village"
         allow="fullscreen"
       ></iframe>
-      <div class="camera-stage" id="camera-stage">
+      <div class="camera-stage" id="camera-stage" hidden aria-hidden="true">
         <div class="house-shell">
           <div class="house-boundary"></div>
           <div class="house-corridor corridor-main"></div>
@@ -2266,7 +2319,7 @@
           <div class="agents-layer" id="agents-layer"></div>
         </div>
       </div>
-      <div class="camera-controls functional-glass" aria-label="World camera controls">
+      <div class="camera-controls functional-glass" id="camera-controls" aria-label="World camera controls" hidden aria-hidden="true">
         <button type="button" id="zoom-in-btn" aria-label="Zoom in">+</button>
         <button type="button" id="zoom-reset-btn" aria-label="Reset zoom">1:1</button>
         <button type="button" id="zoom-out-btn" aria-label="Zoom out">−</button>
@@ -2312,6 +2365,7 @@
       <button type="button" class="workspace-tool-button" id="timeline-drawer-btn" data-dashboard-drawer="timeline" data-tooltip="Timeline" aria-label="Open timeline" aria-expanded="false" aria-controls="workspace-drawer">◫</button>
       <button type="button" class="workspace-tool-button" id="agents-drawer-btn" data-dashboard-drawer="agents" data-tooltip="Agents" aria-label="Open agents" aria-expanded="false" aria-controls="workspace-drawer">◎</button>
       <button type="button" class="workspace-tool-button" id="diagnostics-drawer-btn" data-dashboard-drawer="diagnostics" data-tooltip="Diagnostics" aria-label="Open diagnostics" aria-expanded="false" aria-controls="workspace-drawer">⌁</button>
+      <button type="button" class="workspace-tool-button" id="dashboard-help-btn" data-tooltip="Help" aria-label="Help" aria-expanded="false" aria-controls="dashboard-guide">?</button>
       <details class="workspace-settings">
         <summary class="workspace-tool-button" data-tooltip="Workspace settings" aria-label="Workspace settings" role="button">⚙</summary>
         <div class="workspace-settings-panel">
@@ -2369,6 +2423,7 @@
       </section>
 
       <section class="drawer-panel" id="diagnostics-drawer-panel" data-dashboard-panel="diagnostics" hidden>
+        <p class="muted" id="diagnostics-drawer-explanation"></p>
         <aside class="dashboard-sidebar" id="dashboard-sidebar">
           <aside class="legend panel">
             <div class="subtitle" id="legend-title" data-drag-handle></div>
@@ -2393,7 +2448,7 @@
 
     <div class="workbench-divider workbench-divider--horizontal" id="timeline-resizer" role="separator" aria-label="Resize timeline" aria-orientation="horizontal" aria-valuemin="180" tabindex="0"></div>
 
-    <aside class="dashboard-guide" id="dashboard-guide" aria-labelledby="dashboard-guide-title" hidden>
+    <aside class="dashboard-guide" id="dashboard-guide" role="dialog" aria-modal="false" aria-labelledby="dashboard-guide-title" hidden>
       <div class="strong" id="dashboard-guide-title">Map-first workspace</div>
       <div class="subtitle" id="brand-subtitle"></div>
       <button type="button" class="workspace-tool-button" id="dashboard-guide-dismiss">Got it</button>

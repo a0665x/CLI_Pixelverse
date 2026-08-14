@@ -177,3 +177,39 @@ def test_map_first_drawers_overlay_the_map_and_offer_discoverable_controls():
     assert ".workspace-drawer[hidden] { display: none; }" in html
     assert '[data-tooltip]:hover::after' in html
     assert '[data-tooltip]:focus-visible::after' in html
+
+
+def test_pixelworld_is_the_default_interactive_layer_and_legacy_editor_is_explicitly_hidden():
+    parser = DashboardParser()
+    parser.feed(Path("public/index.html").read_text(encoding="utf-8"))
+
+    frame = parser.elements_by_id["pixelworld-frame"]
+    legacy_stage = parser.elements_by_id["camera-stage"]
+    assert "hidden" not in frame["attributes"]
+    assert "hidden" in legacy_stage["attributes"]
+    assert legacy_stage["attributes"].get("aria-hidden") == "true"
+
+
+def test_persistent_help_diagnostics_copy_and_motion_safe_tooltips_are_structural_contracts():
+    html = Path("public/index.html").read_text(encoding="utf-8")
+    parser = DashboardParser()
+    parser.feed(html)
+
+    help_button = parser.elements_by_id["dashboard-help-btn"]
+    assert help_button["tag"] == "button"
+    assert help_button["attributes"].get("aria-controls") == "dashboard-guide"
+    assert help_button["attributes"].get("data-tooltip")
+    assert "diagnostics-drawer-panel" in parser.parents["diagnostics-drawer-explanation"]
+    assert parser.elements_by_id["diagnostics-drawer-explanation"]["attributes"].get("aria-live") is None
+
+    drawer_rule = re.search(r"\.workspace-drawer\s*\{([^}]*)\}", html, re.S)
+    assert drawer_rule
+    assert "position: absolute" in drawer_rule.group(1)
+    assert "inset: 68px 14px 14px auto" in drawer_rule.group(1)
+    assert "touch-action: manipulation" in html
+
+    reduced_motion = re.search(r"@media \(prefers-reduced-motion: reduce\)\s*\{(.*?)\n\s*\}", html, re.S)
+    assert reduced_motion
+    assert "[data-tooltip]::after" in reduced_motion.group(1)
+    assert "transition: none" in reduced_motion.group(1)
+    assert "transform: translateY(0)" in reduced_motion.group(1)

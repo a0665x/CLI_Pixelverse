@@ -23,6 +23,11 @@ import {
   parseStreamMessage,
   supportsEventStream,
 } from './realtime.mjs';
+import { attachPixelworldBridge, createPixelworldBridge } from './pixelworld_embed.mjs';
+import {
+  setupWorkbenchLayoutController,
+  workbenchTopFor,
+} from './workbench_layout.mjs';
 import {
   getPropFx,
   getZoneFx,
@@ -64,9 +69,12 @@ import {
 import { buildAgentTimelinePanels, buildHeartbeatPath, heartbeatBeatWidthPx } from './agent_timeline_graphs.mjs';
 import { setupPressFeedback } from './press_feedback.mjs';
 import {
+  applyMapLayerVisibility,
+  dashboardGuideVisible,
+  dashboardInputModality,
   readDashboardDisclosure,
-  shouldShowGuide,
   toggleDashboardDrawer,
+  updateLiveRegionText,
   writeDashboardDisclosure,
 } from './dashboard_disclosure.mjs';
 
@@ -143,6 +151,8 @@ const ROLE_CHIPS = {
 
 const dom = {
   agentsLayer: document.getElementById('agents-layer'),
+  brand: document.querySelector('.brand'),
+  cameraControls: document.getElementById('camera-controls'),
   cameraStage: document.getElementById('camera-stage'),
   cancelFurnitureButton: document.getElementById('cancel-furniture-btn'),
   currentAgentState: document.getElementById('current-agent-state'),
@@ -151,6 +161,8 @@ const dom = {
   dashboardDrawerPanels: Array.from(document.querySelectorAll('[data-dashboard-panel]')),
   dashboardGuide: document.getElementById('dashboard-guide'),
   dashboardGuideDismiss: document.getElementById('dashboard-guide-dismiss'),
+  dashboardHelpButton: document.getElementById('dashboard-help-btn'),
+  diagnosticsExplanation: document.getElementById('diagnostics-drawer-explanation'),
   eventSummary: document.getElementById('event-summary'),
   events: document.getElementById('events'),
   exposureLabel: document.getElementById('exposure-label'),
@@ -178,6 +190,7 @@ const dom = {
   lastSync: document.getElementById('last-sync'),
   mobileModeButton: document.getElementById('mobile-mode-btn'),
   pathLayer: document.getElementById('path-layer'),
+  pixelworldFrame: document.getElementById('pixelworld-frame'),
   panels: Array.from(document.querySelectorAll('[data-draggable-panel]')),
   panelHandles: Array.from(document.querySelectorAll('[data-drag-handle]')),
   resizablePanels: Array.from(document.querySelectorAll('[data-resizable-panel]')),
@@ -190,8 +203,10 @@ const dom = {
   sidebarCloseButton: document.getElementById('sidebar-close-btn'),
   sidebarTitle: document.getElementById('sidebar-title'),
   sidebarToggleButton: document.getElementById('sidebar-toggle-btn'),
+  sidebarResizer: document.getElementById('sidebar-resizer'),
   sessionCount: document.getElementById('session-count'),
   subagentCount: document.getElementById('subagent-count'),
+  timelineResizer: document.getElementById('timeline-resizer'),
   timelineRefreshLabel: document.getElementById('timeline-refresh-label'),
   refreshSlowerButton: document.getElementById('refresh-slower-btn'),
   refreshFasterButton: document.getElementById('refresh-faster-btn'),
@@ -235,6 +250,15 @@ try {
 }
 let dashboardDisclosure = readDashboardDisclosure(dashboardStorage);
 let dashboardTouchTooltipTimer = null;
+let dashboardGuideForcedOpen = false;
+let lastDashboardInputModality = 'keyboard';
+const pixelworldBridge = createPixelworldBridge({
+  frame: dom.pixelworldFrame,
+  origin: window.location.origin,
+});
+pixelworldBridge.setLocale(currentLocale);
+attachPixelworldBridge({ frame: dom.pixelworldFrame, messageTarget: window, bridge: pixelworldBridge });
+let workbenchLayoutController = null;
 let cameraOffset = { x: 0, y: 0 };
 let cameraScale = 1;
 let cameraPanning = null;
@@ -462,6 +486,11 @@ function updateFurnitureToolbar() {
     dom.editFurnitureButton.disabled = furnitureSaving;
   }
   dom.world?.classList.toggle('editing', furnitureEditMode);
+  applyMapLayerVisibility({
+    frame: dom.pixelworldFrame,
+    legacyStage: dom.cameraStage,
+    legacyControls: dom.cameraControls,
+  }, furnitureEditMode);
   updateFurnitureEditorBanner();
 }
 
@@ -511,7 +540,13 @@ function renderDashboardDisclosure() {
   });
   if (dom.sidebarTitle) dom.sidebarTitle.textContent = activeDrawer ? dashboardDrawerLabel(activeDrawer) : strings().dashboardPanels;
   if (dom.sidebarCloseButton) dom.sidebarCloseButton.textContent = strings().closePanels;
-  if (dom.dashboardGuide) dom.dashboardGuide.hidden = !shouldShowGuide(dashboardDisclosure, 'pointer');
+  const guideVisible = dashboardGuideVisible(
+    dashboardDisclosure,
+    lastDashboardInputModality,
+    dashboardGuideForcedOpen,
+  );
+  if (dom.dashboardGuide) dom.dashboardGuide.hidden = !guideVisible;
+  if (dom.dashboardHelpButton) dom.dashboardHelpButton.setAttribute('aria-expanded', String(guideVisible));
   if (dom.dashboardGuideDismiss) dom.dashboardGuideDismiss.textContent = strings().closePanels;
 }
 
@@ -526,9 +561,16 @@ function changeDashboardDrawer(requested) {
 }
 
 function dismissDashboardGuide() {
+  dashboardGuideForcedOpen = false;
   dashboardDisclosure = { ...dashboardDisclosure, guideDismissed: true };
   persistDashboardDisclosure();
   renderDashboardDisclosure();
+}
+
+function openDashboardGuide() {
+  dashboardGuideForcedOpen = true;
+  renderDashboardDisclosure();
+  dom.dashboardGuideDismiss?.focus();
 }
 
 function buildLiveSnapshot(snapshot = {}, nowMs = Date.now()) {
@@ -602,18 +644,18 @@ function updateCurrentAgentState(snapshot = {}) {
   const copy = strings();
   const mainAgent = (snapshot.agents || []).find((agent) => agent.role === 'main_agent') || (snapshot.agents || [])[0];
   if (!mainAgent) {
-    dom.currentAgentState.textContent = copy.uiStatusMissing || copy.heartbeatMissing || copy.waitingEvents;
+    updateLiveRegionText(dom.currentAgentState, copy.uiStatusMissing || copy.heartbeatMissing || copy.waitingEvents);
     return;
   }
   const room = getRoomCopy(mainAgent.room_key, currentLocale);
   const roomName = room.name || mainAgent.room_label || copy.unknownRoom;
   const task = localizeTask(mainAgent.task || mainAgent.activity_hint || '');
-  dom.currentAgentState.textContent = [
+  updateLiveRegionText(dom.currentAgentState, [
     displayAgentName(mainAgent),
     stateText(mainAgent.state),
     roomName,
     task ? short(task, 52) : '',
-  ].filter(Boolean).join(' · ');
+  ].filter(Boolean).join(' · '));
 }
 
 function updateRefreshController() {
@@ -901,7 +943,8 @@ function applyStaticCopy() {
   dom.body.dataset.locale = currentLocale;
   setText('brand-title', copy.brandTitle);
   setText('brand-subtitle', copy.brandSubtitle);
-  setText('dashboard-guide-title', copy.worldOverview);
+  setText('dashboard-guide-title', copy.dashboardGuideTitle);
+  setText('diagnostics-drawer-explanation', copy.diagnosticsExplanation);
   setText('inspector-title', copy.inspectorTitle);
   setText('event-belt-title', copy.eventBeltTitle);
   setText('summary-title', copy.worldOverview);
@@ -929,6 +972,11 @@ function applyStaticCopy() {
     const settingsLabel = `${copy.dashboardPanels} · ${copy.languageLabel}`;
     dom.workspaceSettingsSummary.dataset.tooltip = settingsLabel;
     dom.workspaceSettingsSummary.setAttribute('aria-label', settingsLabel);
+  }
+  if (dom.dashboardHelpButton) {
+    dom.dashboardHelpButton.dataset.tooltip = copy.dashboardHelp;
+    dom.dashboardHelpButton.setAttribute('aria-label', copy.dashboardHelp);
+    dom.dashboardHelpButton.title = copy.dashboardHelp;
   }
   renderHookStateTable();
   populateLocaleSelect();
@@ -1866,6 +1914,9 @@ function renderEvents(items = []) {
 
 function renderSnapshot(snapshot) {
   currentSnapshot = snapshot;
+  const sequence = snapshot.server_time_ms || Date.now();
+  pixelworldBridge.setLocale(currentLocale, sequence);
+  pixelworldBridge.setSnapshot(snapshot, sequence);
   if (!furnitureEditMode) syncFurnitureLayout(snapshot.furniture_layout || {});
   const copy = strings();
   dom.agentCount.textContent = String(snapshot.stats.agent_count || 0);
@@ -2245,6 +2296,33 @@ function setupResizablePanels() {
   dom.resizablePanels.forEach((panel) => observer.observe(panel));
 }
 
+function setupWorkbenchLayout() {
+  if (!dom.sidebarResizer || !dom.timelineResizer) return;
+  workbenchLayoutController?.destroy();
+  workbenchLayoutController = setupWorkbenchLayoutController({
+    sidebarHandle: dom.sidebarResizer,
+    timelineHandle: dom.timelineResizer,
+    root: document.documentElement,
+    body: dom.body,
+    storage: dashboardStorage,
+    resizeTarget: window,
+    sidebarEdge: 'right',
+    isMobile: () => mobileMode,
+    viewport: () => ({
+      width: window.innerWidth,
+      height: window.innerHeight,
+      workbenchTop: workbenchTopFor(dom.brand?.getBoundingClientRect().height || 0),
+    }),
+    onResize: () => window.dispatchEvent(new Event('resize')),
+    observeHeader: (callback) => {
+      if (!window.ResizeObserver || !dom.brand) return null;
+      const observer = new ResizeObserver(callback);
+      observer.observe(dom.brand);
+      return () => observer.disconnect();
+    },
+  });
+}
+
 function setupCameraPan() {
   if (!dom.world || !dom.cameraStage) return;
   const viewport = () => ({ width: dom.world.clientWidth, height: dom.world.clientHeight });
@@ -2316,6 +2394,7 @@ function setLocale(locale) {
   currentLocale = normalizeLocale(locale);
   localStorage.setItem('pixelverse:locale', currentLocale);
   applyStaticCopy();
+  pixelworldBridge.setLocale(currentLocale);
   if (currentSnapshot) renderSnapshot(currentSnapshot);
 }
 
@@ -2343,9 +2422,21 @@ dom.dashboardDrawerButtons.forEach((button) => {
   });
 });
 
+document.addEventListener('pointerdown', (event) => {
+  lastDashboardInputModality = dashboardInputModality(event);
+}, { capture: true });
+
+dom.dashboardHelpButton?.addEventListener('click', openDashboardGuide);
 dom.dashboardGuideDismiss?.addEventListener('click', dismissDashboardGuide);
 
 document.addEventListener('keydown', (event) => {
+  lastDashboardInputModality = dashboardInputModality(event);
+  if (event.key === 'Escape' && dashboardGuideForcedOpen) {
+    dashboardGuideForcedOpen = false;
+    renderDashboardDisclosure();
+    dom.dashboardHelpButton?.focus();
+    return;
+  }
   if (event.key !== 'Escape' || !dashboardDisclosure.activeDrawer) return;
   changeDashboardDrawer(dashboardDisclosure.activeDrawer);
 });
@@ -2420,6 +2511,7 @@ async function initializeApp() {
   updateRefreshController();
   setupDraggablePanels();
   setupResizablePanels();
+  setupWorkbenchLayout();
   setupCameraPan();
   setupFurnitureEditor();
   startLiveUiTicker();

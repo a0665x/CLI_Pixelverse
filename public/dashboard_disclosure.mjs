@@ -35,3 +35,31 @@ export function shouldShowGuide(state, modality) {
   return state.guideDismissed !== true
     && (modality === 'pointer' || modality === 'keyboard' || modality === 'touch');
 }
+
+export function dashboardInputModality(event = {}) {
+  if (event.type === 'keydown') return 'keyboard';
+  if (event.pointerType === 'touch') return 'touch';
+  return 'pointer';
+}
+
+export function dashboardGuideVisible(state, modality, forcedOpen = false) {
+  return forcedOpen || shouldShowGuide(state, modality);
+}
+
+export function updateLiveRegionText(node, text) {
+  if (!node || node.textContent === text) return false;
+  node.textContent = text;
+  return true;
+}
+
+export function applyMapLayerVisibility({ frame, legacyStage, legacyControls } = {}, legacyActive = false) {
+  const update = (element, hidden) => {
+    if (!element) return;
+    element.hidden = hidden;
+    element.inert = hidden;
+    element.setAttribute?.('aria-hidden', String(hidden));
+  };
+  update(frame, legacyActive);
+  update(legacyStage, !legacyActive);
+  update(legacyControls, !legacyActive);
+}
