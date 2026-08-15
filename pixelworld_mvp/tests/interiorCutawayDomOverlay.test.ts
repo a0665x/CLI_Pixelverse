@@ -89,9 +89,9 @@ const harness = () => {
     'close', 'toggleEdit', 'toggleCatalog', 'toggleInspector', 'toggleGuide', 'fitView', 'save', 'undo',
     'previewTemplate', 'applyTemplate', 'category', 'page', 'resize', 'rotate', 'collect', 'revert',
     'copy', 'paste', 'group', 'dissolveGroup', 'shiftLayer', 'reorder', 'duplicate', 'returnToShelf',
-    'cancelSelection',
+    'cancelSelection', 'dismissContextMenu',
   ].map((name) => [name, vi.fn()])) as unknown as CutawayDomHandlers;
-  return { overlay: new InteriorCutawayDomOverlay(() => ({ left: 0, top: 0, width: 768, height: 448 }) as DOMRect), handlers, panel, roomToolbar, contextMenu, actions, get activeElement() { return activeElement; } };
+  return { overlay: new InteriorCutawayDomOverlay(() => ({ left: 0, top: 0, width: 768, height: 448 }) as DOMRect), handlers, panel, roomToolbar, inspector, contextMenu, actions, get activeElement() { return activeElement; } };
 };
 
 describe('InteriorCutawayDomOverlay context menu', () => {
@@ -183,6 +183,32 @@ describe('InteriorCutawayDomOverlay context menu', () => {
 
       dom.overlay.update(model({ editorLayout }));
       expect(dom.activeElement).toBe(dom.actions.get('edit'));
+    } finally {
+      dom.overlay.destroy(); vi.unstubAllGlobals();
+    }
+  });
+
+  it('keeps the compact fixed inspector summary fully available without a scrolling drawer', () => {
+    const dom = harness();
+    try {
+      const layout = cutawayLayoutForViewport(600, 320);
+      const editorLayout = editorLayoutForCutaway(layout, {
+        editMode: true, catalogExpanded: false, inspectorExpanded: true,
+      });
+      dom.overlay.setLocale('en-US');
+      dom.overlay.open(layout, model({
+        inspectorExpanded: true,
+        editorLayout,
+        selected: { label: 'Long selected furniture name', scale: 1.25, rotation: 90, layer: 'surface' },
+      }), dom.handlers);
+
+      expect(dom.inspector.hidden).toBe(false);
+      expect(dom.inspector.dataset.placement).toBe('bottom');
+      expect(dom.inspector.children).toHaveLength(1);
+      const summary = dom.inspector.children[0]!;
+      expect(summary.textContent).toContain('Long selected furniture name');
+      expect(summary.getAttribute('aria-label')).toBe(summary.textContent);
+      expect(summary.getAttribute('title')).toBe(summary.textContent);
     } finally {
       dom.overlay.destroy(); vi.unstubAllGlobals();
     }

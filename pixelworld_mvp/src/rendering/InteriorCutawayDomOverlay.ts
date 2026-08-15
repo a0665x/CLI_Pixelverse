@@ -100,6 +100,7 @@ export interface CutawayDomHandlers {
   duplicate(): void;
   returnToShelf(): void;
   cancelSelection(): void;
+  dismissContextMenu(): void;
 }
 
 export interface CutawayRoomLabel { id: string; text: string; x: number; y: number; kind: 'hook' | 'agent'; selected?: boolean }
@@ -185,7 +186,14 @@ export class InteriorCutawayDomOverlay {
     panel.querySelector('[data-action="prev"]')?.addEventListener('click', () => handlers.page(-1));
     panel.querySelector('[data-action="next"]')?.addEventListener('click', () => handlers.page(1));
     panel.addEventListener('keydown', (event) => {
-      if (event.key !== 'Escape' || !this.model?.guideMode) return;
+      if (event.key !== 'Escape') return;
+      if (this.model?.contextMenu) {
+        event.preventDefault();
+        event.stopPropagation();
+        this.handlers?.dismissContextMenu();
+        return;
+      }
+      if (!this.model?.guideMode) return;
       event.preventDefault();
       event.stopPropagation();
       this.handlers?.toggleGuide();
@@ -283,9 +291,12 @@ export class InteriorCutawayDomOverlay {
         const label = document.createElement('strong');
         const selectedLabel = this.locale !== 'zh-TW' && /[\u3400-\u9fff]/.test(model.selected.label)
           ? localeCopy.status.furniture : model.selected.label;
-        label.textContent = model.selectedCount > 1
+        const summary = model.selectedCount > 1
           ? `${model.selectedCount} ${localeCopy.status.selected} · ${localeCopy.status.batch}`
           : `${selectedLabel} · ${Math.round(model.selected.scale * 100)}% · ${model.selected.rotation}° · ${furnitureLayerLabel(this.locale, model.selected.layer)}`;
+        label.textContent = summary;
+        label.setAttribute('aria-label', summary);
+        label.setAttribute('title', summary);
         this.inspector.append(label);
       }
     }
@@ -356,7 +367,7 @@ export class InteriorCutawayDomOverlay {
         close.type = 'button'; close.textContent = chrome.closeGuide; close.onclick = () => this.handlers?.toggleGuide();
         close.setAttribute('aria-label', chrome.closeGuide); close.setAttribute('data-tooltip', chrome.closeGuide);
         this.guidePopover.append(copy, close);
-        if (!previousGuideMode || guideHadFocus) close.focus();
+        if ((!previousGuideMode || guideHadFocus) && !model.contextMenu) close.focus();
       }
       if (previousGuideMode && !model.guideMode) guideButton?.focus();
     }

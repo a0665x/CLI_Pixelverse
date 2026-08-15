@@ -61,7 +61,6 @@ import {
   requiredHookInventory,
 } from './interiorLayoutEditor';
 import {
-  createFurniturePrefab,
   duplicateSelection,
   expandSelection,
   previewSelectionMove,
@@ -80,8 +79,6 @@ import {
   readAvailablePrefabs,
   readLayoutClipboard,
   saveLayoutClipboard,
-  savePrefabs,
-  upsertPrefab,
 } from './interiorPrefabStore';
 import { officeLayoutIssues, placeOfficePrefab } from './prefabGeometry';
 import {
@@ -617,11 +614,16 @@ export class InteriorCutawaySystem {
         this.setStatus(result.accepted ? 'layoutPasted' : 'layoutPasteRejected');
         this.renderFurniture(interior, layout);
       },
-      group: () => { this.contextMenuPointer = undefined; this.createSelectedPrefab(interior, layout); },
+      group: () => { this.contextMenuPointer = undefined; this.groupSelectedDraft(interior, layout); },
       dissolveGroup: () => { this.contextMenuPointer = undefined; this.dissolveSelectedGroup(interior, layout); },
       duplicate: () => { this.contextMenuPointer = undefined; this.duplicateSelected(interior, layout); },
       returnToShelf: () => { this.contextMenuPointer = undefined; this.returnSelectedToShelf(interior, layout); },
       cancelSelection: () => this.cancelSelection(),
+      dismissContextMenu: () => {
+        if (!this.contextMenuPointer) return;
+        this.contextMenuPointer = undefined;
+        this.syncOverlay();
+      },
       shiftLayer: (direction) => this.shiftSelectedLayer(interior, layout, direction),
       reorder: (direction) => this.reorderSelected(interior, layout, direction),
       category: (category) => {
@@ -1506,10 +1508,19 @@ export class InteriorCutawaySystem {
     const inside = (point: GridPoint): boolean => point.x >= -0.5 && point.y >= -0.5
       && point.x <= interior.width - 0.5 && point.y <= interior.height - 0.5;
     const down = (pointer: unknown, hitObjects: unknown): void => {
-      if (((pointer as { button?: number }).button ?? 0) !== 0) return;
+      const button = (pointer as { button?: number }).button ?? 0;
       const point = pointOf(pointer);
       const hits = Array.isArray(hitObjects) ? hitObjects : [];
       if (hits.some((object) => furnitureSprites.has(object as Phaser.GameObjects.Image)) || !inside(point)) return;
+      if (button === 2) {
+        (pointer as { event?: { preventDefault?: () => void } }).event?.preventDefault?.();
+        if (this.contextMenuPointer) {
+          this.contextMenuPointer = undefined;
+          this.syncOverlay();
+        }
+        return;
+      }
+      if (button !== 0) return;
       if (this.contextMenuPointer) {
         this.contextMenuPointer = undefined;
         this.syncOverlay();
@@ -1896,37 +1907,18 @@ export class InteriorCutawaySystem {
     this.renderFurniture(interior, layout);
   }
 
-  private createSelectedPrefab(interior: InteriorDefinition, layout: CutawayLayout): void {
-    if (this.prefabStorageReadFailed) {
-      this.setStatus('storageFailed');
-      return;
-    }
-    const userPrefabCount = this.prefabs.filter((prefab) => !isBuiltInPrefab(prefab)).length;
-    const defaultName = cutawayMessage(this.locale, 'prefabDefaultName', { count: userPrefabCount + 1 });
-    const name = typeof window === 'undefined' ? defaultName
-      : window.prompt(cutawayMessage(this.locale, 'prefabNamePrompt'), defaultName)?.trim();
-    if (!name) return;
-    const selection = interior.furniture.filter(({ id }) => this.selectedFurnitureIds.has(id));
-    let prefab: FurniturePrefab;
-    try {
-      prefab = createFurniturePrefab(name, selection);
-    } catch {
-      this.setStatus('prefabNeedsTwo');
-      return;
-    }
-    try {
-      savePrefabs(upsertPrefab(this.prefabs, prefab));
-      const read = readAvailablePrefabs();
-      if (read.storageRead === 'failed') {
-        this.prefabStorageReadFailed = true;
-        this.setStatus('storageFailed');
-        return;
-      }
-      this.prefabs = read.value;
-      this.setStatus('prefabCreated', { name });
-    } catch {
-      this.setStatus('storageFailed');
-    }
+  private groupSelectedDraft(interior: InteriorDefinition, layout: CutawayLayout): void {
+    if (this.selectedFurnitureIds.size < 2) return;
+    const usedInstanceIds = new Set(interior.furniture
+      .map(({ prefabInstanceId }) => prefabInstanceId)
+      .filter((id): id is string => Boolean(id)));
+    let sequence = 1;
+    while (usedInstanceIds.has(`draft-group-${sequence}`)) sequence += 1;
+    const instanceId = `draft-group-${sequence}`;
+    const grouped = cloneFurnitureLayout(interior.furniture).map((item) => (
+      this.selectedFurnitureIds.has(item.id) ? { ...item, prefabInstanceId: instanceId } : item
+    ));
+    this.commitFurnitureMutation(interior, grouped);
     this.renderFurniture(interior, layout);
   }
 

@@ -165,12 +165,13 @@ const viewportPointerAt = (x: number, y: number, button = 0) => ({
 const captureCutawayHandlers = (cutaway: InteriorCutawaySystem) => {
   let handlers: CutawayDomHandlers | undefined;
   let model: CutawayDomModel | undefined;
+  let mirror: Pick<InteriorCutawayDomOverlay, 'update'> | undefined;
   const overlay = {
     open: vi.fn((_layout, nextModel: CutawayDomModel, nextHandlers: CutawayDomHandlers) => {
       model = nextModel;
       handlers = nextHandlers;
     }),
-    update: vi.fn((nextModel: CutawayDomModel) => { model = nextModel; }),
+    update: vi.fn((nextModel: CutawayDomModel) => { model = nextModel; mirror?.update(nextModel); }),
     setLocale: vi.fn(), setRoomLabels: vi.fn(), relayout: vi.fn(), close: vi.fn(), destroy: vi.fn(),
   };
   Object.assign(cutaway, { domOverlay: overlay });
@@ -178,6 +179,7 @@ const captureCutawayHandlers = (cutaway: InteriorCutawaySystem) => {
     overlay,
     handlers: () => handlers!,
     model: () => model!,
+    mirrorTo: (target: Pick<InteriorCutawayDomOverlay, 'update'>) => { mirror = target; },
   };
 };
 
@@ -304,7 +306,7 @@ const overlayDomHarness = () => {
     'close', 'toggleEdit', 'toggleCatalog', 'toggleInspector', 'toggleGuide', 'fitView', 'save', 'undo',
     'previewTemplate', 'applyTemplate', 'category', 'page', 'resize', 'rotate', 'collect', 'revert',
     'copy', 'paste', 'group', 'dissolveGroup', 'shiftLayer', 'reorder', 'duplicate', 'returnToShelf',
-    'cancelSelection',
+    'cancelSelection', 'dismissContextMenu',
   ].map((name) => [name, vi.fn()])) as unknown as CutawayDomHandlers;
   return {
     overlay, handlers, panel, header, roomToolbar, catalog, inspector, toolbar, guide, labelLayer,
@@ -362,6 +364,24 @@ describe('InteriorCutawaySystem', () => {
     expect(capture.model().contextMenu).toBeUndefined();
   });
 
+  it('dismisses contextual actions on empty secondary click without starting a marquee', () => {
+    const fake = fakeScene();
+    const cutaway = new InteriorCutawaySystem(fake.scene as never, WORLD_DEFINITION, () => ({ width: 1_280, height: 720 }));
+    const capture = captureCutawayHandlers(cutaway);
+    cutaway.open('rest-cabin');
+    capture.handlers().toggleEdit();
+    const furniture = fake.objects.find(({ interactive, destroyed, depth }) => interactive && !destroyed && depth > 0)!;
+    furniture.emit('pointerdown', viewportPointerAt(furniture.x, furniture.y, 2));
+    expect(capture.model().contextMenu).toBeDefined();
+    const emptySecondary = viewportPointerAt(384, 224, 2);
+
+    fake.emitInput('pointerdown', emptySecondary, []);
+
+    expect(emptySecondary.event.preventDefault).toHaveBeenCalledOnce();
+    expect(capture.model().contextMenu).toBeUndefined();
+    expect(capture.model().statusId).not.toBe('marqueeSelecting');
+  });
+
   it('keeps the marquee owned by its initiating pointer until that pointer releases', () => {
     const fake = fakeScene();
     const cutaway = new InteriorCutawaySystem(fake.scene as never, WORLD_DEFINITION, () => ({ width: 1_280, height: 720 }));
@@ -413,6 +433,38 @@ describe('InteriorCutawaySystem', () => {
     openMenu();
     cutaway.destroy();
     expect((cutaway as unknown as { contextMenuPointer?: unknown }).contextMenuPointer).toBeUndefined();
+  });
+
+  it('routes real DOM Escape to the context menu before the open guide', () => {
+    const fake = fakeScene();
+    const cutaway = new InteriorCutawaySystem(fake.scene as never, WORLD_DEFINITION, () => ({ width: 1_280, height: 720 }));
+    const capture = captureCutawayHandlers(cutaway);
+    cutaway.open('rest-cabin');
+    capture.handlers().toggleEdit();
+    const furniture = fake.objects.find(({ interactive, destroyed, depth }) => interactive && !destroyed && depth > 0)!;
+    furniture.emit('pointerdown', viewportPointerAt(furniture.x, furniture.y, 2));
+    expect(capture.model()).toMatchObject({ guideMode: true, contextMenu: expect.any(Object) });
+    const dom = overlayDomHarness();
+    try {
+      dom.overlay.open(cutawayLayoutForViewport(1_280, 720), capture.model(), capture.handlers());
+      capture.mirrorTo(dom.overlay);
+      expect(dom.documentStub.activeElement).toBe(dom.toolbar.children[0]);
+
+      const firstPreventDefault = vi.fn();
+      dom.panel.emitEvent('keydown', { key: 'Escape', preventDefault: firstPreventDefault, stopPropagation: vi.fn() });
+      expect(firstPreventDefault).toHaveBeenCalledOnce();
+      expect(capture.model().contextMenu).toBeUndefined();
+      expect(capture.model().guideMode).toBe(true);
+      expect(dom.guide.hidden).toBe(false);
+
+      dom.panel.emitEvent('keydown', { key: 'Escape', preventDefault: vi.fn(), stopPropagation: vi.fn() });
+      expect(capture.model().guideMode).toBe(false);
+      expect(dom.guide.hidden).toBe(true);
+    } finally {
+      dom.overlay.destroy();
+      cutaway.destroy();
+      vi.unstubAllGlobals();
+    }
   });
 
   it('suppresses the browser context menu only while the cutaway canvas is active', () => {
@@ -2582,6 +2634,76 @@ describe('InteriorCutawaySystem', () => {
     capture.handlers().undo();
     expect(internal.activeInterior.furniture.filter(({ id }) => instance.some((item) => item.id === id))
       .every(({ prefabInstanceId }) => prefabInstanceId === instanceId)).toBe(true);
+  });
+
+  it('groups and dissolves through draft handlers with one undo entry and no write before Save', () => {
+    const values = new Map<string, string>();
+    const storage = {
+      getItem: vi.fn((key: string) => values.get(key) ?? null),
+      setItem: vi.fn((key: string, value: string) => { values.set(key, value); }),
+    };
+    const prompt = vi.fn(() => 'must not prompt');
+    vi.stubGlobal('window', { localStorage: storage, dispatchEvent: vi.fn(), prompt });
+    try {
+      const fake = fakeScene();
+      const cutaway = new InteriorCutawaySystem(fake.scene as never, WORLD_DEFINITION, () => ({ width: 1_280, height: 720 }));
+      const capture = captureCutawayHandlers(cutaway);
+      cutaway.open('rest-cabin');
+      capture.handlers().toggleEdit();
+      const internal = cutaway as unknown as {
+        activeInterior: InteriorDefinition;
+        selectedFurnitureIds: Set<string>;
+        selectedFurnitureId?: string;
+        undoStore: { past: InteriorDefinition['furniture'][]; reset(layout: InteriorDefinition['furniture']): void };
+        syncOverlay(): void;
+      };
+      const selection = internal.activeInterior.furniture
+        .filter(({ prefabInstanceId }) => !prefabInstanceId)
+        .slice(0, 2);
+      expect(selection).toHaveLength(2);
+      internal.undoStore.reset(internal.activeInterior.furniture);
+      selection.forEach(({ id }) => internal.selectedFurnitureIds.add(id));
+      internal.selectedFurnitureId = selection[0]!.id;
+      internal.syncOverlay();
+
+      capture.handlers().group();
+
+      const grouped = internal.activeInterior.furniture.filter(({ id }) => selection.some((item) => item.id === id));
+      expect(grouped.map(({ prefabInstanceId }) => prefabInstanceId)).toEqual(['draft-group-1', 'draft-group-1']);
+      expect(capture.model()).toMatchObject({ selectedCount: 2, canDissolve: true });
+      expect(internal.undoStore.past).toHaveLength(1);
+      expect(prompt).not.toHaveBeenCalled();
+      expect(storage.setItem).not.toHaveBeenCalled();
+
+      capture.handlers().save();
+      expect(storage.setItem).toHaveBeenCalledTimes(1);
+      const persisted = JSON.parse(values.get('pixelworld:interior-layout:rest-cabin') ?? 'null');
+      expect(persisted).toMatchObject({ version: 5 });
+      expect(persisted.furniture.filter(({ id }: { id: string }) => selection.some((item) => item.id === id))
+        .map(({ prefabInstanceId }: { prefabInstanceId?: string }) => prefabInstanceId))
+        .toEqual(['draft-group-1', 'draft-group-1']);
+
+      cutaway.close();
+      cutaway.open('rest-cabin');
+      capture.handlers().toggleEdit();
+      const restored = internal.activeInterior.furniture.filter(({ id }) => selection.some((item) => item.id === id));
+      restored.forEach(({ id }) => internal.selectedFurnitureIds.add(id));
+      internal.selectedFurnitureId = restored[0]!.id;
+      internal.syncOverlay();
+      capture.handlers().dissolveGroup();
+
+      expect(internal.activeInterior.furniture.filter(({ id }) => selection.some((item) => item.id === id))
+        .every(({ prefabInstanceId }) => prefabInstanceId === undefined)).toBe(true);
+      expect(capture.model()).toMatchObject({ selectedCount: 2, canDissolve: false });
+      expect(internal.undoStore.past).toHaveLength(1);
+      expect(storage.setItem).toHaveBeenCalledTimes(1);
+
+      capture.handlers().undo();
+      expect(internal.activeInterior.furniture.filter(({ id }) => selection.some((item) => item.id === id))
+        .every(({ prefabInstanceId }) => prefabInstanceId === 'draft-group-1')).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('survives throwing storage reads and localizes failed Save, Copy, and assembly writes', () => {
