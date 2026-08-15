@@ -4,13 +4,13 @@ Date: 2026-08-15
 
 Reviewed range: `64717bb..67cde7e`
 
-Implementation commits: `80c2a1d`, `67cde7e`
+Implementation commits: `80c2a1d`, `67cde7e`, `4d309b4`
 
 Final-review input: 0 Critical, 8 Important, 4 Minor
 
 ## Outcome
 
-All 8 Important and all 4 Minor findings in `game-like-interior-final-review.md` are resolved. Two independent task-scoped re-reviews found no remaining Critical or Important issue. The executable code head is fully green in focused and reconstructed full verification, is deployed through the ordinary launcher on port 5661, and passed bounded real-browser smoke. Purchased Modern Office assets remain private, read-only runtime inputs and were not staged or committed.
+All 8 Important and all 4 Minor findings in `game-like-interior-final-review.md` are resolved. A later committed-range review found one additional Important held-pointer focus lifecycle gap; commit `4d309b4` resolves it with an explicit synchronous child-open acknowledgement rather than a timing assumption. The executable code head is fully green in focused and reconstructed full verification. The preceding code head is deployed through the ordinary launcher on port 5661 and passed bounded real-browser smoke; the final exact-HEAD redeploy follows the mandatory final re-review. Purchased Modern Office assets remain private, read-only runtime inputs and were not staged or committed.
 
 ## Finding resolution
 
@@ -60,15 +60,15 @@ python3 -m pytest -q tests/test_dashboard_layout.py
 
 ## Full verification
 
-The executable code head `67cde7e523dd1127d2098ec648bd8e87b5397cab` was reconstructed outside the dirty worktree and verified with clean dependencies:
+The final executable code head `4d309b4f650dac0ab1139b91eecb1a622088dc9f` was reconstructed outside the dirty worktree and verified with clean dependencies:
 
 - Pixelworld: 66 files, 682/682 tests passed.
-- Root Node: 132/132 tracked exact-HEAD tests passed.
+- Root Node: 133/133 tracked exact-HEAD tests passed.
 - Root Python: 82 passed, 1 skipped. An archive-only run first reported 81 passed, 1 skipped, and 1 infrastructure failure because `git archive` has no `.git`; rerunning the identical tree with read-only Git metadata satisfied the test's `git ls-files` precondition.
 - Pixelworld typecheck: `tsc --noEmit` passed.
 - Pixelworld production build: passed. Vite emitted only its existing advisory for a JavaScript chunk larger than 500 kB.
 
-For comparison, the shared worktree's broader suites, which include unrelated untracked user tests, also passed: Pixelworld 682/682, root Node 176/176, and root Python 119 passed with 1 skipped.
+Before the held-pointer follow-up, the shared worktree's broader suites, which include unrelated untracked user tests, also passed: Pixelworld 682/682, root Node 176/176, and root Python 119 passed with 1 skipped.
 
 ## Scope and review audit
 
@@ -95,6 +95,39 @@ Attested executable deployment at code head `67cde7e523dd1127d2098ec648bd8e87b53
 - The unrelated `allen-cv-webui` listener on port 5660 remained running and was not disturbed.
 
 The documentation-only successor commit containing this report does not alter the build-input fingerprint. Its exact release SHA/image attestation is recorded in the final handoff after the mandatory range review and release redeploy.
+
+## Held-pointer focus lifecycle follow-up
+
+The final committed-range review identified one additional Important issue after the first report commit: `framePointerDown()` expired its focus trigger on the next animation frame, while Phaser opens a building on `pointerup`. Holding a valid building press for more than one frame therefore closed the dashboard card and lost its only connected restore target before the cutaway opened.
+
+The first TDD cycle reproduced the held gesture and production bridge gaps:
+
+- RED Node: 4 failed, 27 passed across `test_dashboard_disclosure.mjs` and `test_pixelworld_embed.mjs`.
+- RED Python: 2 failed, 16 passed in `test_dashboard_layout.py`.
+- Initial GREEN: Node 31/31 and Python 18/18.
+
+A read-only pre-commit review then found that using a post-`pointerup` animation frame as a `postMessage` delivery fence still depended on browser task/render ordering. No code from that first attempt was staged. A second TDD cycle modeled the complete production order and failed non-vacuously:
+
+- `pointerdown`
+- one elapsed frame while the pointer remains held
+- `pointerup`/`pointercancel` completion
+- synchronous child cutaway-open outcome
+- another elapsed frame
+- delayed parent `postMessage`
+- once-only close and focus restoration
+
+That composed RED produced 2 Node failures with 29 passing and 2 Python failures with 16 passing. The final implementation now:
+
+- retains a connected pending trigger while its pointer is in progress;
+- begins no-open expiry only when `pointerup` or `pointercancel` completes the gesture;
+- listens to Pixelworld's existing synchronous `pixelworld:cutaway-open` child-window event and promotes the pending trigger before any asynchronous message ordering can matter;
+- preserves that promoted trigger when the later parent state message arrives;
+- consumes it exactly once on close;
+- removes and rebinds pointer/custom-event listeners on iframe reload;
+- resets pending/active state and cancels deferred restoration on iframe reload and real page cleanup;
+- rejects no-active and disconnected triggers without later stale reuse.
+
+Final focused follow-up verification passed 37/37 Node tests and 18/18 Python tests. Clean detached-HEAD verification at `4d309b4` passed Pixelworld 682/682, root Node 133/133, root Python 82 passed with 1 skipped, typecheck, and production build. No browser loop was repeated; the exact event ordering is covered by the composed controller/bridge tests, and the earlier real-browser once-only focus restoration remains valid for the unchanged close path.
 
 ## Bounded real-browser verification
 
