@@ -10,6 +10,7 @@ import {
   diagnoseFinePlacement,
   fitBoundsDeltaToRoom,
   furnitureBlocksNavigation,
+  furnitureRenderGeometry,
   furnitureWithRotation,
   rotateGridPoint,
   resolvePlacementCandidate,
@@ -19,7 +20,12 @@ import {
 } from './interiorPlacement';
 import { FURNITURE_SCALES, normalizeFurnitureScale } from './interiorLayoutEditor';
 import { officeLayoutIssues } from './prefabGeometry';
-import { resolveAutomaticSupport, stackDependencies } from './interiorAutoStack';
+import {
+  isCompatibleStackSupport,
+  resolveAutomaticSupport,
+  stackDependencies,
+  stackRoleForFurniture,
+} from './interiorAutoStack';
 
 export interface SelectionRect extends FurnitureBounds {}
 
@@ -47,7 +53,7 @@ export function selectedFurnitureIds(
     width: Math.abs(rect.width), height: Math.abs(rect.height),
   };
   const hits = layout.filter((item) => intersects(normalized, transformedAlphaBounds(item))).map(({ id }) => id);
-  return stackDependencies(expandSelection(layout, hits), layout);
+  return expandSelectionClosure(layout, hits);
 }
 
 /** Expands every selected prefab member to its complete, layout-ordered instance. */
@@ -63,6 +69,19 @@ export function expandSelection(
   return layout
     .filter((item) => selected.has(item.id) || Boolean(item.prefabInstanceId && instanceIds.has(item.prefabInstanceId)))
     .map(({ id }) => id);
+}
+
+/** Alternates prefab membership and forward support dependencies until the layout-ordered selection is stable. */
+export function expandSelectionClosure(
+  layout: readonly FurnitureDefinition[],
+  selectedIds: readonly string[],
+): string[] {
+  let expanded = layout.filter(({ id }) => selectedIds.includes(id)).map(({ id }) => id);
+  while (true) {
+    const next = stackDependencies(expandSelection(layout, expanded), layout);
+    if (next.length === expanded.length && next.every((id, index) => id === expanded[index])) return next;
+    expanded = next;
+  }
 }
 
 const translateFurniture = (item: FurnitureDefinition, delta: GridPoint): FurnitureDefinition => ({
@@ -122,12 +141,29 @@ const selectedMutationIsValid = (
     ));
 };
 
+const preserveContainingSupport = (
+  item: FurnitureDefinition,
+  previous: FurnitureDefinition | undefined,
+  layout: readonly FurnitureDefinition[],
+): FurnitureDefinition | undefined => {
+  if (stackRoleForFurniture(item) !== 'surface') return undefined;
+  const center = furnitureRenderGeometry(item).center;
+  const supportId = previous?.supportedByIds?.find((id) => {
+    const support = layout.find((candidate) => candidate.id === id);
+    if (!isCompatibleStackSupport(support)) return false;
+    const bounds = transformedAlphaBounds(support);
+    return center.x >= bounds.x && center.x <= bounds.x + bounds.width
+      && center.y >= bounds.y && center.y <= bounds.y + bounds.height;
+  });
+  return supportId ? { ...cloneFurniture(item), supportedByIds: [supportId] } : undefined;
+};
+
 export function moveSelection(
   layout: readonly FurnitureDefinition[],
   selectedIds: readonly string[],
   delta: GridPoint,
 ): FurnitureDefinition[] {
-  const expanded = stackDependencies(expandSelection(layout, selectedIds), layout);
+  const expanded = expandSelectionClosure(layout, selectedIds);
   const selected = new Set(expanded);
   const first = layout.find(({ id }) => selected.has(id));
   if (!first) return layout.map(cloneFurniture);
@@ -149,7 +185,7 @@ export function removeSelection(
   layout: readonly FurnitureDefinition[],
   selectedIds: readonly string[],
 ): FurnitureDefinition[] {
-  const selected = new Set(stackDependencies(expandSelection(layout, selectedIds), layout));
+  const selected = new Set(expandSelectionClosure(layout, selectedIds));
   return layout.filter(({ id }) => !selected.has(id)).map(cloneFurniture);
 }
 
@@ -172,7 +208,7 @@ export function previewSelectionMove(
   selectedIds: readonly string[],
   delta: GridPoint,
 ): SelectionMutationResult {
-  const selected = new Set(stackDependencies(expandSelection(layout, selectedIds), layout));
+  const selected = new Set(expandSelectionClosure(layout, selectedIds));
   if (selected.size === 0) return { accepted: false, layout: layout.map(cloneFurniture) };
   const movedWithoutFit = moveSelection(layout, [...selected], delta);
   const fitted = new Map(fitSelectionToRoom(
@@ -198,7 +234,7 @@ export function transformSelectionAtomically(
   selectedIds: readonly string[],
   transform: (item: FurnitureDefinition) => FurnitureDefinition,
 ): SelectionMutationResult {
-  const selected = new Set(expandSelection(layout, selectedIds));
+  const selected = new Set(expandSelectionClosure(layout, selectedIds));
   if (selected.size === 0) return { accepted: false, layout: layout.map(cloneFurniture) };
   const changedSelection = layout.filter(({ id }) => selected.has(id)).map((item) => transform(cloneFurniture(item)));
   const fittedById = new Map(fitSelectionToRoom(room, changedSelection).map((item) => [item.id, item]));
@@ -206,8 +242,15 @@ export function transformSelectionAtomically(
     if (!selected.has(item.id)) return cloneFurniture(item);
     return cloneFurniture(fittedById.get(item.id)!);
   });
-  const accepted = selectedMutationIsValid(room, layout, transformed, selected);
-  return { accepted, layout: (accepted ? transformed : layout).map(cloneFurniture) };
+  const supported = transformed.map((item) => {
+    if (!selected.has(item.id)) return item;
+    const previous = layout.find(({ id }) => id === item.id);
+    if (previous?.layer !== item.layer) return item;
+    return preserveContainingSupport(item, previous, transformed)
+      ?? resolveAutomaticSupport(item, transformed).item;
+  });
+  const accepted = selectedMutationIsValid(room, layout, supported, selected);
+  return { accepted, layout: (accepted ? supported : layout).map(cloneFurniture) };
 }
 
 const rotatedFacing = (
@@ -224,7 +267,7 @@ export function rotateSelectionAtomically(
   selectedIds: readonly string[],
   delta: -90 | 90,
 ): SelectionMutationResult {
-  const selected = new Set(expandSelection(layout, selectedIds));
+  const selected = new Set(expandSelectionClosure(layout, selectedIds));
   const items = layout.filter(({ id }) => selected.has(id));
   if (items.length === 0) return { accepted: false, layout: layout.map(cloneFurniture) };
   const anchor = selectionAnchor(items);
@@ -247,7 +290,7 @@ export function resizeSelectionAtomically(
   selectedIds: readonly string[],
   direction: -1 | 1,
 ): SelectionMutationResult {
-  const selected = new Set(expandSelection(layout, selectedIds));
+  const selected = new Set(expandSelectionClosure(layout, selectedIds));
   const items = layout.filter(({ id }) => selected.has(id));
   if (items.length === 0) return { accepted: false, layout: layout.map(cloneFurniture) };
   const anchor = selectionAnchor(items);
@@ -289,7 +332,7 @@ export function shiftSelectionLayer(
   selectedIds: readonly string[],
   direction: 'previous' | 'next',
 ): SelectionMutationResult {
-  const selected = new Set(expandSelection(layout, selectedIds));
+  const selected = new Set(expandSelectionClosure(layout, selectedIds));
   const selectedItems = layout.filter(({ id }) => selected.has(id));
   if (selectedItems.length === 0) return { accepted: false, layout: layout.map(cloneFurniture) };
   const delta = direction === 'next' ? 1 : -1;
@@ -308,7 +351,7 @@ export function reorderSelection(
   selectedIds: readonly string[],
   direction: 'back' | 'backward' | 'forward' | 'front',
 ): FurnitureDefinition[] {
-  const selected = new Set(expandSelection(layout, selectedIds));
+  const selected = new Set(expandSelectionClosure(layout, selectedIds));
   const items = layout.filter(({ id }) => selected.has(id));
   if (items.length === 0) return layout.map(cloneFurniture);
   const layerDeltas = new Map<FurnitureLayer, number>();
@@ -398,7 +441,7 @@ const oneAtomicSelection = (
   layout: readonly FurnitureDefinition[],
   selectedIds: readonly string[],
 ): FurnitureDefinition[] => {
-  const ids = expandSelection(layout, selectedIds);
+  const ids = expandSelectionClosure(layout, selectedIds);
   const items = layout.filter(({ id }) => ids.includes(id));
   if (items.length === 1) return items;
   const instanceId = items[0]?.prefabInstanceId;

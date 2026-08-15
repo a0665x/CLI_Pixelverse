@@ -79,6 +79,34 @@ describe('interior furniture editor model', () => {
     expect(moved[1]?.supportedByIds).toEqual([support.id]);
   });
 
+  it('closest-edge fits the complete public support dependency closure with one shared delta', () => {
+    const support = {
+      id: 'edge-desk', kind: 'desk' as const, assetId: 247, point: { x: 4, y: 3 }, facing: 'up' as const,
+      supportedActions: [], icon: 'generic' as const, layer: 'furniture' as const, blocksNavigation: false,
+    };
+    const monitor = {
+      id: 'edge-monitor', kind: 'display' as const, assetId: 129, point: { x: 4.5, y: 3 }, facing: 'up' as const,
+      supportedActions: [], icon: 'generic' as const, layer: 'surface' as const, blocksNavigation: false,
+      supportedByIds: [support.id],
+    };
+    const layout = [support, monitor];
+    const before = structuredClone(layout);
+
+    const moved = moveFurniture(room, layout, support.id, { x: 13, y: 3 });
+    const delta = moved[0]!.point.x - support.point.x;
+
+    expect(moved).not.toEqual(before);
+    expect(moved[1]!.point.x - monitor.point.x).toBeCloseTo(delta);
+    expect(Math.max(...moved.map((item) => {
+      const bounds = transformedAlphaBounds(item);
+      return bounds.x + bounds.width;
+    }))).toBeCloseTo(room.width);
+    expect(moved[1]?.supportedByIds).toEqual([support.id]);
+    expect(layout).toEqual(before);
+    expect(moved[0]).not.toBe(layout[0]);
+    expect(moved[1]).not.toBe(layout[1]);
+  });
+
   it('saves and restores a building-specific arrangement', () => {
     const memory = new Map<string, string>();
     const storage = {

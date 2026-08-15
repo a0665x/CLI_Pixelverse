@@ -3,6 +3,7 @@ import type { FurnitureDefinition, InteriorDefinition } from '../src/world/types
 import { INTERIOR_DEFINITIONS } from '../src/world/interiorDefinitions';
 import { officeLayoutIssues } from '../src/rendering/prefabGeometry';
 import { transformedAlphaBounds } from '../src/rendering/interiorPlacement';
+import { stackDependencies } from '../src/rendering/interiorAutoStack';
 import {
   createFurniturePrefab,
   duplicateSelection,
@@ -100,6 +101,53 @@ describe('interior marquee selection and prefabs', () => {
     const moved = moveSelectionAtomically(room, [desk, monitor], [monitor.id], { x: 4, y: 2 });
     expect(moved.accepted).toBe(true);
     expect(moved.layout[1]).not.toHaveProperty('supportedByIds');
+  });
+
+  it('re-resolves transformed surface support without retaining a remote dependency', () => {
+    const desk = {
+      ...furniture('external-desk', 247, 4, 4), kind: 'desk' as const, layer: 'furniture' as const,
+      blocksNavigation: false,
+    };
+    const monitor = {
+      ...furniture('group-monitor', 129, 4, 4), kind: 'display' as const,
+      prefabInstanceId: 'accessory-group', supportedByIds: [desk.id],
+    };
+    const chair = {
+      ...furniture('group-chair', 101, 6, 4), kind: 'chair' as const,
+      prefabInstanceId: 'accessory-group',
+    };
+    const layout = [desk, monitor, chair];
+
+    const detached = rotateSelectionAtomically(room, layout, [monitor.id], 90);
+    expect(detached.accepted).toBe(true);
+    expect(detached.layout[1]).not.toHaveProperty('supportedByIds');
+    expect(stackDependencies([desk.id], detached.layout)).toEqual([desk.id]);
+
+    const together = rotateSelectionAtomically(room, layout, [desk.id, monitor.id, chair.id], 90);
+    expect(together.accepted).toBe(true);
+    expect(together.layout[1]?.supportedByIds).toEqual([desk.id]);
+  });
+
+  it('preserves the declared support when it still contains a transformed surface', () => {
+    const declared = {
+      ...furniture('declared-desk', 247, 4, 4), kind: 'desk' as const, layer: 'furniture' as const,
+      scale: 3 as const, blocksNavigation: false,
+    };
+    const higherBaseline = {
+      ...furniture('higher-desk', 247, 4, 4.5), kind: 'desk' as const, layer: 'furniture' as const,
+      scale: 3 as const, blocksNavigation: false,
+    };
+    const monitor = {
+      ...furniture('stable-monitor', 129, 4.5, 4.5), kind: 'display' as const,
+      supportedByIds: [declared.id],
+    };
+
+    const transformed = transformSelectionAtomically(
+      room, [declared, higherBaseline, monitor], [monitor.id], (item) => ({ ...item }),
+    );
+
+    expect(transformed.accepted).toBe(true);
+    expect(transformed.layout[2]?.supportedByIds).toEqual([declared.id]);
   });
 
   it('applies selection transforms atomically', () => {

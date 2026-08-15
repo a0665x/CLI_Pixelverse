@@ -61,7 +61,7 @@ import {
 } from './interiorLayoutEditor';
 import {
   duplicateSelection,
-  expandSelection,
+  expandSelectionClosure,
   previewSelectionMove,
   removeSelection,
   reorderSelection,
@@ -106,7 +106,6 @@ import {
   automaticStackRank,
   compareAutomaticStack,
   resolveAutomaticSupport,
-  stackDependencies,
   type StackRoleFurniture,
 } from './interiorAutoStack';
 
@@ -1080,7 +1079,7 @@ export class InteriorCutawaySystem {
           if (!this.selectedFurnitureIds.has(furniture.id)) {
             this.selectedFurnitureId = furniture.id;
             this.selectedFurnitureIds.clear();
-            stackDependencies(expandSelection(interior.furniture, [furniture.id]), interior.furniture)
+            expandSelectionClosure(interior.furniture, [furniture.id])
               .forEach((id) => this.selectedFurnitureIds.add(id));
           }
           this.contextMenuPointer = this.pointerScreenPoint(pointer);
@@ -1091,9 +1090,7 @@ export class InteriorCutawaySystem {
         this.contextMenuPointer = undefined;
         this.selectedFurnitureId = furniture.id;
         this.selectedFurnitureIds.clear();
-        const selectedIds = stackDependencies(
-          expandSelection(interior.furniture, [furniture.id]), interior.furniture,
-        );
+        const selectedIds = expandSelectionClosure(interior.furniture, [furniture.id]);
         selectedIds.forEach((id) => this.selectedFurnitureIds.add(id));
         const screen = this.pointerScreenPoint(pointer);
         const rendered = applyInteriorViewport(this.interiorViewport, { x: sprite.x, y: sprite.y });
@@ -1936,9 +1933,7 @@ export class InteriorCutawaySystem {
 
   private returnSelectedToShelf(interior: InteriorDefinition, layout: CutawayLayout): void {
     if (this.selectedFurnitureIds.size === 0) return;
-    const selection = stackDependencies(
-      expandSelection(interior.furniture, [...this.selectedFurnitureIds]), interior.furniture,
-    );
+    const selection = expandSelectionClosure(interior.furniture, [...this.selectedFurnitureIds]);
     const count = selection.length;
     this.commitFurnitureMutation(interior, removeSelection(interior.furniture, selection));
     this.selectedFurnitureIds.clear();

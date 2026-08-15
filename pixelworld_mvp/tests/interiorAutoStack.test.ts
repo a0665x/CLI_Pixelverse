@@ -37,13 +37,13 @@ describe('automatic interior stacking', () => {
   });
 
   it('attaches a surface object to the topmost containing support and detaches it away from supports', () => {
-    const lower = furniture('lower-desk', 'desk', 247);
-    const upper = furniture('upper-desk', 'desk', 247);
-    const monitor = furniture('monitor', 'display', 129);
+    const lower = { ...furniture('z-lower-desk', 'desk', 247, { x: 4, y: 3.75 }), scale: 3 as const };
+    const upper = { ...furniture('a-upper-desk', 'desk', 247, { x: 4, y: 4.25 }), scale: 3 as const };
+    const monitor = furniture('monitor', 'display', 129, { x: 4, y: 4 });
 
-    expect(resolveAutomaticSupport(monitor, [lower, upper])).toMatchObject({
-      attachedTo: 'upper-desk',
-      item: { supportedByIds: ['upper-desk'] },
+    expect(resolveAutomaticSupport(monitor, [upper, lower])).toMatchObject({
+      attachedTo: 'a-upper-desk',
+      item: { supportedByIds: ['a-upper-desk'] },
     });
     const detached = resolveAutomaticSupport(
       { ...monitor, point: { x: 9, y: 7 }, supportedByIds: ['missing-support'] },

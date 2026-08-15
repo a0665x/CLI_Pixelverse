@@ -82,3 +82,57 @@ The final read-only re-review reported no unresolved Critical, Important, or Min
 
 - Browser/manual QA was not requested for this task. The behavior is covered through pure geometry/selection tests plus the Phaser system integration harness.
 - Legacy layer/z-index mutation helpers remain as internal compatibility APIs for existing callers and saved v5 data, but no user-facing control reaches them and the renderer ignores user z-index for ordering.
+
+## Independent review follow-up 2 — Shared closure and transform geometry
+
+### Outcome
+
+- Public `moveFurniture` now translates the full support dependency closure first, computes one combined opaque bounds, and applies the room-edge fit delta once to every member. The 14-wide desk/offset-monitor repro settles against the right edge with its relationship and caller immutability intact.
+- Selection expansion now alternates prefab membership and forward support dependencies to a fixed point. Cutaway right/left click, marquee, drag capture, lift, outline, preview mutation, selection count, commit, and return all consume the same layout-ordered IDs.
+- Geometry transforms re-resolve selected surface attachments against the transformed layout when the layer itself did not change. A monitor rotated away with a separate chair prefab detaches from the external desk; a monitor transformed together with its support retains the relationship.
+- Topmost support coverage now uses distinct baselines, reversed input order, and IDs whose lexical order opposes the expected result, proving baseline ordering rather than an array/ID tie.
+
+### TDD evidence
+
+#### RED
+
+- Dependency closure closest-edge fit plus topmost characterization:
+  - `cd pixelworld_mvp && npm test -- --run tests/interiorAutoStack.test.ts tests/interiorLayoutEditor.test.ts -t "topmost containing support|complete public support dependency closure"`
+  - Result: 1 failed, 1 passed, 48 skipped. `moveFurniture` returned the unchanged layout; the existing baseline comparator already passed the strengthened characterization.
+- Transform support re-resolution:
+  - `cd pixelworld_mvp && npm test -- --run tests/interiorSelection.test.ts -t "re-resolves transformed surface support"`
+  - Result: 1 failed, 26 skipped. The rotated monitor retained `supportedByIds: ['external-desk']`.
+- Cutaway fixed-point closure:
+  - `cd pixelworld_mvp && npm test -- --run tests/interiorCutawaySystem.test.ts -t "fixed-point prefab and support closure"`
+  - Result: 1 failed, 91 skipped. Drag capture contained desk and monitor but omitted the monitor's prefab chair.
+
+#### GREEN
+
+- Exact repros:
+  - `cd pixelworld_mvp && npm test -- --run tests/interiorLayoutEditor.test.ts tests/interiorSelection.test.ts tests/interiorCutawaySystem.test.ts tests/interiorAutoStack.test.ts -t "complete public support dependency closure|re-resolves transformed surface support|fixed-point prefab and support closure|topmost containing support"`
+  - Result: 4 files passed; 4 tests passed, 165 skipped.
+- Requested focused suite:
+  - `cd pixelworld_mvp && npm test -- --run tests/interiorAutoStack.test.ts tests/interiorSelection.test.ts tests/interiorLayoutEditor.test.ts tests/interiorCutawaySystem.test.ts tests/prefabGeometry.test.ts`
+  - Result: 5 files passed; 180 tests passed.
+- Fresh full Pixelworld suite and typecheck:
+  - `cd pixelworld_mvp && npm test -- --run && npm run typecheck`
+  - Result: 64 files passed; 603 tests passed; `tsc --noEmit` exit 0.
+
+### Completion review resolution
+
+The mandatory read-only completion review found no Critical issues and one Important preservation gap: unconditional automatic re-resolution could switch a surface from its still-containing declared support to a different overlapping support with a higher baseline. A dual-support regression was added before the production change.
+
+- Review RED:
+  - `cd pixelworld_mvp && npm test -- --run tests/interiorSelection.test.ts -t "preserves the declared support"`
+  - Result: 1 failed, 27 skipped. The monitor changed from `declared-desk` to `higher-desk`.
+- Targeted GREEN:
+  - `cd pixelworld_mvp && npm test -- --run tests/interiorSelection.test.ts -t "preserves the declared support|re-resolves transformed surface support"`
+  - Result: 2 passed, 26 skipped.
+- Final requested focused suite and typecheck:
+  - `cd pixelworld_mvp && npm test -- --run tests/interiorAutoStack.test.ts tests/interiorSelection.test.ts tests/interiorLayoutEditor.test.ts tests/interiorCutawaySystem.test.ts tests/prefabGeometry.test.ts && npm run typecheck`
+  - Result: 5 files passed; 181 tests passed; `tsc --noEmit` exit 0.
+- Final fresh full Pixelworld suite and typecheck:
+  - `cd pixelworld_mvp && npm test -- --run && npm run typecheck`
+  - Result: 64 files passed; 604 tests passed; `tsc --noEmit` exit 0.
+
+The transform path now keeps the declared support only while it remains compatible and geometrically contains the transformed surface; otherwise it detaches or selects the current topmost compatible support. No unresolved Critical or Important review findings remain.

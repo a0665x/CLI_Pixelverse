@@ -2254,6 +2254,86 @@ describe('InteriorCutawaySystem', () => {
     expect(internal.currentDragMutation).toBeUndefined();
   });
 
+  it('uses one fixed-point prefab and support closure for drag capture, preview, lift, outline, and commit', () => {
+    const fake = fakeScene();
+    const cutaway = new InteriorCutawaySystem(fake.scene as never, WORLD_DEFINITION, () => ({ width: 1_280, height: 720 }));
+    const capture = captureCutawayHandlers(cutaway);
+    cutaway.open('rest-cabin');
+    const desk = {
+      id: 'closure-desk', kind: 'desk' as const, assetId: 247, point: { x: 4, y: 3 }, facing: 'up' as const,
+      supportedActions: [], icon: 'generic' as const, scale: 1 as const, rotation: 0 as const,
+      layer: 'furniture' as const, blocksNavigation: false,
+    };
+    const monitor = {
+      id: 'closure-monitor', kind: 'display' as const, assetId: 129, point: { x: 4, y: 3 }, facing: 'up' as const,
+      supportedActions: [], icon: 'generic' as const, scale: 1 as const, rotation: 0 as const,
+      layer: 'surface' as const, blocksNavigation: false, supportedByIds: [desk.id],
+      prefabInstanceId: 'closure-accessories',
+    };
+    const chair = {
+      id: 'closure-chair', kind: 'chair' as const, assetId: 101, point: { x: 6, y: 3 }, facing: 'up' as const,
+      supportedActions: [], icon: 'generic' as const, scale: 1 as const, rotation: 0 as const,
+      layer: 'furniture' as const, blocksNavigation: false, prefabInstanceId: 'closure-accessories',
+    };
+    const room: InteriorDefinition = {
+      id: 'rest-cabin', label: 'Closure drag', width: 14, height: 9,
+      floor: 'wood', wall: 'cream', furniture: [desk, monitor, chair], overflow: [],
+    };
+    const internal = cutaway as unknown as {
+      editMode: boolean; activeDefinition: InteriorDefinition; activeInterior: InteriorDefinition;
+      roomCell: number; roomOrigin: { x: number; y: number };
+      furnitureDragCapture?: {
+        selectedIds: string[];
+        startLayout: InteriorDefinition['furniture'];
+      };
+      currentDragMutation?: { accepted: boolean; layout: InteriorDefinition['furniture'] };
+      undoStore: { reset(layout: InteriorDefinition['furniture']): void };
+      renderFurniture(interior: InteriorDefinition, layout: ReturnType<typeof cutawayLayoutForViewport>): void;
+    };
+    internal.editMode = true;
+    internal.activeDefinition = room;
+    internal.activeInterior = room;
+    internal.undoStore.reset(room.furniture);
+    internal.renderFurniture(room, cutawayLayoutForViewport(1_280, 720));
+    const sprite = (assetId: number) => fake.objects.find(({ texture, interactive, destroyed }) =>
+      texture === `modern-office-v1.2-single-${assetId}` && interactive && !destroyed)!;
+    const deskSprite = sprite(247);
+    const monitorSprite = sprite(129);
+    const chairSprite = sprite(101);
+    const scales = [deskSprite, monitorSprite, chairSprite].map(({ scale }) => scale);
+    const owner = { ...pointerAt(deskSprite.x, deskSprite.y), id: 83 };
+    const target = { ...pointerAt(deskSprite.x + internal.roomCell, deskSprite.y), id: 83 };
+
+    deskSprite.emit('pointerdown', owner);
+    deskSprite.emit('dragstart', owner);
+    deskSprite.emit('drag', target, target.x, target.y);
+
+    const selectedIds = [desk.id, monitor.id, chair.id];
+    expect(internal.furnitureDragCapture?.selectedIds).toEqual(selectedIds);
+    expect(capture.model().selectedCount).toBe(3);
+    expect([deskSprite, monitorSprite, chairSprite].map(({ scale }, index) => scale > scales[index]!))
+      .toEqual([true, true, true]);
+    expect([deskSprite, monitorSprite, chairSprite].map(({ tintColor }) => tintColor))
+      .toEqual([0x65d47e, 0x65d47e, 0x65d47e]);
+    expect(fake.objects.some(({ strokeRects }) => strokeRects.length === selectedIds.length)).toBe(true);
+    const preview = internal.currentDragMutation!;
+    const movedIds = preview.layout.filter((item, index) => {
+      const start = internal.furnitureDragCapture!.startLayout[index]!;
+      return item.point.x !== start.point.x || item.point.y !== start.point.y;
+    }).map(({ id }) => id);
+    expect(preview.accepted).toBe(true);
+    expect(movedIds).toEqual(selectedIds);
+    const previewPoints = new Map(preview.layout.map(({ id, point }) => [id, point]));
+    expect([deskSprite, monitorSprite, chairSprite].map(({ x }) => x))
+      .toEqual(selectedIds.map((id) => furnitureRenderScreenPoint(
+        internal.roomOrigin,
+        preview.layout.find((item) => item.id === id)!, internal.roomCell,
+      ).x));
+
+    deskSprite.emit('dragend', target);
+    expect(room.furniture.map(({ point }) => point)).toEqual(selectedIds.map((id) => previewPoints.get(id)));
+  });
+
   it('refreshes an open cutaway for a changed viewport without discarding its draft', () => {
     const fake = fakeScene();
     const viewport = { width: 1_280, height: 720 };

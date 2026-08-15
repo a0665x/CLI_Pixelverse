@@ -12,6 +12,7 @@ import {
   commitPlacementCandidate,
   diagnoseFinePlacement,
   effectiveFurnitureFootprint,
+  fitBoundsDeltaToRoom,
   navigationCells,
   normalizeRotation,
   resolvePlacementCandidate,
@@ -19,6 +20,8 @@ import {
   furnitureBlocksNavigation,
   furnitureWithRotation,
   rotateGridPoint,
+  snapFurniturePoint,
+  transformedAlphaBounds,
   type PlacementDiagnostic,
 } from './interiorPlacement';
 import {
@@ -96,34 +99,54 @@ export function moveFurniture(
 ): FurnitureDefinition[] {
   const current = layout.find(({ id }) => id === furnitureId);
   if (!current) return cloneLayout(layout);
+  const dependencyIds = new Set(stackDependencies([furnitureId], layout));
+  if (dependencyIds.size > 1) {
+    const snapped = snapFurniturePoint(point);
+    const requestedDelta = { x: snapped.x - current.point.x, y: snapped.y - current.point.y };
+    const translated = cloneLayout(layout).map((item) => {
+      if (!dependencyIds.has(item.id)) return item;
+      return {
+        ...item,
+        point: { x: item.point.x + requestedDelta.x, y: item.point.y + requestedDelta.y },
+        ...(item.interactionPoint ? { interactionPoint: {
+          x: item.interactionPoint.x + requestedDelta.x,
+          y: item.interactionPoint.y + requestedDelta.y,
+        } } : {}),
+      };
+    });
+    const dependencyBounds = translated.filter(({ id }) => dependencyIds.has(id))
+      .map((item) => transformedAlphaBounds(item));
+    const x = Math.min(...dependencyBounds.map((bounds) => bounds.x));
+    const y = Math.min(...dependencyBounds.map((bounds) => bounds.y));
+    const right = Math.max(...dependencyBounds.map((bounds) => bounds.x + bounds.width));
+    const bottom = Math.max(...dependencyBounds.map((bounds) => bounds.y + bounds.height));
+    const bounds = { x, y, width: right - x, height: bottom - y };
+    const impossibleFit = bounds.width > room.width || bounds.height > room.height;
+    const entirelyOutside = right <= 0 || x >= room.width || bottom <= 0 || y >= room.height;
+    if (impossibleFit || entirelyOutside) return cloneLayout(layout);
+    const fitDelta = fitBoundsDeltaToRoom(room, bounds);
+    const moved = translated.map((item) => {
+      if (!dependencyIds.has(item.id)) return item;
+      return {
+        ...item,
+        point: { x: item.point.x + fitDelta.x, y: item.point.y + fitDelta.y },
+        ...(item.interactionPoint ? { interactionPoint: {
+          x: item.interactionPoint.x + fitDelta.x,
+          y: item.interactionPoint.y + fitDelta.y,
+        } } : {}),
+      };
+    });
+    return moved.filter(({ id }) => dependencyIds.has(id))
+      .every((item) => diagnoseFinePlacement(room, item, moved, item.id) === 'valid')
+      ? moved
+      : cloneLayout(layout);
+  }
   const candidate = resolvePlacementCandidate(room, layout, current, point, furnitureId);
   const resolved = {
     ...candidate,
     furniture: resolveAutomaticSupport(candidate.furniture, layout).item,
   };
-  const dependencyIds = new Set(stackDependencies([furnitureId], layout));
-  if (dependencyIds.size === 1) return commitPlacementCandidate(room, layout, resolved);
-  if (resolved.diagnostic !== 'valid') return cloneLayout(layout);
-  const delta = {
-    x: resolved.furniture.point.x - current.point.x,
-    y: resolved.furniture.point.y - current.point.y,
-  };
-  const moved = cloneLayout(layout).map((item) => {
-    if (!dependencyIds.has(item.id)) return item;
-    if (item.id === furnitureId) return cloneLayout([resolved.furniture])[0]!;
-    return {
-      ...item,
-      point: { x: item.point.x + delta.x, y: item.point.y + delta.y },
-      ...(item.interactionPoint ? { interactionPoint: {
-        x: item.interactionPoint.x + delta.x,
-        y: item.interactionPoint.y + delta.y,
-      } } : {}),
-    };
-  });
-  return moved.filter(({ id }) => dependencyIds.has(id))
-    .every((item) => diagnoseFinePlacement(room, item, moved, item.id) === 'valid')
-    ? moved
-    : cloneLayout(layout);
+  return commitPlacementCandidate(room, layout, resolved);
 }
 
 export function addFurniture(
