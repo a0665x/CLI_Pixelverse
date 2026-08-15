@@ -19,6 +19,7 @@ import {
 } from './interiorPlacement';
 import { FURNITURE_SCALES, normalizeFurnitureScale } from './interiorLayoutEditor';
 import { officeLayoutIssues } from './prefabGeometry';
+import { resolveAutomaticSupport, stackDependencies } from './interiorAutoStack';
 
 export interface SelectionRect extends FurnitureBounds {}
 
@@ -46,7 +47,7 @@ export function selectedFurnitureIds(
     width: Math.abs(rect.width), height: Math.abs(rect.height),
   };
   const hits = layout.filter((item) => intersects(normalized, transformedAlphaBounds(item))).map(({ id }) => id);
-  return expandSelection(layout, hits);
+  return stackDependencies(expandSelection(layout, hits), layout);
 }
 
 /** Expands every selected prefab member to its complete, layout-ordered instance. */
@@ -93,6 +94,10 @@ const fitSelectionToRoom = (
 ): FurnitureDefinition[] => {
   if (items.length === 0) return [];
   const bounds = selectionBounds(items);
+  const impossibleFit = bounds.width > room.width || bounds.height > room.height;
+  const entirelyOutside = bounds.x + bounds.width <= 0 || bounds.x >= room.width
+    || bounds.y + bounds.height <= 0 || bounds.y >= room.height;
+  if (impossibleFit || entirelyOutside) return items.map(cloneFurniture);
   const delta = fitBoundsDeltaToRoom(room, bounds);
   return items.map((item) => translateFurniture(item, delta));
 };
@@ -105,20 +110,16 @@ const selectedMutationIsValid = (
 ): boolean => {
   const selectedItems = candidateLayout.filter(({ id }) => selected.has(id));
   if (!selectedItems.every((item) => diagnoseFinePlacement(room, item, candidateLayout, item.id) === 'valid')) return false;
-  const issueKey = (issue: ReturnType<typeof officeLayoutIssues>[number]): string => [
-    issue.diagnostic,
-    issue.furnitureId ?? '',
-    issue.conflictingId ?? '',
-    issue.point ? `${issue.point.x},${issue.point.y}` : '',
-  ].join('|');
-  const previousIssues = new Set(officeLayoutIssues({
+  const previousInvalidSupports = new Set(officeLayoutIssues({
     ...room, furniture: previousLayout.map(cloneFurniture),
-  }).map(issueKey));
-  return !officeLayoutIssues({ ...room, furniture: candidateLayout.map(cloneFurniture) }).some((issue) => (
-    Boolean(issue.furnitureId && selected.has(issue.furnitureId))
-    || Boolean(issue.conflictingId && selected.has(issue.conflictingId))
-    || !previousIssues.has(issueKey(issue))
-  ));
+  }).filter(({ diagnostic }) => diagnostic === 'invalid-support')
+    .map(({ furnitureId, conflictingId }) => `${furnitureId ?? ''}:${conflictingId ?? ''}`));
+  return !officeLayoutIssues({ ...room, furniture: candidateLayout.map(cloneFurniture) })
+    .filter(({ diagnostic }) => diagnostic === 'invalid-support')
+    .some(({ furnitureId, conflictingId }) => (
+      Boolean(furnitureId && selected.has(furnitureId))
+      || !previousInvalidSupports.has(`${furnitureId ?? ''}:${conflictingId ?? ''}`)
+    ));
 };
 
 export function moveSelection(
@@ -126,7 +127,7 @@ export function moveSelection(
   selectedIds: readonly string[],
   delta: GridPoint,
 ): FurnitureDefinition[] {
-  const expanded = expandSelection(layout, selectedIds);
+  const expanded = stackDependencies(expandSelection(layout, selectedIds), layout);
   const selected = new Set(expanded);
   const first = layout.find(({ id }) => selected.has(id));
   if (!first) return layout.map(cloneFurniture);
@@ -148,7 +149,7 @@ export function removeSelection(
   layout: readonly FurnitureDefinition[],
   selectedIds: readonly string[],
 ): FurnitureDefinition[] {
-  const selected = new Set(expandSelection(layout, selectedIds));
+  const selected = new Set(stackDependencies(expandSelection(layout, selectedIds), layout));
   return layout.filter(({ id }) => !selected.has(id)).map(cloneFurniture);
 }
 
@@ -171,7 +172,7 @@ export function previewSelectionMove(
   selectedIds: readonly string[],
   delta: GridPoint,
 ): SelectionMutationResult {
-  const selected = new Set(expandSelection(layout, selectedIds));
+  const selected = new Set(stackDependencies(expandSelection(layout, selectedIds), layout));
   if (selected.size === 0) return { accepted: false, layout: layout.map(cloneFurniture) };
   const movedWithoutFit = moveSelection(layout, [...selected], delta);
   const fitted = new Map(fitSelectionToRoom(
@@ -179,8 +180,16 @@ export function previewSelectionMove(
     movedWithoutFit.filter(({ id }) => selected.has(id)),
   ).map((item) => [item.id, item]));
   const moved = movedWithoutFit.map((item) => selected.has(item.id) ? fitted.get(item.id)! : item);
-  const accepted = selectedMutationIsValid(room, layout, moved, selected);
-  return { accepted, layout: moved.map(cloneFurniture) };
+  const supported = moved.map(cloneFurniture);
+  for (let index = 0; index < supported.length; index += 1) {
+    if (!selected.has(supported[index]!.id)) continue;
+    const previous = layout.find(({ id }) => id === supported[index]!.id);
+    const movedWithSupport = previous?.supportedByIds?.some((id) => selected.has(id)) === true;
+    if (movedWithSupport) continue;
+    supported[index] = resolveAutomaticSupport(supported[index]!, supported).item;
+  }
+  const accepted = selectedMutationIsValid(room, layout, supported, selected);
+  return { accepted, layout: supported.map(cloneFurniture) };
 }
 
 export function transformSelectionAtomically(

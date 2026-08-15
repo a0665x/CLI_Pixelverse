@@ -14,7 +14,7 @@ export function dragPresentation(
   phase: DragPhase,
   reducedMotion: boolean,
 ): DragPresentation {
-  const invalid = diagnostic !== 'valid';
+  const invalid = diagnostic === 'outside-room' || diagnostic === 'blocks-door' || diagnostic === 'invalid-asset';
   return {
     scale: reducedMotion || phase === 'idle' ? 1 : phase === 'dragging' || phase === 'lifting' ? 1.035 : 1,
     alpha: phase === 'dragging' ? 0.94 : 1,

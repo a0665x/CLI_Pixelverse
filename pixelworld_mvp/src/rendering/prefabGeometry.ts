@@ -17,11 +17,13 @@ import {
   type FurnitureBounds,
 } from './interiorPlacement';
 import { furnitureFootprint } from '../world/interiorDefinitions';
+import { isCompatibleStackSupport, stackRoleForFurniture } from './interiorAutoStack';
 
 export type PrefabPlacementDiagnostic =
   | 'outside-room'
   | 'blocks-door'
   | 'invalid-asset'
+  | 'invalid-support'
   | 'overlap'
   | 'unreachable-interaction-anchor';
 
@@ -206,49 +208,6 @@ const appendDiagnostic = (diagnostics: PrefabPlacementDiagnostic[], diagnostic: 
 };
 
 const hasAction = (actions: readonly AgentAction[], action: AgentAction): boolean => actions.includes(action);
-const overlapsOpaqueBounds = (first: FurnitureDefinition, second: FurnitureDefinition): boolean => {
-  const a = transformedAlphaBounds(first);
-  const b = transformedAlphaBounds(second);
-  return a.x < b.x + b.width && a.x + a.width > b.x
-    && a.y < b.y + b.height && a.y + a.height > b.y;
-};
-
-const explicitlySupports = (accessory: FurnitureDefinition, support: FurnitureDefinition): boolean => (
-  accessory.layer === 'surface' && support.layer !== 'surface' && support.layer !== 'floor'
-  && accessory.supportedByIds?.includes(support.id) === true
-);
-
-const hasSharedSupport = (
-  first: FurnitureDefinition,
-  second: FurnitureDefinition,
-  roomFurniture: ReadonlyMap<string, FurnitureDefinition>,
-): boolean => (
-  first.layer === 'surface' && second.layer === 'surface'
-  && first.supportedByIds?.some((id) => {
-    const support = roomFurniture.get(id);
-    return support !== undefined && support.layer !== 'surface' && support.layer !== 'floor'
-      && second.supportedByIds?.includes(id);
-  }) === true
-);
-
-const isAllowedSupportOverlap = (
-  first: FurnitureDefinition,
-  second: FurnitureDefinition,
-  roomFurniture: ReadonlyMap<string, FurnitureDefinition>,
-): boolean => (
-  explicitlySupports(first, second) || explicitlySupports(second, first)
-  || hasSharedSupport(first, second, roomFurniture)
-);
-
-export const opaqueFurniturePairConflicts = (
-  first: FurnitureDefinition,
-  second: FurnitureDefinition,
-  roomFurniture: ReadonlyMap<string, FurnitureDefinition>,
-): boolean => (
-  first.layer !== 'floor' && second.layer !== 'floor'
-  && overlapsOpaqueBounds(first, second)
-  && !isAllowedSupportOverlap(first, second, roomFurniture)
-);
 
 const validatePlacedItems = (
   room: InteriorDefinition,
@@ -261,7 +220,6 @@ const validatePlacedItems = (
   const door = doorPoint(room);
   const combinedFurniture = [...layout, ...transformed];
   const roomFurniture = new Map(combinedFurniture.map((item) => [item.id, item]));
-  const checkedFurniture = [...layout];
   for (const item of transformed) {
     if (!resolvedFurnitureAsset(item)) appendDiagnostic(diagnostics, 'invalid-asset');
     const bounds = transformedAlphaBounds(item);
@@ -271,10 +229,11 @@ const validatePlacedItems = (
     if (bounds.x < door.x + 1 && bounds.x + bounds.width > door.x && bounds.y < door.y + 1 && bounds.y + bounds.height > door.y) {
       appendDiagnostic(diagnostics, 'blocks-door');
     }
-    if (checkedFurniture.some((existing) => opaqueFurniturePairConflicts(existing, item, roomFurniture))) {
-      appendDiagnostic(diagnostics, 'overlap');
+    if (item.supportedByIds?.some((id) => (
+      stackRoleForFurniture(item) !== 'surface' || !isCompatibleStackSupport(roomFurniture.get(id))
+    ))) {
+      appendDiagnostic(diagnostics, 'invalid-support');
     }
-    checkedFurniture.push(item);
   }
 
   const existingBlocking = layout.filter(furnitureBlocksNavigation);
@@ -349,7 +308,6 @@ export function officeLayoutIssues(room: InteriorDefinition): Array<{
   const door = doorPoint(room);
   const occupants = new Map<string, string>();
   const roomFurniture = new Map(room.furniture.map((item) => [item.id, item]));
-  const checkedFurniture: FurnitureDefinition[] = [];
   for (const item of room.furniture) {
     const bounds = transformedAlphaBounds(item);
     const cells = fineFootprintCells(item);
@@ -360,21 +318,21 @@ export function officeLayoutIssues(room: InteriorDefinition): Array<{
     if (bounds.x < door.x + 1 && bounds.x + bounds.width > door.x && bounds.y < door.y + 1 && bounds.y + bounds.height > door.y) {
       issues.push({ diagnostic: 'blocks-door', furnitureId: item.id, bounds, cells });
     }
-    const conflicts = checkedFurniture.filter((existing) => (
-      opaqueFurniturePairConflicts(existing, item, roomFurniture)
-    ));
-    for (const conflict of conflicts) {
+    for (const supportId of item.supportedByIds ?? []) {
+      const support = roomFurniture.get(supportId);
+      if (stackRoleForFurniture(item) === 'surface' && isCompatibleStackSupport(support)) continue;
       issues.push({
-        diagnostic: 'overlap',
+        diagnostic: 'invalid-support',
         furnitureId: item.id,
-        conflictingId: conflict.id,
+        conflictingId: supportId,
         bounds,
-        conflictingBounds: transformedAlphaBounds(conflict),
         cells,
-        conflictingCells: fineFootprintCells(conflict),
+        ...(support ? {
+          conflictingBounds: transformedAlphaBounds(support),
+          conflictingCells: fineFootprintCells(support),
+        } : {}),
       });
     }
-    checkedFurniture.push(item);
     if (!furnitureBlocksNavigation(item)) continue;
     for (const cell of navigationCells(item)) {
       const cellKey = key(cell);

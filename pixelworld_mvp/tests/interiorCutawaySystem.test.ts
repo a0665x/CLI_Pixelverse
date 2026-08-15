@@ -1487,19 +1487,21 @@ describe('InteriorCutawaySystem', () => {
     expect(screen.point.y).toBeCloseTo(screen.bounds.y + screen.bounds.height / 2);
   });
 
-  it('orders wall foreground against renderer-owned agent foot Y', () => {
-    const wall = {
-      id: 'wall', kind: 'cabinet' as const, point: { x: 3, y: 4 }, facing: 'up' as const,
-      icon: 'generic' as const, supportedActions: [], layer: 'wall' as const,
+  it('orders automatic stack roles before agents and ignores user z-index', () => {
+    const shared = {
+      id: 'item', point: { x: 3, y: 4 }, facing: 'up' as const,
+      icon: 'generic' as const, supportedActions: [],
     };
-    const geometry = furnitureRenderScreenGeometry({ x: 100, y: 50 }, {
-      ...wall, assetId: 176, scale: 2, visualOffset: { x: 0, y: 0.25 },
-    }, 20);
-    const wallDepth = interiorFurnitureRenderDepth(wall, geometry.baselineY);
-    expect(wallDepth).toBeGreaterThan(interiorAgentRenderDepth(geometry.baselineY - 1, 1));
-    expect(wallDepth).toBeLessThan(interiorAgentRenderDepth(geometry.baselineY + 1, 1));
-    expect(interiorFurnitureRenderDepth({ ...wall, layer: 'surface' }, geometry.baselineY))
-      .toBeLessThan(interiorAgentRenderDepth(0, 1));
+    const floor = { ...shared, kind: 'decor' as const, assetId: 1, layer: 'floor' as const };
+    const support = { ...shared, kind: 'desk' as const, assetId: 247, layer: 'furniture' as const };
+    const surface = { ...shared, kind: 'display' as const, assetId: 129, layer: 'surface' as const };
+    const baseline = 120;
+
+    expect(interiorFurnitureRenderDepth(floor, baseline)).toBeLessThan(interiorFurnitureRenderDepth(support, baseline));
+    expect(interiorFurnitureRenderDepth(support, baseline)).toBeLessThan(interiorFurnitureRenderDepth(surface, baseline));
+    expect(interiorFurnitureRenderDepth(surface, baseline)).toBeLessThan(interiorAgentRenderDepth(0, 1));
+    expect(interiorFurnitureRenderDepth({ ...support, zIndex: -99 }, baseline))
+      .toBe(interiorFurnitureRenderDepth({ ...support, zIndex: 99 }, baseline));
   });
 
   it('uses an ID-stable tie break for agents sharing the same foot Y', () => {
@@ -1890,7 +1892,7 @@ describe('InteriorCutawaySystem', () => {
     expect(room.furniture.find(({ id }) => id === furniture.id)?.point).toEqual(furniture.point);
   });
 
-  it('keeps an invalid furniture preview under the pointer until one rollback on drag end', () => {
+  it('accepts ordinary overlap with normal green feedback and one undo snapshot', () => {
     const fake = fakeScene();
     const cutaway = new InteriorCutawaySystem(fake.scene as never, WORLD_DEFINITION, () => ({ width: 1_280, height: 720 }));
     const capture = captureCutawayHandlers(cutaway);
@@ -1913,7 +1915,11 @@ describe('InteriorCutawaySystem', () => {
       editMode: boolean; activeDefinition: InteriorDefinition; activeInterior: InteriorDefinition;
       roomCell: number; roomOrigin: { x: number; y: number };
       currentDragMutation?: { accepted: boolean };
-      undoStore: { canUndo: boolean; reset(layout: InteriorDefinition['furniture']): void };
+      undoStore: {
+        canUndo: boolean;
+        reset(layout: InteriorDefinition['furniture']): void;
+        undo(): InteriorDefinition['furniture'] | undefined;
+      };
       renderFurniture(interior: InteriorDefinition, layout: ReturnType<typeof cutawayLayoutForViewport>): void;
     };
     internal.editMode = true;
@@ -1933,29 +1939,28 @@ describe('InteriorCutawaySystem', () => {
     sprite.emit('dragstart', originPointer);
     sprite.emit('drag', targetPointer, target.x, target.y);
 
-    expect(internal.currentDragMutation?.accepted).toBe(false);
+    expect(internal.currentDragMutation?.accepted).toBe(true);
     expect({ x: sprite.x, y: sprite.y }).toEqual(target);
     expect({ x: sprite.x, y: sprite.y }).not.toEqual(origin);
     expect(sprite.depth).toBeGreaterThan(restingDepth);
-    expect(sprite.tintColor).toBe(0xe05b54);
-    expect(fake.objects.some(({ strokeRects }) => strokeRects.some(({ color }) => color === 0xe05b54))).toBe(true);
+    expect(sprite.tintColor).toBe(0x65d47e);
+    expect(fake.objects.some(({ strokeRects }) => strokeRects.some(({ color }) => color === 0x65d47e))).toBe(true);
     expect(room.furniture).toEqual([moving, obstacle]);
     expect(internal.undoStore.canUndo).toBe(false);
 
     sprite.emit('dragend', targetPointer);
 
     expect(fake.scene.tweens.add).toHaveBeenLastCalledWith(expect.objectContaining({
-      targets: expect.arrayContaining([sprite]), duration: 140,
+      targets: expect.arrayContaining([sprite]), duration: 90,
     }));
     expect(sprite.destroyed).toBe(true);
-    expect(room.furniture).toEqual([moving, obstacle]);
+    expect(room.furniture[0]?.point).toEqual(obstacle.point);
+    expect(internal.undoStore.canUndo).toBe(true);
+    expect(capture.model()).toMatchObject({ statusId: 'moveApplied' });
+
+    expect(internal.undoStore.undo()).toEqual([moving, obstacle]);
     expect(internal.undoStore.canUndo).toBe(false);
-    expect(capture.model()).toMatchObject({
-      statusId: 'placementRejected', statusParams: { diagnostic: 'overlap' },
-    });
-    const restored = fake.objects.find(({ texture, interactive, destroyed, depth }) =>
-      texture === 'modern-office-v1.2-single-98' && interactive && !destroyed && depth > 0)!;
-    expect({ x: restored.x, y: restored.y }).toEqual(origin);
+    expect(internal.undoStore.undo()).toBeUndefined();
   });
 
   it('does not persist or create undo history while previewing a furniture drag', () => {
@@ -2028,7 +2033,9 @@ describe('InteriorCutawaySystem', () => {
       const sprite = fake.objects.find(({ texture, interactive, destroyed, depth }) =>
         texture === 'modern-office-v1.2-single-98' && interactive && !destroyed && depth > 0)!;
       const restingScale = sprite.scale;
-      const target = furnitureRenderScreenPoint(internal.roomOrigin, { ...moving, point: obstacle.point }, internal.roomCell);
+      const target = furnitureRenderScreenPoint(internal.roomOrigin, {
+        ...moving, point: { x: Math.floor(room.width / 2), y: room.height - 2 },
+      }, internal.roomCell);
       const owner = pointerAt(sprite.x, sprite.y);
       const blocked = pointerAt(target.x, target.y);
       sprite.emit('pointerdown', owner);

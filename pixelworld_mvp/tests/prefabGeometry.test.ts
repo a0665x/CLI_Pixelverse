@@ -109,15 +109,15 @@ describe('office prefab geometry', () => {
     expect(first.layout[0]!.prefabInstanceId).not.toBe(second.layout[0]!.prefabInstanceId);
   });
 
-  it('rejects an undeclared nonblocking surface overlap with its prefab desk', () => {
+  it('accepts an intentional undeclared nonblocking overlap in a prefab', () => {
     const overlappingSurface: OfficePrefabDefinition = {
       ...samplePrefab,
       items: [samplePrefab.items[0]!, { ...samplePrefab.items[1]!, point: { x: 0, y: 0 } }],
     };
 
     expect(placeOfficePrefab(room, [], overlappingSurface, { x: 4, y: 3 }, 51)).toMatchObject({
-      accepted: false,
-      diagnostics: ['overlap'],
+      accepted: true,
+      diagnostics: [],
     });
   });
 

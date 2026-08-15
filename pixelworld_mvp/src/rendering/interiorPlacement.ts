@@ -154,7 +154,12 @@ export function defaultFurnitureLayer(
     'bookcase', 'cabinet', 'tool-wall'].includes(item.kind)) return 'furniture';
   const asset = resolvedFurnitureAsset(item);
   if (asset?.category === 'surfaces') return 'floor';
-  if (asset?.category === 'screens-electronics') return 'surface';
+  if (asset?.category === 'workstations') return 'furniture';
+  if (asset?.category === 'screens-electronics') {
+    return /desk|table|workstation|console|cabinet|bookcase|shelf|storage|credenza|station/i.test(asset.label)
+      ? 'furniture'
+      : 'surface';
+  }
   if (asset?.category === 'storage-partitions') return 'wall';
   if (item.kind === 'plant' || item.kind === 'decor' || item.kind === 'beverage-station' || item.kind === 'printer') return 'surface';
   return 'furniture';
@@ -230,18 +235,20 @@ export function navigationBlockedCellKeys(
 export function diagnoseFinePlacement(
   room: InteriorDefinition,
   candidate: FurnitureDefinition,
-  layout: readonly FurnitureDefinition[],
-  ignoreId?: string,
+  _layout: readonly FurnitureDefinition[],
+  _ignoreId?: string,
 ): PlacementDiagnostic {
   const bounds = transformedAlphaBounds(candidate);
+  if (bounds.x < 0 || bounds.y < 0 || bounds.x + bounds.width > room.width || bounds.y + bounds.height > room.height) {
+    return 'outside-room';
+  }
   const doorX = Math.floor(room.width / 2);
   const door = { x: doorX, y: room.height - 1, width: 1, height: 1 };
   const intersectsDoor = bounds.x < door.x + door.width && bounds.x + bounds.width > door.x &&
     bounds.y < door.y + door.height && bounds.y + bounds.height > door.y;
   if (intersectsDoor) return 'blocks-door';
-  return bounds.x < 0 || bounds.y < 0 || bounds.x + bounds.width > room.width || bounds.y + bounds.height > room.height
-    ? 'outside-room'
-    : 'valid';
+  if (!resolvedFurnitureAsset(candidate)) return 'invalid-asset';
+  return 'valid';
 }
 
 export function fitFurniturePointToRoom(
@@ -279,7 +286,14 @@ export function resolvePlacementCandidate(
   pointerPoint: GridPoint,
   ignoreId?: string,
 ): PlacementCandidate {
-  const point = fitFurniturePointToRoom(room, furniture, snapFurniturePoint(pointerPoint));
+  const snappedPoint = snapFurniturePoint(pointerPoint);
+  const rawBounds = transformedAlphaBounds({ ...furniture, point: snappedPoint });
+  const impossibleFit = rawBounds.width > room.width || rawBounds.height > room.height;
+  const entirelyOutside = rawBounds.x + rawBounds.width <= 0 || rawBounds.x >= room.width
+    || rawBounds.y + rawBounds.height <= 0 || rawBounds.y >= room.height;
+  const point = impossibleFit || entirelyOutside
+    ? snappedPoint
+    : fitFurniturePointToRoom(room, furniture, snappedPoint);
   const delta = { x: point.x - furniture.point.x, y: point.y - furniture.point.y };
   const resolved = {
     ...furniture,

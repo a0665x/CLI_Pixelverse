@@ -9,8 +9,9 @@ import type {
 import { BUILT_IN_OFFICE_PREFABS } from './builtInOfficePrefabs';
 import { catalogItem } from './modernOfficeCatalog';
 import { diagnoseFinePlacement, resolvedFurnitureAsset, snapFurniturePoint } from './interiorPlacement';
-import { cloneOfficePrefab, opaqueFurniturePairConflicts } from './prefabGeometry';
+import { cloneOfficePrefab } from './prefabGeometry';
 import type { StorageReadStatus } from './interiorLayoutEditor';
+import { isCompatibleStackSupport, stackRoleForFurniture } from './interiorAutoStack';
 
 interface StorageLike {
   getItem(key: string): string | null;
@@ -212,11 +213,11 @@ const validateAll = (
   const combined = [...fixed, ...additions];
   const byId = new Map(combined.map((item) => [item.id, item]));
   if (byId.size !== combined.length) return false;
-  const checked = [...fixed];
   for (const item of additions) {
     if (!resolvedFurnitureAsset(item) || diagnoseFinePlacement(room, item, [], item.id) !== 'valid') return false;
-    if (checked.some((existing) => opaqueFurniturePairConflicts(existing, item, byId))) return false;
-    checked.push(item);
+    if (item.supportedByIds?.some((id) => (
+      stackRoleForFurniture(item) !== 'surface' || !isCompatibleStackSupport(byId.get(id))
+    ))) return false;
   }
   return true;
 };

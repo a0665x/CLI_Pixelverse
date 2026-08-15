@@ -127,17 +127,11 @@ describe('hybrid work-office room validation', () => {
     expect(surfaces.every(({ blocksNavigation }) => blocksNavigation === false)).toBe(true);
   });
 
-  it('rejects significant opaque overlap between unrelated nonblocking sprites with both bounds and cells', () => {
+  it('allows intentional opaque overlap between unrelated nonblocking sprites', () => {
     const first = testFurniture('loose-monitor', 129, 'surface', false);
     const second = testFurniture('loose-printer', 148, 'surface', false);
-    const issue = officeLayoutIssues(validationRoom([first, second]))
-      .find(({ diagnostic }) => diagnostic === 'overlap');
-
-    expect(issue).toMatchObject({ furnitureId: 'loose-printer', conflictingId: 'loose-monitor' });
-    expect(issue?.bounds).toBeDefined();
-    expect(issue?.conflictingBounds).toBeDefined();
-    expect(issue?.cells?.length).toBeGreaterThan(0);
-    expect(issue?.conflictingCells?.length).toBeGreaterThan(0);
+    expect(officeLayoutIssues(validationRoom([first, second]))
+      .filter(({ diagnostic }) => diagnostic === 'overlap')).toEqual([]);
   });
 
   it('allows a declared surface accessory to overlap only its supporting desk', () => {
@@ -149,6 +143,25 @@ describe('hybrid work-office room validation', () => {
 
     expect(officeLayoutIssues(validationRoom([desk, monitor]))
       .filter(({ diagnostic }) => diagnostic === 'overlap')).toEqual([]);
+  });
+
+  it('rejects dangling and semantically invalid support references as malformed data', () => {
+    const monitor = {
+      ...testFurniture('dangling-monitor', 129, 'surface', false),
+      supportedByIds: ['missing-desk'],
+    };
+    const chair = { ...testFurniture('not-a-support', 101, 'furniture', false), kind: 'chair' as const };
+    const invalidTarget = {
+      ...testFurniture('invalid-target-monitor', 129, 'surface', false),
+      supportedByIds: [chair.id],
+    };
+
+    expect(officeLayoutIssues(validationRoom([monitor, chair, invalidTarget]))
+      .filter(({ diagnostic }) => diagnostic === 'invalid-support'))
+      .toEqual(expect.arrayContaining([
+        expect.objectContaining({ furnitureId: monitor.id, conflictingId: 'missing-desk' }),
+        expect.objectContaining({ furnitureId: invalidTarget.id, conflictingId: chair.id }),
+      ]));
   });
 
   it('reports aisle blockage with an exact point, columns, item IDs, bounds, and cells', () => {

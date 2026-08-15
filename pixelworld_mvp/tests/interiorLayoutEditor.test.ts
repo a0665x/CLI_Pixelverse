@@ -33,7 +33,7 @@ describe('interior furniture editor model', () => {
     const layout = normalizedRoomLayout();
     expect(moveFurniture(room, layout, 'rest-sofa-a', { x: 6, y: 1 }).find(({ id }) => id === 'rest-sofa-a')?.point)
       .toEqual({ x: 6, y: 1 });
-    const edgeFitted = moveFurniture(room, layout, 'rest-sofa-a', { x: -3, y: 2 });
+    const edgeFitted = moveFurniture(room, layout, 'rest-sofa-a', { x: -0.25, y: 2 });
     expect(transformedAlphaBounds(edgeFitted.find(({ id }) => id === 'rest-sofa-a')!).x).toBeCloseTo(0);
 
     const moved = moveFurniture(room, layout, 'rest-sofa-a', { x: 3, y: 4 });
@@ -45,6 +45,38 @@ describe('interior furniture editor model', () => {
     const layout = normalizedRoomLayout();
     expect(addFurniture(room, layout, 'chair', { x: 7, y: 4 })).toHaveLength(layout.length + 1);
     expect(addFurniture(room, layout, 'sofa', { x: 6, y: 1 })).toHaveLength(layout.length + 1);
+  });
+
+  it('attaches and detaches a moved surface object without persisting the draft', () => {
+    const support = {
+      id: 'auto-desk', kind: 'desk' as const, assetId: 247, point: { x: 4, y: 3 }, facing: 'up' as const,
+      supportedActions: [], icon: 'generic' as const, layer: 'furniture' as const, blocksNavigation: false,
+    };
+    const monitor = {
+      id: 'auto-monitor', kind: 'display' as const, assetId: 129, point: { x: 8, y: 3 }, facing: 'up' as const,
+      supportedActions: [], icon: 'generic' as const, layer: 'surface' as const, blocksNavigation: false,
+    };
+
+    const attached = moveFurniture(room, [support, monitor], monitor.id, support.point);
+    expect(attached[1]?.supportedByIds).toEqual([support.id]);
+    const detached = moveFurniture(room, attached, monitor.id, { x: 9, y: 5 });
+    expect(detached[1]).not.toHaveProperty('supportedByIds');
+  });
+
+  it('moves an attached dependency when the public editor helper moves its support', () => {
+    const support = {
+      id: 'helper-desk', kind: 'desk' as const, assetId: 247, point: { x: 4, y: 3 }, facing: 'up' as const,
+      supportedActions: [], icon: 'generic' as const, layer: 'furniture' as const, blocksNavigation: false,
+    };
+    const monitor = {
+      id: 'helper-monitor', kind: 'display' as const, assetId: 129, point: { x: 4, y: 3 }, facing: 'up' as const,
+      supportedActions: [], icon: 'generic' as const, layer: 'surface' as const, blocksNavigation: false,
+      supportedByIds: [support.id],
+    };
+
+    const moved = moveFurniture(room, [support, monitor], support.id, { x: 5, y: 3 });
+    expect(moved.map(({ point }) => point)).toEqual([{ x: 5, y: 3 }, { x: 5, y: 3 }]);
+    expect(moved[1]?.supportedByIds).toEqual([support.id]);
   });
 
   it('saves and restores a building-specific arrangement', () => {
@@ -395,6 +427,60 @@ describe('interior furniture editor model', () => {
     expect(hasSavedInteriorLayout('empty-house', storage)).toBe(true);
     expect(loadInteriorLayout('empty-house', room, storage)).toEqual([]);
   });
+
+  it('keeps only geometrically valid unknown saved assets so they remain returnable', () => {
+    const key = 'pixelworld:interior-layout:unknown-asset-house';
+    const unknown = {
+      id: 'unknown-saved-asset', kind: 'decor' as const, assetId: 999_999,
+      point: { x: 4, y: 3 }, facing: 'up' as const, supportedActions: [], icon: 'generic' as const,
+      footprint: { width: 1, height: 1 }, scale: 1 as const, rotation: 0 as const,
+    };
+    const outside = { ...unknown, id: 'outside-unknown', point: { x: -10, y: 3 } };
+    const atDoor = {
+      ...unknown, id: 'door-unknown', point: { x: Math.floor(room.width / 2), y: room.height - 1 },
+    };
+    const raw = JSON.stringify({
+      version: 5, authoredRevision: INTERIOR_LAYOUT_REVISION, furniture: [unknown, outside, atDoor],
+    });
+    const storage = { getItem: (candidate: string) => candidate === key ? raw : null, setItem: () => undefined };
+
+    expect(loadInteriorLayout('unknown-asset-house', room, storage)).toEqual([
+      expect.objectContaining({ id: unknown.id, assetId: unknown.assetId }),
+    ]);
+  });
+
+  it('keeps catalog support semantics and repairs malformed support graphs across v5 hydration', () => {
+    const key = 'pixelworld:interior-layout:support-roundtrip-house';
+    const support = {
+      id: 'catalog-workstation', kind: 'decor' as const, assetId: 247, point: { x: 4, y: 3 },
+      facing: 'up' as const, supportedActions: [], icon: 'generic' as const,
+    };
+    const monitor = {
+      id: 'catalog-monitor', kind: 'decor' as const, assetId: 129, point: { x: 4, y: 3 },
+      facing: 'up' as const, supportedActions: [], icon: 'generic' as const,
+      supportedByIds: [support.id],
+    };
+    const chair = {
+      id: 'catalog-chair', kind: 'chair' as const, assetId: 101, point: { x: 7, y: 3 },
+      facing: 'up' as const, supportedActions: [], icon: 'generic' as const,
+    };
+    const dangling = { ...monitor, id: 'dangling-monitor', point: { x: 8, y: 3 }, supportedByIds: ['missing'] };
+    const invalidTarget = { ...monitor, id: 'chair-monitor', point: { x: 9, y: 3 }, supportedByIds: [chair.id] };
+    const memory = new Map<string, string>();
+    const storage = {
+      getItem: (candidate: string) => memory.get(candidate) ?? null,
+      setItem: (candidate: string, value: string) => { memory.set(candidate, value); },
+    };
+
+    saveInteriorLayout('support-roundtrip-house', [support, monitor, chair, dangling, invalidTarget], storage);
+    const loaded = loadInteriorLayout('support-roundtrip-house', room, storage);
+
+    expect(loaded.find(({ id }) => id === monitor.id)?.supportedByIds).toEqual([support.id]);
+    expect(loaded.find(({ id }) => id === dangling.id)).not.toHaveProperty('supportedByIds');
+    expect(loaded.find(({ id }) => id === invalidTarget.id)).not.toHaveProperty('supportedByIds');
+    expect(officeLayoutIssues({ ...room, furniture: loaded })
+      .filter(({ diagnostic }) => diagnostic === 'invalid-support')).toEqual([]);
+  });
   it('offers a complete Modern Office palette and maps every item to that family', () => {
     expect(FURNITURE_PALETTE).toEqual(expect.arrayContaining([
       'sofa', 'chair', 'office-chair', 'television', 'display', 'computer', 'desk',
@@ -407,7 +493,7 @@ describe('interior furniture editor model', () => {
     expect(furnitureCells({ kind: 'sofa', point: { x: 4, y: 4 }, scale: 1.5 }).length).toBeGreaterThan(0);
     const layout = normalizedRoomLayout();
     const overlapping = { ...layout[0]!, id: 'candidate', kind: 'chair' as const, point: { x: 4, y: 5 } };
-    const atDoor = { ...overlapping, point: { x: Math.floor(room.width / 2), y: room.height - 1 } };
+    const atDoor = { ...overlapping, point: { x: Math.floor(room.width / 2), y: room.height - 2 } };
     expect(placementDiagnostic(room, overlapping, layout)).toBe('valid');
     expect(placementDiagnostic(room, atDoor, layout)).toBe('blocks-door');
     expect(placementDiagnostic(room, { ...overlapping, point: { x: -1, y: 2 } }, layout)).toBe('outside-room');

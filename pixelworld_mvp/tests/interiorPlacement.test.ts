@@ -30,7 +30,7 @@ const room18x12: InteriorDefinition = {
 };
 
 const oneCellDesk: FurnitureDefinition = {
-  ...sofa, id: 'one-cell-desk', kind: 'desk', assetId: -1,
+  ...sofa, id: 'one-cell-desk', kind: 'desk', assetId: 247,
   footprint: { width: 1, height: 1 }, rotation: 90,
 };
 
@@ -94,21 +94,26 @@ describe('interior fine-grid placement', () => {
     expect(bottom.bounds.y + bottom.bounds.height).toBeCloseTo(room.height);
   });
 
-  it('pulls fully outside furniture to the closest edge and still protects the door', () => {
-    expect(resolvePlacementCandidate(room, [], sofa, { x: -3, y: 2 }).diagnostic).toBe('valid');
+  it('rejects fully outside furniture and still protects the door', () => {
+    expect(resolvePlacementCandidate(room, [], sofa, { x: -3, y: 2 }).diagnostic).toBe('outside-room');
     expect(resolvePlacementCandidate(room, [], sofa, { x: 7, y: 9 }).diagnostic).toBe('blocks-door');
   });
 
   it.each([
-    [{ x: -40, y: 4 }, { x: 0, y: 4 }],
-    [{ x: 40, y: 4 }, { x: 17, y: 4 }],
-    [{ x: 4, y: -30 }, { x: 4, y: 0 }],
-    [{ x: 4, y: 30 }, { x: 4, y: 11 }],
-    [{ x: -40, y: -30 }, { x: 0, y: 0 }],
-  ])('fits a fully outside item at %j to the closest edge', (pointer, expected) => {
+    { x: -40, y: 4 }, { x: 40, y: 4 }, { x: 4, y: -30 }, { x: 4, y: 30 }, { x: -40, y: -30 },
+  ])('leaves a fully outside item at %j rejected instead of snapping it across the room', (pointer) => {
     const candidate = resolvePlacementCandidate(room18x12, [], oneCellDesk, pointer);
-    expect(candidate.furniture.point).toEqual(expected);
+    expect(candidate.furniture.point).toEqual(pointer);
+    expect(candidate.diagnostic).toBe('outside-room');
     expect(candidate.furniture.rotation).toBe(oneCellDesk.rotation);
+  });
+
+  it('rejects an unknown explicit asset and furniture that cannot fit in the room', () => {
+    expect(resolvePlacementCandidate(room, [], { ...sofa, assetId: 999_999 }, { x: 4, y: 3 }).diagnostic)
+      .toBe('invalid-asset');
+    expect(resolvePlacementCandidate(
+      { ...room, width: 1, height: 1 }, [], { ...sofa, scale: 3 }, { x: 0, y: 0 },
+    ).diagnostic).toBe('outside-room');
   });
 
   it('returns one closest-edge delta for transformed opaque bounds', () => {
@@ -135,7 +140,7 @@ describe('interior fine-grid placement', () => {
 
   it('deeply clones visual offsets when rejecting a placement candidate', () => {
     const source = { ...sofa, visualOffset: { x: -0.25, y: 0.125 } };
-    const candidate = resolvePlacementCandidate(room, [source], source, { x: -3, y: 2 });
+    const candidate = resolvePlacementCandidate(room, [source], source, { x: -30, y: 2 });
     const rejected = commitPlacementCandidate(room, [source], candidate);
 
     rejected[0]!.visualOffset!.x = 9;
@@ -145,7 +150,7 @@ describe('interior fine-grid placement', () => {
   it('allows visual overlap while retaining edge fitting and door rejection', () => {
     const overlapping = resolvePlacementCandidate(room, [sofa], { ...sofa, id: 'chair', kind: 'chair' }, sofa.point);
     expect(overlapping.diagnostic).toBe('valid');
-    expect(resolvePlacementCandidate(room, [], sofa, { x: -3, y: 1 }).bounds.x).toBeCloseTo(0);
+    expect(resolvePlacementCandidate(room, [], sofa, { x: -0.25, y: 1 }).bounds.x).toBeCloseTo(0);
     expect(resolvePlacementCandidate(room, [], sofa, { x: 7, y: 8 }).diagnostic).toBe('blocks-door');
   });
 

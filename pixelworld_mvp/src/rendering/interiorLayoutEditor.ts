@@ -21,6 +21,12 @@ import {
   rotateGridPoint,
   type PlacementDiagnostic,
 } from './interiorPlacement';
+import {
+  isCompatibleStackSupport,
+  resolveAutomaticSupport,
+  stackDependencies,
+  stackRoleForFurniture,
+} from './interiorAutoStack';
 
 export type { PlacementDiagnostic } from './interiorPlacement';
 
@@ -91,7 +97,33 @@ export function moveFurniture(
   const current = layout.find(({ id }) => id === furnitureId);
   if (!current) return cloneLayout(layout);
   const candidate = resolvePlacementCandidate(room, layout, current, point, furnitureId);
-  return commitPlacementCandidate(room, layout, candidate);
+  const resolved = {
+    ...candidate,
+    furniture: resolveAutomaticSupport(candidate.furniture, layout).item,
+  };
+  const dependencyIds = new Set(stackDependencies([furnitureId], layout));
+  if (dependencyIds.size === 1) return commitPlacementCandidate(room, layout, resolved);
+  if (resolved.diagnostic !== 'valid') return cloneLayout(layout);
+  const delta = {
+    x: resolved.furniture.point.x - current.point.x,
+    y: resolved.furniture.point.y - current.point.y,
+  };
+  const moved = cloneLayout(layout).map((item) => {
+    if (!dependencyIds.has(item.id)) return item;
+    if (item.id === furnitureId) return cloneLayout([resolved.furniture])[0]!;
+    return {
+      ...item,
+      point: { x: item.point.x + delta.x, y: item.point.y + delta.y },
+      ...(item.interactionPoint ? { interactionPoint: {
+        x: item.interactionPoint.x + delta.x,
+        y: item.interactionPoint.y + delta.y,
+      } } : {}),
+    };
+  });
+  return moved.filter(({ id }) => dependencyIds.has(id))
+    .every((item) => diagnoseFinePlacement(room, item, moved, item.id) === 'valid')
+    ? moved
+    : cloneLayout(layout);
 }
 
 export function addFurniture(
@@ -110,7 +142,11 @@ export function addFurniture(
     scale: 1,
     rotation: 0,
   };
-  return commitPlacementCandidate(room, layout, resolvePlacementCandidate(room, layout, candidate, point));
+  const placement = resolvePlacementCandidate(room, layout, candidate, point);
+  return commitPlacementCandidate(room, layout, {
+    ...placement,
+    furniture: resolveAutomaticSupport(placement.furniture, layout).item,
+  });
 }
 
 export function resizeFurniture(
@@ -124,7 +160,10 @@ export function resizeFurniture(
   const candidate = resolvePlacementCandidate(
     room, layout, { ...current, scale: normalizeFurnitureScale(scale) }, current.point, furnitureId,
   );
-  return commitPlacementCandidate(room, layout, candidate);
+  return commitPlacementCandidate(room, layout, {
+    ...candidate,
+    furniture: resolveAutomaticSupport(candidate.furniture, layout).item,
+  });
 }
 
 export function rotateFurniture(
@@ -138,7 +177,10 @@ export function rotateFurniture(
   const candidate = resolvePlacementCandidate(
     room, layout, furnitureWithRotation(current, normalizeRotation(rotation)), current.point, furnitureId,
   );
-  return commitPlacementCandidate(room, layout, candidate);
+  return commitPlacementCandidate(room, layout, {
+    ...candidate,
+    furniture: resolveAutomaticSupport(candidate.furniture, layout).item,
+  });
 }
 
 const storageKey = (buildingId: string): string => `pixelworld:interior-layout:${buildingId}`;
@@ -420,10 +462,20 @@ export function readInteriorLayout(
       scale: normalizeFurnitureScale(hydrated.scale),
       rotation: savedRotation,
     }])[0]!;
-    if (canPlaceFurniture(room, normalized, accepted)) accepted.push(normalized);
+    const diagnostic = placementDiagnostic(room, normalized, accepted);
+    if (diagnostic === 'valid' || diagnostic === 'invalid-asset') accepted.push(normalized);
   }
+  const byId = new Map(accepted.map((item) => [item.id, item]));
+  const repaired = accepted.map((item) => {
+    if (!item.supportedByIds) return item;
+    const valid = stackRoleForFurniture(item) === 'surface'
+      && item.supportedByIds.every((id) => isCompatibleStackSupport(byId.get(id)));
+    if (valid) return item;
+    const { supportedByIds: _supportedByIds, ...ordinaryDecor } = item;
+    return ordinaryDecor;
+  });
   return {
-    layout: accepted.length > 0 || !parsed.legacy ? accepted : fallback,
+    layout: repaired.length > 0 || !parsed.legacy ? repaired : fallback,
     storageRead: 'success',
   };
 }

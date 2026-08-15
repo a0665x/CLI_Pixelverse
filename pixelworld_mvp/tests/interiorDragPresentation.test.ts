@@ -8,9 +8,9 @@ describe('interior drag presentation', () => {
     });
   });
 
-  it('marks a rejected return without changing its geometry', () => {
+  it('keeps legacy overlap feedback non-red because overlap is an accepted composition', () => {
     expect(dragPresentation('overlap', 'returning', false)).toEqual({
-      scale: 1, alpha: 1, tone: 'invalid', durationMs: 140,
+      scale: 1, alpha: 1, tone: 'valid', durationMs: 140,
     });
   });
 

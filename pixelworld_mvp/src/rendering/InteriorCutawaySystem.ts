@@ -3,7 +3,6 @@ import { WORLD_PIXELS } from '../game/constants';
 import type {
   FurnitureDefinition,
   FurnitureKind,
-  FurnitureLayer,
   FurniturePrefab,
   GridPoint,
   InteriorDefinition,
@@ -103,10 +102,16 @@ import {
   type InteriorEditorLayoutOptions,
 } from './interiorEditorLayout';
 import { dragPresentation } from './interiorDragPresentation';
+import {
+  automaticStackRank,
+  compareAutomaticStack,
+  resolveAutomaticSupport,
+  stackDependencies,
+  type StackRoleFurniture,
+} from './interiorAutoStack';
 
 const BASE_ROOM_CELL = 22;
 const CUTAWAY_DEPTH = 100_000;
-const LAYER_ORDER: Record<FurnitureLayer, number> = { floor: 0, furniture: 1, surface: 2, wall: 3 };
 const GUIDE_DISMISSED_KEY = 'pixelworld:guide-dismissed:v1';
 
 const guideDismissed = (): boolean => {
@@ -250,11 +255,6 @@ export function dragPreviewScreenPoint(roomOrigin: GridPoint, point: GridPoint, 
   return roomScreenPoint(roomOrigin, point, cell);
 }
 
-const BACKGROUND_DEPTH: Record<Exclude<FurnitureLayer, 'wall'>, number> = {
-  floor: 0,
-  furniture: 1_000,
-  surface: 2_000,
-};
 const OCCLUSION_DEPTH = 3_000;
 
 export function interiorAgentRenderDepth(footY: number, tieBreaker: number): number {
@@ -270,14 +270,10 @@ export function stableInteriorAgentIndex(
 }
 
 export function interiorFurnitureRenderDepth(
-  furniture: Pick<FurnitureDefinition, 'layer' | 'zIndex'>,
+  furniture: StackRoleFurniture,
   baselineY: number,
 ): number {
-  const layer = furniture.layer ?? 'furniture';
-  const zIndex = furniture.zIndex ?? 0;
-  return layer === 'wall'
-    ? OCCLUSION_DEPTH + baselineY + zIndex / 1_000
-    : BACKGROUND_DEPTH[layer] + zIndex / 1_000;
+  return automaticStackRank(furniture) * 1_000 + baselineY;
 }
 
 const viewport = (): { width: number; height: number } => ({
@@ -976,10 +972,7 @@ export class InteriorCutawaySystem {
       });
     };
 
-    const sortedFurniture = [...interior.furniture].sort((a, b) => {
-      const layer = LAYER_ORDER[a.layer ?? 'furniture'] - LAYER_ORDER[b.layer ?? 'furniture'];
-      return layer || (a.zIndex ?? 0) - (b.zIndex ?? 0);
-    });
+    const sortedFurniture = [...interior.furniture].sort(compareAutomaticStack);
     const furnitureSprites = new Set<Phaser.GameObjects.Image>();
     const furnitureSpritesById = new Map<string, Phaser.GameObjects.Image>();
     const furnitureSpriteScalesById = new Map<string, number>();
@@ -1087,7 +1080,7 @@ export class InteriorCutawaySystem {
           if (!this.selectedFurnitureIds.has(furniture.id)) {
             this.selectedFurnitureId = furniture.id;
             this.selectedFurnitureIds.clear();
-            expandSelection(interior.furniture, [furniture.id])
+            stackDependencies(expandSelection(interior.furniture, [furniture.id]), interior.furniture)
               .forEach((id) => this.selectedFurnitureIds.add(id));
           }
           this.contextMenuPointer = this.pointerScreenPoint(pointer);
@@ -1098,7 +1091,9 @@ export class InteriorCutawaySystem {
         this.contextMenuPointer = undefined;
         this.selectedFurnitureId = furniture.id;
         this.selectedFurnitureIds.clear();
-        const selectedIds = expandSelection(interior.furniture, [furniture.id]);
+        const selectedIds = stackDependencies(
+          expandSelection(interior.furniture, [furniture.id]), interior.furniture,
+        );
         selectedIds.forEach((id) => this.selectedFurnitureIds.add(id));
         const screen = this.pointerScreenPoint(pointer);
         const rendered = applyInteriorViewport(this.interiorViewport, { x: sprite.x, y: sprite.y });
@@ -1148,7 +1143,7 @@ export class InteriorCutawaySystem {
           furnitureSpritesById.get(item.id)?.setPosition(point.x, point.y);
         });
         const diagnostic = this.currentDragMutation.accepted ? 'valid'
-          : this.currentDragCandidate.diagnostic === 'valid' ? 'overlap' : this.currentDragCandidate.diagnostic;
+          : this.currentDragCandidate.diagnostic === 'valid' ? 'outside-room' : this.currentDragCandidate.diagnostic;
         applyDragPresentation(capture.selectedIds, diagnostic, 'dragging');
         drawSelectionPreview(preview, this.currentDragMutation.accepted);
       });
@@ -1158,7 +1153,7 @@ export class InteriorCutawaySystem {
         const mutation = this.currentDragMutation;
         const accepted = mutation?.accepted === true;
         const diagnostic = !accepted && this.currentDragCandidate?.diagnostic === 'valid'
-          ? 'overlap'
+          ? 'outside-room'
           : this.currentDragCandidate?.diagnostic ?? 'outside-room';
         if (accepted) setCanvasDragState(true, 'valid');
         else applyDragPresentation(capture.selectedIds, diagnostic, 'returning');
@@ -1403,7 +1398,11 @@ export class InteriorCutawaySystem {
           visualOffset: { x: catalog.visualOffset.x / 16, y: catalog.visualOffset.y / 16 },
         };
         preview.point = furniturePointFromRenderPoint(preview, renderPoint);
-        this.currentDragCandidate = resolvePlacementCandidate(interior, interior.furniture, preview, preview.point);
+        const placement = resolvePlacementCandidate(interior, interior.furniture, preview, preview.point);
+        this.currentDragCandidate = {
+          ...placement,
+          furniture: resolveAutomaticSupport(placement.furniture, interior.furniture).item,
+        };
         const fitted = furnitureRenderScreenPoint(this.roomOrigin, this.currentDragCandidate.furniture, this.roomCell);
         dragClone.setPosition(fitted.x, fitted.y);
         drawPlacementPreview(this.currentDragCandidate);
@@ -1937,7 +1936,9 @@ export class InteriorCutawaySystem {
 
   private returnSelectedToShelf(interior: InteriorDefinition, layout: CutawayLayout): void {
     if (this.selectedFurnitureIds.size === 0) return;
-    const selection = expandSelection(interior.furniture, [...this.selectedFurnitureIds]);
+    const selection = stackDependencies(
+      expandSelection(interior.furniture, [...this.selectedFurnitureIds]), interior.furniture,
+    );
     const count = selection.length;
     this.commitFurnitureMutation(interior, removeSelection(interior.furniture, selection));
     this.selectedFurnitureIds.clear();

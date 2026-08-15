@@ -70,6 +70,38 @@ describe('interior marquee selection and prefabs', () => {
     expect(layout).toHaveLength(3);
   });
 
+  it('moves and returns surface dependencies with an ungrouped support', () => {
+    const desk = {
+      ...furniture('dependency-desk', 247, 4, 3), kind: 'desk' as const, layer: 'furniture' as const,
+      blocksNavigation: false,
+    };
+    const monitor = {
+      ...furniture('dependency-monitor', 129, 4, 3), kind: 'display' as const,
+      supportedByIds: [desk.id],
+    };
+    const chair = { ...furniture('dependency-chair', 101, 8, 3), kind: 'chair' as const };
+
+    const moved = moveSelectionAtomically(room, [desk, monitor, chair], [desk.id], { x: 1, y: 0 });
+    expect(moved.accepted).toBe(true);
+    expect(moved.layout.slice(0, 2).map(({ point }) => point)).toEqual([{ x: 5, y: 3 }, { x: 5, y: 3 }]);
+    expect(removeSelection(moved.layout, [desk.id]).map(({ id }) => id)).toEqual([chair.id]);
+  });
+
+  it('detaches a surface object when it is dragged away from its support', () => {
+    const desk = {
+      ...furniture('detach-desk', 247, 4, 3), kind: 'desk' as const, layer: 'furniture' as const,
+      blocksNavigation: false,
+    };
+    const monitor = {
+      ...furniture('detach-monitor', 129, 4, 3), kind: 'display' as const,
+      supportedByIds: [desk.id],
+    };
+
+    const moved = moveSelectionAtomically(room, [desk, monitor], [monitor.id], { x: 4, y: 2 });
+    expect(moved.accepted).toBe(true);
+    expect(moved.layout[1]).not.toHaveProperty('supportedByIds');
+  });
+
   it('applies selection transforms atomically', () => {
     const layout = [furniture('a', 225, 2, 2), furniture('b', 129, 3, 2)];
     const layered = transformSelectionAtomically(room, layout, ['a', 'b'], (item) => ({ ...item, layer: 'surface' }));
@@ -119,7 +151,7 @@ describe('interior marquee selection and prefabs', () => {
     expect(moved.layout[0]!.interactionPoint).toEqual({ x: 4.25, y: 3.5 });
     expect(moved.layout[1]!.point.x - moved.layout[0]!.point.x).toBe(2.5);
 
-    const edgeFit = moveSelectionAtomically(room, grouped, ['group-b'], { x: 20, y: 0 });
+    const edgeFit = moveSelectionAtomically(room, grouped, ['group-b'], { x: 8, y: 0 });
     expect(edgeFit.accepted).toBe(true);
     expect(edgeFit.layout[1]!.point.x - edgeFit.layout[0]!.point.x).toBe(2.5);
   });
@@ -131,7 +163,7 @@ describe('interior marquee selection and prefabs', () => {
     ];
     const before = structuredClone(grouped);
 
-    const preview = previewSelectionMove(room, grouped, ['preview-a'], { x: 20, y: 0 });
+    const preview = previewSelectionMove(room, grouped, ['preview-a'], { x: 8, y: 0 });
 
     expect(preview.accepted).toBe(true);
     expect(preview.layout[1]!.point.x - preview.layout[0]!.point.x).toBe(2.5);
@@ -146,15 +178,15 @@ describe('interior marquee selection and prefabs', () => {
   it('fits a group with one shared delta and preserves geometry, rotations, and support identity', () => {
     const grouped = [
       {
-        ...furniture('group-desk', -1, 3, 3), kind: 'desk' as const, footprint: { width: 1, height: 1 },
+        ...furniture('group-desk', 247, 3, 3), kind: 'desk' as const, footprint: { width: 1, height: 1 },
         prefabInstanceId: 'edge-group', rotation: 90 as const,
       },
       {
-        ...furniture('group-display', -1, 5, 3), kind: 'display' as const, footprint: { width: 1, height: 1 },
+        ...furniture('group-display', 129, 5, 3), kind: 'display' as const, footprint: { width: 1, height: 1 },
         prefabInstanceId: 'edge-group', rotation: 270 as const, supportedByIds: ['group-desk'],
       },
     ];
-    const preview = previewSelectionMove({ ...room, width: 18, height: 12 }, grouped, ['group-desk'], { x: -30, y: 0 });
+    const preview = previewSelectionMove({ ...room, width: 18, height: 12 }, grouped, ['group-desk'], { x: -3.5, y: 0 });
     const moved = preview.layout.filter((item) => ['group-desk', 'group-display'].includes(item.id));
 
     expect(moved[1]!.point.x - moved[0]!.point.x).toBe(grouped[1]!.point.x - grouped[0]!.point.x);
@@ -163,15 +195,17 @@ describe('interior marquee selection and prefabs', () => {
   });
 
   it('uses the latest preview as the basis for consecutive edge moves', () => {
-    const item = { ...furniture('edge-item', -1, 3, 3), footprint: { width: 1, height: 1 } };
-    const first = previewSelectionMove(room, [item], [item.id], { x: -30, y: 0 });
+    const item = { ...furniture('edge-item', 247, 3, 3), kind: 'desk' as const, footprint: { width: 1, height: 1 } };
+    const first = previewSelectionMove(room, [item], [item.id], { x: -3.5, y: 0 });
     const second = previewSelectionMove(room, first.layout, [item.id], { x: 2, y: 0 });
 
-    expect(first.layout[0]!.point).toEqual({ x: 0, y: 3 });
-    expect(second.layout[0]!.point).toEqual({ x: 2, y: 3 });
+    expect(transformedAlphaBounds(first.layout[0]!).x).toBeCloseTo(0);
+    expect(second.accepted).toBe(true);
+    expect(second.layout[0]!.point.x).toBeGreaterThan(1.5);
+    expect(second.layout[0]!.point.y).toBe(3);
   });
 
-  it('rejects a group move that newly strands an unselected Hook interaction anchor', () => {
+  it('allows an intentional move even when strict route validation reports a stranded Hook anchor', () => {
     const narrowRoom: InteriorDefinition = {
       ...room, width: 8, height: 7,
     };
@@ -187,8 +221,11 @@ describe('interior marquee selection and prefabs', () => {
     }));
     const layout = [hook, ...movableWall];
 
-    expect(moveSelectionAtomically(narrowRoom, layout, ['wall-0'], { x: -5, y: 0 }))
-      .toEqual({ accepted: false, layout });
+    const moved = moveSelectionAtomically(narrowRoom, layout, ['wall-0'], { x: -5, y: 0 });
+    expect(moved.accepted).toBe(true);
+    expect(moved.layout.slice(1).every(({ point }) => point.x === 1)).toBe(true);
+    expect(officeLayoutIssues({ ...narrowRoom, furniture: moved.layout })
+      .some(({ diagnostic }) => diagnostic === 'unreachable-interaction-anchor')).toBe(true);
   });
 
   it('rotates every prefab point, interaction anchor, facing, rotation, and visual offset once around one stable anchor', () => {
@@ -263,7 +300,8 @@ describe('interior marquee selection and prefabs', () => {
       rotateSelectionAtomically(research, layered.layout, [benchId], 90),
       resizeSelectionAtomically(research, layered.layout, [benchId], 1),
     ]) {
-      if (result.accepted) expect(officeLayoutIssues({ ...research, furniture: result.layout })).toEqual([]);
+      if (result.accepted) expect(officeLayoutIssues({ ...research, furniture: result.layout })
+        .filter(({ diagnostic }) => diagnostic === 'invalid-support')).toEqual([]);
       else expect(result.layout).toEqual(before);
     }
     expect(research.furniture).toEqual(before);

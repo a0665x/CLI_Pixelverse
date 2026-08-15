@@ -189,7 +189,7 @@ describe('interior prefab and room clipboard store', () => {
     expect(target).toEqual([supportDesk, hookSurface, dependentSurface, item('old-ordinary', 10, 7)]);
   });
 
-  it('skips one conflicting source dependency component while retaining target Hooks and independent decor', () => {
+  it('keeps an overlapping source dependency component with target Hooks and independent decor', () => {
     const hook = {
       ...deskSurfaceKit('target-hook', 'unused')[0]!, point: { x: 4, y: 4 },
       supportedActions: ['terminal' as const], requirementId: 'target:terminal', blocksNavigation: true,
@@ -203,13 +203,16 @@ describe('interior prefab and room clipboard store', () => {
     const result = pasteDecorativeLayout(room, [hook], clipboard, 130);
 
     expect(result.accepted).toBe(true);
-    expect(result.layout.map(({ id }) => id)).toEqual(['target-hook', 'pasted-130-2']);
+    expect(result.layout.map(({ id }) => id)).toEqual([
+      'target-hook', 'pasted-130-0', 'pasted-130-1', 'pasted-130-2',
+    ]);
     expect(result.layout[0]).toEqual(hook);
-    expect(result.layout[1]).toMatchObject({ point: independent.point });
-    expect(result.layout[1]).not.toHaveProperty('supportedByIds');
+    expect(result.layout[2]?.supportedByIds).toEqual(['pasted-130-0']);
+    expect(result.layout[3]).toMatchObject({ point: independent.point });
+    expect(result.layout[3]).not.toHaveProperty('supportedByIds');
   });
 
-  it('skips a complete source prefab instance when any member conflicts with a target Hook', () => {
+  it('keeps a complete source prefab instance when one member overlaps a target Hook', () => {
     const hook = {
       ...deskSurfaceKit('target-hook', 'unused')[0]!, point: { x: 4, y: 4 },
       supportedActions: ['terminal' as const], requirementId: 'target:terminal', blocksNavigation: true,
@@ -224,8 +227,10 @@ describe('interior prefab and room clipboard store', () => {
     const result = pasteDecorativeLayout(room, [hook], clipboard, 150);
 
     expect(result.accepted).toBe(true);
-    expect(result.layout.map(({ id }) => id)).toEqual(['target-hook', 'pasted-150-2']);
-    expect(result.layout.every(({ prefabInstanceId }) => prefabInstanceId !== 'pasted-150-instance-0')).toBe(true);
+    expect(result.layout.map(({ id }) => id)).toEqual([
+      'target-hook', 'pasted-150-0', 'pasted-150-1', 'pasted-150-2',
+    ]);
+    expect(result.layout.slice(1, 3).every(({ prefabInstanceId }) => prefabInstanceId === 'pasted-150-instance-0')).toBe(true);
   });
 
   it('falls back safely when prefab and clipboard storage reads throw', () => {
@@ -305,7 +310,7 @@ describe('interior prefab and room clipboard store', () => {
     expect(clipboard.items[1]?.supportedByIds).toEqual(['source-desk']);
   });
 
-  it('rejects undeclared prefab overlap without partially mutating the target', () => {
+  it('accepts intentional undeclared prefab overlap without mutating the source', () => {
     const target = [item('existing', 8, 7)];
     const before = structuredClone(target);
     const prefab: FurniturePrefab = {
@@ -313,7 +318,9 @@ describe('interior prefab and room clipboard store', () => {
       items: deskSurfaceKit('template-desk', 'template-surface', false),
     };
 
-    expect(placePrefab(room, target, prefab, { x: 4, y: 4 }, 80)).toEqual({ accepted: false, layout: before });
+    const result = placePrefab(room, target, prefab, { x: 4, y: 4 }, 80);
+    expect(result.accepted).toBe(true);
+    expect(result.layout).toHaveLength(target.length + prefab.items.length);
     expect(target).toEqual(before);
   });
 
