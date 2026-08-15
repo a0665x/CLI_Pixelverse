@@ -41,6 +41,7 @@ test('iframe pointer handoff preserves one matching cutaway focus lifecycle with
   assert.equal(handoff.cutawayClosed(), null);
 
   handoff.framePointerDown(eventsTrigger);
+  handoff.framePointerComplete();
   scheduled.filter(Boolean).forEach((callback) => callback());
   assert.equal(handoff.cutawayOpened(null), null);
   assert.equal(handoff.cutawayClosed(), null);
@@ -48,6 +49,47 @@ test('iframe pointer handoff preserves one matching cutaway focus lifecycle with
   handoff.framePointerDown(eventsTrigger);
   handoff.reset();
   assert.equal(handoff.cutawayOpened(null), null);
+  assert.equal(handoff.cutawayClosed(), null);
+
+  assert.equal(handoff.framePointerDown({ ...eventsTrigger, isConnected: false }), null);
+  assert.equal(handoff.frameCutawayOpened(), null);
+  assert.equal(handoff.cutawayOpened(null), null);
+  assert.equal(handoff.cutawayClosed(), null);
+});
+
+test('held iframe pointer keeps the original connected trigger through cutaway close', () => {
+  const scheduled = new Map();
+  let nextHandle = 0;
+  const handoff = dashboardDisclosure.createCutawayFocusHandoff({
+    schedule: (callback) => { const handle = nextHandle++; scheduled.set(handle, callback); return handle; },
+    cancel: (handle) => { scheduled.delete(handle); },
+  });
+  const flushFrame = () => {
+    const callbacks = [...scheduled.values()];
+    scheduled.clear();
+    callbacks.forEach((callback) => callback());
+  };
+  let focusCount = 0;
+  const eventsTrigger = {
+    dataset: { dashboardCard: 'events' },
+    disabled: false,
+    hidden: false,
+    isConnected: true,
+    closest: () => null,
+    getClientRects: () => [{ width: 80, height: 32 }],
+    focus: () => { focusCount += 1; },
+  };
+
+  handoff.framePointerDown(eventsTrigger);
+  assert.equal(scheduled.size, 1);
+  flushFrame();
+  handoff.framePointerComplete();
+  assert.equal(scheduled.size, 1);
+  assert.equal(handoff.frameCutawayOpened(), eventsTrigger);
+  flushFrame();
+  assert.equal(handoff.cutawayOpened(null), eventsTrigger);
+  assert.equal(restoreDashboardCardFocus(handoff.cutawayClosed()), true);
+  assert.equal(focusCount, 1);
   assert.equal(handoff.cutawayClosed(), null);
 });
 

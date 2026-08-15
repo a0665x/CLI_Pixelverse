@@ -183,8 +183,11 @@ def test_dashboard_cutaway_policy_is_wired_into_the_production_card_caller():
 
     assert "createCutawayFocusHandoff" in app
     assert "cutawayFocusHandoff.framePointerDown(dashboardActiveTrigger())" in app
+    assert "cutawayFocusHandoff.framePointerComplete()" in app
+    assert "cutawayFocusHandoff.frameCutawayOpened()" in app
     assert "cutawayFocusHandoff.cutawayOpened(dashboardActiveTrigger())" in app
     assert "cutawayFocusHandoff.cutawayClosed()" in app
+    assert "onFrameLoad: resetCutawayFocusHandoff" in app
     assert "toggleDashboardCard(dashboardDisclosure, requested, dashboardCutawayOpen())" in app
     assert "blocked: dashboardCutawayOpen()" in app
 
@@ -213,6 +216,8 @@ def test_dashboard_card_dismissal_is_bridged_into_the_pixelworld_document():
     bridge = Path("public/pixelworld_embed.mjs").read_text(encoding="utf-8")
 
     assert "onFramePointerDown" in app
+    assert "onFramePointerComplete" in app
+    assert "onFrameCutawayOpen" in app
     assert "onFrameEscape" in app
     assert "deferFocus: true" in app
     assert "frame?.contentDocument" in bridge

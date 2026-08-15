@@ -23,6 +23,8 @@ export function isPixelworldCutawayStateMessage(value) {
   );
 }
 
+const CUTAWAY_OPEN_EVENT = 'pixelworld:cutaway-open';
+
 const usableRect = (rect) => Boolean(
   rect
   && [rect.left, rect.top, rect.right, rect.bottom].every(Number.isFinite)
@@ -175,19 +177,29 @@ export function attachPixelworldBridge({
   messageTarget = globalThis.window,
   bridge,
   origin = globalThis.location?.origin || '',
+  onFrameLoad = () => {},
+  onFrameCutawayOpen = () => {},
   onFramePointerDown = () => {},
+  onFramePointerComplete = () => {},
   onFrameEscape = () => {},
 } = {}) {
   if (!bridge) return () => {};
   let childDocument = null;
+  let childWindow = null;
+  const handleChildCutawayOpen = (event) => onFrameCutawayOpen(event);
   const handleChildPointerDown = (event) => onFramePointerDown(event);
+  const handleChildPointerComplete = (event) => onFramePointerComplete(event);
   const handleChildKeydown = (event) => {
     if (event?.key === 'Escape') onFrameEscape(event);
   };
   const detachChildDocument = () => {
+    childWindow?.removeEventListener?.(CUTAWAY_OPEN_EVENT, handleChildCutawayOpen);
     childDocument?.removeEventListener?.('pointerdown', handleChildPointerDown, true);
+    childDocument?.removeEventListener?.('pointerup', handleChildPointerComplete, true);
+    childDocument?.removeEventListener?.('pointercancel', handleChildPointerComplete, true);
     childDocument?.removeEventListener?.('keydown', handleChildKeydown, true);
     childDocument = null;
+    childWindow = null;
   };
   const attachChildDocument = () => {
     detachChildDocument();
@@ -196,17 +208,22 @@ export function attachPixelworldBridge({
       candidate = frame?.contentDocument;
       if (!candidate || candidate.defaultView !== frame?.contentWindow) return false;
       if (!origin || candidate.location?.origin !== origin) return false;
+      candidate.defaultView.addEventListener?.(CUTAWAY_OPEN_EVENT, handleChildCutawayOpen);
       candidate.addEventListener('pointerdown', handleChildPointerDown, true);
+      candidate.addEventListener('pointerup', handleChildPointerComplete, true);
+      candidate.addEventListener('pointercancel', handleChildPointerComplete, true);
       candidate.addEventListener('keydown', handleChildKeydown, true);
     } catch {
       detachChildDocument();
       return false;
     }
     childDocument = candidate;
+    childWindow = candidate.defaultView;
     return true;
   };
   const handleLoad = () => {
     detachChildDocument();
+    onFrameLoad();
     bridge.handleLoad();
     attachChildDocument();
   };

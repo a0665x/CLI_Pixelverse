@@ -262,6 +262,11 @@ const cutawayFocusHandoff = createCutawayFocusHandoff({
   schedule: (callback) => window.requestAnimationFrame(callback),
   cancel: (handle) => window.cancelAnimationFrame(handle),
 });
+const resetCutawayFocusHandoff = () => {
+  cancelDashboardFocusRestore?.();
+  cancelDashboardFocusRestore = null;
+  cutawayFocusHandoff.reset();
+};
 const dashboardCutawayOpen = () => dom.body.dataset.pixelworldCutaway === 'open';
 const cutawayStatusRail = createCutawayStatusRailController({
   body: dom.body,
@@ -305,17 +310,18 @@ const detachPixelworldBridge = attachPixelworldBridge({
   messageTarget: window,
   bridge: pixelworldBridge,
   origin: window.location.origin,
+  onFrameLoad: resetCutawayFocusHandoff,
+  onFrameCutawayOpen: () => cutawayFocusHandoff.frameCutawayOpened(),
   onFramePointerDown: () => {
     cutawayFocusHandoff.framePointerDown(dashboardActiveTrigger());
     closeDashboardCard({ restoreFocus: false });
   },
+  onFramePointerComplete: () => cutawayFocusHandoff.framePointerComplete(),
   onFrameEscape: () => closeDashboardCard({ deferFocus: true }),
 });
 attachPageLifecycleCleanup({ pageTarget: window, cleanup: () => {
   detachPixelworldBridge();
-  cancelDashboardFocusRestore?.();
-  cancelDashboardFocusRestore = null;
-  cutawayFocusHandoff.reset();
+  resetCutawayFocusHandoff();
 } });
 window.addEventListener('resize', () => {
   syncCutawayStatusRail();

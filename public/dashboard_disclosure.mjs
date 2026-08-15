@@ -43,35 +43,64 @@ export function createCutawayFocusHandoff({
   let pendingTrigger = null;
   let activeTrigger = null;
   let expiryHandle = null;
+  let pointerInProgress = false;
   const clearExpiry = () => {
     if (expiryHandle === null) return;
     cancel?.(expiryHandle);
     expiryHandle = null;
   };
   const usable = (trigger) => trigger && trigger.isConnected !== false ? trigger : null;
+  const expirePendingAfterFrame = () => {
+    clearExpiry();
+    if (!pendingTrigger) return null;
+    expiryHandle = schedule(() => {
+      expiryHandle = null;
+      if (!pointerInProgress) pendingTrigger = null;
+    });
+    return expiryHandle;
+  };
   return {
     framePointerDown(trigger) {
       clearExpiry();
+      pointerInProgress = true;
       pendingTrigger = usable(trigger);
       if (!pendingTrigger) return null;
-      expiryHandle = schedule(() => {
-        expiryHandle = null;
-        pendingTrigger = null;
-      });
+      expirePendingAfterFrame();
       return pendingTrigger;
     },
-    cutawayOpened(fallbackTrigger) {
+    framePointerComplete() {
+      pointerInProgress = false;
+      if (!pendingTrigger) {
+        clearExpiry();
+        return null;
+      }
+      expirePendingAfterFrame();
+      return pendingTrigger;
+    },
+    frameCutawayOpened() {
+      pointerInProgress = false;
       clearExpiry();
-      activeTrigger = usable(pendingTrigger) || usable(fallbackTrigger);
+      activeTrigger = usable(pendingTrigger) || usable(activeTrigger);
+      pendingTrigger = null;
+      return activeTrigger;
+    },
+    cutawayOpened(fallbackTrigger) {
+      pointerInProgress = false;
+      clearExpiry();
+      activeTrigger = usable(activeTrigger) || usable(pendingTrigger) || usable(fallbackTrigger);
       pendingTrigger = null;
       return activeTrigger;
     },
     cutawayClosed() {
+      pointerInProgress = false;
+      clearExpiry();
+      pendingTrigger = null;
       const trigger = usable(activeTrigger);
       activeTrigger = null;
       return trigger;
     },
     reset() {
+      pointerInProgress = false;
       clearExpiry();
       pendingTrigger = null;
       activeTrigger = null;

@@ -191,15 +191,16 @@ test('bridge attachment connects iframe load and window message events and can d
       handleLoad: () => calls.push('load'),
       handleMessage: (event) => calls.push(event.data.type),
     },
+    onFrameLoad: () => calls.push('frame-load'),
   });
 
   frame.dispatch('load');
   messageTarget.dispatch('message', { data: { type: 'pixelverse.world.ready' } });
-  assert.deepEqual(calls, ['load', 'pixelverse.world.ready']);
+  assert.deepEqual(calls, ['frame-load', 'load', 'pixelverse.world.ready']);
   detach();
   frame.dispatch('load');
   messageTarget.dispatch('message', { data: { type: 'pixelverse.world.ready' } });
-  assert.deepEqual(calls, ['load', 'pixelverse.world.ready']);
+  assert.deepEqual(calls, ['frame-load', 'load', 'pixelverse.world.ready']);
 });
 
 test('bridge attachment closes cards from the same-origin child document and rebinds safely on reload', () => {
@@ -216,7 +217,7 @@ test('bridge attachment closes cards from the same-origin child document and reb
       count(type) { return listeners.get(type)?.size || 0; },
     };
   };
-  const contentWindow = {};
+  const contentWindow = eventTarget();
   const childDocument = (origin = 'http://localhost', source = contentWindow) => ({
     ...eventTarget(),
     defaultView: source,
@@ -230,6 +231,8 @@ test('bridge attachment closes cards from the same-origin child document and reb
   };
   const messageTarget = eventTarget();
   const closures = [];
+  const completions = [];
+  let cutawayOpens = 0;
   let activeCard = 'events';
   const close = (reason) => {
     if (!activeCard) return;
@@ -241,12 +244,22 @@ test('bridge attachment closes cards from the same-origin child document and reb
     messageTarget,
     origin: 'http://localhost',
     bridge: { handleLoad() {}, handleMessage() {} },
+    onFrameCutawayOpen: () => { cutawayOpens += 1; },
     onFramePointerDown: () => close('pointer'),
+    onFramePointerComplete: (event) => completions.push(event.type),
     onFrameEscape: () => close('escape'),
   });
 
+  assert.equal(documentValue.count('pointerup'), 1);
+  assert.equal(documentValue.count('pointercancel'), 1);
+  assert.equal(contentWindow.count('pixelworld:cutaway-open'), 1);
   documentValue.dispatch('pointerdown', { pointerType: 'mouse' });
+  documentValue.dispatch('pointerup', { type: 'pointerup' });
+  contentWindow.dispatch('pixelworld:cutaway-open');
+  documentValue.dispatch('pointercancel', { type: 'pointercancel' });
   assert.deepEqual(closures, ['pointer:events']);
+  assert.deepEqual(completions, ['pointerup', 'pointercancel']);
+  assert.equal(cutawayOpens, 1);
   activeCard = 'agents';
   documentValue.dispatch('keydown', { key: 'Escape' });
   assert.deepEqual(closures, ['pointer:events', 'escape:agents']);
@@ -255,6 +268,8 @@ test('bridge attachment closes cards from the same-origin child document and reb
   documentValue = childDocument();
   frame.dispatch('load');
   assert.equal(firstDocument.count('pointerdown'), 0);
+  assert.equal(firstDocument.count('pointerup'), 0);
+  assert.equal(firstDocument.count('pointercancel'), 0);
   activeCard = 'help';
   firstDocument.dispatch('pointerdown');
   assert.equal(activeCard, 'help');
@@ -266,6 +281,7 @@ test('bridge attachment closes cards from the same-origin child document and reb
   frame.dispatch('load');
   assert.equal(sameOriginDocument.count('pointerdown'), 0);
   assert.equal(documentValue.count('pointerdown'), 0);
+  assert.equal(contentWindow.count('pixelworld:cutaway-open'), 0);
 
   documentValue = childDocument('http://localhost', {});
   frame.dispatch('load');
@@ -274,8 +290,14 @@ test('bridge attachment closes cards from the same-origin child document and reb
   documentValue = childDocument();
   frame.dispatch('load');
   assert.equal(documentValue.count('pointerdown'), 1);
+  assert.equal(documentValue.count('pointerup'), 1);
+  assert.equal(documentValue.count('pointercancel'), 1);
+  assert.equal(contentWindow.count('pixelworld:cutaway-open'), 1);
   detach();
   assert.equal(documentValue.count('pointerdown'), 0);
+  assert.equal(documentValue.count('pointerup'), 0);
+  assert.equal(documentValue.count('pointercancel'), 0);
+  assert.equal(contentWindow.count('pixelworld:cutaway-open'), 0);
   assert.equal(documentValue.count('keydown'), 0);
   assert.equal(frame.count('load'), 0);
   assert.equal(messageTarget.count('message'), 0);
