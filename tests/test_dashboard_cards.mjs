@@ -132,6 +132,46 @@ test('adaptive placement guarantees zero collision across compact and desktop vi
   });
 });
 
+const landscapePlacementCases = [
+  {
+    label: '667x390',
+    viewport: { width: 667, height: 390, margin: 8, gap: 8 },
+    heartbeat: { left: 8, top: 8, right: 338, bottom: 184 },
+    cutaway: { left: 8, top: 192, right: 300, bottom: 382 },
+    trigger: { left: 403, top: 8, right: 659, bottom: 48 },
+    desired: { width: 336, height: 340 },
+    expected: { left: 346, top: 42, width: 313, height: 340 },
+  },
+  {
+    label: '768x390',
+    viewport: { width: 768, height: 390, margin: 14, gap: 8 },
+    heartbeat: { left: 14, top: 14, right: 434, bottom: 190 },
+    cutaway: { left: 14, top: 198, right: 400, bottom: 376 },
+    trigger: { left: 490, top: 14, right: 754, bottom: 56 },
+    desired: { width: 380, height: 390 },
+    expected: { left: 442, top: 14, width: 312, height: 362 },
+  },
+];
+
+landscapePlacementCases.forEach(({ label, viewport, heartbeat, cutaway, trigger, desired, expected }) => {
+  test(`${label} placement keeps the full-height side corridor after heartbeat and cutaway subtraction`, () => {
+    const placement = placeDashboardCard(trigger, desired, viewport, [heartbeat, cutaway]);
+    assert.deepEqual(placement, { ...expected, visible: true }, label);
+    const card = {
+      left: placement.left,
+      top: placement.top,
+      right: placement.left + placement.width,
+      bottom: placement.top + placement.height,
+    };
+    assert.ok(card.left >= viewport.margin, label);
+    assert.ok(card.top >= viewport.margin, label);
+    assert.ok(card.right <= viewport.width - viewport.margin, label);
+    assert.ok(card.bottom <= viewport.height - viewport.margin, label);
+    assert.equal(overlaps(card, heartbeat), false, `${label} heartbeat`);
+    assert.equal(overlaps(card, cutaway), false, `${label} cutaway`);
+  });
+});
+
 test('full-size card remains anchored beside the heartbeat when horizontal room exists', () => {
   const heartbeat = { left: 14, top: 14, right: 434, bottom: 190 };
   const trigger = { left: 732, top: 14, right: 1010, bottom: 56 };

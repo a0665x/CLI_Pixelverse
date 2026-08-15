@@ -39,10 +39,10 @@ const subtractRect = (space, exclusion) => {
   const overlap = intersectRect(space, exclusion);
   if (!overlap) return [space];
   return [
-    { left: space.left, top: space.top, right: space.right, bottom: overlap.top },
-    { left: space.left, top: overlap.bottom, right: space.right, bottom: space.bottom },
-    { left: space.left, top: overlap.top, right: overlap.left, bottom: overlap.bottom },
-    { left: overlap.right, top: overlap.top, right: space.right, bottom: overlap.bottom },
+    { left: space.left, top: space.top, right: overlap.left, bottom: space.bottom },
+    { left: overlap.right, top: space.top, right: space.right, bottom: space.bottom },
+    { left: overlap.left, top: space.top, right: overlap.right, bottom: overlap.top },
+    { left: overlap.left, top: overlap.bottom, right: overlap.right, bottom: space.bottom },
   ].filter((rect) => rect.right > rect.left && rect.bottom > rect.top);
 };
 
