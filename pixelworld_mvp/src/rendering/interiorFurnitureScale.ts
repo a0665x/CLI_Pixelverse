@@ -32,6 +32,9 @@ const SOURCE_ONLY_ROTATIONS = Object.freeze([SOURCE_ROTATION]) as readonly Furni
 const QUARTER_TURN_ROTATIONS = Object.freeze([0, 90, 180, 270]) as readonly FurnitureRotation[];
 
 const isChairVariant = (assetId: number): boolean => assetId >= 101 && assetId <= 116;
+const isFullHeightFurnitureLabel = (label: string): boolean => (
+  /desk|cabinet|bookcase|shelf|storage|credenza|station/i.test(label)
+);
 
 export function furnitureSizeFamily(assetId: number): FurnitureSizeFamily {
   const asset = catalogItem(assetId);
@@ -41,15 +44,24 @@ export function furnitureSizeFamily(assetId: number): FurnitureSizeFamily {
   const role = catalogFurnitureRole(assetId);
   const area = asset.footprint.width * asset.footprint.height;
   const longEdge = Math.max(asset.opaqueBounds.width, asset.opaqueBounds.height);
-  if (area >= 4 || longEdge >= 32) return 'assembly';
-  if (role === 'surface') return 'surface-small';
+  if (area >= 4 || longEdge >= 32 || (role === 'floor' && area > 1)) return 'assembly';
+  if (isFullHeightFurnitureLabel(asset.label)) return 'desk-cabinet';
+  if ((area === 1 && longEdge < 18) || ((role === 'surface' || role === 'floor') && longEdge < 24)) {
+    return 'surface-small';
+  }
   return 'desk-cabinet';
 }
 
 const scaleFor = (asset: ModernOfficeCatalogItem, family: FurnitureSizeFamily): FurnitureScale => {
   const longEdge = Math.max(asset.opaqueBounds.width, asset.opaqueBounds.height);
   const target = TARGET_LONG_EDGE[family];
-  return SCALE_STEPS.filter((candidate) => candidate <= 1).reduce((closest, candidate) => (
+  const role = catalogFurnitureRole(asset.id);
+  const maximum = role === 'surface' || role === 'floor'
+    ? 3
+    : family === 'chair'
+      ? 1.25
+      : 1;
+  return SCALE_STEPS.filter((candidate) => candidate <= maximum).reduce((closest, candidate) => (
     Math.abs(longEdge * candidate - target) < Math.abs(longEdge * closest - target)
       ? candidate
       : closest

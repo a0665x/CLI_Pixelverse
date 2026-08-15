@@ -6,7 +6,11 @@ import {
   supportedRotations,
   type FurnitureSizeFamily,
 } from '../src/rendering/interiorFurnitureScale';
-import { catalogItem } from '../src/rendering/modernOfficeCatalog';
+import {
+  catalogFurnitureRole,
+  catalogItem,
+  MODERN_OFFICE_CATALOG,
+} from '../src/rendering/modernOfficeCatalog';
 import type { FurnitureDefinition } from '../src/world/types';
 
 const representativeAssets = {
@@ -33,6 +37,23 @@ const readableLongEdgeAtOnePointFive = {
   assembly: 36,
 } as const satisfies Record<FurnitureSizeFamily, number>;
 
+const projectedFamilyBands = {
+  'surface-small': { minimum: 22, maximum: 31, maximumSpread: 1.4 },
+  chair: { minimum: 30, maximum: 38, maximumSpread: 1.3 },
+  'desk-cabinet': { minimum: 24, maximum: 42, maximumSpread: 1.75 },
+  'sofa-bed': { minimum: 34, maximum: 35, maximumSpread: 1.05 },
+  assembly: { minimum: 34, maximum: 62, maximumSpread: 1.8 },
+} as const satisfies Record<FurnitureSizeFamily, {
+  minimum: number;
+  maximum: number;
+  maximumSpread: number;
+}>;
+
+const authoredLongEdge = (assetId: number): number => {
+  const asset = catalogItem(assetId)!;
+  return Math.max(asset.opaqueBounds.width, asset.opaqueBounds.height) * authoredPlacement(assetId).scale;
+};
+
 describe('interior furniture authored presentation', () => {
   it('normalizes representative trimmed alpha bounds into five family bands', () => {
     for (const [family, assetId] of Object.entries(representativeAssets) as Array<[FurnitureSizeFamily, number]>) {
@@ -50,6 +71,51 @@ describe('interior furniture authored presentation', () => {
       expect(longEdge * 1.5, `${family}:${assetId}:1.5x projected`).toBeGreaterThanOrEqual(
         readableLongEdgeAtOnePointFive[family],
       );
+    }
+  });
+
+  it('keeps every catalog asset readable and internally consistent at the 1.5x editor viewport', () => {
+    expect(MODERN_OFFICE_CATALOG).toHaveLength(339);
+    const projectedByFamily = new Map<FurnitureSizeFamily, number[]>();
+
+    for (const asset of MODERN_OFFICE_CATALOG) {
+      const family = furnitureSizeFamily(asset.id);
+      const projectedLongEdge = authoredLongEdge(asset.id) * 1.5;
+      projectedByFamily.set(family, [...(projectedByFamily.get(family) ?? []), projectedLongEdge]);
+    }
+
+    expect([...projectedByFamily.values()].reduce((total, values) => total + values.length, 0)).toBe(339);
+    for (const [family, band] of Object.entries(projectedFamilyBands) as Array<[
+      FurnitureSizeFamily,
+      (typeof projectedFamilyBands)[FurnitureSizeFamily],
+    ]>) {
+      const projected = projectedByFamily.get(family)!;
+      const minimum = Math.min(...projected);
+      const maximum = Math.max(...projected);
+      expect(minimum, `${family}:minimum`).toBeGreaterThanOrEqual(band.minimum);
+      expect(maximum, `${family}:maximum`).toBeLessThanOrEqual(band.maximum);
+      expect(maximum / minimum, `${family}:spread`).toBeLessThanOrEqual(band.maximumSpread);
+    }
+  });
+
+  it('rescales tiny surface 119 and separates full-height beverage station 173 from that family', () => {
+    expect(furnitureSizeFamily(119)).toBe('surface-small');
+    expect(authoredPlacement(119).scale).toBe(1.75);
+    expect(authoredLongEdge(119)).toBe(17.5);
+
+    expect(furnitureSizeFamily(173)).toBe('desk-cabinet');
+    expect(authoredPlacement(173).scale).toBe(0.75);
+    expect(authoredLongEdge(173)).toBe(22.5);
+  });
+
+  it('enlarges only geometry-safe catalog roles and the bounded chair variants', () => {
+    const enlarged = MODERN_OFFICE_CATALOG.filter(({ id }) => authoredPlacement(id).scale > 1);
+    expect(enlarged.length).toBeGreaterThan(0);
+    for (const asset of enlarged) {
+      const family = furnitureSizeFamily(asset.id);
+      const safeRole = ['floor', 'surface'].includes(catalogFurnitureRole(asset.id));
+      expect(safeRole || family === 'chair', `asset ${asset.id}`).toBe(true);
+      if (family === 'chair') expect(authoredPlacement(asset.id).scale).toBeLessThanOrEqual(1.25);
     }
   });
 

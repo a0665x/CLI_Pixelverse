@@ -52,3 +52,37 @@ A controlled 125% experiment made the 16 px bench desks more prominent, but the 
 ## Remaining concern
 
 Task 6 browser QA should verify perceived furniture readability and contextual-menu layout at the real 1.5× editor viewport on desktop and compact screens. This task did not add or commit any purchased asset files.
+
+## Review fix — whole-catalog family normalization
+
+This appendix supersedes the earlier 75–100% authored-default constraint. Review found that the global `<= 1` cap made tiny catalog art unreadable and left materially different sprites in the same family.
+
+### Root cause and correction
+
+- Root cause: family selection treated nearly every catalog `surface` role as `surface-small`, while `scaleFor` prohibited every asset from growing. Asset 119 therefore rendered with a 10 px authored long edge while full-height beverage station 173 rendered at 22.5 px in the same family.
+- Classification now uses trimmed alpha size, footprint area, role, semantic metadata, and authoritative full-height catalog labels. Multi-cell floor constructions are assemblies; small one-cell art is surface-small; named desks/cabinets/bookcases/shelves/storage/credenzas/stations remain desk-cabinet.
+- Asset 119 remains `surface-small` and resolves to 1.75×, producing a 17.5 px authored long edge. Asset 173 is `desk-cabinet` and remains 0.75×, producing 22.5 px; they no longer distort one family distribution.
+- Catalog floor/surface roles may use the existing discrete 75–300% steps to approach their family target because they are nonblocking. Chair variants have a bounded 125% cap. Other desk/chair/sofa/assembly assets remain capped at 100% so reviewed interaction geometry stays authoritative.
+- The known prefab bench desk 247 stays at 100%: the earlier 125% experiment reproducibly blocked interaction anchors. At the 1.5× editor viewport it projects to a readable 24 px long edge.
+
+### Whole-catalog invariant
+
+All 339 catalog entries are now checked from their trimmed opaque dimensions after authored scale and 1.5× viewport projection. Every family must remain inside its readable band and maximum spread:
+
+- surface-small: 22–31 px, spread <= 1.4;
+- chair: 30–38 px, spread <= 1.3;
+- desk-cabinet: 24–42 px, spread <= 1.75;
+- sofa-bed: 34–35 px, spread <= 1.05;
+- assembly: 34–62 px, spread <= 1.8.
+
+The test also proves that every `> 1×` authored default belongs to a geometry-safe floor/surface role or the bounded chair variant family.
+
+### TDD and final verification
+
+- RED: `interiorFurnitureScale.test.ts` ran 6 tests with 3 failed / 3 passed. Failures were `surface-small:minimum` at 15 px instead of >=22 px, asset 119 at 1× instead of 1.75×, and zero catalog assets eligible for safe enlargement.
+- GREEN: the scale suite passed 6/6; the catalog/built-in/definitions/room-validation/layout set passed 122/122.
+- Fresh requested focused run: 6 files, 128/128 passed.
+- Fresh typecheck: `tsc --noEmit` passed.
+- Fresh full Pixelworld run: 66 files, 664/664 passed.
+- Existing room validation confirms `officeLayoutIssues=[]` and reachable interaction paths for all three work rooms. Existing prefab validation confirms support relationships, visual offsets, canonical authored transforms, and surface z-order.
+- Purchased Modern Office files remained ignored, read-only inputs and were not staged.
