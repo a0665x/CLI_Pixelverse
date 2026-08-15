@@ -283,7 +283,7 @@ const overlayDomHarness = () => {
       if (selector === '.cutaway-room-toolbar') return roomToolbar;
       if (selector === '.cutaway-dom-catalog') return catalog;
       if (selector === '.cutaway-dom-inspector') return inspector;
-      if (selector === '.cutaway-context-toolbar') return toolbar;
+      if (selector === '.cutaway-context-menu') return toolbar;
       if (selector === '.cutaway-guide-popover') return guide;
       if (selector === '.cutaway-room-labels') return labelLayer;
       if (selector === '.cutaway-dom-categories') return nav;
@@ -313,6 +313,133 @@ const overlayDomHarness = () => {
 };
 
 describe('InteriorCutawaySystem', () => {
+  it('keeps primary selection operational without opening contextual actions', () => {
+    const fake = fakeScene();
+    const cutaway = new InteriorCutawaySystem(fake.scene as never, WORLD_DEFINITION, () => ({ width: 1_280, height: 720 }));
+    const capture = captureCutawayHandlers(cutaway);
+    cutaway.open('rest-cabin');
+    capture.handlers().toggleEdit();
+    const furniture = fake.objects.find(({ interactive, destroyed, depth }) => interactive && !destroyed && depth > 0)!;
+
+    furniture.emit('pointerdown', viewportPointerAt(furniture.x, furniture.y, 0));
+
+    expect(capture.model().selected).toBeDefined();
+    expect(capture.model().contextMenu).toBeUndefined();
+  });
+
+  it('toggles the four-action menu with the secondary button without starting a drag', () => {
+    const fake = fakeScene();
+    const cutaway = new InteriorCutawaySystem(fake.scene as never, WORLD_DEFINITION, () => ({ width: 1_280, height: 720 }));
+    const capture = captureCutawayHandlers(cutaway);
+    cutaway.open('rest-cabin');
+    capture.handlers().toggleEdit();
+    const furniture = fake.objects.find(({ interactive, destroyed, depth }) => interactive && !destroyed && depth > 0)!;
+    const secondary = viewportPointerAt(furniture.x, furniture.y, 2);
+
+    furniture.emit('pointerdown', secondary);
+    expect(capture.model().contextMenu).toMatchObject({
+      pointer: { x: furniture.x, y: furniture.y },
+      selection: { itemIds: expect.any(Array), grouped: expect.any(Boolean) },
+    });
+    expect((cutaway as unknown as { furnitureDragCapture?: unknown }).furnitureDragCapture).toBeUndefined();
+
+    furniture.emit('pointerdown', secondary);
+    expect(capture.model().contextMenu).toBeUndefined();
+  });
+
+  it('dismisses contextual actions on empty primary click before starting marquee selection', () => {
+    const fake = fakeScene();
+    const cutaway = new InteriorCutawaySystem(fake.scene as never, WORLD_DEFINITION, () => ({ width: 1_280, height: 720 }));
+    const capture = captureCutawayHandlers(cutaway);
+    cutaway.open('rest-cabin');
+    capture.handlers().toggleEdit();
+    const furniture = fake.objects.find(({ interactive, destroyed, depth }) => interactive && !destroyed && depth > 0)!;
+    furniture.emit('pointerdown', viewportPointerAt(furniture.x, furniture.y, 2));
+    expect(capture.model().contextMenu).toBeDefined();
+
+    fake.emitInput('pointerdown', viewportPointerAt(384, 224, 0), []);
+
+    expect(capture.model().contextMenu).toBeUndefined();
+  });
+
+  it('keeps the marquee owned by its initiating pointer until that pointer releases', () => {
+    const fake = fakeScene();
+    const cutaway = new InteriorCutawaySystem(fake.scene as never, WORLD_DEFINITION, () => ({ width: 1_280, height: 720 }));
+    const capture = captureCutawayHandlers(cutaway);
+    cutaway.open('rest-cabin');
+    capture.handlers().toggleEdit();
+    const owner = { ...viewportPointerAt(384, 224, 0), id: 41 };
+    const intruder = { ...viewportPointerAt(430, 270, 0), id: 42 };
+
+    fake.emitInput('pointerdown', owner, []);
+    expect(capture.model().statusId).toBe('marqueeSelecting');
+    fake.emitInput('pointerup', intruder);
+    expect(capture.model().statusId).toBe('marqueeSelecting');
+
+    fake.emitInput('pointerup', { ...viewportPointerAt(430, 270, 0), id: 41 });
+    expect(capture.model().statusId).toBe('selectionCompleted');
+  });
+
+  it('dismisses the context menu before guide or room on Escape, close, switch, and destroy', () => {
+    const fake = fakeScene();
+    const cutaway = new InteriorCutawaySystem(fake.scene as never, WORLD_DEFINITION, () => ({ width: 1_280, height: 720 }));
+    const capture = captureCutawayHandlers(cutaway);
+    const escape = fake.scene.input.keyboard.on.mock.calls.find(([event]) => event === 'keydown-ESC')?.[1];
+    const openMenu = () => {
+      const furniture = [...fake.objects].reverse()
+        .find(({ interactive, destroyed, depth }) => interactive && !destroyed && depth > 0)!;
+      furniture.emit('pointerdown', viewportPointerAt(furniture.x, furniture.y, 2));
+      expect(capture.model().contextMenu).toBeDefined();
+    };
+
+    cutaway.open('rest-cabin');
+    capture.handlers().toggleEdit();
+    openMenu();
+    escape?.();
+    expect(capture.model().contextMenu).toBeUndefined();
+    expect(cutaway.isOpen()).toBe(true);
+
+    openMenu();
+    cutaway.close();
+    expect((cutaway as unknown as { contextMenuPointer?: unknown }).contextMenuPointer).toBeUndefined();
+
+    cutaway.open('rest-cabin');
+    capture.handlers().toggleEdit();
+    openMenu();
+    cutaway.open('network-lab');
+    expect((cutaway as unknown as { contextMenuPointer?: unknown }).contextMenuPointer).toBeUndefined();
+
+    capture.handlers().toggleEdit();
+    openMenu();
+    cutaway.destroy();
+    expect((cutaway as unknown as { contextMenuPointer?: unknown }).contextMenuPointer).toBeUndefined();
+  });
+
+  it('suppresses the browser context menu only while the cutaway canvas is active', () => {
+    const listeners = new Map<string, (event: { preventDefault(): void }) => void>();
+    const canvas = {
+      dataset: {} as Record<string, string>,
+      getBoundingClientRect: () => ({ left: 0, top: 0, width: 768, height: 448 }),
+      addEventListener: vi.fn((name: string, handler: (event: { preventDefault(): void }) => void) => listeners.set(name, handler)),
+      removeEventListener: vi.fn((name: string, handler: (event: { preventDefault(): void }) => void) => {
+        if (listeners.get(name) === handler) listeners.delete(name);
+      }),
+    };
+    const fake = fakeScene();
+    Object.assign(fake.scene, { game: { canvas } });
+    const cutaway = new InteriorCutawaySystem(fake.scene as never, WORLD_DEFINITION, () => ({ width: 1_280, height: 720 }));
+    const event = { preventDefault: vi.fn() };
+
+    expect(listeners.has('contextmenu')).toBe(false);
+    cutaway.open('rest-cabin');
+    listeners.get('contextmenu')?.(event);
+    expect(event.preventDefault).toHaveBeenCalledOnce();
+
+    cutaway.close();
+    expect(listeners.has('contextmenu')).toBe(false);
+    expect(canvas.removeEventListener).toHaveBeenCalledWith('contextmenu', expect.any(Function));
+  });
+
   it('keeps room content clear until contextual drawers are requested', () => {
     const { overlay, handlers, panel, catalog, inspector } = overlayDomHarness();
     try {
@@ -496,7 +623,7 @@ describe('InteriorCutawaySystem', () => {
     }
   });
 
-  it('restores contextual-toolbar focus by stable action identity after rerendering', () => {
+  it('restores context-menu focus by stable action identity after rerendering', () => {
     const { overlay, handlers, toolbar, documentStub } = overlayDomHarness();
     try {
       const layout = cutawayLayoutForViewport(1_280, 720);
@@ -506,18 +633,22 @@ describe('InteriorCutawaySystem', () => {
           editMode: true, catalogExpanded: false, inspectorExpanded: false,
         }),
         selectionBounds: { x: layout.x + 220, y: layout.y + 180, width: 32, height: 32 },
+        contextMenu: {
+          pointer: { x: layout.x + 220, y: layout.y + 180 },
+          selection: { itemIds: ['plant'], grouped: false },
+        },
       });
       handlers.rotate = vi.fn(() => {
         model = { ...model, selected: { ...model.selected!, rotation: 90 } };
         overlay.update(model);
       });
       overlay.open(layout, model, handlers);
-      const rotateRight = toolbar.children.find(({ dataset }) => dataset.contextAction === 'rotate-right');
-      expect(rotateRight).toBeDefined();
-      rotateRight!.focus();
-      rotateRight!.click();
+      const rotate = toolbar.children.find(({ dataset }) => dataset.contextAction === 'rotate');
+      expect(rotate).toBeDefined();
+      rotate!.focus();
+      rotate!.click();
       expect(handlers.rotate).toHaveBeenCalledWith(90);
-      expect(documentStub.activeElement?.dataset.contextAction).toBe('rotate-right');
+      expect(documentStub.activeElement?.dataset.contextAction).toBe('rotate');
     } finally {
       overlay.destroy();
       vi.unstubAllGlobals();
@@ -534,10 +665,15 @@ describe('InteriorCutawaySystem', () => {
           editMode: true, catalogExpanded: false, inspectorExpanded: false,
         }),
         selectionBounds: { x: layout.x + 220, y: layout.y + 180, width: 64, height: 32 },
+        contextMenu: {
+          pointer: { x: layout.x + 220, y: layout.y + 180 },
+          selection: { itemIds: ['plant', 'chair'], grouped: false },
+        },
       });
       handlers.group = vi.fn(() => {
         const { selected: _selected, ...withoutSelection } = model;
-        model = { ...withoutSelection, selectedCount: 0, canGroup: false };
+        const { contextMenu: _contextMenu, ...withoutContextMenu } = withoutSelection;
+        model = { ...withoutContextMenu, selectedCount: 0, canGroup: false };
         overlay.update(model);
       });
       overlay.open(layout, model, handlers);
@@ -771,7 +907,7 @@ describe('InteriorCutawaySystem', () => {
     }
   });
 
-  it('localizes pagination and rotation glyphs for assistive technology', () => {
+  it('localizes pagination and the compact rotation action for assistive technology', () => {
     const { overlay, handlers, actions, toolbar } = overlayDomHarness();
     try {
       const layout = cutawayLayoutForViewport(1_280, 720);
@@ -782,14 +918,17 @@ describe('InteriorCutawaySystem', () => {
           editMode: true, catalogExpanded: false, inspectorExpanded: false,
         }),
         selectionBounds: { x: layout.x + 200, y: layout.y + 160, width: 32, height: 32 },
+        contextMenu: {
+          pointer: { x: layout.x + 200, y: layout.y + 160 },
+          selection: { itemIds: ['plant'], grouped: false },
+        },
       }), handlers);
       expect(actions.get('prev')?.getAttribute('aria-label')).toBe('Previous page');
       expect(actions.get('prev')?.getAttribute('data-tooltip')).toBe('Previous page');
       expect(actions.get('next')?.getAttribute('aria-label')).toBe('Next page');
-      const rotations = (toolbar.children as Array<ReturnType<typeof actions.get>>)
-        .filter((button) => button?.textContent === '↶' || button?.textContent === '↷');
-      expect(rotations.map((button) => button?.getAttribute('aria-label'))).toEqual(['Rotate left', 'Rotate right']);
-      expect(rotations.every((button) => Boolean(button?.getAttribute('data-tooltip')))).toBe(true);
+      const rotation = toolbar.children.find(({ dataset }) => dataset.contextAction === 'rotate');
+      expect(rotation?.textContent).toBe('↻ Rotate');
+      expect(rotation?.getAttribute('aria-label')).toBe('Rotate');
       const room = editorLayoutForCutaway(layout, {
         editMode: true, catalogExpanded: false, inspectorExpanded: false,
       }).room;
@@ -797,7 +936,7 @@ describe('InteriorCutawaySystem', () => {
       const toolbarHeight = Number.parseFloat(toolbar.style.height ?? '');
       const roomTop = (room.y - layout.y) / layout.height * 100;
       const roomBottom = (room.y + room.height - layout.y) / layout.height * 100;
-      expect(toolbar.style.overflowY).toBe('auto');
+      expect(toolbar.style.overflow).toBe('hidden');
       expect(toolbarTop).toBeGreaterThanOrEqual(roomTop);
       expect(toolbarTop + toolbarHeight).toBeLessThanOrEqual(roomBottom);
     } finally {

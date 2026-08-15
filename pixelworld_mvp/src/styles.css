@@ -36,8 +36,8 @@ body:has(.cutaway-dom-panel) #village-zoom-controls { display: none; }
 .cutaway-dom-panel button[data-tooltip]:focus-visible::after { opacity: 1; }
 .cutaway-dom-actions [data-action='save'] { background: #6b5734; }
 .cutaway-dom-actions [data-action='close'] { min-width: 25px; color: #fff; background: #9d443d; font-size: 16px; }
-.cutaway-room-toolbar { position: absolute; z-index: 3; display: flex; align-items: center; gap: 4px; overflow-x: auto; overflow-y: hidden; padding: 4px 6px; border-top: 1px solid rgb(238 255 240 / 18%); border-bottom: 1px solid var(--material-glass-border); background: var(--material-structural); pointer-events: auto; white-space: nowrap; scrollbar-width: thin; }
-.cutaway-room-toolbar button { flex: 0 0 auto; min-height: 22px; }
+.cutaway-room-toolbar { position: absolute; z-index: 3; display: flex; align-items: center; gap: 4px; overflow: hidden; padding: 4px 6px; border-top: 1px solid rgb(238 255 240 / 18%); border-bottom: 1px solid var(--material-glass-border); background: var(--material-structural); pointer-events: auto; white-space: nowrap; }
+.cutaway-room-toolbar button { flex: 1 1 0; min-width: 0; min-height: 22px; }
 .cutaway-room-toolbar [data-action='save'] { background: #6b5734; }
 .cutaway-dom-catalog { position: absolute; pointer-events: none; overflow: clip; padding: 8px 10px; }
 .cutaway-dom-categories { position: absolute; top: 4px; left: 0; display: flex; gap: 4px; padding: 4px; border: 1px solid var(--material-glass-border); border-radius: 8px; background: var(--material-glass); box-shadow: inset 0 1px rgb(255 255 255 / 26%), 0 8px 18px rgb(4 15 8 / 22%); backdrop-filter: blur(18px) saturate(150%); -webkit-backdrop-filter: blur(18px) saturate(150%); pointer-events: auto; }
@@ -48,7 +48,11 @@ body:has(.cutaway-dom-panel) #village-zoom-controls { display: none; }
 .cutaway-dom-inspector { position: absolute; pointer-events: auto; overflow: auto; padding: 10px; border: 1px solid rgb(190 220 198 / 28%); border-radius: 0 0 0 8px; background: var(--material-structural); box-shadow: 0 8px 18px rgb(4 15 8 / 24%); align-items: flex-start; }
 .cutaway-dom-inspector[data-placement='bottom'] { border-radius: 8px 8px 0 0; }
 .cutaway-dom-inspector strong { margin-right: 3px; font-size: 10px; }
-.cutaway-context-toolbar { position: absolute; z-index: 4; display: flex; flex-wrap: wrap; pointer-events: auto; overflow: auto; gap: 4px; padding: 5px; border: 1px solid var(--material-glass-border); border-radius: 8px; background: var(--material-glass); box-shadow: 0 8px 18px rgb(4 15 8 / 28%); transition: opacity 120ms ease-out; }
+.cutaway-context-menu { position: absolute; z-index: 4; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); pointer-events: auto; overflow: hidden; gap: 5px; padding: 6px; border: 1px solid var(--material-glass-border); border-radius: 9px; background: var(--material-glass); box-shadow: 0 8px 18px rgb(4 15 8 / 28%); transition: opacity 120ms ease-out, transform 120ms ease-out; }
+.cutaway-context-menu button { min-width: 0; min-height: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cutaway-context-menu button[data-pressed='true'] { scale: .96; background: #5f876f; box-shadow: inset 0 1px rgb(255 255 255 / 28%); }
+/* Unreachable compatibility selector retained for the pre-menu stylesheet contract. */
+.cutaway-context-toolbar { position: absolute; z-index: 4; display: flex; flex-wrap: wrap; pointer-events: auto; overflow: auto; }
 .cutaway-guide-popover { position: absolute; top: 48px; left: 50%; z-index: 5; max-width: 320px; padding: 10px; border: 1px solid var(--material-glass-border); border-radius: 9px; background: var(--material-structural); pointer-events: auto; transform: translateX(-50%); transition: opacity 120ms ease-out; }
 .cutaway-guide-popover p { margin: 0 0 8px; font-size: 11px; }
 .cutaway-room-labels { position: absolute; overflow: visible; pointer-events: none; }
@@ -67,12 +71,14 @@ body:has(.cutaway-dom-panel) #village-zoom-controls { display: none; }
 }
 @media (prefers-reduced-transparency: reduce) {
   #village-zoom-controls, .cutaway-dom-actions, .cutaway-dom-categories, .cutaway-dom-page { background: var(--material-structural); backdrop-filter: none; -webkit-backdrop-filter: none; }
-  .cutaway-dom-header, .cutaway-room-toolbar, .cutaway-dom-inspector, .cutaway-context-toolbar, .cutaway-guide-popover { backdrop-filter: none; background: #16231f; }
+  .cutaway-dom-header, .cutaway-room-toolbar, .cutaway-dom-inspector, .cutaway-context-menu, .cutaway-context-toolbar, .cutaway-guide-popover { backdrop-filter: none; background: #16231f; }
 }
 @media (prefers-reduced-motion: reduce) {
   #village-zoom-controls button, .cutaway-dom-panel button { transition: opacity 160ms ease; }
   #village-zoom-controls button:active, .cutaway-dom-panel button:active { scale: 1; }
+  .cutaway-context-menu, .cutaway-guide-popover { transition: none; }
   .cutaway-context-toolbar, .cutaway-guide-popover { transition: none; }
+  .cutaway-context-menu button[data-pressed='true'] { scale: 1; }
 }
 @media (prefers-contrast: more) {
   #village-zoom-controls, .cutaway-dom-actions, .cutaway-dom-categories, .cutaway-dom-page, .cutaway-dom-inspector { border-color: #fff4c2; background: var(--material-content); }

@@ -15,13 +15,6 @@ export interface InteriorEditorLayoutOptions {
   inspectorExpanded: boolean;
 }
 
-export type ContextToolbarSide = 'above' | 'below' | 'left' | 'right';
-
-export interface ContextToolbarPlacement extends EditorRect { side: ContextToolbarSide }
-
-const clamp = (value: number, minimum: number, maximum: number): number =>
-  Math.min(maximum, Math.max(minimum, value));
-
 export const interiorInspectorAvailable = (frame: Pick<EditorRect, 'width'>): boolean =>
   frame.width > 0;
 
@@ -79,33 +72,5 @@ export function interiorEditorLayout(
     inspector: compactInspector
       ? { x: frame.x, y: bottomY, width: frame.width, height: compactInspectorHeight }
       : { x: room.x + room.width, y: room.y, width: inspectorWidth, height: room.height },
-  };
-}
-
-export function contextToolbarPlacement(
-  selection: EditorRect,
-  room: EditorRect,
-  size: Pick<EditorRect, 'width' | 'height'>,
-): ContextToolbarPlacement {
-  const gap = 8;
-  const width = Math.min(Math.max(0, size.width), room.width);
-  const height = Math.min(Math.max(0, size.height), room.height);
-  const above = selection.y - height - gap;
-  const below = selection.y + selection.height + gap;
-  const side: ContextToolbarSide = above >= room.y ? 'above'
-    : below + height <= room.y + room.height ? 'below'
-      : selection.x + selection.width / 2 < room.x + room.width / 2 ? 'right' : 'left';
-  const desiredX = side === 'right' ? selection.x + selection.width + gap
-    : side === 'left' ? selection.x - width - gap
-      : selection.x + (selection.width - width) / 2;
-  const desiredY = side === 'above' ? above
-    : side === 'below' ? below
-      : selection.y + (selection.height - height) / 2;
-  return {
-    side,
-    x: clamp(desiredX, room.x, room.x + room.width - width),
-    y: clamp(desiredY, room.y, room.y + room.height - height),
-    width,
-    height,
   };
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { contextToolbarPlacement, interiorEditorLayout } from '../src/rendering/interiorEditorLayout';
+import { interiorEditorLayout } from '../src/rendering/interiorEditorLayout';
 
 describe('interior editor layout', () => {
   it('targets the approved 720 by 495 desktop frame', () => {
@@ -70,26 +70,13 @@ describe('interior editor layout', () => {
     expect(layout.room.y + layout.room.height).toBeLessThanOrEqual(layout.inspector.y);
   });
 
-  it('flips the contextual toolbar away from room edges', () => {
-    const room = { x: 120, y: 72, width: 720, height: 360 };
-    expect(contextToolbarPlacement(
-      { x: 130, y: 76, width: 80, height: 40 }, room, { width: 210, height: 32 },
-    ).side).toBe('below');
-    expect(contextToolbarPlacement(
-      { x: 730, y: 390, width: 90, height: 35 }, room, { width: 210, height: 32 },
-    ).side).toBe('above');
-  });
-
-  it('contains an oversized wrapped toolbar inside the reserved room', () => {
-    const room = { x: 12, y: 48, width: 280, height: 144 };
-    const placement = contextToolbarPlacement(
-      { x: 120, y: 92, width: 32, height: 32 }, room, { width: 420, height: 260 },
-    );
-    expect(placement.width).toBeLessThanOrEqual(room.width);
-    expect(placement.height).toBeLessThanOrEqual(room.height);
-    expect(placement.x).toBeGreaterThanOrEqual(room.x);
-    expect(placement.y).toBeGreaterThanOrEqual(room.y);
-    expect(placement.x + placement.width).toBeLessThanOrEqual(room.x + room.width);
-    expect(placement.y + placement.height).toBeLessThanOrEqual(room.y + room.height);
+  it('reserves a fixed, non-scrolling room command strip for the three core commands', () => {
+    const layout = interiorEditorLayout(960, 560, {
+      editMode: true,
+      catalogExpanded: false,
+      inspectorExpanded: false,
+    });
+    expect(layout.roomToolbar.height).toBe(32);
+    expect(layout.room.y).toBe(layout.roomToolbar.y + layout.roomToolbar.height);
   });
 });

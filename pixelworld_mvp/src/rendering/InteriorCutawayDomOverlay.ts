@@ -3,12 +3,18 @@ import type { CutawayLayout } from './InteriorCutawaySystem';
 import type { ModernOfficeCategory } from './modernOfficeCatalog';
 import type { FurnitureDefinition, FurnitureLayer, FurnitureRotation } from '../world/types';
 import {
-  contextToolbarPlacement,
   interiorInspectorAvailable,
   type EditorRect,
   type InteriorEditorLayout,
 } from './interiorEditorLayout';
-import { interiorEditorCopy } from './interiorLocale';
+import {
+  contextActions,
+  placeContextMenu,
+  type ContextAction,
+  type ContextSelection,
+  type ContextPoint,
+} from './interiorContextMenu';
+import { interiorContextActionCopy, interiorEditorCopy, interiorRoomCommandCopy } from './interiorLocale';
 import {
   cutawayMessage,
   furnitureLayerLabel,
@@ -57,6 +63,7 @@ interface CutawayDomModelBase {
   selected?: { label: string; scale: number; rotation: FurnitureRotation; layer: FurnitureLayer };
   editorLayout?: InteriorEditorLayout;
   selectionBounds?: EditorRect;
+  contextMenu?: { pointer: ContextPoint; selection: ContextSelection };
 }
 
 export interface CutawayDisclosureState {
@@ -107,7 +114,8 @@ export class InteriorCutawayDomOverlay {
   private roomToolbar: HTMLElement | undefined;
   private catalog: HTMLElement | undefined;
   private inspector: HTMLElement | undefined;
-  private contextToolbar: HTMLElement | undefined;
+  private contextMenu: HTMLElement | undefined;
+  private contextMenuReturnFocus: HTMLElement | undefined;
   private guidePopover: HTMLElement | undefined;
   private handlers: CutawayDomHandlers | undefined;
   private labelLayer: HTMLDivElement | undefined;
@@ -142,15 +150,10 @@ export class InteriorCutawayDomOverlay {
       </header>
       <nav class="cutaway-room-toolbar" aria-label="Room editing commands" hidden>
         <button type="button" data-action="collect"></button>
-        <button type="button" data-action="revert"></button>
-        <button type="button" data-action="copy"></button>
-        <button type="button" data-action="paste"></button>
         <button type="button" data-action="undo"></button>
-        <button type="button" data-action="preview-template"></button>
-        <button type="button" data-action="apply-template" hidden></button>
         <button type="button" data-action="save"></button>
       </nav>
-      <div class="cutaway-context-toolbar" hidden></div>
+      <div class="cutaway-context-menu" role="menu" hidden></div>
       <aside class="cutaway-dom-inspector" hidden></aside>
       <section class="cutaway-dom-catalog" hidden>
         <nav class="cutaway-dom-categories"></nav>
@@ -168,7 +171,7 @@ export class InteriorCutawayDomOverlay {
     this.roomToolbar = panel.querySelector('.cutaway-room-toolbar') ?? undefined;
     this.catalog = panel.querySelector('.cutaway-dom-catalog') ?? undefined;
     this.inspector = panel.querySelector('.cutaway-dom-inspector') ?? undefined;
-    this.contextToolbar = panel.querySelector('.cutaway-context-toolbar') ?? undefined;
+    this.contextMenu = panel.querySelector('.cutaway-context-menu') ?? undefined;
     this.guidePopover = panel.querySelector('.cutaway-guide-popover') ?? undefined;
     panel.querySelector('[data-action="close"]')?.addEventListener('click', handlers.close);
     panel.querySelector('[data-action="edit"]')?.addEventListener('click', handlers.toggleEdit);
@@ -177,12 +180,7 @@ export class InteriorCutawayDomOverlay {
     panel.querySelector('[data-action="guide"]')?.addEventListener('click', handlers.toggleGuide);
     panel.querySelector('[data-action="fit"]')?.addEventListener('click', handlers.fitView);
     panel.querySelector('[data-action="collect"]')?.addEventListener('click', handlers.collect);
-    panel.querySelector('[data-action="revert"]')?.addEventListener('click', handlers.revert);
-    panel.querySelector('[data-action="copy"]')?.addEventListener('click', handlers.copy);
-    panel.querySelector('[data-action="paste"]')?.addEventListener('click', handlers.paste);
     panel.querySelector('[data-action="undo"]')?.addEventListener('click', handlers.undo);
-    panel.querySelector('[data-action="preview-template"]')?.addEventListener('click', handlers.previewTemplate);
-    panel.querySelector('[data-action="apply-template"]')?.addEventListener('click', handlers.applyTemplate);
     panel.querySelector('[data-action="save"]')?.addEventListener('click', handlers.save);
     panel.querySelector('[data-action="prev"]')?.addEventListener('click', () => handlers.page(-1));
     panel.querySelector('[data-action="next"]')?.addEventListener('click', () => handlers.page(1));
@@ -198,8 +196,14 @@ export class InteriorCutawayDomOverlay {
 
   update(model: CutawayDomModel): void {
     const previousGuideMode = Boolean(this.model?.guideMode);
+    const previousContextOpen = Boolean(this.model?.contextMenu);
     const activeElement = typeof document === 'undefined' ? undefined : document.activeElement as HTMLElement | null;
     const guideHadFocus = Boolean(activeElement && this.guidePopover?.contains(activeElement));
+    if (!previousContextOpen && model.contextMenu) {
+      this.contextMenuReturnFocus = activeElement && typeof activeElement.focus === 'function'
+        ? activeElement
+        : this.editButton;
+    }
     this.model = model;
     if (!this.panel) return;
     const localeCopy = villageCopy(this.locale).cutaway;
@@ -224,12 +228,7 @@ export class InteriorCutawayDomOverlay {
     if (this.editButton) this.editButton.textContent = model.editMode ? '✓' : '✥';
     const actionLabels: Record<string, string> = {
       collect: localeCopy.actions.collect,
-      revert: localeCopy.actions.revert,
-      copy: localeCopy.actions.copy,
-      paste: localeCopy.actions.paste,
       undo: localeCopy.actions.undo,
-      'preview-template': localeCopy.actions.previewTemplate,
-      'apply-template': localeCopy.actions.applyTemplate,
       save: localeCopy.actions.save,
     };
     const catalogButton = this.panel.querySelector<HTMLButtonElement>('[data-action="catalog"]');
@@ -244,12 +243,10 @@ export class InteriorCutawayDomOverlay {
       guideButton.setAttribute('aria-controls', 'cutaway-guide-popover');
     }
     if (this.roomToolbar) this.roomToolbar.hidden = !model.editMode || (model.editorLayout?.roomToolbar.height ?? 1) <= 0;
+    this.roomToolbar?.setAttribute('aria-label', interiorRoomCommandCopy(this.locale));
     const roomActionState: Record<string, { disabled?: boolean; hidden?: boolean }> = {
-      collect: {}, revert: {}, copy: {},
-      paste: { disabled: !model.clipboardAvailable },
+      collect: {},
       undo: { disabled: !model.canUndo },
-      'preview-template': {},
-      'apply-template': { disabled: !model.templateValid, hidden: !model.templatePreviewing },
       save: { disabled: model.saveBlocked },
     };
     Object.entries(roomActionState).forEach(([action, state]) => {
@@ -293,48 +290,59 @@ export class InteriorCutawayDomOverlay {
       }
     }
 
-    if (this.contextToolbar) {
-      this.contextToolbar.hidden = !model.editMode || !model.selected;
-      const focusedAction = activeElement && this.contextToolbar.contains(activeElement)
+    if (this.contextMenu) {
+      const actionCopy = interiorContextActionCopy(this.locale);
+      this.contextMenu.setAttribute('role', 'menu');
+      this.contextMenu.setAttribute('aria-label', actionCopy.menu);
+      this.contextMenu.hidden = !model.editMode || !model.contextMenu;
+      const focusedAction = activeElement && this.contextMenu.contains(activeElement)
         ? activeElement.dataset.contextAction
         : undefined;
       let restoredContextFocus = false;
-      this.contextToolbar.replaceChildren();
-      if (!this.contextToolbar.hidden) {
-        const controls: Array<[string, string, () => void, boolean?]> = [
-          ['cancel', localeCopy.actions.cancel, () => this.handlers?.cancelSelection()],
-          ...(model.canDuplicate ? [['duplicate', localeCopy.actions.duplicate, () => this.handlers?.duplicate()] as [string, string, () => void]] : []),
-          ...(model.canGroup ? [['group', localeCopy.actions.group, () => this.handlers?.group()] as [string, string, () => void]] : []),
-          ...(model.canDissolve ? [['dissolve', localeCopy.actions.dissolveGroup, () => this.handlers?.dissolveGroup()] as [string, string, () => void]] : []),
-          ['shelf', localeCopy.actions.shelf, () => this.handlers?.returnToShelf()],
-          ['smaller', localeCopy.actions.smaller, () => this.handlers?.resize(-1)],
-          ['larger', localeCopy.actions.larger, () => this.handlers?.resize(1)],
-          ['rotate-left', '↶', () => this.handlers?.rotate(-90)],
-          ['rotate-right', '↷', () => this.handlers?.rotate(90)],
-          ['layer-down', localeCopy.actions.layerDown, () => this.handlers?.shiftLayer('previous')],
-          ['layer-up', localeCopy.actions.layerUp, () => this.handlers?.shiftLayer('next')],
-          ['back', localeCopy.actions.back, () => this.handlers?.reorder('back')],
-          ['backward', localeCopy.actions.backward, () => this.handlers?.reorder('backward')],
-          ['forward', localeCopy.actions.forward, () => this.handlers?.reorder('forward')],
-          ['front', localeCopy.actions.front, () => this.handlers?.reorder('front')],
-        ];
-        this.contextToolbar.append(...controls.map(([action, text, handler, disabled]) => {
+      this.contextMenu.replaceChildren();
+      if (!this.contextMenu.hidden && model.contextMenu) {
+        const icons: Record<ContextAction, string> = {
+          duplicate: '⧉', rotate: '↻', resize: '⤢', return: '↩', group: '⛓', dissolve: '⛓',
+        };
+        const handlers: Record<ContextAction, () => void> = {
+          duplicate: () => this.handlers?.duplicate(),
+          rotate: () => this.handlers?.rotate(90),
+          resize: () => this.handlers?.resize(1),
+          return: () => this.handlers?.returnToShelf(),
+          group: () => this.handlers?.group(),
+          dissolve: () => this.handlers?.dissolveGroup(),
+        };
+        this.contextMenu.append(...contextActions(model.contextMenu.selection).map((action) => {
           const button = document.createElement('button');
-          button.type = 'button'; button.textContent = text; button.onclick = handler; button.disabled = Boolean(disabled);
+          const label = actionCopy[action];
+          button.type = 'button'; button.textContent = `${icons[action]} ${label}`; button.onclick = handlers[action];
           button.dataset.contextAction = action;
-          const semanticLabel = text === '↶' ? chrome.rotateLeft : text === '↷' ? chrome.rotateRight : text;
-          button.setAttribute('aria-label', semanticLabel); button.setAttribute('data-tooltip', semanticLabel);
+          button.setAttribute('role', 'menuitem');
+          button.setAttribute('aria-label', label);
+          const release = (): void => { delete button.dataset.pressed; };
+          button.addEventListener('pointerdown', () => { button.dataset.pressed = 'true'; });
+          button.addEventListener('pointerup', release);
+          button.addEventListener('pointercancel', release);
+          button.addEventListener('pointerleave', release);
+          button.addEventListener('blur', release);
           return button;
         }));
         if (focusedAction) {
-          const replacement = this.contextToolbar.querySelector<HTMLButtonElement>(`[data-context-action="${focusedAction}"]`);
+          const replacement = this.contextMenu.querySelector<HTMLButtonElement>(`[data-context-action="${focusedAction}"]`);
           replacement?.focus();
           restoredContextFocus = Boolean(replacement);
         }
+        if (!previousContextOpen && !restoredContextFocus) {
+          const firstAction = this.contextMenu.querySelector<HTMLButtonElement>('button')
+            ?? this.contextMenu.children[0] as HTMLElement | undefined;
+          firstAction?.focus();
+        }
       }
-      if (focusedAction && !restoredContextFocus) {
-        const roomFallback = this.roomToolbar?.querySelector<HTMLButtonElement>('button:not([hidden]):not(:disabled)');
-        (roomFallback ?? this.editButton)?.focus();
+      if (previousContextOpen && !model.contextMenu) {
+        (this.contextMenuReturnFocus ?? this.editButton)?.focus();
+        this.contextMenuReturnFocus = undefined;
+      } else if (focusedAction && !restoredContextFocus) {
+        (this.contextMenuReturnFocus ?? this.editButton)?.focus();
       }
     }
     if (this.guidePopover) {
@@ -365,7 +373,7 @@ export class InteriorCutawayDomOverlay {
       this.status.textContent = `${status} · ${localeCopy.status.hook} ${model.requiredPlaced}/${model.requiredTotal} · ${localeCopy.status.prefab} ${model.prefabCount}`;
     }
     this.positionEditorRegions();
-    this.positionContextToolbar();
+    this.positionContextMenu();
   }
 
   relayout(layout: CutawayLayout): void {
@@ -469,9 +477,12 @@ export class InteriorCutawayDomOverlay {
     this.catalog = undefined;
     this.inspector = undefined;
     this.labelLayer = undefined;
-    this.contextToolbar = undefined;
+    this.contextMenu = undefined;
+    this.contextMenuReturnFocus = undefined;
     this.guidePopover = undefined;
     this.handlers = undefined;
+    this.model = undefined;
+    this.layout = undefined;
     this.roomLabels = [];
   }
 
@@ -486,7 +497,7 @@ export class InteriorCutawayDomOverlay {
     this.panel.style.width = `${layout.width / WORLD_PIXELS.width * rect.width}px`;
     this.panel.style.height = `${layout.height / WORLD_PIXELS.height * rect.height}px`;
     this.positionEditorRegions();
-    this.positionContextToolbar();
+    this.positionContextMenu();
   }
 
   private positionEditorRegions(): void {
@@ -511,24 +522,20 @@ export class InteriorCutawayDomOverlay {
     }
   }
 
-  private positionContextToolbar(): void {
+  private positionContextMenu(): void {
     const layout = this.layout;
     const editorLayout = this.model?.editorLayout;
-    const selection = this.model?.selectionBounds;
-    if (!layout || !editorLayout || !selection || !this.contextToolbar || this.contextToolbar.hidden) return;
-    const width = Math.min(280, editorLayout.room.width);
-    this.contextToolbar.style.width = `${width / layout.width * 100}%`;
-    const panelHeight = this.panel?.getBoundingClientRect().height ?? 0;
-    const measuredHeight = panelHeight > 0
-      ? this.contextToolbar.scrollHeight / panelHeight * layout.height
-      : 56;
-    const height = Math.min(Math.max(40, measuredHeight), Math.min(112, editorLayout.room.height));
-    const placement = contextToolbarPlacement(selection, editorLayout.room, { width, height });
-    this.contextToolbar.dataset.side = placement.side;
-    this.contextToolbar.style.left = `${(placement.x - layout.x) / layout.width * 100}%`;
-    this.contextToolbar.style.top = `${(placement.y - layout.y) / layout.height * 100}%`;
-    this.contextToolbar.style.height = `${placement.height / layout.height * 100}%`;
-    this.contextToolbar.style.maxHeight = `${placement.height / layout.height * 100}%`;
-    this.contextToolbar.style.overflowY = 'auto';
+    const context = this.model?.contextMenu;
+    if (!layout || !editorLayout || !context || !this.contextMenu || this.contextMenu.hidden) return;
+    const size = {
+      width: Math.min(180, editorLayout.room.width),
+      height: Math.min(116, editorLayout.room.height),
+    };
+    const placement = placeContextMenu(context.pointer, size, editorLayout.room);
+    this.contextMenu.style.left = `${(placement.x - layout.x) / layout.width * 100}%`;
+    this.contextMenu.style.top = `${(placement.y - layout.y) / layout.height * 100}%`;
+    this.contextMenu.style.width = `${size.width / layout.width * 100}%`;
+    this.contextMenu.style.height = `${size.height / layout.height * 100}%`;
+    this.contextMenu.style.overflow = 'hidden';
   }
 }

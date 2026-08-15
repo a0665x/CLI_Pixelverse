@@ -401,6 +401,8 @@ export class InteriorCutawaySystem {
   private currentDragMutation: SelectionMutationResult | undefined;
   private furnitureDragCapture: FurnitureDragCapture | undefined;
   private furnitureDragCleanup: (() => void) | undefined;
+  private contextMenuPointer: GridPoint | undefined;
+  private contextMenuSuppressionCleanup: (() => void) | undefined;
   private catalogCategory: ModernOfficeCategory = 'workstations';
   private catalogPageIndex = 0;
   private readonly domOverlay: InteriorCutawayDomOverlay;
@@ -422,6 +424,11 @@ export class InteriorCutawaySystem {
     name: Phaser.GameObjects.Text;
   }>();
   private readonly escapeHandler = (): void => {
+    if (this.contextMenuPointer) {
+      this.contextMenuPointer = undefined;
+      this.syncOverlay();
+      return;
+    }
     if (this.root && this.disclosureState.guideMode) {
       this.disclosureState.guideMode = false;
       persistGuideDismissal();
@@ -497,6 +504,7 @@ export class InteriorCutawaySystem {
     }
     const layout = this.layoutForViewport();
     this.rebuildShell(interior, layout);
+    this.installContextMenuSuppression();
 
     this.status = this.layoutStorageReadFailed || this.prefabStorageReadFailed || this.clipboardStorageReadFailed
       ? { statusId: 'storageFailed' } : { statusId: 'empty' };
@@ -505,6 +513,7 @@ export class InteriorCutawaySystem {
       toggleEdit: () => {
         this.editMode = !this.editMode;
         if (!this.editMode) {
+          this.contextMenuPointer = undefined;
           this.clearTemplatePreview();
           this.disclosureState.catalogExpanded = false;
           this.disclosureState.inspectorExpanded = false;
@@ -559,6 +568,7 @@ export class InteriorCutawaySystem {
       previewTemplate: () => this.previewTemplate(definition, interior, layout),
       applyTemplate: () => this.applyTemplate(interior, layout),
       collect: () => {
+        this.contextMenuPointer = undefined;
         this.commitFurnitureMutation(interior, collectAllFurniture(interior.furniture));
         this.selectedFurnitureIds.clear();
         this.selectedFurnitureId = undefined;
@@ -607,10 +617,10 @@ export class InteriorCutawaySystem {
         this.setStatus(result.accepted ? 'layoutPasted' : 'layoutPasteRejected');
         this.renderFurniture(interior, layout);
       },
-      group: () => this.createSelectedPrefab(interior, layout),
-      dissolveGroup: () => this.dissolveSelectedGroup(interior, layout),
-      duplicate: () => this.duplicateSelected(interior, layout),
-      returnToShelf: () => this.returnSelectedToShelf(interior, layout),
+      group: () => { this.contextMenuPointer = undefined; this.createSelectedPrefab(interior, layout); },
+      dissolveGroup: () => { this.contextMenuPointer = undefined; this.dissolveSelectedGroup(interior, layout); },
+      duplicate: () => { this.contextMenuPointer = undefined; this.duplicateSelected(interior, layout); },
+      returnToShelf: () => { this.contextMenuPointer = undefined; this.returnSelectedToShelf(interior, layout); },
       cancelSelection: () => this.cancelSelection(),
       shiftLayer: (direction) => this.shiftSelectedLayer(interior, layout, direction),
       reorder: (direction) => this.reorderSelected(interior, layout, direction),
@@ -624,8 +634,8 @@ export class InteriorCutawaySystem {
         this.catalogPageIndex = Math.max(0, Math.min(total - 1, this.catalogPageIndex + delta));
         if (this.activeInterior) this.renderFurniture(this.activeInterior, layout);
       },
-      resize: (delta) => this.resizeSelected(interior, layout, delta),
-      rotate: (delta) => this.rotateSelected(interior, layout, delta),
+      resize: (delta) => { this.contextMenuPointer = undefined; this.resizeSelected(interior, layout, delta); },
+      rotate: (delta) => { this.contextMenuPointer = undefined; this.rotateSelected(interior, layout, delta); },
     });
     this.syncRoomLabels();
     this.options.onOpenStateChange?.(true, buildingId);
@@ -751,6 +761,8 @@ export class InteriorCutawaySystem {
 
   private closeActive(notify: boolean): void {
     const wasOpen = this.openId !== undefined || this.root !== undefined;
+    this.contextMenuSuppressionCleanup?.();
+    this.contextMenuSuppressionCleanup = undefined;
     this.clearRenderedShell();
     this.domOverlay.close();
     this.selectedFurnitureId = undefined;
@@ -768,6 +780,7 @@ export class InteriorCutawaySystem {
     this.assignmentSignature = '';
     this.currentDragCandidate = undefined;
     this.currentDragMutation = undefined;
+    this.contextMenuPointer = undefined;
     this.roomCell = BASE_ROOM_CELL;
     this.currentLayout = undefined;
     this.interiorViewport = createInteriorViewport({ x: 0, y: 0, width: 0, height: 0 });
@@ -1061,6 +1074,26 @@ export class InteriorCutawaySystem {
       this.scene.input.setDraggable(sprite);
       sprite.on('pointerdown', (pointer: unknown) => {
         if (this.furnitureDragCapture) return;
+        const button = (pointer as { button?: number }).button ?? 0;
+        if (button === 2) {
+          (pointer as { event?: { preventDefault?: () => void } }).event?.preventDefault?.();
+          if (this.contextMenuPointer) {
+            this.contextMenuPointer = undefined;
+            this.syncOverlay();
+            return;
+          }
+          if (!this.selectedFurnitureIds.has(furniture.id)) {
+            this.selectedFurnitureId = furniture.id;
+            this.selectedFurnitureIds.clear();
+            expandSelection(interior.furniture, [furniture.id])
+              .forEach((id) => this.selectedFurnitureIds.add(id));
+          }
+          this.contextMenuPointer = this.pointerScreenPoint(pointer);
+          this.syncOverlay();
+          return;
+        }
+        if (button !== 0) return;
+        this.contextMenuPointer = undefined;
         this.selectedFurnitureId = furniture.id;
         this.selectedFurnitureIds.clear();
         const selectedIds = expandSelection(interior.furniture, [furniture.id]);
@@ -1078,9 +1111,6 @@ export class InteriorCutawaySystem {
         this.currentDragMutation = undefined;
         applyDragPresentation(selectedIds, 'valid', 'lifting');
         this.syncOverlay();
-        if ((pointer as { event?: { detail?: number } }).event?.detail === 2) {
-          this.resizeSelected(interior, layout, 1);
-        }
       });
       sprite.on('dragstart', (pointer: unknown) => {
         const capture = this.furnitureDragCapture;
@@ -1468,7 +1498,7 @@ export class InteriorCutawaySystem {
     if (!input.on || !input.off) return;
     const marquee = this.scene.add.graphics();
     furnitureLayer.add(marquee);
-    let start: GridPoint | undefined;
+    let owner: { pointerId: number; start: GridPoint } | undefined;
     const pointOf = (pointer: unknown): GridPoint => {
       const point = this.pointerScreenPoint(pointer) ?? { x: 0, y: 0 };
       return this.roomPoint(point.x, point.y);
@@ -1476,35 +1506,40 @@ export class InteriorCutawaySystem {
     const inside = (point: GridPoint): boolean => point.x >= -0.5 && point.y >= -0.5
       && point.x <= interior.width - 0.5 && point.y <= interior.height - 0.5;
     const down = (pointer: unknown, hitObjects: unknown): void => {
+      if (((pointer as { button?: number }).button ?? 0) !== 0) return;
       const point = pointOf(pointer);
       const hits = Array.isArray(hitObjects) ? hitObjects : [];
       if (hits.some((object) => furnitureSprites.has(object as Phaser.GameObjects.Image)) || !inside(point)) return;
-      start = point;
+      if (this.contextMenuPointer) {
+        this.contextMenuPointer = undefined;
+        this.syncOverlay();
+      }
+      owner = { pointerId: pointerIdOf(pointer), start: point };
       this.setStatus('marqueeSelecting');
     };
     const move = (pointer: unknown): void => {
-      if (!start) return;
+      if (!owner || pointerIdOf(pointer) !== owner.pointerId) return;
       const end = pointOf(pointer);
       marquee.clear().fillStyle(0x79d9ff, 0.16).fillRect(
-        this.roomOrigin.x + Math.min(start.x, end.x) * this.roomCell + this.roomCell / 2,
-        this.roomOrigin.y + Math.min(start.y, end.y) * this.roomCell + this.roomCell / 2,
-        Math.abs(end.x - start.x) * this.roomCell,
-        Math.abs(end.y - start.y) * this.roomCell,
+        this.roomOrigin.x + Math.min(owner.start.x, end.x) * this.roomCell + this.roomCell / 2,
+        this.roomOrigin.y + Math.min(owner.start.y, end.y) * this.roomCell + this.roomCell / 2,
+        Math.abs(end.x - owner.start.x) * this.roomCell,
+        Math.abs(end.y - owner.start.y) * this.roomCell,
       );
     };
     const up = (pointer: unknown): void => {
-      if (!start) return;
+      if (!owner || pointerIdOf(pointer) !== owner.pointerId) return;
       const end = pointOf(pointer);
       const rect = {
-        x: Math.min(start.x, end.x) + 0.5,
-        y: Math.min(start.y, end.y) + 0.5,
-        width: Math.abs(end.x - start.x),
-        height: Math.abs(end.y - start.y),
+        x: Math.min(owner.start.x, end.x) + 0.5,
+        y: Math.min(owner.start.y, end.y) + 0.5,
+        width: Math.abs(end.x - owner.start.x),
+        height: Math.abs(end.y - owner.start.y),
       };
       this.selectedFurnitureIds.clear();
       selectedFurnitureIds(rect, interior.furniture).forEach((id) => this.selectedFurnitureIds.add(id));
       this.selectedFurnitureId = [...this.selectedFurnitureIds][0];
-      start = undefined;
+      owner = undefined;
       marquee.clear();
       this.setStatus('selectionCompleted', { count: this.selectedFurnitureIds.size });
       this.syncOverlay();
@@ -1526,6 +1561,8 @@ export class InteriorCutawaySystem {
     const catalog = selected ? resolvedFurnitureAsset(selected) : undefined;
     const capabilities = selectionCapabilities(selection);
     const selectedInstanceId = selection[0]?.prefabInstanceId;
+    const grouped = selection.length > 1 && Boolean(selectedInstanceId)
+      && selection.every(({ prefabInstanceId }) => prefabInstanceId === selectedInstanceId);
     const selectionBounds = selection.length > 0
       ? selection.map((item) => furnitureRenderScreenGeometry(this.roomOrigin, item, this.roomCell).bounds)
         .map((bounds) => {
@@ -1551,6 +1588,10 @@ export class InteriorCutawaySystem {
       ...this.disclosureState,
       ...(this.currentLayout ? { editorLayout: this.reservedEditorLayout(this.currentLayout) } : {}),
       ...(selectionBounds ? { selectionBounds } : {}),
+      ...(this.contextMenuPointer && selection.length > 0 ? { contextMenu: {
+        pointer: { ...this.contextMenuPointer },
+        selection: { itemIds: selection.map(({ id }) => id), grouped },
+      } } : {}),
       category: this.catalogCategory, page: page.page, totalPages: page.totalPages,
       requiredPlaced: this.activeInterior ? requiredHookInventory(this.activeDefinition ?? this.activeInterior, this.activeInterior.furniture).filter(({ placed }) => placed).length : 0,
       requiredTotal: this.activeInterior ? requiredHookInventory(this.activeDefinition ?? this.activeInterior, this.activeInterior.furniture).length : 0,
@@ -1720,6 +1761,15 @@ export class InteriorCutawaySystem {
     ).setScale(state.zoom);
     this.syncOverlay();
     this.syncRoomLabels();
+  }
+
+  private installContextMenuSuppression(): void {
+    this.contextMenuSuppressionCleanup?.();
+    const canvas = this.scene.game?.canvas;
+    if (!canvas || typeof canvas.addEventListener !== 'function') return;
+    const suppress = (event: Event): void => { event.preventDefault(); };
+    canvas.addEventListener('contextmenu', suppress);
+    this.contextMenuSuppressionCleanup = () => canvas.removeEventListener('contextmenu', suppress);
   }
 
   private installViewportGestures(
