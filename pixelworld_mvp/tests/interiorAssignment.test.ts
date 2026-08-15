@@ -50,6 +50,62 @@ describe('interior occupant assignment', () => {
     expect(first.every(({ furnitureId }) => furnitureId !== undefined)).toBe(true);
   });
 
+  it('queues excess occupants at distinct reachable unblocked entrance points', () => {
+    const room = {
+      ...INTERIOR_DEFINITIONS['maker-workshop'], width: 7, height: 6,
+      furniture: [
+        {
+          id: 'only-desk', kind: 'desk' as const, point: { x: 1, y: 1 }, facing: 'down' as const,
+          supportedActions: [], icon: 'generic' as const, blocksNavigation: true,
+          interactionPoint: { x: 1, y: 2 },
+        },
+        {
+          id: 'blocked-overflow', kind: 'decor' as const, point: { x: 4, y: 4 }, facing: 'up' as const,
+          supportedActions: [], icon: 'generic' as const, blocksNavigation: true,
+        },
+      ],
+      overflow: [{ x: 4, y: 4 }, { x: 2, y: 4 }],
+    };
+    const agents = ['charlie', 'alpha', 'bravo'].map((agentId) => snapshot({
+      agentId, role: 'subagent', buildingId: 'custom-house', action: 'terminal', eventId: `work-${agentId}`,
+    }));
+
+    const first = assignInteriorOccupants(room, agents, 'custom-house');
+    const second = assignInteriorOccupants(room, [...agents].reverse(), 'custom-house');
+
+    expect(first).toEqual(second);
+    expect(new Set(first.map(({ point }) => `${point.x},${point.y}`)).size).toBe(3);
+    expect(first.map(({ point }) => point)).toEqual([
+      { x: 1, y: 2 },
+      { x: 3, y: 5 },
+      { x: 2, y: 4 },
+    ]);
+    expect(first.some(({ point }) => point.x === 4 && point.y === 4)).toBe(false);
+    expect(first.every(({ missingSemantic }) => missingSemantic === undefined)).toBe(true);
+  });
+
+  it('reserves semantic stations before assigning earlier missing-category occupants', () => {
+    const room = {
+      ...INTERIOR_DEFINITIONS['maker-workshop'], width: 7, height: 6,
+      furniture: [{
+        id: 'only-desk', kind: 'desk' as const, point: { x: 2, y: 3 }, facing: 'down' as const,
+        supportedActions: [], icon: 'generic' as const, blocksNavigation: true,
+        interactionPoint: { x: 2, y: 4 },
+      }],
+      overflow: [{ x: 2, y: 4 }],
+    };
+    const assigned = assignInteriorOccupants(room, [
+      snapshot({ agentId: 'alpha', buildingId: 'custom-house', action: 'read', eventId: 'missing-search-a' }),
+      snapshot({ agentId: 'bravo', buildingId: 'custom-house', action: 'read', eventId: 'missing-search-b' }),
+      snapshot({ agentId: 'charlie', buildingId: 'custom-house', action: 'terminal', eventId: 'work' }),
+    ], 'custom-house');
+
+    expect(assigned.find(({ agentId }) => agentId === 'charlie')).toMatchObject({
+      furnitureId: 'only-desk', point: { x: 2, y: 4 },
+    });
+    expect(new Set(assigned.map(({ point }) => `${point.x},${point.y}`)).size).toBe(3);
+  });
+
   it.each(['research-library', 'maker-workshop', 'collaboration-barn'] as const)(
     '%s assigns thirteen hybrid-office occupants before overflow',
     (themeId) => {
