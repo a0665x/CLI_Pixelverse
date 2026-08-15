@@ -3,6 +3,7 @@ export type ContextAction = 'duplicate' | 'rotate' | 'resize' | 'return' | 'grou
 export interface ContextSelection {
   itemIds: string[];
   grouped: boolean;
+  canRotate?: boolean;
 }
 
 export interface ContextPoint { x: number; y: number }
@@ -13,8 +14,9 @@ export interface ContextRoomBounds extends ContextPoint, ContextMenuSize {}
 
 export function contextActions(selection: ContextSelection): readonly ContextAction[] {
   if (selection.itemIds.length === 0) return [];
-  if (selection.itemIds.length === 1) return ['duplicate', 'rotate', 'resize', 'return'];
-  return [selection.grouped ? 'dissolve' : 'group', 'duplicate', 'rotate', 'return'];
+  const rotation = selection.canRotate === false ? [] : ['rotate' as const];
+  if (selection.itemIds.length === 1) return ['duplicate', ...rotation, 'resize', 'return'];
+  return [selection.grouped ? 'dissolve' : 'group', 'duplicate', ...rotation, 'return'];
 }
 
 export function placeContextMenu(

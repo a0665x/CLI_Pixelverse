@@ -20,6 +20,7 @@ import {
   defaultFurnitureLayer,
   furnitureBlocksNavigation,
   furnitureWithRotation,
+  resolvedFurnitureAsset,
   rotateGridPoint,
   snapFurniturePoint,
   transformedAlphaBounds,
@@ -32,6 +33,7 @@ import {
   stackRoleForFurniture,
 } from './interiorAutoStack';
 import { semanticForAction, semanticForFurniture } from './interiorFurnitureSemantics';
+import { authoredPlacement, supportedRotations } from './interiorFurnitureScale';
 
 export type { PlacementDiagnostic } from './interiorPlacement';
 
@@ -157,6 +159,7 @@ export function addFurniture(
   kind: FurnitureKind,
   point: GridPoint,
 ): FurnitureDefinition[] {
+  const authored = authoredPlacement(resolvedFurnitureAsset({ kind })?.id);
   const candidate: FurnitureDefinition = {
     id: `custom-${kind}-${Date.now()}-${layout.length}`,
     kind,
@@ -164,8 +167,7 @@ export function addFurniture(
     facing: 'up',
     supportedActions: [],
     icon: 'generic',
-    scale: 1,
-    rotation: 0,
+    ...authored,
   };
   const placement = resolvePlacementCandidate(room, layout, candidate, point);
   return commitPlacementCandidate(room, layout, {
@@ -199,6 +201,7 @@ export function rotateFurniture(
 ): FurnitureDefinition[] {
   const current = layout.find(({ id }) => id === furnitureId);
   if (!current) return cloneLayout(layout);
+  if (!supportedRotations(current.assetId).includes(normalizeRotation(rotation))) return cloneLayout(layout);
   const candidate = resolvePlacementCandidate(
     room, layout, furnitureWithRotation(current, normalizeRotation(rotation)), current.point, furnitureId,
   );

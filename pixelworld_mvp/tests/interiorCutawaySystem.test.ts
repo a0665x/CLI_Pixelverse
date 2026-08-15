@@ -32,6 +32,7 @@ import { WORLD_DEFINITION } from '../src/world/worldDefinition';
 import { agentSkinFor } from '../src/rendering/assetManifest';
 import { interiorEditorLayout } from '../src/rendering/interiorEditorLayout';
 import { WORLD_PIXELS } from '../src/game/constants';
+import { authoredPlacement } from '../src/rendering/interiorFurnitureScale';
 
 class FakeObject {
   x = 0;
@@ -44,6 +45,7 @@ class FakeObject {
   texture = '';
   frame = 0;
   scale = 1;
+  angle = 0;
   resolution = 1;
   tinted = false;
   tintColor: number | undefined;
@@ -67,7 +69,7 @@ class FakeObject {
   setMask(): this { return this; }
   createGeometryMask(): object { return {}; }
   setSize(width: number, height: number): this { this.width = width; this.height = height; return this; }
-  setAngle(): this { return this; }
+  setAngle(angle: number): this { this.angle = angle; return this; }
   setResolution(resolution: number): this { this.resolution = resolution; return this; }
   setTint(color?: number): this { this.tinted = true; this.tintColor = color; return this; }
   clearTint(): this { this.tinted = false; this.tintColor = undefined; return this; }
@@ -351,6 +353,21 @@ describe('InteriorCutawaySystem', () => {
 
     furniture.emit('pointerdown', secondary);
     expect(capture.model().contextMenu).toBeUndefined();
+  });
+
+  it('marks source-only furniture as non-rotatable in the contextual model', () => {
+    const fake = fakeScene();
+    const cutaway = new InteriorCutawaySystem(fake.scene as never, WORLD_DEFINITION, () => ({ width: 1_280, height: 720 }));
+    const capture = captureCutawayHandlers(cutaway);
+    cutaway.open('rest-cabin');
+    capture.handlers().toggleEdit();
+    const sofa = fake.objects.find(({ texture, interactive, destroyed }) => (
+      texture === 'modern-office-v1.2-single-200' && interactive && !destroyed
+    ))!;
+
+    sofa.emit('pointerdown', viewportPointerAt(sofa.x, sofa.y, 2));
+
+    expect(capture.model().contextMenu?.selection.canRotate).toBe(false);
   });
 
   it('dismisses contextual actions on empty primary click before starting marquee selection', () => {
@@ -1327,6 +1344,30 @@ describe('InteriorCutawaySystem', () => {
     expect(paletteItems.length).toBeGreaterThan(0);
     expect(paletteItems.every(({ x, y }) => x >= catalog.x && x <= catalog.x + catalog.width
       && y >= catalog.y && y <= catalog.y + catalog.height)).toBe(true);
+  });
+
+  it('starts catalog drag previews at the asset family scale and authored rotation', () => {
+    const fake = fakeScene();
+    const cutaway = new InteriorCutawaySystem(fake.scene as never, WORLD_DEFINITION, () => ({ width: 1_280, height: 720 }));
+    const capture = captureCutawayHandlers(cutaway);
+    cutaway.open('rest-cabin');
+    capture.handlers().toggleEdit();
+    capture.handlers().toggleCatalog();
+    capture.handlers().category('storage-partitions');
+    capture.handlers().page(1);
+    capture.handlers().page(1);
+    const internal = cutaway as unknown as { paletteLayer: FakeObject; roomCell: number };
+    const assetId = 207;
+    const catalogItem = internal.paletteLayer.children.find(({ texture, interactive, destroyed }) => (
+      texture === `modern-office-v1.2-single-${assetId}` && interactive && !destroyed
+    ))!;
+
+    catalogItem.emit('dragstart');
+
+    const dragPreview = fake.objects.at(-1)!;
+    const authored = authoredPlacement(assetId);
+    expect(dragPreview.scale).toBeCloseTo(authored.scale * internal.roomCell / 22);
+    expect(dragPreview.angle).toBe(authored.rotation);
   });
 
   it('labels only hook furniture with readable action-oriented text', () => {
@@ -2580,13 +2621,13 @@ describe('InteriorCutawaySystem', () => {
     };
     const group = [
       {
-        id: 'atomic-a', kind: 'plant' as const, assetId: 98, point: { x: 4, y: 3 }, facing: 'up' as const,
+        id: 'atomic-a', kind: 'decor' as const, assetId: 4, point: { x: 4, y: 3 }, facing: 'up' as const,
         supportedActions: [], icon: 'generic' as const, scale: 1 as const, rotation: 0 as const,
         layer: 'surface' as const, zIndex: 2, blocksNavigation: false, prefabInstanceId: 'atomic-instance',
         interactionPoint: { x: 4, y: 4 }, visualOffset: { x: 0.25, y: 0 },
       },
       {
-        id: 'atomic-b', kind: 'display' as const, assetId: 129, point: { x: 6, y: 3 }, facing: 'up' as const,
+        id: 'atomic-b', kind: 'decor' as const, assetId: 5, point: { x: 6, y: 3 }, facing: 'up' as const,
         supportedActions: [], icon: 'generic' as const, scale: 1 as const, rotation: 0 as const,
         layer: 'surface' as const, zIndex: 4, blocksNavigation: false, prefabInstanceId: 'atomic-instance',
       },
@@ -2607,7 +2648,7 @@ describe('InteriorCutawaySystem', () => {
     ))!;
     const selectGroup = () => {
       const pointer = pointerAt(0, 0);
-      placed('modern-office-v1.2-single-98').emit('pointerdown', pointer);
+      placed('modern-office-v1.2-single-4').emit('pointerdown', pointer);
       fake.emitInput('pointerup', pointer);
     };
     const currentGroup = () => internal.activeInterior.furniture.filter(({ prefabInstanceId }) => prefabInstanceId === 'atomic-instance');
@@ -2615,7 +2656,7 @@ describe('InteriorCutawaySystem', () => {
     selectGroup();
     expect(capture.model()).toMatchObject({ selectedCount: 2, canDuplicate: true, canDissolve: true });
 
-    const first = placed('modern-office-v1.2-single-98');
+    const first = placed('modern-office-v1.2-single-4');
     const beforeMove = structuredClone(currentGroup());
     const firstPointer = pointerAt(first.x, first.y);
     const movedPointer = pointerAt(first.x + internal.roomCell, first.y);
@@ -2680,7 +2721,7 @@ describe('InteriorCutawaySystem', () => {
     capture.handlers().dissolveGroup();
     expect(internal.activeInterior.furniture.filter(({ id }) => group.some((source) => source.id === id))
       .every(({ prefabInstanceId }) => prefabInstanceId === undefined)).toBe(true);
-    placed('modern-office-v1.2-single-98').emit('pointerdown', pointerAt(0, 0));
+    placed('modern-office-v1.2-single-4').emit('pointerdown', pointerAt(0, 0));
     expect(capture.model().selectedCount).toBe(1);
     capture.handlers().returnToShelf();
     expect(internal.activeInterior.furniture.some(({ id }) => id === 'atomic-a')).toBe(false);

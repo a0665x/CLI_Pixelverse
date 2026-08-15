@@ -19,6 +19,7 @@ import {
   FURNITURE_PALETTE,
   FURNITURE_SCALES,
 } from '../src/rendering/interiorLayoutEditor';
+import { authoredPlacement } from '../src/rendering/interiorFurnitureScale';
 import { modernOfficeKindForFurniture } from '../src/rendering/InteriorCutawaySystem';
 import { transformedAlphaBounds } from '../src/rendering/interiorPlacement';
 import { officeLayoutIssues } from '../src/rendering/prefabGeometry';
@@ -542,7 +543,7 @@ describe('interior furniture editor model', () => {
   it('projects blocking alpha bounds and explains rejected placement', () => {
     expect(furnitureCells({ kind: 'sofa', point: { x: 4, y: 4 }, scale: 1.5 }).length).toBeGreaterThan(0);
     const layout = normalizedRoomLayout();
-    const overlapping = { ...layout[0]!, id: 'candidate', kind: 'chair' as const, point: { x: 4, y: 5 } };
+    const overlapping = { ...layout[0]!, id: 'candidate', kind: 'chair' as const, point: { x: 4, y: 5 }, scale: 2 as const };
     const atDoor = { ...overlapping, point: { x: Math.floor(room.width / 2), y: room.height - 2 } };
     expect(placementDiagnostic(room, overlapping, layout)).toBe('valid');
     expect(placementDiagnostic(room, atDoor, layout)).toBe('blocks-door');
@@ -637,6 +638,73 @@ describe('interior furniture editor model', () => {
     expect(FURNITURE_SCALES).toEqual([0.75, 1, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 2.75, 3]);
     const sofa = { ...normalizedRoomLayout().find(({ id }) => id === 'rest-sofa-a')!, point: { x: 6, y: 4 } };
     expect(resizeFurniture(room, [sofa], sofa.id, 3 as never)[0]?.scale).toBe(3);
+  });
+
+  it('uses family placement for new palette furniture and rejects unsupported sprite rotation', () => {
+    const added = addFurniture(room, [], 'sofa', { x: 6, y: 4 });
+    expect(added[0]).toMatchObject(authoredPlacement(200));
+
+    const chair = {
+      ...normalizedRoomLayout().find(({ id }) => id === 'rest-sofa-a')!,
+      id: 'single-orientation-chair', point: { x: 6, y: 4 }, rotation: 0 as const,
+    };
+    expect(rotateFurniture(room, [chair], chair.id, 90)).toEqual([chair]);
+  });
+
+  it('limits family migration to known authored furniture without changing custom scale intent', () => {
+    const legacyAuthored = {
+      ...room.furniture.find(({ id }) => id === 'rest-rug')!,
+      scale: 2 as const,
+    };
+    const customWithoutScale = {
+      id: 'legacy-custom-no-marker', kind: 'decor' as const, assetId: 207, point: { x: 3, y: 3 },
+      facing: 'up' as const, supportedActions: [], icon: 'generic' as const,
+    };
+    const storage = {
+      getItem: () => JSON.stringify({ version: 4, furniture: [legacyAuthored, customWithoutScale] }),
+      setItem: () => undefined,
+    };
+
+    const loaded = loadInteriorLayout('legacy-family-default', room, storage);
+    expect(loaded.find(({ id }) => id === legacyAuthored.id)?.scale)
+      .toBe(authoredPlacement(legacyAuthored.assetId).scale);
+    expect(loaded.find(({ id }) => id === customWithoutScale.id)?.scale).toBe(1);
+  });
+
+  it('does not infer a family transform when saving custom furniture without an explicit marker', () => {
+    const memory = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => memory.get(key) ?? null,
+      setItem: (key: string, value: string) => { memory.set(key, value); },
+    };
+    const custom = {
+      id: 'custom-no-transform-marker', kind: 'decor' as const, assetId: 207, point: { x: 3, y: 3 },
+      facing: 'up' as const, supportedActions: [], icon: 'generic' as const,
+    };
+
+    saveInteriorLayout('custom-no-transform-marker', [custom], storage);
+
+    expect(JSON.parse(memory.get('pixelworld:interior-layout:custom-no-transform-marker')!)
+      .furniture[0]).toMatchObject({ scale: 1, rotation: 0 });
+  });
+
+  it('round-trips explicit v5 scale and rotation even when the asset cannot rotate in the editor', () => {
+    const memory = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => memory.get(key) ?? null,
+      setItem: (key: string, value: string) => { memory.set(key, value); },
+    };
+    const explicit = {
+      id: 'explicit-v5-chair', kind: 'chair' as const, assetId: 101, point: { x: 4, y: 4 },
+      facing: 'up' as const, supportedActions: [], icon: 'generic' as const,
+      scale: 3 as const, rotation: 270 as const, blocksNavigation: false,
+    };
+
+    saveInteriorLayout('explicit-v5-transform', [explicit], storage);
+    expect(loadInteriorLayout('explicit-v5-transform', room, storage)[0]).toMatchObject({
+      scale: 3,
+      rotation: 270,
+    });
   });
 
   it('preserves finite off-grid edge-fit anchors through save and load', () => {

@@ -17,6 +17,7 @@ import {
   type BuiltInOfficePrefabId,
 } from '../rendering/builtInOfficePrefabs';
 import { catalogItem } from '../rendering/modernOfficeCatalog';
+import { normalizeBuiltInFurniture } from '../rendering/interiorFurnitureScale';
 import { officeLayoutIssues, placeOfficePrefab, rotatePrefab } from '../rendering/prefabGeometry';
 
 export const INTERIOR_LAYOUT_REVISION = 2;
@@ -36,7 +37,10 @@ const furniture = (
   supportedActions: AgentAction[],
   icon: ActivityIconKind,
   options: FurnitureOptions = {},
-): FurnitureDefinition => ({ id, kind, point: { x, y }, facing, supportedActions, icon, ...options });
+): FurnitureDefinition => {
+  const item: FurnitureDefinition = { id, kind, point: { x, y }, facing, supportedActions, icon, ...options };
+  return options.assetId === undefined ? item : normalizeBuiltInFurniture(item, catalogItem(options.assetId));
+};
 
 const base = (
   id: string, kind: FurnitureKind, x: number, y: number, facing: Facing,

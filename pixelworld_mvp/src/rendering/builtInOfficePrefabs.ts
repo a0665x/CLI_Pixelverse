@@ -9,6 +9,7 @@ import type {
   OfficePrefabDefinition,
 } from '../world/types';
 import { catalogItem } from './modernOfficeCatalog';
+import { normalizeBuiltInFurniture } from './interiorFurnitureScale';
 
 export const BUILT_IN_OFFICE_PREFAB_IDS = ['bench-four', 'pod-l-two', 'control-m-three'] as const;
 export type BuiltInOfficePrefabId = typeof BUILT_IN_OFFICE_PREFAB_IDS[number];
@@ -37,7 +38,7 @@ const SOURCE_TILE_PIXELS = 16;
 const furniture = ({ supportedActions = [], icon = 'generic', ...options }: ItemOptions): FurnitureDefinition => {
   const asset = catalogItem(options.assetId);
   if (!asset) throw new Error(`Unknown Modern Office v1.2 asset ${options.assetId}`);
-  return {
+  return normalizeBuiltInFurniture({
     ...options,
     supportedActions: [...supportedActions],
     icon,
@@ -48,7 +49,7 @@ const furniture = ({ supportedActions = [], icon = 'generic', ...options }: Item
       x: asset.visualOffset.x / SOURCE_TILE_PIXELS,
       y: asset.visualOffset.y / SOURCE_TILE_PIXELS,
     },
-  };
+  }, asset);
 };
 
 const desk = (id: string, assetId: number, point: GridPoint, facing: Facing, actions: AgentAction[], icon: FurnitureDefinition['icon']) => (

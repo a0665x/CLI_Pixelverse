@@ -21,6 +21,11 @@ describe('interior context menu', () => {
     expect(contextActions({ itemIds: [], grouped: false })).toEqual([]);
   });
 
+  it('omits Rotate for a source-authored single-orientation selection', () => {
+    expect(contextActions({ itemIds: ['chair'], grouped: false, canRotate: false }))
+      .toEqual(['duplicate', 'resize', 'return']);
+  });
+
   it.each([
     [{ x: 102, y: 72 }, { x: 110, y: 80 }],
     [{ x: 598, y: 72 }, { x: 410, y: 80 }],

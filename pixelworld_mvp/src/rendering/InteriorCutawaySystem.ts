@@ -97,6 +97,7 @@ import {
   type InteriorViewportState,
 } from './interiorViewport';
 import { missingSemanticFurnitureCopy } from './interiorLocale';
+import { authoredPlacement, supportedRotations } from './interiorFurnitureScale';
 import {
   interiorEditorLayout,
   type InteriorEditorLayout,
@@ -1401,6 +1402,7 @@ export class InteriorCutawaySystem {
       palette.add(item);
     });
     page.items.forEach((catalog, index) => {
+      const authored = authoredPlacement(catalog.id);
       const x = startX + index * slotSpacing;
       const y = shelfY + 24;
       const originX = (catalog.opaqueBounds.x + catalog.opaqueBounds.width / 2) / 32;
@@ -1411,20 +1413,20 @@ export class InteriorCutawaySystem {
       let dragClone: Phaser.GameObjects.Image | undefined;
       item.on('dragstart', () => {
         dragClone = this.scene.add.image(item.x, item.y, catalog.key).setOrigin(originX, originY)
-          .setScale(this.roomCell / BASE_ROOM_CELL).setAlpha(0.88);
+          .setScale(authored.scale * this.roomCell / BASE_ROOM_CELL).setAngle(authored.rotation).setAlpha(0.88);
         furnitureLayer.add(dragClone);
       });
       item.on('drag', (pointer: unknown, dragX: number, dragY: number) => {
         if (!dragClone) {
           dragClone = this.scene.add.image(dragX, dragY, catalog.key).setOrigin(originX, originY)
-            .setScale(this.roomCell / BASE_ROOM_CELL).setAlpha(0.88);
+            .setScale(authored.scale * this.roomCell / BASE_ROOM_CELL).setAngle(authored.rotation).setAlpha(0.88);
           furnitureLayer.add(dragClone);
         }
         const screen = this.pointerScreenPoint(pointer) ?? { x: dragX, y: dragY };
         const renderPoint = this.roomPoint(screen.x, screen.y);
         const preview: FurnitureDefinition = {
           id: `custom-office-${catalog.id}-${Date.now()}`, kind: 'decor', point: { x: 0, y: 0 },
-          facing: 'up', supportedActions: [], icon: 'generic', scale: 1, rotation: 0,
+          facing: 'up', supportedActions: [], icon: 'generic', ...authored,
           assetId: catalog.id, footprint: { ...catalog.footprint },
           visualOffset: { x: catalog.visualOffset.x / 16, y: catalog.visualOffset.y / 16 },
         };
@@ -1633,7 +1635,11 @@ export class InteriorCutawaySystem {
       ...(selectionBounds ? { selectionBounds } : {}),
       ...(this.contextMenuPointer && selection.length > 0 ? { contextMenu: {
         pointer: { ...this.contextMenuPointer },
-        selection: { itemIds: selection.map(({ id }) => id), grouped },
+        selection: {
+          itemIds: selection.map(({ id }) => id),
+          grouped,
+          canRotate: selection.every((item) => supportedRotations(item.assetId).length > 1),
+        },
       } } : {}),
       ...(activeMissing?.missingSemantic ? { missingSemantic: activeMissing.missingSemantic } : {}),
       category: this.catalogCategory, page: page.page, totalPages: page.totalPages,
@@ -1917,6 +1923,16 @@ export class InteriorCutawaySystem {
 
   private rotateSelected(interior: InteriorDefinition, layout: CutawayLayout, delta: -90 | 90): void {
     if (this.selectedFurnitureIds.size === 0) return;
+    const selected = interior.furniture.filter(({ id }) => this.selectedFurnitureIds.has(id));
+    const targetSupported = selected.length > 0 && selected.every((item) => {
+      const target = (((item.rotation ?? authoredPlacement(item.assetId).rotation) + delta + 360) % 360) as 0 | 90 | 180 | 270;
+      return supportedRotations(item.assetId).includes(target);
+    });
+    if (!targetSupported) {
+      this.setStatus('rotateRejected');
+      this.renderFurniture(interior, layout);
+      return;
+    }
     const result = rotateSelectionAtomically(interior, interior.furniture, [...this.selectedFurnitureIds], delta);
     if (result.accepted) this.commitFurnitureMutation(interior, result.layout);
     this.setStatus(result.accepted ? 'rotateApplied' : 'rotateRejected');

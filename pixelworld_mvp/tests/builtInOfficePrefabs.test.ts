@@ -6,6 +6,7 @@ import {
 } from '../src/rendering/builtInOfficePrefabs';
 import { cloneOfficePrefab, rotatePrefab } from '../src/rendering/prefabGeometry';
 import { catalogItem } from '../src/rendering/modernOfficeCatalog';
+import { authoredPlacement } from '../src/rendering/interiorFurnitureScale';
 import { INTERIOR_DEFINITIONS } from '../src/world/interiorDefinitions';
 import type { Facing, GridPoint } from '../src/world/types';
 
@@ -63,8 +64,8 @@ describe('built-in Modern Office prefabs', () => {
 
     for (const item of prefab.items) {
       const asset = catalogItem(item.assetId!)!;
-      expect(item.rotation, `${id}:${item.id}:rotation`).toBe(0);
-      expect(item.scale, `${id}:${item.id}:scale`).toBe(1);
+      expect(item.rotation, `${id}:${item.id}:rotation`).toBe(authoredPlacement(item.assetId!).rotation);
+      expect(item.scale, `${id}:${item.id}:scale`).toBe(authoredPlacement(item.assetId!).scale);
       expect(item.visualOffset, `${id}:${item.id}:visualOffset`).toEqual({
         x: asset.visualOffset.x / 16,
         y: asset.visualOffset.y / 16,
@@ -82,14 +83,14 @@ describe('built-in Modern Office prefabs', () => {
 
     expect(clonedItem.visualOffset).toEqual(sourceItem.visualOffset);
     expect(clonedItem.visualOffset).not.toBe(sourceItem.visualOffset);
-    expect(clonedItem.rotation).toBe(0);
-    expect(clonedItem.scale).toBe(1);
+    expect(clonedItem.rotation).toBe(sourceItem.rotation);
+    expect(clonedItem.scale).toBe(sourceItem.scale);
     expect(rotatedItem.visualOffset).toEqual({
       x: -sourceItem.visualOffset!.y,
       y: sourceItem.visualOffset!.x,
     });
     expect(rotatedItem.rotation).toBe(90);
-    expect(rotatedItem.scale).toBe(1);
+    expect(rotatedItem.scale).toBe(sourceItem.scale);
   });
 
   it.each(prefabIds)('%s seats face an adjacent desk surface', (id) => {
