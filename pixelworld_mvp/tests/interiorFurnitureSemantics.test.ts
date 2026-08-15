@@ -6,6 +6,8 @@ import {
   semanticForFurniture,
 } from '../src/rendering/interiorFurnitureSemantics';
 import { missingSemanticFurnitureCopy } from '../src/rendering/interiorLocale';
+import { catalogItem, MODERN_OFFICE_CATALOG } from '../src/rendering/modernOfficeCatalog';
+import { navigationCells } from '../src/rendering/interiorPlacement';
 
 const furniture = (
   id: string,
@@ -50,6 +52,55 @@ describe('interior furniture semantics', () => {
     }))).toBeUndefined();
   });
 
+  it.each([
+    [102, 'rest'], [116, 'rest'],
+    [165, 'search'], [199, 'search'], [204, 'search'],
+    [225, 'work'], [247, 'work'], [252, 'work'], [267, 'work'], [311, 'work'], [323, 'work'],
+    [98, undefined], [121, undefined], [188, undefined], [207, undefined], [208, undefined],
+    [209, undefined], [239, undefined],
+  ] as const)('uses authoritative catalog semantics for asset %i', (assetId, expected) => {
+    expect(semanticForFurniture(furniture(`catalog-${assetId}`, 'decor', { x: 1, y: 1 }, { assetId })))
+      .toBe(expected);
+  });
+
+  it('keeps catalog semantics stable when a display label changes', () => {
+    const asset = catalogItem(165)!;
+    const label = asset.label;
+    try {
+      (asset as { label: string }).label = 'Renamed decorative object';
+      expect(semanticForFurniture(furniture('renamed-catalog-search', 'decor', { x: 1, y: 1 }, {
+        assetId: asset.id,
+      }))).toBe('search');
+    } finally {
+      (asset as { label: string }).label = label;
+    }
+  });
+
+  it('never promotes the surfaces catalog range to a semantic station', () => {
+    expect(MODERN_OFFICE_CATALOG
+      .filter(({ category }) => category === 'surfaces')
+      .every(({ id }) => semanticForFurniture(furniture(`surface-${id}`, 'decor', { x: 1, y: 1 }, {
+        assetId: id,
+      })) === undefined)).toBe(true);
+  });
+
+  it('rejects floor, surface, and attached items before persisted or legacy semantics', () => {
+    const candidates: FurnitureDefinition[] = [
+      furniture('persisted-floor', 'desk', { x: 1, y: 1 }, { layer: 'floor', semantic: 'work' }),
+      furniture('legacy-surface', 'desk', { x: 1, y: 1 }, {
+        layer: 'surface', supportedActions: ['terminal'], semantic: 'work',
+      }),
+      furniture('attached-station', 'cabinet', { x: 1, y: 1 }, {
+        supportedByIds: ['support'], semantic: 'search',
+      }),
+      furniture('catalog-surface-role', 'decor', { x: 1, y: 1 }, {
+        assetId: 239, semantic: 'work',
+      }),
+    ];
+
+    expect(candidates.map(semanticForFurniture)).toEqual([undefined, undefined, undefined, undefined]);
+  });
+
   it('chooses the nearest reachable adjacent station and rejects a blocked nearer item', () => {
     const blockedDesk = furniture('a-blocked-near', 'desk', { x: 4, y: 2 }, {
       interactionPoint: { x: 4, y: 3 },
@@ -92,6 +143,28 @@ describe('interior furniture semantics', () => {
     const narrowRoom = { ...room([station, ...barrier]), width: 3, height: 5 };
 
     expect(nearestSemanticStation(narrowRoom, 'terminal', { x: 1, y: 4 })).toBeUndefined();
+  });
+
+  it('opens only an on-footprint interaction target while keeping the rest of a 1x3 station blocked', () => {
+    const vertical = (id: string, x: number): FurnitureDefinition => furniture(id, 'decor', { x, y: 1 }, {
+      assetId: 207, scale: 1.5, visualOffset: { x: -1.5 / 16, y: 2.5 / 16 },
+      layer: 'wall', ...(id === 'station' ? { semantic: 'work' as const } : {}),
+    });
+    const station = vertical('station', 1);
+    const occupied = navigationCells(station);
+    expect(occupied).toHaveLength(3);
+    station.interactionPoint = { ...occupied[0]! };
+    const barrierRoom = {
+      ...room([vertical('left-wall', 0), station, vertical('right-wall', 2)]), width: 3, height: 5,
+    };
+    const origin = { x: 1, y: 4 };
+
+    expect(nearestSemanticStation(barrierRoom, 'terminal', origin)).toBeUndefined();
+
+    station.interactionPoint = { x: 1, y: Math.max(...occupied.map(({ y }) => y)) + 1 };
+    expect(nearestSemanticStation(barrierRoom, 'terminal', origin)).toEqual({
+      furnitureId: 'station', point: station.interactionPoint,
+    });
   });
 
   it('localizes concise missing-category feedback in every supported locale', () => {

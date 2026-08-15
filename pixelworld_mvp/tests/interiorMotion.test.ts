@@ -3,6 +3,7 @@ import { interiorMotionAt, interiorPath, interiorRouteFor } from '../src/renderi
 import { assignInteriorOccupants, type InteriorAgentSnapshot } from '../src/rendering/interiorAssignment';
 import { INTERIOR_DEFINITIONS } from '../src/world/interiorDefinitions';
 import { furnitureCells } from '../src/rendering/interiorLayoutEditor';
+import { navigationCells } from '../src/rendering/interiorPlacement';
 import { semanticForFurniture } from '../src/rendering/interiorFurnitureSemantics';
 
 const toolSnapshot = (elapsedMs: number): InteriorAgentSnapshot => ({
@@ -124,6 +125,29 @@ describe('interior motion timeline', () => {
     };
 
     expect(interiorPath(narrowRoom, { x: 1, y: 4 }, station.interactionPoint, station.id))
+      .toEqual([{ x: 1, y: 4 }]);
+  });
+
+  it('opens only the target cell of a multi-cell station footprint', () => {
+    const vertical = (id: string, x: number) => ({
+      id, kind: 'decor' as const, assetId: 207, point: { x, y: 1 }, scale: 1.5 as const,
+      visualOffset: { x: -1.5 / 16, y: 2.5 / 16 }, layer: 'wall' as const,
+      facing: 'up' as const, supportedActions: [], icon: 'generic' as const, blocksNavigation: true,
+    });
+    const station = {
+      ...vertical('station', 1), kind: 'desk' as const, supportedActions: ['terminal' as const],
+      icon: 'tool' as const,
+    };
+    const occupied = navigationCells(station);
+    expect(occupied).toHaveLength(3);
+    const target = occupied[0]!;
+    const barrierRoom = {
+      ...interior, width: 3, height: 5,
+      furniture: [vertical('left-wall', 0), { ...station, interactionPoint: target }, vertical('right-wall', 2)],
+      overflow: [],
+    };
+
+    expect(interiorPath(barrierRoom, { x: 1, y: 4 }, target, station.id))
       .toEqual([{ x: 1, y: 4 }]);
   });
 

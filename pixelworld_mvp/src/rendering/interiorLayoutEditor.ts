@@ -321,16 +321,20 @@ export function hasSavedInteriorLayout(
 
 const normalizeLayout = (layout: readonly FurnitureDefinition[]): FurnitureDefinition[] =>
   cloneLayout(layout).map((item) => {
+    const { semantic: _persistedSemantic, ...withoutSemantic } = item;
     const normalized = {
-      ...item,
+      ...withoutSemantic,
       scale: normalizeFurnitureScale(item.scale),
       rotation: normalizeRotation(item.rotation ?? 0),
+      layer: item.layer ?? defaultFurnitureLayer(item),
     };
-    const semantic = semanticForFurniture(normalized);
+    const semantic = semanticForFurniture({
+      ...normalized,
+      ...(_persistedSemantic ? { semantic: _persistedSemantic } : {}),
+    });
     return {
       ...normalized,
       point: { ...item.point },
-      layer: item.layer ?? defaultFurnitureLayer(normalized),
       zIndex: Number.isFinite(item.zIndex) ? Math.trunc(item.zIndex!) : 0,
       blocksNavigation: furnitureBlocksNavigation(normalized),
       ...(semantic ? { semantic } : {}),

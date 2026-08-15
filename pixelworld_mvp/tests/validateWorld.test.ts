@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { ROUTE_DESTINATIONS } from '../src/events/behaviorRouter';
 import { INTERIOR_DEFINITIONS } from '../src/world/interiorDefinitions';
 import { WORLD_DEFINITION } from '../src/world/worldDefinition';
@@ -77,5 +77,21 @@ describe('WORLD_DEFINITION', () => {
     station.interactionSlots[0]!.action = 'read';
 
     expect(validateWorld(world)).toEqual([]);
+  });
+
+  it('reports one missing category per building after semantic deduplication', () => {
+    const world = structuredClone(WORLD_DEFINITION);
+    const station = world.stations.find(({ buildingId }) => buildingId === 'maker-workshop')!;
+    station.interactionSlots[0]!.action = 'read';
+    station.interactionSlots[1]!.action = 'signal';
+    const authored = INTERIOR_DEFINITIONS['maker-workshop'];
+    const interior = vi.spyOn(INTERIOR_DEFINITIONS, 'maker-workshop', 'get')
+      .mockReturnValue({ ...authored, furniture: [] });
+    try {
+      expect(validateWorld(world).filter((error) => error === 'missing furniture semantic: maker-workshop@search'))
+        .toHaveLength(1);
+    } finally {
+      interior.mockRestore();
+    }
   });
 });

@@ -7,7 +7,12 @@ import type {
   GridPoint,
   InteriorDefinition,
 } from '../world/types';
-import { catalogItem, type ModernOfficeCatalogItem } from './modernOfficeCatalog';
+import {
+  catalogFurnitureRole,
+  catalogFurnitureSemantic,
+  catalogItem,
+  type ModernOfficeCatalogItem,
+} from './modernOfficeCatalog';
 
 export const EDITOR_CELL = 5.5;
 export type PlacementDiagnostic = 'valid' | 'outside-room' | 'blocks-door' | 'overlap' | 'invalid-asset';
@@ -153,6 +158,9 @@ export function defaultFurnitureLayer(
     'response-desk', 'map-table', 'meeting-table', 'computer', 'dispatch-pod', 'radio-console',
     'bookcase', 'cabinet', 'tool-wall'].includes(item.kind)) return 'furniture';
   const asset = resolvedFurnitureAsset(item);
+  if (asset && catalogFurnitureRole(asset.id) === 'floor') return 'floor';
+  if (asset && catalogFurnitureRole(asset.id) === 'surface') return 'surface';
+  if (asset && (catalogFurnitureRole(asset.id) === 'support' || catalogFurnitureSemantic(asset.id))) return 'furniture';
   if (asset?.category === 'surfaces') return 'floor';
   if (asset?.category === 'workstations') return 'furniture';
   if (asset?.category === 'screens-electronics') {
@@ -221,17 +229,23 @@ export function navigationBlockedCellKeys(
 ): Set<string> {
   const station = stationId ? furniture.find(({ id }) => id === stationId) : undefined;
   const targetKey = gridKey({ x: Math.round(target.x), y: Math.round(target.y) });
-  const exempt = new Set(furniture.filter((item) => (
+  const eligibleTargetOwners = new Set(furniture.filter((item) => (
     (item.id === station?.id
       || (Boolean(station?.prefabInstanceId)
         && item.prefabInstanceId === station!.prefabInstanceId
         && samePoint(item.interactionPoint, target)))
-    && navigationCells(item).some((cell) => gridKey(cell) === targetKey)
   )).map(({ id }) => id));
-  return new Set(furniture
-    .filter(({ id }) => !exempt.has(id))
-    .flatMap(navigationCells)
-    .map(gridKey));
+  const targetOwners = furniture.filter((item) => (
+    navigationCells(item).some((cell) => gridKey(cell) === targetKey)
+  ));
+  const blocked = new Set(furniture.flatMap(navigationCells).map(gridKey));
+  const genuineStationTarget = Boolean(station)
+    && (samePoint(station!.interactionPoint, target) || samePoint(station!.point, target));
+  if (genuineStationTarget && targetOwners.length > 0
+    && targetOwners.every(({ id }) => eligibleTargetOwners.has(id))) {
+    blocked.delete(targetKey);
+  }
+  return blocked;
 }
 
 export function diagnoseFinePlacement(

@@ -387,7 +387,8 @@ export class InteriorCutawaySystem {
   private openId: string | undefined;
   private currentAssignments: InteriorOccupantAssignment[] = [];
   private assignmentSignature = '';
-  private readonly missingFeedbackUntil = new Map<string, number>();
+  private missingFeedbackKey: string | undefined;
+  private missingFeedbackUntil = 0;
   private missingStatusVisible = false;
   private roomOrigin: GridPoint = { x: 0, y: 0 };
   private roomCell = BASE_ROOM_CELL;
@@ -778,7 +779,8 @@ export class InteriorCutawaySystem {
     this.openId = undefined;
     this.currentAssignments = [];
     this.assignmentSignature = '';
-    this.missingFeedbackUntil.clear();
+    this.missingFeedbackKey = undefined;
+    this.missingFeedbackUntil = 0;
     this.missingStatusVisible = false;
     this.currentDragCandidate = undefined;
     this.currentDragMutation = undefined;
@@ -809,18 +811,22 @@ export class InteriorCutawaySystem {
     const interior = this.activeInterior ?? interiorDefinitionForBuilding(building);
     const matchingSnapshots = snapshots.filter(({ buildingId }) => buildingId === building.id);
     const assignments = assignInteriorOccupants(interior, matchingSnapshots, building.id);
-    const missingBubbleOwnerId = assignments.find(({ missingSemantic }) => Boolean(missingSemantic))?.agentId;
-    const signature = assignments.map(({ agentId, furnitureId, point, eventId, action, missingSemantic }) => (
-      `${agentId}:${furnitureId ?? `${point.x},${point.y}`}:${eventId}:${action}:${missingSemantic ?? ''}`
+    const missingAssignment = assignments.find(({ missingSemantic }) => Boolean(missingSemantic));
+    const missingFeedbackKey = missingAssignment?.missingSemantic
+      ? `${building.id}:${missingAssignment.missingSemantic}`
+      : undefined;
+    if (missingFeedbackKey !== this.missingFeedbackKey) {
+      this.missingFeedbackKey = missingFeedbackKey;
+      this.missingFeedbackUntil = missingFeedbackKey ? this.scene.time.now + 4_000 : 0;
+    }
+    const missingBubbleOwnerId = missingAssignment?.agentId;
+    const signature = assignments.map(({ agentId, role, furnitureId, point, missingSemantic }) => (
+      `${agentId}:${role}:${furnitureId ?? `${point.x},${point.y}`}:${missingSemantic ?? ''}`
     )).join('|');
+    this.currentAssignments = assignments;
     if (signature !== this.assignmentSignature) {
       this.assignmentSignature = signature;
-      this.currentAssignments = assignments;
-      this.missingFeedbackUntil.clear();
-      if (missingBubbleOwnerId) this.missingFeedbackUntil.set(missingBubbleOwnerId, this.scene.time.now + 4_000);
-      this.missingStatusVisible = assignments.some(({ agentId, missingSemantic }) => (
-        Boolean(missingSemantic) && this.missingFeedbackActive(agentId)
-      ));
+      this.missingStatusVisible = Boolean(missingAssignment) && this.missingFeedbackActive();
       for (const view of this.occupantViews.values()) {
         view.sprite.destroy();
         view.icon.destroy();
@@ -859,7 +865,7 @@ export class InteriorCutawaySystem {
         }).setOrigin(0.5, 0).setDepth(CUTAWAY_DEPTH + 20);
         icon.setVisible(false);
         bubble.setVisible(assignment.agentId === missingBubbleOwnerId
-          && Boolean(assignment.missingSemantic) && this.missingFeedbackActive(assignment.agentId));
+          && Boolean(assignment.missingSemantic) && this.missingFeedbackActive());
         name.setVisible(false);
         this.occupantViews.set(assignment.agentId, { sprite, icon, bubble, name });
         layer.add([sprite, icon, bubble, name]);
@@ -889,13 +895,15 @@ export class InteriorCutawaySystem {
         : villageCopy(this.locale).actions[assignment.action];
       view.bubble.setPosition(x, y - 31 * pixelScale).setText(localizedBubble)
         .setVisible(assignment.agentId === missingBubbleOwnerId
-          && Boolean(assignment.missingSemantic) && this.missingFeedbackActive(assignment.agentId));
+          && Boolean(assignment.missingSemantic) && this.missingFeedbackActive());
       view.name.setPosition(x, y + 9 * pixelScale);
     });
-    this.occupantDomLabels = assignments.map((assignment) => {
+    this.occupantDomLabels = assignments.flatMap((assignment) => {
+      if (assignment.missingSemantic
+        && (assignment.agentId !== missingBubbleOwnerId || !this.missingFeedbackActive())) return [];
       const snapshot = matchingSnapshots.find(({ agentId }) => agentId === assignment.agentId) ?? assignment;
       const motion = interiorMotionAt(snapshot, interior, assignment, this.scene.time.now);
-      return {
+      return [{
         id: `agent:${assignment.agentId}`,
         text: `${actionSymbols[assignment.icon]} ${assignment.missingSemantic
           ? missingSemanticFurnitureCopy(this.locale, assignment.missingSemantic)
@@ -903,13 +911,11 @@ export class InteriorCutawaySystem {
         x: roomScreenPoint(this.roomOrigin, motion.point, this.roomCell).x,
         y: roomScreenPoint(this.roomOrigin, motion.point, this.roomCell).y - this.roomCell / 2 - 2 * this.roomCell / BASE_ROOM_CELL,
         kind: 'agent' as const,
-      };
+      }];
     });
     this.furnitureLayer?.sort('depth');
     this.syncRoomLabels();
-    const missingStatusVisible = assignments.some(({ agentId, missingSemantic }) => (
-      Boolean(missingSemantic) && this.missingFeedbackActive(agentId)
-    ));
+    const missingStatusVisible = Boolean(missingAssignment) && this.missingFeedbackActive();
     if (missingStatusVisible !== this.missingStatusVisible) {
       this.missingStatusVisible = missingStatusVisible;
       this.syncOverlay();
@@ -1615,9 +1621,9 @@ export class InteriorCutawaySystem {
           };
         })
       : undefined;
-    const activeMissing = this.currentAssignments.find((assignment) => (
-      Boolean(assignment.missingSemantic) && this.missingFeedbackActive(assignment.agentId)
-    ));
+    const activeMissing = this.missingFeedbackActive()
+      ? this.currentAssignments.find(({ missingSemantic }) => Boolean(missingSemantic))
+      : undefined;
     return {
       titleId: this.activeInterior?.id ?? 'rest-cabin',
       title: this.activeInterior?.label ?? '', ...this.status,
@@ -1652,8 +1658,8 @@ export class InteriorCutawaySystem {
   }
 
   private syncOverlay(): void { this.domOverlay.update(this.overlayModel()); }
-  private missingFeedbackActive(agentId: string): boolean {
-    return this.scene.time.now < (this.missingFeedbackUntil.get(agentId) ?? 0);
+  private missingFeedbackActive(): boolean {
+    return Boolean(this.missingFeedbackKey) && this.scene.time.now < this.missingFeedbackUntil;
   }
   private setStatus<K extends CutawayMessageId>(id: K, ...args: CutawayMessageArgs<K>): void {
     const unresolvedStorageRead = this.layoutStorageReadFailed

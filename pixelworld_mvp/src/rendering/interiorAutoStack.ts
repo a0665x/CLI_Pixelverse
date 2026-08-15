@@ -1,11 +1,13 @@
 import type { FurnitureDefinition } from '../world/types';
 import { furnitureRenderGeometry, resolvedFurnitureAsset, transformedAlphaBounds } from './interiorPlacement';
+import { catalogFurnitureRole } from './modernOfficeCatalog';
 
 export type StackRole = 'floor' | 'support' | 'surface' | 'free';
 export type StackRoleFurniture = Pick<FurnitureDefinition, 'kind' | 'supportedActions'>
   & Partial<Pick<FurnitureDefinition, 'assetId' | 'layer' | 'zIndex'>>;
 
 const SUPPORT_KINDS = new Set<FurnitureDefinition['kind']>([
+  'sofa', 'bed',
   'bookcase', 'computer', 'map-table', 'reading-desk', 'workbench', 'repair-table',
   'dispatch-pod', 'radio-console', 'response-desk', 'meeting-table', 'desk', 'cabinet',
   'beverage-station',
@@ -15,11 +17,6 @@ const SURFACE_KINDS = new Set<FurnitureDefinition['kind']>([
   'television', 'display', 'printer',
 ]);
 
-const SUPPORT_LABEL = /desk|table|workstation|console|cabinet|bookcase|shelf|storage|credenza|station/i;
-const NON_SUPPORT_LABEL = /divider|partition|wall/i;
-
-export const isNonSupportCatalogLabel = (label: string): boolean => NON_SUPPORT_LABEL.test(label);
-
 export function stackRoleForFurniture(item: StackRoleFurniture): StackRole {
   if (item.layer === 'floor') return 'floor';
   const asset = resolvedFurnitureAsset(item);
@@ -27,15 +24,7 @@ export function stackRoleForFurniture(item: StackRoleFurniture): StackRole {
   if (SUPPORT_KINDS.has(item.kind)) return 'support';
   if (SURFACE_KINDS.has(item.kind)) return 'surface';
   if (!asset) return 'free';
-  if (asset.category === 'surfaces') return 'floor';
-  if (asset.category === 'workstations') return 'support';
-  if (asset.category === 'storage-partitions') {
-    return isNonSupportCatalogLabel(asset.label) ? 'free' : 'support';
-  }
-  if (asset.category === 'screens-electronics') {
-    return SUPPORT_LABEL.test(asset.label) ? 'support' : 'surface';
-  }
-  return 'free';
+  return catalogFurnitureRole(asset.id);
 }
 
 const ROLE_ORDER: Record<StackRole, number> = { floor: 0, support: 1, free: 1, surface: 2 };

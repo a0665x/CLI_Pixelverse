@@ -24,6 +24,7 @@ import { transformedAlphaBounds } from '../src/rendering/interiorPlacement';
 import { officeLayoutIssues } from '../src/rendering/prefabGeometry';
 import { INTERIOR_DEFINITIONS, INTERIOR_LAYOUT_REVISION } from '../src/world/interiorDefinitions';
 import type { FurnitureDefinition } from '../src/world/types';
+import { semanticForFurniture } from '../src/rendering/interiorFurnitureSemantics';
 
 describe('interior furniture editor model', () => {
   const room = INTERIOR_DEFINITIONS['rest-cabin'];
@@ -587,6 +588,41 @@ describe('interior furniture editor model', () => {
     expect(shiftFurnitureLayer(layout, id, 'previous').find((item) => item.id === id)?.layer).toBe('floor');
     expect(reorderFurniture(layout, id, 'front').find((item) => item.id === id)?.zIndex).toBe(3);
     expect(reorderFurniture(layout, id, 'back').find((item) => item.id === id)?.zIndex).toBe(-1);
+  });
+
+  it('removes station semantics immediately and across Save/reload after shifting onto a floor layer', () => {
+    const memory = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => memory.get(key) ?? null,
+      setItem: (key: string, value: string) => { memory.set(key, value); },
+    };
+    const source = normalizedRoomLayout().find(({ id }) => id === 'rest-sofa-a')!;
+    expect(source.semantic).toBe('rest');
+    const shifted = shiftFurnitureLayer([source], source.id, 'previous');
+
+    expect(shifted[0]?.layer).toBe('floor');
+    expect(semanticForFurniture(shifted[0]!)).toBeUndefined();
+
+    saveInteriorLayout('shifted-semantic-house', shifted, storage);
+    const restored = loadInteriorLayout('shifted-semantic-house', room, storage);
+    expect(restored[0]?.semantic).toBeUndefined();
+    expect(semanticForFurniture(restored[0]!)).toBeUndefined();
+  });
+
+  it('round-trips an explicit semantic on ordinary furniture after layer exclusion', () => {
+    const memory = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => memory.get(key) ?? null,
+      setItem: (key: string, value: string) => { memory.set(key, value); },
+    };
+    const custom: FurnitureDefinition = {
+      id: 'custom-semantic-object', kind: 'decor', point: { x: 3, y: 3 }, facing: 'up',
+      supportedActions: [], icon: 'generic', layer: 'furniture', blocksNavigation: true,
+      semantic: 'search', assetId: 98,
+    };
+
+    saveInteriorLayout('explicit-semantic-house', [custom], storage);
+    expect(loadInteriorLayout('explicit-semantic-house', room, storage)[0]?.semantic).toBe('search');
   });
 
   it('deeply clones visual offsets through layer editing', () => {

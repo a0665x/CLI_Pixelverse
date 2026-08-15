@@ -986,7 +986,7 @@ describe('InteriorCutawaySystem', () => {
     }
   });
 
-  it('shows one transient missing-category bubble when multiple agents share the entrance', () => {
+  it('deduplicates transient missing feedback and does not restart it during same-category event churn', () => {
     const values = new Map<string, string>([[
       'pixelworld:interior-layout:rest-cabin',
       JSON.stringify({ version: 5, authoredRevision: 2, furniture: [] }),
@@ -996,21 +996,52 @@ describe('InteriorCutawaySystem', () => {
       setItem: vi.fn((key: string, value: string) => { values.set(key, value); }),
     };
     vi.stubGlobal('window', { localStorage: storage, dispatchEvent: vi.fn() });
+    const dom = overlayDomHarness();
     try {
       const fake = fakeScene();
       const cutaway = new InteriorCutawaySystem(
         fake.scene as never, WORLD_DEFINITION, () => ({ width: 1_280, height: 720 }),
       );
+      Object.assign(cutaway, { domOverlay: dom.overlay });
       cutaway.setLocale('en-US');
       cutaway.open('rest-cabin');
-      cutaway.update(['agent-b', 'agent-a'].map((agentId, index): InteriorAgentSnapshot => ({
-        agentId, role: 'subagent', buildingId: 'rest-cabin', action: 'read',
-        eventKind: 'web', eventId: `missing-${index}`,
-      })));
+      const missing = (action: 'read' | 'signal' | 'terminal', event: string) => (
+        ['agent-b', 'agent-a'].map((agentId, index): InteriorAgentSnapshot => ({
+          agentId, role: 'subagent', buildingId: 'rest-cabin', action,
+          eventKind: 'web', eventId: `${event}-${index}`,
+        }))
+      );
+      const visibleBubbleCount = (copy: string) => fake.objects.filter(({ text, visible, destroyed }) => (
+        text === copy && visible && !destroyed
+      )).length;
+      const missingDomLabelCount = (copy: string) => dom.labelLayer.children.filter(({ textContent }) => (
+        textContent.includes(copy)
+      )).length;
 
-      expect(fake.objects.filter(({ text, visible }) => text === 'Missing Search furniture' && visible))
-        .toHaveLength(1);
+      cutaway.update(missing('read', 'initial'));
+
+      expect(visibleBubbleCount('Missing Search furniture')).toBe(1);
+      expect(missingDomLabelCount('Missing Search furniture')).toBe(1);
+      expect(dom.status.textContent).toBe('Missing Search furniture');
+
+      fake.scene.time.now = 3_999;
+      cutaway.update(missing('signal', 'churn-a'));
+      expect(visibleBubbleCount('Missing Search furniture')).toBe(1);
+      expect(missingDomLabelCount('Missing Search furniture')).toBe(1);
+
+      fake.scene.time.now = 4_000;
+      cutaway.update(missing('read', 'churn-b'));
+      expect(visibleBubbleCount('Missing Search furniture')).toBe(0);
+      expect(missingDomLabelCount('Missing Search furniture')).toBe(0);
+      expect(dom.status.textContent).not.toContain('Missing Search furniture');
+
+      fake.scene.time.now = 4_001;
+      cutaway.update(missing('terminal', 'category-change'));
+      expect(visibleBubbleCount('Missing Work furniture')).toBe(1);
+      expect(missingDomLabelCount('Missing Work furniture')).toBe(1);
+      expect(dom.status.textContent).toBe('Missing Work furniture');
     } finally {
+      dom.overlay.destroy();
       vi.unstubAllGlobals();
     }
   });

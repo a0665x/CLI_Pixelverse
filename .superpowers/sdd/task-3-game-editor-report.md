@@ -75,3 +75,48 @@ The initial read-only completion review reported no Critical findings and three 
 
 - Browser/manual QA was not requested. The behavior is covered by pure semantic/navigation tests plus the existing Phaser and DOM harnesses.
 - If compatible category capacity is exhausted, extra agents remain at the entrance without claiming the category is missing; the required 13-agent scenarios remain fully assigned where compatible furniture exists.
+
+## Independent-review follow-up — 2026-08-15
+
+### Status
+
+Resolved all five findings from the independent review in a separate follow-up change. The fix keeps the original three semantic categories, 13-agent capacity behavior, v5 zero-write hydration, four locales, non-blocking Save, and existing motion/patrol behavior.
+
+### TDD RED
+
+- Initial five-finding regression run:
+  - `cd pixelworld_mvp && npm test -- --run tests/interiorFurnitureSemantics.test.ts tests/interiorMotion.test.ts tests/interiorCutawaySystem.test.ts tests/interiorLayoutEditor.test.ts tests/validateWorld.test.ts`
+  - Result: 5 files failed; 11 tests failed and 186 passed. The failures covered authoritative catalog roles, stale semantic precedence, multi-cell station traversal, transient DOM/Phaser feedback, layout shift/reload, and validation deduplication.
+- The corrected missing-Search validation fixture produced two duplicate errors instead of one.
+- An added explicit-semantic round-trip regression failed after the first normalization change exposed over-clearing of valid standalone furniture semantics.
+- An added asset 239 persisted-semantic regression failed until catalog surface roles were made authoritative ahead of persisted semantic metadata.
+
+### TDD GREEN
+
+- Granular navigation target regressions: 5 tests passed. A 1×3 station with side blockers is unreachable from an on-footprint anchor without crossing opaque station cells, while a normal adjacent interaction point remains reachable.
+- Catalog/role/normalization focused run: 105 tests passed. Representative assets and ranges are classified by centralized asset ID metadata; labels may change without affecting semantics. Asset 102 is Rest, asset 239 is not Work, dividers 207–209 have no semantic, and floor/surface/attached items cannot regain station semantics from persisted data.
+- Expanded focused command:
+  - `cd pixelworld_mvp && npm test -- --run tests/interiorFurnitureSemantics.test.ts tests/interiorAssignment.test.ts tests/interiorMotion.test.ts tests/interiorCutawaySystem.test.ts tests/interiorLayoutEditor.test.ts tests/validateWorld.test.ts tests/interiorAutoStack.test.ts tests/interiorPlacement.test.ts && npm run typecheck`
+  - Result: 8 files passed; 234 tests passed; `tsc --noEmit` exited 0.
+- Fresh full Pixelworld verification after all production changes:
+  - `cd pixelworld_mvp && npm test && npm run typecheck`
+  - Result: 65 files passed; 651 tests passed; `tsc --noEmit` exited 0.
+- `git diff --check` exited 0.
+
+### Fixes
+
+- Navigation removes only a genuine selected interaction target cell from the blocked set, and only when every owner of that cell is the selected station/prefab. The remainder of a multi-cell station footprint stays opaque.
+- Modern Office semantic and physical roles are centralized by authoritative asset IDs. Semantic routing and auto-stack classification no longer infer roles from category names or labels.
+- One stable missing agent owns both Phaser and DOM feedback for a four-second room/category episode. Event ID and action churn cannot restart it; a real category or room change may start a new episode. Other missing agents stay at the entrance without overlapping missing text.
+- Layer, attachment, and authoritative surface/floor roles take precedence over persisted semantic metadata during runtime derivation and layout normalization. Shift plus explicit Save/reload cannot turn a floor or attached object into a station.
+- World validation deduplicates actions after semantic mapping, so each missing semantic category emits one error per station/theme.
+
+### Scope audit
+
+- Follow-up production and regression changes are limited to the twelve semantic routing, placement, cutaway, layout, validation, and test owners listed in the commit diff plus this appended report.
+- No purchased asset or unrelated dirty-worktree file was modified or staged by this follow-up.
+
+### Independent re-review
+
+- Read-only re-review verdict: approved, with no Critical or Important findings.
+- One Minor test-coverage note remains: category changes are explicitly tested, while close/open to a different building relies on the production reset path rather than a dedicated cross-building assertion. The requested room/category lifecycle and all existing cutaway coverage remain green.

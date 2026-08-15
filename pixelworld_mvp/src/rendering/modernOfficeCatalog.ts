@@ -1,3 +1,5 @@
+import type { FurnitureSemantic } from '../world/types';
+
 export type ModernOfficeCategory = 'surfaces' | 'seating-plants' | 'screens-electronics' | 'storage-partitions' | 'workstations';
 export interface ModernOfficeCatalogItem {
   id: number; key: string; path: string; category: ModernOfficeCategory; label: string;
@@ -348,6 +350,80 @@ export const MODERN_OFFICE_CATALOG: readonly ModernOfficeCatalogItem[] = [
 ];
 export const catalogCategories = (): ModernOfficeCategory[] => ["surfaces", "seating-plants", "screens-electronics", "storage-partitions", "workstations"];
 export const catalogItem = (id: number): ModernOfficeCatalogItem | undefined => MODERN_OFFICE_CATALOG.find((item) => item.id === id);
+
+const assetRange = (start: number, end: number): number[] => (
+  Array.from({ length: end - start + 1 }, (_, index) => start + index)
+);
+
+const SEMANTIC_ASSET_IDS = {
+  rest: [
+    ...assetRange(101, 116),
+    ...assetRange(210, 224),
+  ],
+  search: [
+    165, 168, 170, 171, 174, 175, 176,
+    ...assetRange(179, 187),
+    ...assetRange(196, 206),
+  ],
+  work: [
+    ...assetRange(225, 236),
+    ...assetRange(247, 249),
+    ...assetRange(251, 254),
+    ...assetRange(256, 259),
+    ...assetRange(261, 264),
+    ...assetRange(266, 269),
+    275, 276,
+    ...assetRange(282, 285),
+    ...assetRange(287, 290),
+    ...assetRange(292, 295),
+    ...assetRange(297, 300),
+    ...assetRange(302, 305),
+    311, 312,
+    ...assetRange(317, 328),
+  ],
+} as const satisfies Record<FurnitureSemantic, readonly number[]>;
+
+const SEMANTIC_BY_ASSET_ID = new Map<number, FurnitureSemantic>(
+  (Object.entries(SEMANTIC_ASSET_IDS) as Array<[FurnitureSemantic, readonly number[]]>)
+    .flatMap(([semantic, ids]) => ids.map((id) => [id, semantic] as const)),
+);
+
+export const catalogFurnitureSemantic = (assetId: number): FurnitureSemantic | undefined => (
+  SEMANTIC_BY_ASSET_ID.get(assetId)
+);
+
+export type ModernOfficeCatalogRole = 'floor' | 'surface' | 'support' | 'free';
+
+const FLOOR_ASSET_IDS = new Set([
+  ...assetRange(1, 97),
+  188, 189,
+]);
+
+const SURFACE_ASSET_IDS = new Set([
+  ...assetRange(117, 164),
+  166, 167, 169, 172, 173, 177, 178,
+  ...assetRange(237, 246),
+  250, 255, 260, 265,
+  ...assetRange(270, 274),
+  ...assetRange(277, 281),
+  286, 291, 296, 301,
+  ...assetRange(306, 310),
+  ...assetRange(313, 316),
+  ...assetRange(329, 338),
+]);
+
+const SUPPORT_ASSET_IDS = new Set([
+  ...assetRange(190, 195),
+]);
+
+export const catalogFurnitureRole = (assetId: number): ModernOfficeCatalogRole => {
+  if (FLOOR_ASSET_IDS.has(assetId)) return 'floor';
+  if (SURFACE_ASSET_IDS.has(assetId)) return 'surface';
+  if (SUPPORT_ASSET_IDS.has(assetId)) return 'support';
+  const semantic = catalogFurnitureSemantic(assetId);
+  return semantic === 'search' || semantic === 'work' ? 'support' : 'free';
+};
+
 export function allCatalogPages(category: ModernOfficeCategory, pageSize = 24): Array<{ page: number; totalPages: number; items: readonly ModernOfficeCatalogItem[] }> {
   const matching = MODERN_OFFICE_CATALOG.filter((item) => item.category === category);
   const totalPages = Math.max(1, Math.ceil(matching.length / pageSize));

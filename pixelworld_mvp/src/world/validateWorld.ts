@@ -136,11 +136,10 @@ export function validateWorld(world: WorldDefinition): string[] {
   for (const building of world.buildings) {
     const interior = interiorDefinitionForBuilding(building);
     if (!interior) continue;
-    const actions = new Set(world.stations
+    const semantics = new Set(world.stations
       .filter((station) => station.buildingId === building.id)
-      .flatMap((station) => station.interactionSlots.map((item) => item.action)));
-    for (const action of actions) {
-      const semantic = semanticForAction(action);
+      .flatMap((station) => station.interactionSlots.map((item) => semanticForAction(item.action))));
+    for (const semantic of semantics) {
       if (!interior.furniture.some((item) => semanticForFurniture(item) === semantic)) {
         errors.push(`missing furniture semantic: ${building.id}@${semantic}`);
       }

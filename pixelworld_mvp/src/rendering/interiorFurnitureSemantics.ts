@@ -5,8 +5,7 @@ import type {
   GridPoint,
   InteriorDefinition,
 } from '../world/types';
-import { catalogItem } from './modernOfficeCatalog';
-import { isNonSupportCatalogLabel } from './interiorAutoStack';
+import { catalogFurnitureRole, catalogFurnitureSemantic } from './modernOfficeCatalog';
 import { navigationBlockedCellKeys, navigationCells } from './interiorPlacement';
 
 const ACTION_SEMANTICS = {
@@ -62,22 +61,15 @@ const legacyActionSemantic = (actions: readonly AgentAction[]): FurnitureSemanti
 };
 
 export function semanticForFurniture(item: FurnitureDefinition): FurnitureSemantic | undefined {
+  if (item.layer === 'floor' || item.layer === 'surface' || item.supportedByIds?.length) return undefined;
+  const catalogRole = item.assetId === undefined ? undefined : catalogFurnitureRole(item.assetId);
+  if (catalogRole === 'floor' || catalogRole === 'surface') return undefined;
   if (item.semantic) return item.semantic;
   const legacy = legacyActionSemantic(item.supportedActions);
   if (legacy) return legacy;
-  if (item.layer === 'floor' || item.layer === 'surface' || item.supportedByIds?.length) return undefined;
   const kind = KIND_SEMANTICS[item.kind];
   if (kind) return kind;
-  const catalog = item.assetId === undefined ? undefined : catalogItem(item.assetId);
-  if (!catalog) return undefined;
-  if (catalog.category === 'workstations') return 'work';
-  if (catalog.category === 'storage-partitions' && !isNonSupportCatalogLabel(catalog.label)) return 'search';
-  if (catalog.category === 'seating-plants' && /chair|seat|sofa|lounge|bench/i.test(catalog.label)) return 'rest';
-  if (catalog.category === 'screens-electronics') {
-    if (/cabinet|bookcase|shelf|storage|archive|credenza/i.test(catalog.label)) return 'search';
-    if (/desk|table|workstation|console|station/i.test(catalog.label)) return 'work';
-  }
-  return undefined;
+  return item.assetId === undefined ? undefined : catalogFurnitureSemantic(item.assetId);
 }
 
 const pointKey = ({ x, y }: GridPoint): string => `${Math.round(x)},${Math.round(y)}`;
