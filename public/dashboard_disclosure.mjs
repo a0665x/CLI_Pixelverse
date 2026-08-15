@@ -23,11 +23,59 @@ export function writeDashboardDisclosure(storage, state) {
   return true;
 }
 
-export function toggleDashboardCard(state, requested) {
+export function toggleDashboardCard(state, requested, blocked = false) {
   if (!CARDS.has(requested)) return { ...state };
+  if (blocked) return { ...state, activeCard: null };
   return {
     ...state,
     activeCard: state.activeCard === requested ? null : requested,
+  };
+}
+
+export function createCutawayFocusHandoff({
+  schedule = (callback) => typeof globalThis.requestAnimationFrame === 'function'
+    ? globalThis.requestAnimationFrame(callback)
+    : globalThis.setTimeout(callback, 0),
+  cancel = (handle) => typeof globalThis.cancelAnimationFrame === 'function'
+    ? globalThis.cancelAnimationFrame(handle)
+    : globalThis.clearTimeout(handle),
+} = {}) {
+  let pendingTrigger = null;
+  let activeTrigger = null;
+  let expiryHandle = null;
+  const clearExpiry = () => {
+    if (expiryHandle === null) return;
+    cancel?.(expiryHandle);
+    expiryHandle = null;
+  };
+  const usable = (trigger) => trigger && trigger.isConnected !== false ? trigger : null;
+  return {
+    framePointerDown(trigger) {
+      clearExpiry();
+      pendingTrigger = usable(trigger);
+      if (!pendingTrigger) return null;
+      expiryHandle = schedule(() => {
+        expiryHandle = null;
+        pendingTrigger = null;
+      });
+      return pendingTrigger;
+    },
+    cutawayOpened(fallbackTrigger) {
+      clearExpiry();
+      activeTrigger = usable(pendingTrigger) || usable(fallbackTrigger);
+      pendingTrigger = null;
+      return activeTrigger;
+    },
+    cutawayClosed() {
+      const trigger = usable(activeTrigger);
+      activeTrigger = null;
+      return trigger;
+    },
+    reset() {
+      clearExpiry();
+      pendingTrigger = null;
+      activeTrigger = null;
+    },
   };
 }
 
@@ -88,14 +136,16 @@ export function dashboardCardLabel(copy, name) {
   return copy.dashboardPanels;
 }
 
-export function renderDashboardCardControl(button, { name, activeCard, copy }) {
+export function renderDashboardCardControl(button, { name, activeCard, copy, blocked = false }) {
   const label = dashboardCardLabel(copy, name);
-  const expanded = activeCard === name;
+  const expanded = !blocked && activeCard === name;
   const setAttribute = (attribute, value) => {
     const next = String(value);
     if (button.getAttribute?.(attribute) === next) return;
     button.setAttribute(attribute, next);
   };
+  if (button.disabled !== blocked) button.disabled = blocked;
+  setAttribute('aria-disabled', blocked);
   setAttribute('aria-expanded', expanded);
   setAttribute('aria-label', `${expanded ? copy.hidePanels : copy.showPanels}: ${label}`);
   if (button.dataset.tooltip !== label) button.dataset.tooltip = label;

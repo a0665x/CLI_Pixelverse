@@ -178,6 +178,17 @@ def test_map_first_card_overlays_the_map_and_offers_paginated_discoverable_contr
     assert '[data-tooltip]:focus-visible::after' in html
 
 
+def test_dashboard_cutaway_policy_is_wired_into_the_production_card_caller():
+    app = Path("public/app.mjs").read_text(encoding="utf-8")
+
+    assert "createCutawayFocusHandoff" in app
+    assert "cutawayFocusHandoff.framePointerDown(dashboardActiveTrigger())" in app
+    assert "cutawayFocusHandoff.cutawayOpened(dashboardActiveTrigger())" in app
+    assert "cutawayFocusHandoff.cutawayClosed()" in app
+    assert "toggleDashboardCard(dashboardDisclosure, requested, dashboardCutawayOpen())" in app
+    assert "blocked: dashboardCutawayOpen()" in app
+
+
 def test_dashboard_card_uses_a_dedicated_live_status_and_bounded_accessible_rows():
     html = Path("public/index.html").read_text(encoding="utf-8")
     app = Path("public/app.mjs").read_text(encoding="utf-8")

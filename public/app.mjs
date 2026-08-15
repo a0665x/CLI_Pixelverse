@@ -12,6 +12,8 @@ import {
   getLocaleStrings,
   getRoomCopy,
   getRoomDecor,
+  eventSummaryForLocale,
+  eventTitleForLocale,
   LOCALE_LABELS,
   localizeToolSummary,
   normalizeLocale,
@@ -85,6 +87,7 @@ import {
 import {
   activeDashboardCardTrigger,
   applyMapLayerVisibility,
+  createCutawayFocusHandoff,
   dashboardCardLabel as localizedDashboardCardLabel,
   dashboardInputModality,
   deferDashboardCardFocus,
@@ -136,29 +139,6 @@ const ROOM_ACTIVITY_TARGETS = {
   session_archive: {
     working: [{ x: 18, y: 60 }, { x: 74, y: 24 }, { x: 52, y: 60 }],
     idle: [{ x: 18, y: 26 }, { x: 74, y: 60 }, { x: 52, y: 18 }],
-  },
-};
-
-const EVENT_TITLES = {
-  'zh-TW': {
-    heartbeat: '主代理心跳同步',
-    action: '世界動作更新',
-    'hermes.status': 'Hermes 狀態同步',
-    'hermes.subagent': '分身狀態更新',
-    'hermes.subagent.event': '分身事件',
-    'hermes.session': 'Hermes 工作階段',
-    'webhook.registered': 'Webhook 已註冊',
-    'webhook.removed': 'Webhook 已移除',
-  },
-  'en-US': {
-    heartbeat: 'Main heartbeat',
-    action: 'World action',
-    'hermes.status': 'Hermes status',
-    'hermes.subagent': 'Subagent update',
-    'hermes.subagent.event': 'Subagent event',
-    'hermes.session': 'Hermes session',
-    'webhook.registered': 'Webhook registered',
-    'webhook.removed': 'Webhook removed',
   },
 };
 
@@ -277,8 +257,12 @@ let lastDashboardInputModality = 'keyboard';
 const dashboardPages = { events: 0, agents: 0, help: 0 };
 let dashboardLastTrigger = null;
 let dashboardLiveSnapshot = null;
-let dashboardCutawayFocusTrigger = null;
 let cancelDashboardFocusRestore = null;
+const cutawayFocusHandoff = createCutawayFocusHandoff({
+  schedule: (callback) => window.requestAnimationFrame(callback),
+  cancel: (handle) => window.cancelAnimationFrame(handle),
+});
+const dashboardCutawayOpen = () => dom.body.dataset.pixelworldCutaway === 'open';
 const cutawayStatusRail = createCutawayStatusRailController({
   body: dom.body,
   frame: dom.pixelworldFrame,
@@ -301,15 +285,16 @@ const pixelworldBridge = createPixelworldBridge({
     if (open) {
       cancelDashboardFocusRestore?.();
       cancelDashboardFocusRestore = null;
-      dashboardCutawayFocusTrigger = dashboardActiveTrigger();
+      cutawayFocusHandoff.cutawayOpened(dashboardActiveTrigger());
       closeDashboardCard({ restoreFocus: false });
       dom.body.dataset.pixelworldCutaway = 'open';
+      renderDashboardDisclosure();
       syncCutawayStatusRail();
     } else {
       dom.body.dataset.pixelworldCutaway = 'closed';
       cutawayStatusRail.clear();
-      const trigger = dashboardCutawayFocusTrigger;
-      dashboardCutawayFocusTrigger = null;
+      renderDashboardDisclosure();
+      const trigger = cutawayFocusHandoff.cutawayClosed();
       if (trigger) scheduleDashboardCardFocus(trigger);
     }
   },
@@ -320,14 +305,17 @@ const detachPixelworldBridge = attachPixelworldBridge({
   messageTarget: window,
   bridge: pixelworldBridge,
   origin: window.location.origin,
-  onFramePointerDown: () => closeDashboardCard({ deferFocus: true }),
+  onFramePointerDown: () => {
+    cutawayFocusHandoff.framePointerDown(dashboardActiveTrigger());
+    closeDashboardCard({ restoreFocus: false });
+  },
   onFrameEscape: () => closeDashboardCard({ deferFocus: true }),
 });
 attachPageLifecycleCleanup({ pageTarget: window, cleanup: () => {
   detachPixelworldBridge();
   cancelDashboardFocusRestore?.();
   cancelDashboardFocusRestore = null;
-  dashboardCutawayFocusTrigger = null;
+  cutawayFocusHandoff.reset();
 } });
 window.addEventListener('resize', () => {
   syncCutawayStatusRail();
@@ -727,7 +715,9 @@ function renderDashboardDisclosure() {
   if (dom.body.dataset.dashboardCard !== cardState) dom.body.dataset.dashboardCard = cardState;
   dom.dashboardCardButtons.forEach((button) => {
     const name = button.dataset.dashboardCard;
-    const label = renderDashboardCardControl(button, { name, activeCard, copy });
+    const label = renderDashboardCardControl(button, {
+      name, activeCard, copy, blocked: dashboardCutawayOpen(),
+    });
     const labelNode = document.getElementById(`dashboard-${name}-label`);
     if (labelNode && labelNode.textContent !== label) labelNode.textContent = label;
   });
@@ -784,7 +774,7 @@ function changeDashboardCard(requested, trigger) {
   cancelDashboardFocusRestore = null;
   const wasActive = dashboardDisclosure.activeCard;
   dashboardLastTrigger = trigger || dashboardLastTrigger;
-  dashboardDisclosure = toggleDashboardCard(dashboardDisclosure, requested);
+  dashboardDisclosure = toggleDashboardCard(dashboardDisclosure, requested, dashboardCutawayOpen());
   persistDashboardDisclosure();
   renderDashboardDisclosure();
   if (wasActive === requested && !dashboardDisclosure.activeCard) restoreDashboardCardFocus(trigger);
@@ -1039,25 +1029,13 @@ function displayAgentName(agent) {
 }
 
 function eventTitle(item = {}) {
-  if (currentLocale === 'zh-TW') {
-    if (item.kind === 'main.task.started') return '主代理開始處理任務';
-    if (item.kind === 'main.reasoning') return '主代理正在規劃';
-    if (item.kind === 'main.tool.batch') return '主代理切換到工具序列';
-    if (item.kind === 'main.tool.started') return '主代理工具啟動';
-    if (item.kind === 'main.tool.completed') return '主代理工具完成';
-    if (item.kind === 'main.task.completed') return '主代理任務完成';
-    return item.title || EVENT_TITLES['zh-TW'][item.kind] || item.kind || 'event';
-  }
-  if (item.kind === 'main.task.started') return 'Main task started';
-  if (item.kind === 'main.reasoning') return 'Main agent reasoning';
-  if (item.kind === 'main.tool.batch') return 'Main tool route';
-  if (item.kind === 'main.tool.started') return 'Main tool started';
-  if (item.kind === 'main.tool.completed') return 'Main tool completed';
-  if (item.kind === 'main.task.completed') return 'Main task completed';
-  return EVENT_TITLES['en-US'][item.kind] || item.title || item.kind || 'event';
+  return eventTitleForLocale(item, currentLocale);
 }
 
 function eventSummary(item = {}) {
+  if (currentLocale === 'ja-JP' || currentLocale === 'ko-KR') {
+    return eventSummaryForLocale(item, currentLocale);
+  }
   if (currentLocale === 'zh-TW') {
     if (item.summary) return item.summary;
     const payload = item.payload || {};

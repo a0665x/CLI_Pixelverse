@@ -784,3 +784,172 @@ export function localizeToolSummary(task, locale = 'zh-TW') {
   const joiner = normalized === 'zh-TW' || normalized === 'ja-JP' || normalized === 'ko-KR' ? '、' : ', ';
   return translated.join(joiner);
 }
+
+const EVENT_TITLES = {
+  'zh-TW': {
+    heartbeat: '主代理心跳同步', action: '世界動作更新',
+    'main.task.started': '主代理開始處理任務', 'main.reasoning': '主代理正在規劃',
+    'main.tool.batch': '主代理切換到工具序列', 'main.tool.started': '主代理工具啟動',
+    'main.tool.completed': '主代理工具完成', 'main.task.completed': '主代理任務完成',
+    'hermes.status': 'Hermes 狀態同步', 'hermes.subagent': '分身狀態更新',
+    'hermes.subagent.event': '分身事件', 'hermes.session': 'Hermes 工作階段',
+    'webhook.registered': 'Webhook 已註冊', 'webhook.removed': 'Webhook 已移除',
+  },
+  'en-US': {
+    heartbeat: 'Main heartbeat', action: 'World action',
+    'main.task.started': 'Main task started', 'main.reasoning': 'Main agent reasoning',
+    'main.tool.batch': 'Main tool route', 'main.tool.started': 'Main tool started',
+    'main.tool.completed': 'Main tool completed', 'main.task.completed': 'Main task completed',
+    'hermes.status': 'Hermes status', 'hermes.subagent': 'Subagent update',
+    'hermes.subagent.event': 'Subagent event', 'hermes.session': 'Hermes session',
+    'webhook.registered': 'Webhook registered', 'webhook.removed': 'Webhook removed',
+  },
+  'ja-JP': {
+    heartbeat: 'メインエージェントのハートビート', action: 'ワールド動作の更新',
+    'main.task.started': 'メインタスクを開始', 'main.reasoning': 'メインエージェントが推論中',
+    'main.tool.batch': 'ツール経路を切替', 'main.tool.started': 'ツールを開始',
+    'main.tool.completed': 'ツールを完了', 'main.task.completed': 'メインタスクを完了',
+    'hermes.status': 'Hermes 状態', 'hermes.subagent': 'サブエージェントの更新',
+    'hermes.subagent.event': 'サブエージェントのイベント', 'hermes.session': 'Hermes セッション',
+    'webhook.registered': 'Webhook を登録', 'webhook.removed': 'Webhook を削除',
+  },
+  'ko-KR': {
+    heartbeat: '메인 에이전트 하트비트', action: '월드 동작 업데이트',
+    'main.task.started': '메인 작업 시작', 'main.reasoning': '메인 에이전트 추론 중',
+    'main.tool.batch': '도구 경로 전환', 'main.tool.started': '도구 시작',
+    'main.tool.completed': '도구 완료', 'main.task.completed': '메인 작업 완료',
+    'hermes.status': 'Hermes 상태', 'hermes.subagent': '서브에이전트 업데이트',
+    'hermes.subagent.event': '서브에이전트 이벤트', 'hermes.session': 'Hermes 세션',
+    'webhook.registered': 'Webhook 등록', 'webhook.removed': 'Webhook 제거',
+  },
+};
+
+const EVENT_SUMMARY_COPY = {
+  'zh-TW': {
+    taskStarted: '任務已開始', reasoning: '正在整理思路', started: '開始使用', finished: '完成',
+    tool: '工具', route: '工具序列', taskCompleted: '任務已完成，回到待命站', toolStep: '工具步驟',
+    thinking: '思考', status: '狀態', actionUpdate: '動作已更新', gateway: '閘道', activeSessions: '活躍工作階段',
+    subagent: '分身', noTool: '沒有工具', session: '工作階段', active: '進行中', recent: '近期', registered: '已註冊', removed: '已移除',
+  },
+  'en-US': {
+    taskStarted: 'Task started', reasoning: 'Reasoning', started: 'Started', finished: 'Finished',
+    tool: 'tool', route: 'Tool route', taskCompleted: 'Returned to standby', toolStep: 'Tool step',
+    thinking: 'Thinking', status: 'Status', actionUpdate: 'Action update', gateway: 'Gateway', activeSessions: 'active sessions',
+    subagent: 'Subagent', noTool: 'No tool', session: 'session', active: 'active', recent: 'recent', registered: 'registered', removed: 'removed',
+  },
+  'ja-JP': {
+    taskStarted: 'タスクを開始しました', reasoning: '考えを整理中', started: '開始', finished: '完了',
+    tool: 'ツール', route: 'ツール経路', taskCompleted: 'タスクを完了し、待機場所へ戻りました', toolStep: 'ツール手順',
+    thinking: '思考', status: '状態', actionUpdate: '動作を更新しました', gateway: 'ゲートウェイ', activeSessions: '稼働中のセッション',
+    subagent: 'サブエージェント', noTool: 'ツールなし', session: 'セッション', active: '稼働中', recent: '直近', registered: '登録済み', removed: '削除済み',
+  },
+  'ko-KR': {
+    taskStarted: '작업을 시작했습니다', reasoning: '생각을 정리하는 중', started: '시작', finished: '완료',
+    tool: '도구', route: '도구 경로', taskCompleted: '작업을 완료하고 대기 위치로 돌아갔습니다', toolStep: '도구 단계',
+    thinking: '생각', status: '상태', actionUpdate: '동작을 업데이트했습니다', gateway: '게이트웨이', activeSessions: '활성 세션',
+    subagent: '서브에이전트', noTool: '도구 없음', session: '세션', active: '활성', recent: '최근', registered: '등록됨', removed: '제거됨',
+  },
+};
+
+const EVENT_TOOL_NAMES = {
+  'ja-JP': {
+    search_files: 'ファイル検索', read_file: 'ファイル読取', Read: 'ファイル読取', Grep: '内容検索', Glob: 'パス検索', LS: '一覧表示',
+    write_file: 'ファイル書込', Write: 'ファイル書込', Edit: 'ファイル編集', MultiEdit: '一括編集', apply_patch: 'パッチ適用', patch: 'パッチ適用',
+    terminal: 'ターミナル', Bash: 'シェル実行', WebFetch: 'Web ページ取得', WebSearch: 'Web 検索', TodoWrite: 'タスクボード更新',
+    Task: 'サブエージェント派遣', execute_code: 'コード実行', delegate_task: 'サブエージェント派遣', session_search: 'セッション検索',
+    memory: 'メモリ書込', todo: 'タスクボード更新', browser_navigate: 'ページを開く', browser_snapshot: 'ページ読取', browser_click: 'クリック', browser_type: '入力',
+  },
+  'ko-KR': {
+    search_files: '파일 검색', read_file: '파일 읽기', Read: '파일 읽기', Grep: '내용 검색', Glob: '경로 검색', LS: '목록 보기',
+    write_file: '파일 쓰기', Write: '파일 쓰기', Edit: '파일 편집', MultiEdit: '일괄 편집', apply_patch: '패치 적용', patch: '패치 적용',
+    terminal: '터미널', Bash: '셸 실행', WebFetch: '웹 페이지 가져오기', WebSearch: '웹 검색', TodoWrite: '작업 보드 업데이트',
+    Task: '서브에이전트 파견', execute_code: '코드 실행', delegate_task: '서브에이전트 파견', session_search: '세션 검색',
+    memory: '메모리 쓰기', todo: '작업 보드 업데이트', browser_navigate: '페이지 열기', browser_snapshot: '페이지 읽기', browser_click: '클릭', browser_type: '입력',
+  },
+};
+
+const shortEventText = (value, limit) => {
+  const text = String(value || '').trim();
+  return text.length <= limit ? text : `${text.slice(0, Math.max(0, limit - 1))}…`;
+};
+
+export function eventTitleForLocale(item = {}, locale = 'en-US') {
+  const normalized = normalizeLocale(locale);
+  return EVENT_TITLES[normalized][item.kind]
+    || item.title
+    || item.kind
+    || (normalized === 'zh-TW' ? '事件' : normalized === 'ja-JP' ? 'イベント' : normalized === 'ko-KR' ? '이벤트' : 'event');
+}
+
+export function eventSummaryForLocale(item = {}, locale = 'en-US') {
+  const normalized = normalizeLocale(locale);
+  const copy = EVENT_SUMMARY_COPY[normalized];
+  const strings = getLocaleStrings(normalized);
+  const payload = item.payload || {};
+  const action = payload.action || {};
+  const localizeEventTool = (value) => {
+    const names = EVENT_TOOL_NAMES[normalized] || {};
+    const parts = String(value || '').split(',').map((part) => part.trim()).filter(Boolean);
+    if (!parts.length) return '';
+    const separator = normalized === 'en-US' ? ', ' : '、';
+    return parts.map((part) => names[part] || getLocaleStrings(normalized).tools?.[part] || part).join(separator);
+  };
+  const tool = localizeEventTool(action.tool_name) || copy.tool;
+  const preview = action.preview || action.message || '';
+  const separator = normalized === 'en-US' ? ' | ' : '｜';
+  if (item.kind === 'main.task.started') return shortEventText(preview || copy.taskStarted, 54);
+  if (item.kind === 'main.reasoning') return shortEventText(preview || copy.reasoning, 54);
+  if (item.kind === 'main.tool.started') {
+    return `${copy.started} ${tool}${preview ? `${separator}${shortEventText(preview, 36)}` : ''}`;
+  }
+  if (item.kind === 'main.tool.completed') {
+    return `${copy.finished} ${tool}${preview ? `${separator}${shortEventText(preview, 36)}` : ''}`;
+  }
+  if (item.kind === 'main.tool.batch') {
+    return localizeEventTool((action.tool_names || []).join(', '))
+      || shortEventText(preview || copy.route, 54);
+  }
+  if (item.kind === 'main.task.completed') return shortEventText(preview || copy.taskCompleted, 54);
+  if (item.kind === 'heartbeat') {
+    const state = strings.states?.[payload.state || 'idle'] || payload.state || strings.idleFallback;
+    const task = localizeEventTool(payload.task || '') || strings.idleFallback;
+    if (normalized === 'ja-JP') return `状態：${state}｜${task}`;
+    if (normalized === 'ko-KR') return `상태: ${state}｜${task}`;
+    if (normalized === 'zh-TW') return `狀態：${state}｜${task}`;
+    return `State: ${state} | ${task}`;
+  }
+  if (item.kind === 'action') {
+    const raw = String(action.message || '').split(/[：:]/).pop().trim();
+    if (action.type === 'tool') return `${copy.toolStep}：${localizeEventTool(raw) || shortEventText(raw || copy.tool, 54)}`;
+    if (action.type === 'thought') {
+      const thought = /^(?:planning|reasoning)$/i.test(raw) ? copy.reasoning : raw;
+      return `${copy.thinking}：${shortEventText(thought || copy.reasoning, 54)}`;
+    }
+    if (action.type === 'status') {
+      const stateKey = /^waiting$/i.test(raw) ? 'awaiting_input' : raw;
+      return `${copy.status}：${shortEventText(strings.states?.[stateKey] || raw || copy.actionUpdate, 54)}`;
+    }
+    return shortEventText(raw || copy.actionUpdate, 54);
+  }
+  if (item.kind === 'hermes.status') {
+    const state = normalized === 'ja-JP' && payload.gateway_state === 'connected' ? '接続済み'
+      : normalized === 'ko-KR' && payload.gateway_state === 'connected' ? '연결됨'
+        : payload.gateway_state || strings.checking;
+    return `${copy.gateway}：${state}｜${copy.activeSessions}：${payload.active_sessions || 0}`;
+  }
+  if (item.kind === 'hermes.subagent') {
+    const state = strings.states?.[payload.status === 'running' ? 'working' : payload.status || 'idle']
+      || payload.status || strings.idleFallback;
+    return `${shortEventText(payload.goal || payload.agent || copy.subagent, 42)}｜${localizeEventTool(payload.current_tool) || copy.noTool}｜${state}`;
+  }
+  if (item.kind === 'hermes.subagent.event') {
+    const detail = shortEventText(payload.text || '', 46);
+    return `${shortEventText(payload.goal || payload.agent || copy.subagent, 32)}｜${copy.tool}：${localizeEventTool(payload.tool_name) || copy.tool}${detail ? `｜${detail}` : ''}`;
+  }
+  if (item.kind === 'hermes.session') {
+    return `${shortEventText(payload.title || payload.session_id || copy.session, 42)}｜${payload.active ? copy.active : copy.recent}`;
+  }
+  if (item.kind === 'webhook.registered') return shortEventText(payload.url || copy.registered, 54);
+  if (item.kind === 'webhook.removed') return shortEventText(payload.agent || copy.removed, 54);
+  return item.summary || copy.actionUpdate;
+}

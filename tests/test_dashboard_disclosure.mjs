@@ -22,6 +22,33 @@ test('dashboard cards start closed and same-button activation closes the card', 
     guideDismissed: true,
   });
   assert.deepEqual(toggleDashboardCard(open, 'agents'), { activeCard: 'agents', guideDismissed: false });
+  assert.deepEqual(toggleDashboardCard(open, 'help', true), { activeCard: null, guideDismissed: false });
+});
+
+test('iframe pointer handoff preserves one matching cutaway focus lifecycle without stale reuse', () => {
+  assert.equal(typeof dashboardDisclosure.createCutawayFocusHandoff, 'function');
+  if (typeof dashboardDisclosure.createCutawayFocusHandoff !== 'function') return;
+  const scheduled = [];
+  const handoff = dashboardDisclosure.createCutawayFocusHandoff({
+    schedule: (callback) => scheduled.push(callback) - 1,
+    cancel: (handle) => { scheduled[handle] = null; },
+  });
+  const eventsTrigger = { dataset: { dashboardCard: 'events' }, focus() {} };
+
+  handoff.framePointerDown(eventsTrigger);
+  assert.equal(handoff.cutawayOpened(null), eventsTrigger);
+  assert.equal(handoff.cutawayClosed(), eventsTrigger);
+  assert.equal(handoff.cutawayClosed(), null);
+
+  handoff.framePointerDown(eventsTrigger);
+  scheduled.filter(Boolean).forEach((callback) => callback());
+  assert.equal(handoff.cutawayOpened(null), null);
+  assert.equal(handoff.cutawayClosed(), null);
+
+  handoff.framePointerDown(eventsTrigger);
+  handoff.reset();
+  assert.equal(handoff.cutawayOpened(null), null);
+  assert.equal(handoff.cutawayClosed(), null);
 });
 
 test('stored disclosure is validated and malformed storage fails closed', () => {
@@ -197,6 +224,26 @@ test('dashboard card controls render localized labels and mutual expanded state'
     assert.equal(attributes.get('aria-expanded'), 'false');
     assert.equal(attributes.get('aria-label'), `${copy.showPanels}: ${copy.dashboardEvents}`);
   }
+});
+
+test('cutaway-open controls are explicitly disabled and collapsed', () => {
+  const copy = getLocaleStrings('en-US');
+  const attributes = new Map();
+  const button = {
+    dataset: { dashboardCard: 'events' },
+    disabled: false,
+    title: '',
+    getAttribute: (name) => attributes.get(name) ?? null,
+    setAttribute: (name, value) => attributes.set(name, String(value)),
+  };
+
+  dashboardDisclosure.renderDashboardCardControl(button, {
+    name: 'events', activeCard: 'events', copy, blocked: true,
+  });
+
+  assert.equal(button.disabled, true);
+  assert.equal(attributes.get('aria-disabled'), 'true');
+  assert.equal(attributes.get('aria-expanded'), 'false');
 });
 
 test('dashboard card controls perform no attribute or label writes for identical state', () => {

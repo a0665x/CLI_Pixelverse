@@ -8,6 +8,7 @@ import {
   normalizeLocale,
   summarizeWorld,
 } from '../public/ui_strings.mjs';
+import * as uiStrings from '../public/ui_strings.mjs';
 
 test('normalizeLocale falls back to English', () => {
   assert.equal(normalizeLocale('fr-FR'), 'en-US');
@@ -72,4 +73,45 @@ test('summarizeWorld adapts to locale and hermes connectivity', () => {
 test('localizeToolSummary translates comma-separated tool names for English mode', () => {
   assert.equal(localizeToolSummary('read_file, patch, write_file', 'en-US'), 'Read File, Patch File, Write File');
   assert.equal(localizeToolSummary('read_file, patch, write_file', 'zh-TW'), '讀取檔案、修改檔案、寫入檔案');
+});
+
+test('Japanese and Korean dynamic dashboard events never fall through to English copy', () => {
+  assert.equal(typeof uiStrings.eventTitleForLocale, 'function');
+  assert.equal(typeof uiStrings.eventSummaryForLocale, 'function');
+  if (typeof uiStrings.eventTitleForLocale !== 'function' || typeof uiStrings.eventSummaryForLocale !== 'function') return;
+  const event = {
+    kind: 'main.tool.started',
+    payload: { action: { tool_name: 'read_file', preview: 'index.ts' } },
+  };
+  const completed = {
+    kind: 'main.task.completed',
+    payload: { action: {} },
+  };
+  const localizedKinds = [
+    event,
+    completed,
+    { kind: 'heartbeat', payload: { state: 'working', task: 'read_file' } },
+    { kind: 'action', payload: { action: { type: 'thought', message: 'Planning' } } },
+    { kind: 'action', payload: { action: { type: 'tool', message: 'Tool step: patch' } } },
+    { kind: 'action', payload: { action: { type: 'status', message: 'Status: waiting' } } },
+    { kind: 'hermes.status', payload: { gateway_state: 'connected', active_sessions: 2 } },
+  ];
+
+  const localizedRows = (locale) => localizedKinds.map((item) => ({
+    title: uiStrings.eventTitleForLocale(item, locale),
+    summary: uiStrings.eventSummaryForLocale(item, locale),
+  }));
+  const japaneseRows = localizedRows('ja-JP');
+  const koreanRows = localizedRows('ko-KR');
+  const japanese = japaneseRows.flatMap(({ title, summary }) => [title, summary]).join(' · ');
+  const korean = koreanRows.flatMap(({ title, summary }) => [title, summary]).join(' · ');
+
+  assert.equal(japaneseRows.every(({ title, summary }) => title && summary), true);
+  assert.equal(koreanRows.every(({ title, summary }) => title && summary), true);
+  assert.equal(japaneseRows.every(({ title, summary }) => /[ぁ-んァ-ン一-龯]/.test(`${title}${summary}`)), true);
+  assert.equal(koreanRows.every(({ title, summary }) => /[가-힣]/.test(`${title}${summary}`)), true);
+  assert.match(japanese, /[ぁ-んァ-ン一-龯]/);
+  assert.match(korean, /[가-힣]/);
+  assert.doesNotMatch(japanese, /\b(?:Main|Started|Finished|Returned|tool|task|State|Status|Gateway|Planning|Waiting|Read File)\b/i);
+  assert.doesNotMatch(korean, /\b(?:Main|Started|Finished|Returned|tool|task|State|Status|Gateway|Planning|Waiting|Read File)\b/i);
 });
