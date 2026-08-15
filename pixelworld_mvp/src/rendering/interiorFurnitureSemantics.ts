@@ -77,11 +77,10 @@ const inside = (room: InteriorDefinition, point: GridPoint): boolean => (
   point.x >= 0 && point.y >= 0 && point.x < room.width && point.y < room.height
 );
 
-const interactionCandidates = (
+const fallbackInteractionCandidates = (
   room: InteriorDefinition,
   furniture: FurnitureDefinition,
 ): GridPoint[] => {
-  if (furniture.interactionPoint) return [{ ...furniture.interactionPoint }];
   if (semanticForFurniture(furniture) === 'rest') return [{ ...furniture.point }];
   const occupied = navigationCells({ ...furniture, blocksNavigation: true });
   const occupiedKeys = new Set(occupied.map(pointKey));
@@ -137,6 +136,29 @@ const pathDistance = (
   return undefined;
 };
 
+const explicitPointIsInvalid = (
+  room: InteriorDefinition,
+  furniture: FurnitureDefinition,
+  point: GridPoint,
+): boolean => {
+  if (!inside(room, point)) return true;
+  const target = pointKey(point);
+  const targetPoint = { x: Math.round(point.x), y: Math.round(point.y) };
+  const occupied = navigationCells({ ...furniture, blocksNavigation: true });
+  if (!occupied.some((cell) => (
+    Math.abs(cell.x - targetPoint.x) + Math.abs(cell.y - targetPoint.y) === 1
+  ))) return true;
+  return room.furniture.some((other) => {
+    if (other.id === furniture.id) return false;
+    const sharesEligiblePrefabTarget = Boolean(furniture.prefabInstanceId)
+      && other.prefabInstanceId === furniture.prefabInstanceId
+      && Boolean(other.interactionPoint)
+      && pointKey(other.interactionPoint!) === target;
+    return !sharesEligiblePrefabTarget
+      && navigationCells(other).some((cell) => pointKey(cell) === target);
+  });
+};
+
 export function nearestSemanticStation(
   room: InteriorDefinition,
   action: AgentAction,
@@ -147,14 +169,20 @@ export function nearestSemanticStation(
   const semantic = semanticForAction(action);
   const nearest = room.furniture
     .filter((item) => semanticForFurniture(item) === semantic && !excludedFurnitureIds.has(item.id))
-    .flatMap((furniture) => interactionCandidates(room, furniture).map((point) => ({
-      furnitureId: furniture.id,
-      point,
-      distance: pathDistance(room, origin, point, furniture.id),
-    })))
-    .filter((station): station is SemanticStation & { distance: number } => (
-      station.distance !== undefined && !excludedPointKeys.has(pointKey(station.point))
-    ))
+    .flatMap((furniture) => {
+      const reachable = (point: GridPoint) => {
+        if (excludedPointKeys.has(pointKey(point))) return undefined;
+        const distance = pathDistance(room, origin, point, furniture.id);
+        return distance === undefined ? undefined : { furnitureId: furniture.id, point, distance };
+      };
+      if (furniture.interactionPoint && !explicitPointIsInvalid(room, furniture, furniture.interactionPoint)) {
+        const explicit = reachable({ ...furniture.interactionPoint });
+        if (explicit) return [explicit];
+      }
+      return fallbackInteractionCandidates(room, furniture)
+        .map(reachable)
+        .filter((station): station is SemanticStation & { distance: number } => station !== undefined);
+    })
     .sort((first, second) => first.distance - second.distance
       || first.furnitureId.localeCompare(second.furnitureId)
       || first.point.y - second.point.y

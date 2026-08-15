@@ -65,6 +65,7 @@ import {
   previewSelectionMove,
   removeSelection,
   reorderSelection,
+  resetSelectionScaleAtomically,
   resizeSelectionAtomically,
   rotateSelectionAtomically,
   selectedFurnitureIds,
@@ -1095,7 +1096,17 @@ export class InteriorCutawaySystem {
         .setAngle(furniture.rotation ?? 0).setDepth(interiorFurnitureRenderDepth(furniture, geometry.baselineY));
       furnitureLayer.add(sprite);
       if (!this.editMode) continue;
-      sprite.setInteractive({ useHandCursor: true, draggable: true });
+      const hitArea = catalog
+        ? { ...catalog.opaqueBounds }
+        : { x: 0, y: 0, width: 32, height: 48 };
+      sprite.setInteractive({
+        hitArea,
+        hitAreaCallback: (area: typeof hitArea, x: number, y: number) => (
+          x >= area.x && x <= area.x + area.width && y >= area.y && y <= area.y + area.height
+        ),
+        useHandCursor: true,
+        draggable: true,
+      });
       furnitureSprites.add(sprite);
       furnitureSpritesById.set(furniture.id, sprite);
       furnitureSpriteScalesById.set(furniture.id, spriteScale);
@@ -1260,10 +1271,7 @@ export class InteriorCutawaySystem {
     }
     furnitureLayer.sort('depth');
 
-    const contextualFurnitureIds = new Set([
-      this.selectedFurnitureId,
-      ...this.currentAssignments.map(({ furnitureId }) => furnitureId),
-    ].filter((id): id is string => Boolean(id)));
+    const contextualFurnitureIds = new Set([...this.selectedFurnitureIds]);
     this.furnitureDomLabels = interior.furniture.flatMap((furniture): CutawayRoomLabel[] => {
       const label = hookFurnitureLabel(furniture, this.locale);
       if (!label || !contextualFurnitureIds.has(furniture.id)) return [];
@@ -1536,7 +1544,7 @@ export class InteriorCutawaySystem {
     if (!input.on || !input.off) return;
     const marquee = this.scene.add.graphics();
     furnitureLayer.add(marquee);
-    let owner: { pointerId: number; start: GridPoint } | undefined;
+    let owner: { pointerId: number; start: GridPoint; previousStatus: CutawayMessageState } | undefined;
     const pointOf = (pointer: unknown): GridPoint => {
       const point = this.pointerScreenPoint(pointer) ?? { x: 0, y: 0 };
       return this.roomPoint(point.x, point.y);
@@ -1561,7 +1569,7 @@ export class InteriorCutawaySystem {
         this.contextMenuPointer = undefined;
         this.syncOverlay();
       }
-      owner = { pointerId: pointerIdOf(pointer), start: point };
+      owner = { pointerId: pointerIdOf(pointer), start: point, previousStatus: { ...this.status } };
       this.setStatus('marqueeSelecting');
     };
     const move = (pointer: unknown): void => {
@@ -1591,13 +1599,30 @@ export class InteriorCutawaySystem {
       this.setStatus('selectionCompleted', { count: this.selectedFurnitureIds.size });
       this.syncOverlay();
     };
+    const cancel = (pointer: unknown): void => {
+      if (!owner || pointerIdOf(pointer) !== owner.pointerId) return;
+      const previousStatus = owner.previousStatus;
+      owner = undefined;
+      marquee.clear();
+      this.contextMenuPointer = undefined;
+      this.status = previousStatus;
+      this.syncOverlay();
+    };
     input.on('pointerdown', down);
     input.on('pointermove', move);
     input.on('pointerup', up);
+    input.on('pointercancel', cancel);
     this.marqueeCleanup = () => {
       input.off?.('pointerdown', down);
       input.off?.('pointermove', move);
       input.off?.('pointerup', up);
+      input.off?.('pointercancel', cancel);
+      if (owner) {
+        this.status = owner.previousStatus;
+        this.contextMenuPointer = undefined;
+      }
+      owner = undefined;
+      marquee.clear();
     };
   }
 
@@ -1825,7 +1850,20 @@ export class InteriorCutawaySystem {
     this.contextMenuSuppressionCleanup?.();
     const canvas = this.scene.game?.canvas;
     if (!canvas || typeof canvas.addEventListener !== 'function') return;
-    const suppress = (event: Event): void => { event.preventDefault(); };
+    const suppress = (event: Event): void => {
+      if (!this.editMode || !this.currentLayout) return;
+      const pointer = event as MouseEvent;
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return;
+      const point = {
+        x: (pointer.clientX - rect.left) / rect.width * WORLD_PIXELS.width,
+        y: (pointer.clientY - rect.top) / rect.height * WORLD_PIXELS.height,
+      };
+      const room = this.reservedEditorLayout(this.currentLayout).room;
+      if (point.x < room.x || point.x > room.x + room.width
+        || point.y < room.y || point.y > room.y + room.height) return;
+      event.preventDefault();
+    };
     canvas.addEventListener('contextmenu', suppress);
     this.contextMenuSuppressionCleanup = () => canvas.removeEventListener('contextmenu', suppress);
   }
@@ -1914,9 +1952,11 @@ export class InteriorCutawaySystem {
     };
   }
 
-  private resizeSelected(interior: InteriorDefinition, layout: CutawayLayout, direction: -1 | 1): void {
+  private resizeSelected(interior: InteriorDefinition, layout: CutawayLayout, direction: -1 | 0 | 1): void {
     if (this.selectedFurnitureIds.size === 0) return;
-    const result = resizeSelectionAtomically(interior, interior.furniture, [...this.selectedFurnitureIds], direction);
+    const result = direction === 0
+      ? resetSelectionScaleAtomically(interior, interior.furniture, [...this.selectedFurnitureIds])
+      : resizeSelectionAtomically(interior, interior.furniture, [...this.selectedFurnitureIds], direction);
     if (result.accepted) this.commitFurnitureMutation(interior, result.layout);
     const selected = result.layout.find(({ id }) => this.selectedFurnitureIds.has(id));
     if (result.accepted) this.setStatus('resizeApplied', {

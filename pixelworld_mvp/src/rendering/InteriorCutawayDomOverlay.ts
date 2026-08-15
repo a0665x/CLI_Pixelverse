@@ -35,12 +35,8 @@ export function selectionCapabilities(selection: readonly FurnitureDefinition[])
 } {
   const ordinaryCount = selection.filter(({ supportedActions, requirementId }) =>
     supportedActions.length === 0 && !requirementId).length;
-  const instanceId = selection[0]?.prefabInstanceId;
-  const oneAtomicSelection = selection.length === 1 || Boolean(
-    instanceId && selection.every(({ prefabInstanceId }) => prefabInstanceId === instanceId),
-  );
   return {
-    canDuplicate: oneAtomicSelection,
+    canDuplicate: selection.length > 0,
     canGroup: ordinaryCount >= 2 && selection.every(({ prefabInstanceId }) => !prefabInstanceId),
   };
 }
@@ -93,7 +89,7 @@ export interface CutawayDomHandlers {
   applyTemplate(): void;
   category(category: ModernOfficeCategory): void;
   page(delta: -1 | 1): void;
-  resize(delta: -1 | 1): void;
+  resize(delta: -1 | 0 | 1): void;
   rotate(delta: -90 | 90): void;
   collect(): void;
   revert(): void;
@@ -123,6 +119,8 @@ export class InteriorCutawayDomOverlay {
   private inspector: HTMLElement | undefined;
   private contextMenu: HTMLElement | undefined;
   private contextMenuReturnFocus: HTMLElement | undefined;
+  private contextMenuMode: 'actions' | 'resize' = 'actions';
+  private contextMenuFocusAction: string | undefined;
   private guidePopover: HTMLElement | undefined;
   private handlers: CutawayDomHandlers | undefined;
   private labelLayer: HTMLDivElement | undefined;
@@ -215,6 +213,7 @@ export class InteriorCutawayDomOverlay {
     const guideHadFocus = Boolean(activeElement && this.guidePopover?.contains(activeElement));
     let shouldRestoreContextFocus = false;
     if (!previousContextOpen && model.contextMenu) {
+      this.contextMenuMode = 'actions';
       this.contextMenuReturnFocus = activeElement && typeof activeElement.focus === 'function'
         ? activeElement
         : this.editButton;
@@ -331,15 +330,18 @@ export class InteriorCutawayDomOverlay {
         const handlers: Record<ContextAction, () => void> = {
           duplicate: () => this.handlers?.duplicate(),
           rotate: () => this.handlers?.rotate(90),
-          resize: () => this.handlers?.resize(1),
+          resize: () => {
+            this.contextMenuMode = 'resize';
+            this.contextMenuFocusAction = 'resize-smaller';
+            if (this.model) this.update(this.model);
+          },
           return: () => this.handlers?.returnToShelf(),
           group: () => this.handlers?.group(),
           dissolve: () => this.handlers?.dissolveGroup(),
         };
-        this.contextMenu.append(...contextActions(model.contextMenu.selection).map((action) => {
+        const makeButton = (action: string, icon: string, label: string, handler: () => void) => {
           const button = document.createElement('button');
-          const label = actionCopy[action];
-          button.type = 'button'; button.textContent = `${icons[action]} ${label}`; button.onclick = handlers[action];
+          button.type = 'button'; button.textContent = `${icon} ${label}`; button.onclick = handler;
           button.dataset.contextAction = action;
           button.setAttribute('role', 'menuitem');
           button.setAttribute('aria-label', label);
@@ -350,9 +352,27 @@ export class InteriorCutawayDomOverlay {
           button.addEventListener('pointerleave', release);
           button.addEventListener('blur', release);
           return button;
-        }));
-        if (focusedAction) {
-          const replacement = this.contextMenu.querySelector<HTMLButtonElement>(`[data-context-action="${focusedAction}"]`);
+        };
+        if (this.contextMenuMode === 'resize') {
+          this.contextMenu.append(
+            makeButton('resize-smaller', '−', actionCopy.smaller, () => this.handlers?.resize(-1)),
+            makeButton('resize-larger', '+', actionCopy.larger, () => this.handlers?.resize(1)),
+            makeButton('resize-reset', '100', actionCopy.resetSize, () => this.handlers?.resize(0)),
+            makeButton('resize-back', '‹', actionCopy.back, () => {
+              this.contextMenuMode = 'actions';
+              this.contextMenuFocusAction = 'resize';
+              if (this.model) this.update(this.model);
+            }),
+          );
+        } else {
+          this.contextMenu.append(...contextActions(model.contextMenu.selection).map((action) => (
+            makeButton(action, icons[action], actionCopy[action], handlers[action])
+          )));
+        }
+        const requestedContextFocus = this.contextMenuFocusAction ?? focusedAction;
+        this.contextMenuFocusAction = undefined;
+        if (requestedContextFocus) {
+          const replacement = this.contextMenu.querySelector<HTMLButtonElement>(`[data-context-action="${requestedContextFocus}"]`);
           replacement?.focus();
           restoredContextFocus = Boolean(replacement);
         }
@@ -364,7 +384,7 @@ export class InteriorCutawayDomOverlay {
       }
       if (previousContextOpen && !model.contextMenu) {
         shouldRestoreContextFocus = true;
-      } else if (focusedAction && !restoredContextFocus) {
+      } else if (focusedAction && !restoredContextFocus && !this.contextMenuFocusAction) {
         shouldRestoreContextFocus = true;
       }
     }
@@ -446,7 +466,7 @@ export class InteriorCutawayDomOverlay {
       label.className = `cutaway-room-label cutaway-room-label--${item.kind}`;
       label.dataset.labelId = item.id;
       label.textContent = item.text;
-      label.tabIndex = 0;
+      label.tabIndex = item.kind === 'agent' ? 0 : -1;
       label.setAttribute('aria-label', item.text.replace(/\n/g, ' · '));
       label.dataset.expanded = String(Boolean(item.selected) || Boolean(this.model?.guideMode));
       return { item, label };
@@ -524,6 +544,8 @@ export class InteriorCutawayDomOverlay {
     this.labelLayer = undefined;
     this.contextMenu = undefined;
     this.contextMenuReturnFocus = undefined;
+    this.contextMenuMode = 'actions';
+    this.contextMenuFocusAction = undefined;
     this.guidePopover = undefined;
     this.handlers = undefined;
     this.model = undefined;

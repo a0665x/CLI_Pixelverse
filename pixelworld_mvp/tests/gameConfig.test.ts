@@ -96,6 +96,8 @@ describe('fixed village game config', () => {
   it('lets contained expanded room labels wrap without overflow truncation', () => {
     expect(styles).toMatch(/\.cutaway-room-labels\s*\{[^}]*overflow:\s*visible;/s);
     expect(styles).toMatch(/\.cutaway-room-label:hover[^{}]*\{[^}]*overflow:\s*visible;[^}]*overflow-wrap:\s*anywhere;/s);
+    expect(styles).toMatch(/\.cutaway-room-label--hook\s*\{[^}]*pointer-events:\s*none;/s);
+    expect(styles).toMatch(/\.cutaway-room-label--agent\s*\{[^}]*pointer-events:\s*auto;/s);
   });
 
   it('makes every contextual glass surface opaque when transparency is reduced', () => {

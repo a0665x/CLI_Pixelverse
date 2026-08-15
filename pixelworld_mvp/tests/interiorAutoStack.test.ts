@@ -26,6 +26,16 @@ describe('automatic interior stacking', () => {
     expect(stackRoleForFurniture(furniture('chair', 'chair', 101))).toBe('free');
   });
 
+  it('never treats sofas or beds as automatic stack supports', () => {
+    const sofa = furniture('sofa', 'sofa', 200);
+    const bed = furniture('bed', 'bed', 201);
+    const monitor = furniture('monitor-over-rest', 'display', 129);
+
+    expect(stackRoleForFurniture(sofa)).toBe('free');
+    expect(stackRoleForFurniture(bed)).toBe('free');
+    expect(resolveAutomaticSupport(monitor, [sofa, bed])).toEqual({ item: monitor });
+  });
+
   it('orders rugs below furniture, surface objects above supports, then uses the foot baseline', () => {
     const rug = { ...furniture('rug', 'decor', 1, { x: 4, y: 8 }), layer: 'floor' as const };
     const desk = furniture('desk', 'desk', 247, { x: 4, y: 6 });

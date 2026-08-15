@@ -114,6 +114,6 @@ describe('complete GBA village hook workflow', () => {
     expect(assignInteriorOccupants(room, [{
       agentId: 'main', role: 'main', buildingId: 'player-house', action: route.action,
       eventKind: 'tool', eventId: 'custom-semantic-work',
-    }], 'player-house')[0]).toMatchObject({ furnitureId: 'player-desk', point: { x: 4, y: 5 } });
+    }], 'player-house')[0]).toMatchObject({ furnitureId: 'player-desk', point: { x: 4, y: 4 } });
   });
 });

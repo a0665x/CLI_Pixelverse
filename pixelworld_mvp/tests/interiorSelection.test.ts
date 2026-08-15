@@ -4,6 +4,7 @@ import { INTERIOR_DEFINITIONS } from '../src/world/interiorDefinitions';
 import { officeLayoutIssues } from '../src/rendering/prefabGeometry';
 import { transformedAlphaBounds } from '../src/rendering/interiorPlacement';
 import { stackDependencies } from '../src/rendering/interiorAutoStack';
+import * as interiorSelectionModule from '../src/rendering/interiorSelection';
 import {
   createFurniturePrefab,
   duplicateSelection,
@@ -447,6 +448,89 @@ describe('interior marquee selection and prefabs', () => {
     });
     expect(copy[0]!.interactionPoint!.y - copy[0]!.point.y).toBe(1);
     expect(duplicated.selectedIds).toEqual(copy.map(({ id }) => id));
+  });
+
+  it('duplicates an arbitrary ungrouped multi-selection atomically with fresh IDs', () => {
+    const first = { ...furniture('loose-a', 98, 3, 3), interactionPoint: { x: 3, y: 4 } };
+    const second = furniture('loose-b', 129, 5, 3);
+
+    const duplicated = duplicateSelection(room, [first, second], [first.id, second.id], 4_321);
+
+    expect(duplicated.accepted).toBe(true);
+    expect(duplicated.layout).toHaveLength(4);
+    const copy = duplicated.layout.slice(2);
+    expect(duplicated.selectedIds).toEqual(copy.map(({ id }) => id));
+    expect(new Set(copy.map(({ id }) => id)).size).toBe(2);
+    expect(copy.every(({ id }) => id !== first.id && id !== second.id)).toBe(true);
+    expect(copy.every(({ prefabInstanceId }) => prefabInstanceId === undefined)).toBe(true);
+    expect(copy[1]!.point.x - copy[0]!.point.x).toBe(2);
+    expect(copy[0]!.interactionPoint!.y - copy[0]!.point.y).toBe(1);
+  });
+
+  it('normalizes Hook navigation metadata in an arbitrary multi-selection copy', () => {
+    const hook = {
+      ...furniture('loose-hook', 98, 3, 3, ['terminal']),
+      requirementId: 'maker:terminal', interactionPoint: { x: 3, y: 4 }, blocksNavigation: true,
+    };
+    const ordinary = furniture('loose-neighbor', 98, 5, 3);
+
+    const duplicated = duplicateSelection(room, [hook, ordinary], [hook.id, ordinary.id], 5_432);
+
+    expect(duplicated.accepted).toBe(true);
+    const hookCopy = duplicated.layout.find(({ id }) => id === 'duplicate-5432-loose-hook')!;
+    expect(hookCopy).toMatchObject({ supportedActions: [], icon: 'generic', blocksNavigation: false });
+    expect(hookCopy).not.toHaveProperty('requirementId');
+    expect(hookCopy).not.toHaveProperty('interactionPoint');
+  });
+
+  it('re-resolves copied surface objects that move off an external support', () => {
+    const desk = {
+      ...furniture('external-narrow-desk', 193, 4, 4), kind: 'desk' as const,
+      layer: 'furniture' as const, scale: 0.75 as const, blocksNavigation: false,
+    };
+    const deskBounds = transformedAlphaBounds(desk);
+    const surfaceX = deskBounds.x + deskBounds.width - 0.55;
+    const surfaceA = {
+      ...furniture('external-surface-a', 129, surfaceX, 4), kind: 'display' as const,
+      prefabInstanceId: 'external-surface-group', supportedByIds: [desk.id],
+    };
+    const surfaceB = {
+      ...furniture('external-surface-b', 141, surfaceX, 4.25), kind: 'display' as const,
+      prefabInstanceId: 'external-surface-group', supportedByIds: [desk.id],
+    };
+
+    const duplicated = duplicateSelection(
+      { ...room, width: 18, height: 12 },
+      [desk, surfaceA, surfaceB],
+      [surfaceA.id],
+      7_654,
+    );
+
+    expect(duplicated.accepted).toBe(true);
+    const copies = duplicated.layout.filter(({ id }) => duplicated.selectedIds.includes(id));
+    expect(copies).toHaveLength(2);
+    expect(copies.every(({ supportedByIds }) => !supportedByIds?.includes(desk.id))).toBe(true);
+    expect(stackDependencies([desk.id], duplicated.layout)).toEqual([desk.id, surfaceA.id, surfaceB.id]);
+  });
+
+  it('resets a uniformly scaled selection to 100% around its shared anchor', () => {
+    const resetSelectionScaleAtomically = (
+      interiorSelectionModule as unknown as {
+        resetSelectionScaleAtomically?: typeof resizeSelectionAtomically;
+      }
+    ).resetSelectionScaleAtomically;
+    expect(resetSelectionScaleAtomically).toBeTypeOf('function');
+    if (!resetSelectionScaleAtomically) return;
+    const grouped = [
+      { ...furniture('reset-a', 98, 3.75, 4), prefabInstanceId: 'reset-group', scale: 1.25 as const },
+      { ...furniture('reset-b', 129, 6.25, 4), prefabInstanceId: 'reset-group', scale: 1.25 as const },
+    ];
+
+    const reset = resetSelectionScaleAtomically(room, grouped, [grouped[0]!.id], 1 as never);
+
+    expect(reset.accepted).toBe(true);
+    expect(reset.layout.map(({ scale }) => scale)).toEqual([1, 1]);
+    expect(reset.layout.map(({ point }) => point)).toEqual([{ x: 4, y: 4 }, { x: 6, y: 4 }]);
   });
 
   it('allocates collision-free IDs for repeated singleton and grouped duplicates', () => {

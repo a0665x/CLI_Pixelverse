@@ -324,6 +324,39 @@ export function resizeSelectionAtomically(
   });
 }
 
+export function resetSelectionScaleAtomically(
+  room: InteriorDefinition,
+  layout: readonly FurnitureDefinition[],
+  selectedIds: readonly string[],
+): SelectionMutationResult {
+  const selected = new Set(expandSelectionClosure(layout, selectedIds));
+  const items = layout.filter(({ id }) => selected.has(id));
+  if (items.length === 0) return { accepted: false, layout: layout.map(cloneFurniture) };
+  const currentScale = normalizeFurnitureScale(items[0]!.scale);
+  if (items.some((item) => normalizeFurnitureScale(item.scale) !== currentScale)) {
+    return { accepted: false, layout: layout.map(cloneFurniture) };
+  }
+  if (currentScale === 1) return { accepted: true, layout: layout.map(cloneFurniture) };
+  const anchor = selectionAnchor(items);
+  const ratio = 1 / currentScale;
+  return transformSelectionAtomically(room, layout, [...selected], (item) => {
+    const point = {
+      x: anchor.x + (item.point.x - anchor.x) * ratio,
+      y: anchor.y + (item.point.y - anchor.y) * ratio,
+    };
+    const interactionPoint = item.interactionPoint ? {
+      x: anchor.x + (item.interactionPoint.x - anchor.x) * ratio,
+      y: anchor.y + (item.interactionPoint.y - anchor.y) * ratio,
+    } : undefined;
+    return {
+      ...item,
+      point,
+      scale: 1,
+      ...(interactionPoint ? { interactionPoint } : {}),
+    };
+  });
+}
+
 const LAYERS: readonly FurnitureLayer[] = ['floor', 'furniture', 'surface', 'wall'];
 
 export function shiftSelectionLayer(
@@ -437,48 +470,84 @@ export function duplicateFurniture(
   return { accepted: false, layout: layout.map(cloneFurniture), selectedIds: [source.id] };
 }
 
-const oneAtomicSelection = (
-  layout: readonly FurnitureDefinition[],
-  selectedIds: readonly string[],
-): FurnitureDefinition[] => {
-  const ids = expandSelectionClosure(layout, selectedIds);
-  const items = layout.filter(({ id }) => ids.includes(id));
-  if (items.length === 1) return items;
-  const instanceId = items[0]?.prefabInstanceId;
-  return instanceId && items.every(({ prefabInstanceId }) => prefabInstanceId === instanceId) ? items : [];
-};
-
 export function duplicateSelection(
   room: InteriorDefinition,
   layout: readonly FurnitureDefinition[],
   selectedIds: readonly string[],
   now: number = Date.now(),
 ): DuplicateFurnitureResult {
-  const source = oneAtomicSelection(layout, selectedIds);
+  const sourceIds = new Set(expandSelectionClosure(layout, selectedIds));
+  const source = layout.filter(({ id }) => sourceIds.has(id));
   if (source.length === 0) return { accepted: false, layout: layout.map(cloneFurniture), selectedIds: [] };
   if (source.length === 1 && !source[0]!.prefabInstanceId) return duplicateFurniture(room, layout, source[0]!.id, now);
 
-  const sourceInstanceId = source[0]!.prefabInstanceId!;
-  let suffix = 0;
-  let instanceId = `prefab-${now}-duplicate-${sourceInstanceId}`;
   const occupiedInstanceIds = new Set(layout.map(({ prefabInstanceId }) => prefabInstanceId));
   const occupiedItemIds = new Set(layout.map(({ id }) => id));
-  while (occupiedInstanceIds.has(instanceId)
-    || source.some((_, index) => occupiedItemIds.has(`${instanceId}-${index}`))) {
-    instanceId = `prefab-${now}-duplicate-${sourceInstanceId}-${++suffix}`;
+  const copiedInstanceBySource = new Map<string, string>();
+  for (const sourceInstanceId of new Set(source
+    .map(({ prefabInstanceId }) => prefabInstanceId)
+    .filter((id): id is string => Boolean(id)))) {
+    const members = source.filter(({ prefabInstanceId }) => prefabInstanceId === sourceInstanceId);
+    const base = `prefab-${now}-duplicate-${sourceInstanceId}`;
+    let instanceId = base;
+    let suffix = 0;
+    while (occupiedInstanceIds.has(instanceId)
+      || members.some((_, index) => occupiedItemIds.has(`${instanceId}-${index}`))) {
+      instanceId = `${base}-${++suffix}`;
+    }
+    copiedInstanceBySource.set(sourceInstanceId, instanceId);
+    occupiedInstanceIds.add(instanceId);
+    members.forEach((_, index) => occupiedItemIds.add(`${instanceId}-${index}`));
   }
-  const copiedIds = source.map((item, index) => `${instanceId}-${index}`);
+  const copiedIds = source.map((item) => {
+    if (item.prefabInstanceId) {
+      const members = source.filter(({ prefabInstanceId }) => prefabInstanceId === item.prefabInstanceId);
+      return `${copiedInstanceBySource.get(item.prefabInstanceId)!}-${members.indexOf(item)}`;
+    }
+    const base = `duplicate-${now}-${item.id}`;
+    let id = base;
+    let suffix = 0;
+    while (occupiedItemIds.has(id)) id = `${base}-${++suffix}`;
+    occupiedItemIds.add(id);
+    return id;
+  });
   const copiedIdBySourceId = new Map(source.map((item, index) => [item.id, copiedIds[index]!]));
   for (const offset of duplicateOffsets()) {
-    const copied = source.map((item, index) => ({
-      ...translateFurniture(item, offset),
-      id: copiedIds[index]!,
-      prefabInstanceId: instanceId,
-      ...(item.supportedByIds ? {
-        supportedByIds: item.supportedByIds.map((id) => copiedIdBySourceId.get(id) ?? id),
-      } : {}),
-    }));
+    const copied = source.map((item, index): FurnitureDefinition => {
+      const translated = translateFurniture(item, offset);
+      const copy: FurnitureDefinition = {
+        ...translated,
+        id: copiedIds[index]!,
+        ...(item.supportedByIds ? {
+          supportedByIds: item.supportedByIds.map((id) => copiedIdBySourceId.get(id) ?? id),
+        } : {}),
+      };
+      if (item.prefabInstanceId) {
+        copy.prefabInstanceId = copiedInstanceBySource.get(item.prefabInstanceId)!;
+      } else {
+        delete copy.prefabInstanceId;
+      }
+      if (item.prefabInstanceId) return copy;
+      if (item.supportedActions.length === 0 && !item.requirementId) return copy;
+      const {
+        requirementId: _requirementId,
+        interactionPoint: _interactionPoint,
+        blocksNavigation: _blocksNavigation,
+        ...ordinaryCopy
+      } = copy;
+      const normalizedCopy: FurnitureDefinition = {
+        ...ordinaryCopy, supportedActions: [], icon: 'generic',
+      };
+      normalizedCopy.blocksNavigation = furnitureBlocksNavigation(normalizedCopy);
+      return normalizedCopy;
+    });
     const candidate = [...layout.map(cloneFurniture), ...copied];
+    for (let index = layout.length; index < candidate.length; index += 1) {
+      const item = candidate[index]!;
+      if (stackRoleForFurniture(item) !== 'surface') continue;
+      candidate[index] = preserveContainingSupport(item, item, candidate)
+        ?? resolveAutomaticSupport(item, candidate).item;
+    }
     const copiedSet = new Set(copiedIds);
     if (!selectedMutationIsValid(room, layout, candidate, copiedSet)) continue;
     return { accepted: true, layout: candidate, selectedIds: copiedIds };

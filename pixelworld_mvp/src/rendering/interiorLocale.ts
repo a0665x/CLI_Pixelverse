@@ -14,11 +14,14 @@ export const interiorEditorCopy = (locale: unknown): InteriorEditorCopy =>
   editorChrome[normalizeVillageLocale(locale)];
 
 export const contextActionCopy = {
-  'zh-TW': { menu: '家具操作', duplicate: '複製', rotate: '旋轉', resize: '尺寸', return: '收回', group: '群組', dissolve: '解散' },
-  'en-US': { menu: 'Furniture actions', duplicate: 'Duplicate', rotate: 'Rotate', resize: 'Resize', return: 'Return', group: 'Group', dissolve: 'Dissolve' },
-  'ja-JP': { menu: '家具の操作', duplicate: '複製', rotate: '回転', resize: 'サイズ', return: '収納', group: 'グループ', dissolve: '解除' },
-  'ko-KR': { menu: '가구 작업', duplicate: '복제', rotate: '회전', resize: '크기', return: '회수', group: '그룹', dissolve: '해제' },
-} as const satisfies Record<VillageLocale, Record<'menu' | 'duplicate' | 'rotate' | 'resize' | 'return' | 'group' | 'dissolve', string>>;
+  'zh-TW': { menu: '家具操作', duplicate: '複製', rotate: '旋轉', resize: '尺寸', return: '收回', group: '群組', dissolve: '解散', smaller: '縮小', larger: '放大', resetSize: '重設為 100%', back: '返回' },
+  'en-US': { menu: 'Furniture actions', duplicate: 'Duplicate', rotate: 'Rotate', resize: 'Resize', return: 'Return', group: 'Group', dissolve: 'Dissolve', smaller: 'Smaller', larger: 'Larger', resetSize: 'Reset 100%', back: 'Back' },
+  'ja-JP': { menu: '家具の操作', duplicate: '複製', rotate: '回転', resize: 'サイズ', return: '収納', group: 'グループ', dissolve: '解除', smaller: '縮小', larger: '拡大', resetSize: '100% に戻す', back: '戻る' },
+  'ko-KR': { menu: '가구 작업', duplicate: '복제', rotate: '회전', resize: '크기', return: '회수', group: '그룹', dissolve: '해제', smaller: '축소', larger: '확대', resetSize: '100%로 재설정', back: '뒤로' },
+} as const satisfies Record<VillageLocale, Record<
+  'menu' | 'duplicate' | 'rotate' | 'resize' | 'return' | 'group' | 'dissolve'
+  | 'smaller' | 'larger' | 'resetSize' | 'back', string
+>>;
 
 export const interiorContextActionCopy = (locale: unknown) =>
   contextActionCopy[normalizeVillageLocale(locale)];

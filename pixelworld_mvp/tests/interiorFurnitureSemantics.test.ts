@@ -101,7 +101,7 @@ describe('interior furniture semantics', () => {
     expect(candidates.map(semanticForFurniture)).toEqual([undefined, undefined, undefined, undefined]);
   });
 
-  it('chooses the nearest reachable adjacent station and rejects a blocked nearer item', () => {
+  it('chooses the nearest reachable adjacent fallback when a persisted anchor is unreachable', () => {
     const blockedDesk = furniture('a-blocked-near', 'desk', { x: 4, y: 2 }, {
       interactionPoint: { x: 4, y: 3 },
     });
@@ -120,7 +120,59 @@ describe('interior furniture semantics', () => {
       { x: 4, y: 6 },
     );
 
-    expect(station).toEqual({ furnitureId: 'z-reachable-far', point: { x: 1, y: 2 } });
+    expect(station).toEqual({ furnitureId: 'a-blocked-near', point: { x: 3, y: 2 } });
+  });
+
+  it('falls back to a reachable adjacent cell when a persisted explicit point is outside the room', () => {
+    const desk = furniture('edge-work-desk', 'desk', { x: 1, y: 5 }, {
+      interactionPoint: { x: 1, y: 9 },
+    });
+    const candidateRoom = room([desk]);
+
+    const station = nearestSemanticStation(candidateRoom, 'terminal', { x: 7, y: 5 });
+
+    expect(station?.furnitureId).toBe(desk.id);
+    expect(station?.point.x).toBeGreaterThanOrEqual(0);
+    expect(station?.point.x).toBeLessThan(candidateRoom.width);
+    expect(station?.point.y).toBeGreaterThanOrEqual(0);
+    expect(station?.point.y).toBeLessThan(candidateRoom.height);
+    expect(station?.point).not.toEqual(desk.interactionPoint);
+  });
+
+  it('falls back when an in-room explicit point is blocked by unrelated furniture', () => {
+    const desk = furniture('blocked-anchor-desk', 'desk', { x: 4, y: 2 }, {
+      interactionPoint: { x: 4, y: 3 },
+    });
+    const blocker = furniture('anchor-blocker', 'decor', { x: 4, y: 3 });
+
+    const station = nearestSemanticStation(room([desk, blocker]), 'terminal', { x: 4, y: 6 });
+
+    expect(station?.furnitureId).toBe(desk.id);
+    expect(station?.point).not.toEqual(desk.interactionPoint);
+  });
+
+  it('falls back when a reachable persisted point is not on or adjacent to its furniture', () => {
+    const desk = furniture('far-anchor-desk', 'desk', { x: 1, y: 1 }, {
+      interactionPoint: { x: 7, y: 5 },
+    });
+
+    const station = nearestSemanticStation(room([desk]), 'terminal', { x: 8, y: 6 });
+
+    expect(station?.furnitureId).toBe(desk.id);
+    expect(station?.point).not.toEqual(desk.interactionPoint);
+    expect(Math.abs(station!.point.x - desk.point.x) + Math.abs(station!.point.y - desk.point.y)).toBe(1);
+  });
+
+  it('replaces a reachable on-footprint persisted point with an adjacent candidate', () => {
+    const desk = furniture('on-footprint-desk', 'desk', { x: 4, y: 2 }, {
+      interactionPoint: { x: 4, y: 2 },
+    });
+
+    const station = nearestSemanticStation(room([desk]), 'terminal', { x: 4, y: 6 });
+
+    expect(station?.furnitureId).toBe(desk.id);
+    expect(station?.point).not.toEqual(desk.interactionPoint);
+    expect(Math.abs(station!.point.x - desk.point.x) + Math.abs(station!.point.y - desk.point.y)).toBe(1);
   });
 
   it('uses furniture ID as a stable tie-breaker for equally near stations', () => {
@@ -142,10 +194,12 @@ describe('interior furniture semantics', () => {
     ];
     const narrowRoom = { ...room([station, ...barrier]), width: 3, height: 5 };
 
-    expect(nearestSemanticStation(narrowRoom, 'terminal', { x: 1, y: 4 })).toBeUndefined();
+    expect(nearestSemanticStation(narrowRoom, 'terminal', { x: 1, y: 4 })).toEqual({
+      furnitureId: 'selected-desk', point: { x: 1, y: 3 },
+    });
   });
 
-  it('opens only an on-footprint interaction target while keeping the rest of a 1x3 station blocked', () => {
+  it('replaces an on-footprint target while keeping the rest of a 1x3 station blocked', () => {
     const vertical = (id: string, x: number): FurnitureDefinition => furniture(id, 'decor', { x, y: 1 }, {
       assetId: 207, scale: 1.5, visualOffset: { x: -1.5 / 16, y: 2.5 / 16 },
       layer: 'wall', ...(id === 'station' ? { semantic: 'work' as const } : {}),
@@ -159,7 +213,9 @@ describe('interior furniture semantics', () => {
     };
     const origin = { x: 1, y: 4 };
 
-    expect(nearestSemanticStation(barrierRoom, 'terminal', origin)).toBeUndefined();
+    expect(nearestSemanticStation(barrierRoom, 'terminal', origin)).toEqual({
+      furnitureId: 'station', point: { x: 1, y: 3 },
+    });
 
     station.interactionPoint = { x: 1, y: Math.max(...occupied.map(({ y }) => y)) + 1 };
     expect(nearestSemanticStation(barrierRoom, 'terminal', origin)).toEqual({

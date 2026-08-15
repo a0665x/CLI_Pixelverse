@@ -4,11 +4,18 @@ import { interiorInteractionPoint } from '../src/rendering/prefabGeometry';
 import { interiorPath } from '../src/rendering/interiorMotion';
 import { INTERIOR_DEFINITIONS } from '../src/world/interiorDefinitions';
 import { semanticForFurniture } from '../src/rendering/interiorFurnitureSemantics';
+import { navigationCells } from '../src/rendering/interiorPlacement';
 
 const snapshot = (overrides: Partial<InteriorAgentSnapshot>): InteriorAgentSnapshot => ({
   agentId: 'main', role: 'main', buildingId: 'rest-cabin', action: 'rest',
   eventKind: 'idle', eventId: 'idle-1', ...overrides,
 });
+
+const isAdjacentToFurniture = (point: { x: number; y: number }, furniture: Parameters<typeof navigationCells>[0]) => (
+  navigationCells({ ...furniture, blocksNavigation: true }).some((cell) => (
+    Math.abs(cell.x - Math.round(point.x)) + Math.abs(cell.y - Math.round(point.y)) === 1
+  ))
+);
 
 describe('interior occupant assignment', () => {
   it('routes rest-category actions to the nearest compatible seat', () => {
@@ -141,13 +148,14 @@ describe('interior occupant assignment', () => {
       buildingId: 'tool-smithy', action: 'terminal', eventKind: 'tool', eventId: 'tool-anchor',
     })], 'tool-smithy')[0]!;
     const furniture = maker.furniture.find(({ id }) => id === assigned.furnitureId)!;
-    const anchor = interiorInteractionPoint(maker, furniture);
+    const authoredAnchor = interiorInteractionPoint(maker, furniture);
     const door = { x: Math.floor(maker.width / 2), y: maker.height - 1 };
-    const path = interiorPath(maker, door, anchor, furniture.id);
+    const path = interiorPath(maker, door, assigned.point, furniture.id);
 
     expect(furniture.supportedActions).toContain('terminal');
-    expect(assigned.point).toEqual(anchor);
-    expect(path.at(-1)).toEqual(anchor);
+    expect(assigned.point).not.toEqual(authoredAnchor);
+    expect(isAdjacentToFurniture(assigned.point, furniture)).toBe(true);
+    expect(path.at(-1)).toEqual(assigned.point);
   });
 
   it('uses the authored point of the selected item when same-action terminals coexist', () => {
@@ -174,7 +182,9 @@ describe('interior occupant assignment', () => {
 
     expect(assignments).toHaveLength(2);
     assignments.forEach((assignment) => {
-      expect(assignment.point).toEqual(room.furniture.find(({ id }) => id === assignment.furnitureId)!.interactionPoint);
+      const furniture = room.furniture.find(({ id }) => id === assignment.furnitureId)!;
+      expect(assignment.point).not.toEqual(furniture.interactionPoint);
+      expect(isAdjacentToFurniture(assignment.point, furniture)).toBe(true);
     });
   });
 
@@ -199,7 +209,7 @@ describe('interior occupant assignment', () => {
     expect(assignInteriorOccupants(room, [snapshot({
       buildingId: 'custom-house', action: 'terminal', eventId: 'semantic-work',
     })], 'custom-house')[0]).toMatchObject({
-      furnitureId: 'near-custom-desk', point: { x: 4, y: 5 },
+      furnitureId: 'near-custom-desk', point: { x: 4, y: 4 },
     });
   });
 
@@ -238,8 +248,9 @@ describe('interior occupant assignment', () => {
       supportedActions: [], icon: 'generic' as const, blocksNavigation: true,
     };
     const blocked = assignInteriorOccupants({ ...baseRoom, furniture: [station, unrelated] }, [work], 'test-room')[0]!;
-    expect(blocked.furnitureId).toBeUndefined();
-    expect(blocked.point).toEqual({ x: 3, y: 5 });
-    expect(blocked.missingSemantic).toBe('work');
+    expect(blocked.furnitureId).toBe(station.id);
+    expect(blocked.point).not.toEqual(station.interactionPoint);
+    expect(isAdjacentToFurniture(blocked.point, station)).toBe(true);
+    expect(blocked.missingSemantic).toBeUndefined();
   });
 });

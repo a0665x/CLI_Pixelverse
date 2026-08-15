@@ -7,7 +7,6 @@ export type StackRoleFurniture = Pick<FurnitureDefinition, 'kind' | 'supportedAc
   & Partial<Pick<FurnitureDefinition, 'assetId' | 'layer' | 'zIndex'>>;
 
 const SUPPORT_KINDS = new Set<FurnitureDefinition['kind']>([
-  'sofa', 'bed',
   'bookcase', 'computer', 'map-table', 'reading-desk', 'workbench', 'repair-table',
   'dispatch-pod', 'radio-console', 'response-desk', 'meeting-table', 'desk', 'cabinet',
   'beverage-station',
@@ -19,6 +18,7 @@ const SURFACE_KINDS = new Set<FurnitureDefinition['kind']>([
 
 export function stackRoleForFurniture(item: StackRoleFurniture): StackRole {
   if (item.layer === 'floor') return 'floor';
+  if (item.kind === 'sofa' || item.kind === 'bed') return 'free';
   const asset = resolvedFurnitureAsset(item);
   if (item.layer === 'surface') return 'surface';
   if (SUPPORT_KINDS.has(item.kind)) return 'support';

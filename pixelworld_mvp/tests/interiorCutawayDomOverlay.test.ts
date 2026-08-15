@@ -159,10 +159,53 @@ describe('InteriorCutawayDomOverlay context menu', () => {
     }
   });
 
+  it('opens a compact size submenu with smaller, larger, reset, and back actions', () => {
+    const dom = harness();
+    try {
+      const layout = cutawayLayoutForViewport(1_280, 720);
+      const editorLayout = editorLayoutForCutaway(layout, {
+        editMode: true, catalogExpanded: false, inspectorExpanded: false,
+      });
+      dom.overlay.setLocale('en-US');
+      dom.overlay.open(layout, model({
+        editorLayout,
+        contextMenu: {
+          pointer: { x: editorLayout.room.x + 12, y: editorLayout.room.y + 12 },
+          selection: { itemIds: ['chair'], grouped: false },
+        },
+      }), dom.handlers);
+
+      dom.contextMenu.children.find(({ dataset }) => dataset.contextAction === 'resize')!.click();
+
+      expect(dom.handlers.resize).not.toHaveBeenCalled();
+      expect(dom.contextMenu.children.map(({ dataset }) => dataset.contextAction)).toEqual([
+        'resize-smaller', 'resize-larger', 'resize-reset', 'resize-back',
+      ]);
+      expect(dom.contextMenu.children.map((button) => button.getAttribute('aria-label'))).toEqual([
+        'Smaller', 'Larger', 'Reset 100%', 'Back',
+      ]);
+      dom.contextMenu.children[0]!.click();
+      dom.contextMenu.children[1]!.click();
+      dom.contextMenu.children[2]!.click();
+      expect((dom.handlers.resize as ReturnType<typeof vi.fn>).mock.calls.map(([direction]) => direction))
+        .toEqual([-1, 1, 0]);
+
+      dom.contextMenu.children[3]!.click();
+      expect(dom.contextMenu.children.map(({ dataset }) => dataset.contextAction))
+        .toEqual(['duplicate', 'rotate', 'resize', 'return']);
+      expect(dom.activeElement?.dataset.contextAction).toBe('resize');
+    } finally {
+      dom.overlay.destroy(); vi.unstubAllGlobals();
+    }
+  });
+
   it('provides every context action label in all four locales', () => {
     expect(Object.keys(contextActionCopy)).toEqual(['zh-TW', 'en-US', 'ja-JP', 'ko-KR']);
     for (const copy of Object.values(contextActionCopy)) {
-      expect(Object.keys(copy)).toEqual(['menu', 'duplicate', 'rotate', 'resize', 'return', 'group', 'dissolve']);
+      expect(Object.keys(copy)).toEqual([
+        'menu', 'duplicate', 'rotate', 'resize', 'return', 'group', 'dissolve',
+        'smaller', 'larger', 'resetSize', 'back',
+      ]);
       expect(Object.values(copy).every(Boolean)).toBe(true);
     }
   });
