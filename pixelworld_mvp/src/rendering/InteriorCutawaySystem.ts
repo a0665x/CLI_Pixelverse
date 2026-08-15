@@ -1183,6 +1183,11 @@ export class InteriorCutawaySystem {
         const capture = this.furnitureDragCapture;
         if (!capture || capture.furnitureId !== furniture.id || capture.pointerId !== pointerIdOf(pointer)) return;
         const mutation = this.currentDragMutation;
+        if (!mutation) {
+          clearFurnitureDrag();
+          this.syncOverlay();
+          return;
+        }
         const accepted = mutation?.accepted === true;
         const diagnostic = !accepted && this.currentDragCandidate?.diagnostic === 'valid'
           ? 'outside-room'

@@ -1948,6 +1948,41 @@ describe('InteriorCutawaySystem', () => {
     expect(room.furniture.find(({ id }) => id === furniture.id)?.point).toEqual(furniture.point);
   });
 
+  it('treats a selection-only drag lifecycle without movement as a plain selection', () => {
+    const fake = fakeScene();
+    const cutaway = new InteriorCutawaySystem(fake.scene as never, WORLD_DEFINITION, () => ({ width: 1_280, height: 720 }));
+    const capture = captureCutawayHandlers(cutaway);
+    cutaway.open('rest-cabin');
+    capture.handlers().toggleEdit();
+    const furniture = {
+      id: 'selection-only-item', kind: 'plant' as const, point: { x: 6, y: 4 }, facing: 'up' as const,
+      supportedActions: [], icon: 'generic' as const, assetId: 98, scale: 1 as const,
+      rotation: 0 as const, blocksNavigation: false,
+    };
+    const room: InteriorDefinition = {
+      id: 'rest-cabin', label: 'Selection-only lifecycle', width: 14, height: 9,
+      floor: 'wood', wall: 'cream', furniture: [furniture], overflow: [],
+    };
+    const internal = cutaway as unknown as {
+      activeDefinition: InteriorDefinition;
+      activeInterior: InteriorDefinition;
+      renderFurniture(interior: InteriorDefinition, layout: ReturnType<typeof cutawayLayoutForViewport>): void;
+    };
+    internal.activeDefinition = room;
+    internal.activeInterior = room;
+    internal.renderFurniture(room, cutawayLayoutForViewport(1_280, 720));
+    const sprite = fake.objects.find(({ texture, interactive, destroyed, depth }) =>
+      texture === 'modern-office-v1.2-single-98' && interactive && !destroyed && depth > 0)!;
+
+    const pointer = pointerAt(sprite.x, sprite.y);
+    sprite.emit('pointerdown', pointer);
+    sprite.emit('dragstart', pointer);
+    sprite.emit('dragend', pointer);
+
+    expect(capture.model()).toMatchObject({ statusId: 'editingEnabled', selectedCount: 1 });
+    expect(room.furniture).toEqual([furniture]);
+  });
+
   it('retains an off-center grab vector through camera and root transforms', () => {
     const fake = fakeScene();
     fake.scene.cameras.main.scrollX = 35;
