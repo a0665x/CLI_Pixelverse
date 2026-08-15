@@ -1,6 +1,10 @@
 import re
+import shutil
+import subprocess
 from html.parser import HTMLParser
 from pathlib import Path
+
+import pytest
 
 
 class DashboardParser(HTMLParser):
@@ -140,7 +144,7 @@ def test_map_first_dashboard_keeps_live_state_outside_the_optional_card():
 
     card = parser.elements_by_id["dashboard-card"]
     assert "hidden" in card["attributes"]
-    assert card["attributes"].get("aria-live") == "polite"
+    assert card["attributes"].get("aria-live") is None
 
 
 def test_map_first_card_overlays_the_map_and_offers_paginated_discoverable_controls():
@@ -172,6 +176,65 @@ def test_map_first_card_overlays_the_map_and_offers_paginated_discoverable_contr
     assert "overflow: scroll" not in card_css
     assert '[data-tooltip]:hover::after' in html
     assert '[data-tooltip]:focus-visible::after' in html
+
+
+def test_dashboard_card_uses_a_dedicated_live_status_and_bounded_accessible_rows():
+    html = Path("public/index.html").read_text(encoding="utf-8")
+    app = Path("public/app.mjs").read_text(encoding="utf-8")
+    parser = DashboardParser()
+    parser.feed(html)
+
+    card = parser.elements_by_id["dashboard-card"]
+    assert card["attributes"].get("aria-live") is None
+    live = parser.elements_by_id["dashboard-card-live"]
+    assert live["attributes"].get("role") == "status"
+    assert live["attributes"].get("aria-live") == "polite"
+    assert live["attributes"].get("aria-atomic") == "true"
+    assert ".dashboard-card-item-detail--clamped" in html
+    assert "-webkit-line-clamp: 2" in html
+    assert "grid-template-rows: repeat(var(--dashboard-page-size" in html
+    assert "buildDashboardLiveSnapshot" in app
+    assert "dashboardLiveSnapshot" in app
+
+
+def test_dashboard_card_dismissal_is_bridged_into_the_pixelworld_document():
+    app = Path("public/app.mjs").read_text(encoding="utf-8")
+    bridge = Path("public/pixelworld_embed.mjs").read_text(encoding="utf-8")
+
+    assert "onFramePointerDown" in app
+    assert "onFrameEscape" in app
+    assert "deferFocus: true" in app
+    assert "frame?.contentDocument" in bridge
+    assert ".defaultView !== frame?.contentWindow" in bridge
+    assert ".location?.origin !== origin" in bridge
+    assert "detachChildDocument" in bridge
+
+
+def test_deferred_dashboard_focus_wins_in_a_real_dom_and_skips_hidden_or_destroyed_targets():
+    chromium = shutil.which("chromium") or shutil.which("chromium-browser") or shutil.which("google-chrome")
+    if not chromium:
+        pytest.skip("Chromium is required for the real-DOM dashboard focus contract")
+    fixture = Path("tests/dashboard_focus_browser.html").resolve()
+    result = subprocess.run(
+        [
+            chromium,
+            "--headless=new",
+            "--no-sandbox",
+            "--disable-gpu",
+            "--allow-file-access-from-files",
+            "--dump-dom",
+            fixture.as_uri(),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=20,
+    )
+
+    assert 'data-ready="true"' in result.stdout
+    assert 'data-result="trigger"' in result.stdout
+    assert 'data-hidden-result="outside"' in result.stdout
+    assert 'data-cancel-result="outside"' in result.stdout
 
 
 def test_pixelworld_is_the_default_interactive_layer_and_legacy_editor_is_explicitly_hidden():

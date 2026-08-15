@@ -170,14 +170,64 @@ export function createPixelworldBridge({
   };
 }
 
-export function attachPixelworldBridge({ frame, messageTarget = globalThis.window, bridge } = {}) {
+export function attachPixelworldBridge({
+  frame,
+  messageTarget = globalThis.window,
+  bridge,
+  origin = globalThis.location?.origin || '',
+  onFramePointerDown = () => {},
+  onFrameEscape = () => {},
+} = {}) {
   if (!bridge) return () => {};
-  const handleLoad = () => bridge.handleLoad();
+  let childDocument = null;
+  const handleChildPointerDown = (event) => onFramePointerDown(event);
+  const handleChildKeydown = (event) => {
+    if (event?.key === 'Escape') onFrameEscape(event);
+  };
+  const detachChildDocument = () => {
+    childDocument?.removeEventListener?.('pointerdown', handleChildPointerDown, true);
+    childDocument?.removeEventListener?.('keydown', handleChildKeydown, true);
+    childDocument = null;
+  };
+  const attachChildDocument = () => {
+    detachChildDocument();
+    let candidate;
+    try {
+      candidate = frame?.contentDocument;
+      if (!candidate || candidate.defaultView !== frame?.contentWindow) return false;
+      if (!origin || candidate.location?.origin !== origin) return false;
+      candidate.addEventListener('pointerdown', handleChildPointerDown, true);
+      candidate.addEventListener('keydown', handleChildKeydown, true);
+    } catch {
+      detachChildDocument();
+      return false;
+    }
+    childDocument = candidate;
+    return true;
+  };
+  const handleLoad = () => {
+    detachChildDocument();
+    bridge.handleLoad();
+    attachChildDocument();
+  };
   const handleMessage = (event) => bridge.handleMessage(event);
   frame?.addEventListener?.('load', handleLoad);
   messageTarget?.addEventListener?.('message', handleMessage);
+  attachChildDocument();
   return () => {
+    detachChildDocument();
     frame?.removeEventListener?.('load', handleLoad);
     messageTarget?.removeEventListener?.('message', handleMessage);
   };
+}
+
+export function attachPageLifecycleCleanup({ pageTarget = globalThis.window, cleanup = () => {} } = {}) {
+  let cleaned = false;
+  const handlePageHide = (event) => {
+    if (event?.persisted || cleaned) return;
+    cleaned = true;
+    cleanup();
+  };
+  pageTarget?.addEventListener?.('pagehide', handlePageHide);
+  return () => pageTarget?.removeEventListener?.('pagehide', handlePageHide);
 }

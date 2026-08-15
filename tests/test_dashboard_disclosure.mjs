@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import * as dashboardDisclosure from '../public/dashboard_disclosure.mjs';
 import {
+  deferDashboardCardFocus,
   readDashboardDisclosure,
   restoreDashboardCardFocus,
   toggleDashboardCard,
@@ -68,6 +69,63 @@ test('closing a dashboard card restores focus to its trigger', () => {
   assert.equal(restoreDashboardCardFocus(trigger), true);
   assert.equal(focusCount, 1);
   assert.equal(restoreDashboardCardFocus(null), false);
+});
+
+test('deferred focus wins after a focusable outside pointer target receives default focus', () => {
+  const parentDocument = { activeElement: null };
+  const trigger = {
+    hidden: false,
+    disabled: false,
+    isConnected: true,
+    getClientRects: () => [{ width: 100, height: 40 }],
+    closest: () => null,
+    focus: () => { parentDocument.activeElement = trigger; },
+  };
+  const outside = { focus: () => { parentDocument.activeElement = outside; } };
+  const scheduled = [];
+
+  deferDashboardCardFocus(trigger, { schedule: (callback) => scheduled.push(callback) - 1 });
+  outside.focus();
+  assert.equal(parentDocument.activeElement, outside);
+  scheduled.shift()();
+  assert.equal(parentDocument.activeElement, trigger);
+});
+
+test('deferred focus is cancellable and never targets a hidden cutaway trigger', () => {
+  const scheduled = [];
+  let focused = false;
+  const trigger = {
+    hidden: false,
+    disabled: false,
+    isConnected: true,
+    getClientRects: () => [],
+    closest: () => null,
+    focus: () => { focused = true; },
+  };
+  const cancel = deferDashboardCardFocus(trigger, {
+    schedule: (callback) => scheduled.push(callback) - 1,
+    cancel: (handle) => { scheduled[handle] = null; },
+  });
+  cancel();
+  scheduled.filter(Boolean).forEach((callback) => callback());
+  assert.equal(focused, false);
+
+  const pending = [];
+  deferDashboardCardFocus(trigger, { schedule: (callback) => pending.push(callback) - 1 });
+  pending.shift()();
+  assert.equal(focused, false);
+});
+
+test('cutaway focus target is empty when no dashboard card is active', () => {
+  assert.equal(typeof dashboardDisclosure.activeDashboardCardTrigger, 'function');
+  const staleTrigger = { dataset: { dashboardCard: 'events' } };
+  const agentsTrigger = { dataset: { dashboardCard: 'agents' } };
+
+  assert.equal(dashboardDisclosure.activeDashboardCardTrigger(null, staleTrigger, [staleTrigger, agentsTrigger]), null);
+  assert.equal(
+    dashboardDisclosure.activeDashboardCardTrigger('agents', staleTrigger, [staleTrigger, agentsTrigger]),
+    agentsTrigger,
+  );
 });
 
 test('live-region helper only writes when meaningful text changes', () => {
@@ -139,4 +197,24 @@ test('dashboard card controls render localized labels and mutual expanded state'
     assert.equal(attributes.get('aria-expanded'), 'false');
     assert.equal(attributes.get('aria-label'), `${copy.showPanels}: ${copy.dashboardEvents}`);
   }
+});
+
+test('dashboard card controls perform no attribute or label writes for identical state', () => {
+  const copy = getLocaleStrings('en-US');
+  const attributes = new Map();
+  let writes = 0;
+  let title = '';
+  const dataset = {};
+  const button = {
+    dataset,
+    get title() { return title; },
+    set title(value) { writes += 1; title = value; },
+    getAttribute: (name) => attributes.get(name) ?? null,
+    setAttribute(name, value) { writes += 1; attributes.set(name, String(value)); },
+  };
+
+  dashboardDisclosure.renderDashboardCardControl(button, { name: 'agents', activeCard: 'agents', copy });
+  writes = 0;
+  dashboardDisclosure.renderDashboardCardControl(button, { name: 'agents', activeCard: 'agents', copy });
+  assert.equal(writes, 0);
 });

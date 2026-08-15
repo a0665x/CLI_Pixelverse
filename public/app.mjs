@@ -24,6 +24,7 @@ import {
   supportsEventStream,
 } from './realtime.mjs';
 import {
+  attachPageLifecycleCleanup,
   attachPixelworldBridge,
   createCutawayStatusRailController,
   createPixelworldBridge,
@@ -73,11 +74,20 @@ import {
 } from './furniture_editing.mjs';
 import { buildAgentTimelinePanels, buildHeartbeatPath, heartbeatBeatWidthPx } from './agent_timeline_graphs.mjs';
 import { setupPressFeedback } from './press_feedback.mjs';
-import { dashboardCardPage, placeDashboardCard } from './dashboard_cards.mjs';
 import {
+  buildDashboardLiveSnapshot,
+  dashboardCardItemMarkup,
+  dashboardCardPage,
+  dashboardCardPageSize,
+  placeDashboardCard,
+  renderDashboardCardView,
+} from './dashboard_cards.mjs';
+import {
+  activeDashboardCardTrigger,
   applyMapLayerVisibility,
   dashboardCardLabel as localizedDashboardCardLabel,
   dashboardInputModality,
+  deferDashboardCardFocus,
   readDashboardDisclosure,
   renderDashboardCardControl,
   restoreDashboardCardFocus,
@@ -169,6 +179,7 @@ const dom = {
   dashboardCardItems: document.getElementById('dashboard-card-items'),
   dashboardCardButtons: Array.from(document.querySelectorAll('[data-dashboard-card]')),
   dashboardCardKicker: document.getElementById('dashboard-card-kicker'),
+  dashboardCardLive: document.getElementById('dashboard-card-live'),
   dashboardCardNext: document.getElementById('dashboard-card-next'),
   dashboardCardPage: document.getElementById('dashboard-card-page'),
   dashboardCardPrevious: document.getElementById('dashboard-card-previous'),
@@ -265,6 +276,9 @@ let dashboardTouchTooltipTimer = null;
 let lastDashboardInputModality = 'keyboard';
 const dashboardPages = { events: 0, agents: 0, help: 0 };
 let dashboardLastTrigger = null;
+let dashboardLiveSnapshot = null;
+let dashboardCutawayFocusTrigger = null;
+let cancelDashboardFocusRestore = null;
 const cutawayStatusRail = createCutawayStatusRailController({
   body: dom.body,
   frame: dom.pixelworldFrame,
@@ -284,16 +298,37 @@ const pixelworldBridge = createPixelworldBridge({
   frame: dom.pixelworldFrame,
   origin: window.location.origin,
   onCutawayStateChange: (open) => {
-    dom.body.dataset.pixelworldCutaway = open ? 'open' : 'closed';
     if (open) {
-      closeDashboardCard();
+      cancelDashboardFocusRestore?.();
+      cancelDashboardFocusRestore = null;
+      dashboardCutawayFocusTrigger = dashboardActiveTrigger();
+      closeDashboardCard({ restoreFocus: false });
+      dom.body.dataset.pixelworldCutaway = 'open';
       syncCutawayStatusRail();
+    } else {
+      dom.body.dataset.pixelworldCutaway = 'closed';
+      cutawayStatusRail.clear();
+      const trigger = dashboardCutawayFocusTrigger;
+      dashboardCutawayFocusTrigger = null;
+      if (trigger) scheduleDashboardCardFocus(trigger);
     }
-    else cutawayStatusRail.clear();
   },
 });
 pixelworldBridge.setLocale(currentLocale);
-attachPixelworldBridge({ frame: dom.pixelworldFrame, messageTarget: window, bridge: pixelworldBridge });
+const detachPixelworldBridge = attachPixelworldBridge({
+  frame: dom.pixelworldFrame,
+  messageTarget: window,
+  bridge: pixelworldBridge,
+  origin: window.location.origin,
+  onFramePointerDown: () => closeDashboardCard({ deferFocus: true }),
+  onFrameEscape: () => closeDashboardCard({ deferFocus: true }),
+});
+attachPageLifecycleCleanup({ pageTarget: window, cleanup: () => {
+  detachPixelworldBridge();
+  cancelDashboardFocusRestore?.();
+  cancelDashboardFocusRestore = null;
+  dashboardCutawayFocusTrigger = null;
+} });
 window.addEventListener('resize', () => {
   syncCutawayStatusRail();
   if (dashboardDisclosure.activeCard) {
@@ -552,25 +587,15 @@ function dashboardCardLabel(name) {
   return localizedDashboardCardLabel(strings(), name);
 }
 
-function escapeDashboardText(value = '') {
-  return String(value).replace(/[&<>"']/g, (character) => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-  })[character]);
-}
-
 function dashboardCardItems(name) {
   const copy = strings();
-  if (name === 'events') return Array.isArray(currentSnapshot?.events) ? currentSnapshot.events : [];
-  if (name === 'agents') return Array.isArray(currentSnapshot?.agents) ? currentSnapshot.agents : [];
+  const snapshot = dashboardLiveSnapshot || currentSnapshot;
+  if (name === 'events') return Array.isArray(snapshot?.events) ? snapshot.events : [];
+  if (name === 'agents') return Array.isArray(snapshot?.agents) ? snapshot.agents : [];
   return [
     { kind: 'guide', title: copy.dashboardGuideTitle, detail: copy.brandSubtitle },
     { kind: 'settings', title: `${copy.languageLabel} · ${copy.exposureLabel}`, detail: copy.dashboardPanels },
   ];
-}
-
-function dashboardCardPageSize(name) {
-  if (name === 'help') return 1;
-  return window.innerWidth <= 720 || window.innerHeight <= 520 ? 2 : 3;
 }
 
 function dashboardEventCard(item = {}) {
@@ -578,32 +603,37 @@ function dashboardEventCard(item = {}) {
   const timeLabel = timestamp
     ? new Date(timestamp < 10_000_000_000 ? timestamp * 1000 : timestamp).toLocaleTimeString(currentLocale, { hour12: false })
     : '';
-  return `<article class="dashboard-card-item">
-    <div class="dashboard-card-item-title">${escapeDashboardText(eventTitle(item))}</div>
-    ${timeLabel ? `<div class="dashboard-card-item-meta">${escapeDashboardText(timeLabel)}</div>` : ''}
-    <div class="dashboard-card-item-detail">${escapeDashboardText(eventSummary(item) || strings().noActions)}</div>
-  </article>`;
+  return dashboardCardItemMarkup({
+    title: eventTitle(item),
+    meta: timeLabel,
+    detail: eventSummary(item) || strings().noActions,
+  });
 }
 
 function dashboardAgentCard(agent = {}) {
   const room = getRoomCopy(agent.room_key, currentLocale);
   const roomName = room.name || agent.room_label || strings().unknownRoom;
   const detail = localizeTask(agent.task || agent.activity_hint || '') || strings().idleFallback;
-  return `<article class="dashboard-card-item">
-    <div class="dashboard-card-item-title">${escapeDashboardText(displayAgentName(agent))}</div>
-    <div class="dashboard-card-item-meta">${escapeDashboardText(`${roleLabel(agent.role)} · ${stateText(agent.state)} · ${roomName}`)}</div>
-    <div class="dashboard-card-item-detail">${escapeDashboardText(short(detail, 72))}</div>
-  </article>`;
+  return dashboardCardItemMarkup({
+    title: displayAgentName(agent),
+    meta: `${roleLabel(agent.role)} · ${stateText(agent.state)} · ${roomName}`,
+    detail,
+  });
 }
 
 function renderDashboardCardContent() {
   const name = dashboardDisclosure.activeCard;
   if (!name || !dom.dashboardCard) return;
   const copy = strings();
+  const cardSize = {
+    width: Number(dom.dashboardCard.dataset.layoutWidth) || dom.dashboardCard.getBoundingClientRect().width,
+    height: Number(dom.dashboardCard.dataset.layoutHeight) || dom.dashboardCard.getBoundingClientRect().height,
+  };
+  const pageSize = dashboardCardPageSize(name, cardSize);
   const page = dashboardCardPage(
     dashboardCardItems(name),
     dashboardPages[name],
-    dashboardCardPageSize(name),
+    pageSize,
   );
   dashboardPages[name] = page.page;
   const settingsVisible = name === 'help' && page.items[0]?.kind === 'settings';
@@ -611,62 +641,103 @@ function renderDashboardCardContent() {
   if (name === 'events') {
     markup = page.items.length
       ? page.items.map(dashboardEventCard).join('')
-      : `<div class="dashboard-card-item"><div class="dashboard-card-item-detail">${escapeDashboardText(copy.waitingEvents)}</div></div>`;
+      : dashboardCardItemMarkup({ detail: copy.waitingEvents });
   } else if (name === 'agents') {
     markup = page.items.length
       ? page.items.map(dashboardAgentCard).join('')
-      : `<div class="dashboard-card-item"><div class="dashboard-card-item-detail">${escapeDashboardText(copy.inspectorEmpty)}</div></div>`;
+      : dashboardCardItemMarkup({ detail: copy.inspectorEmpty });
   } else if (!settingsVisible) {
     const item = page.items[0] || {};
-    markup = `<article class="dashboard-card-item"><div class="dashboard-card-item-title">${escapeDashboardText(item.title)}</div><div class="dashboard-card-item-detail">${escapeDashboardText(item.detail)}</div></article>`;
+    markup = dashboardCardItemMarkup({ title: item.title, detail: item.detail });
   }
   const signature = JSON.stringify({ name, page: page.page, markup, settingsVisible, locale: currentLocale });
-  if (dom.dashboardCard.dataset.renderSignature !== signature) {
-    dom.dashboardCard.dataset.renderSignature = signature;
-    dom.dashboardCardItems.innerHTML = markup;
-  }
-  dom.dashboardHelpSettings.hidden = !settingsVisible;
-  dom.dashboardCardPrevious.textContent = copy.dashboardPrevious;
-  dom.dashboardCardPrevious.disabled = !page.canPrevious;
-  dom.dashboardCardNext.textContent = copy.dashboardNext;
-  dom.dashboardCardNext.disabled = !page.canNext;
-  dom.dashboardCardPage.textContent = copy.dashboardPage(page.page + 1, page.pageCount);
+  const pageLabel = copy.dashboardPage(page.page + 1, page.pageCount);
+  const stateLabels = name === 'agents'
+    ? page.items.map((agent) => `${displayAgentName(agent)} ${stateText(agent.state)}`).join(', ')
+    : name === 'events'
+      ? page.items.map((item) => eventTitle(item)).join(', ')
+      : page.items.map((item) => item.title).filter(Boolean).join(', ');
+  renderDashboardCardView({
+    card: dom.dashboardCard,
+    items: dom.dashboardCardItems,
+    settings: dom.dashboardHelpSettings,
+    previous: dom.dashboardCardPrevious,
+    next: dom.dashboardCardNext,
+    page: dom.dashboardCardPage,
+    liveStatus: dom.dashboardCardLive,
+  }, {
+    signature,
+    markup,
+    settingsVisible,
+    previousLabel: copy.dashboardPrevious,
+    previousDisabled: !page.canPrevious,
+    nextLabel: copy.dashboardNext,
+    nextDisabled: !page.canNext,
+    pageLabel,
+    liveText: `${dashboardCardLabel(name)} · ${pageLabel}${stateLabels ? ` · ${stateLabels}` : ''}`,
+    pageSize,
+  });
 }
 
 function positionDashboardCard() {
   const name = dashboardDisclosure.activeCard;
   const trigger = dom.dashboardCardButtons.find((button) => button.dataset.dashboardCard === name);
   if (!name || !trigger || !dom.dashboardCard || dom.dashboardCard.hidden) return;
+  dom.dashboardCard.style.removeProperty('width');
+  dom.dashboardCard.style.removeProperty('height');
   const cardRect = dom.dashboardCard.getBoundingClientRect();
   const exclusions = [document.getElementById('live-status-rail')]
     .filter((element) => element && !element.hidden)
-    .map((element) => element.getBoundingClientRect());
+    .map((element) => {
+      const rect = element.getBoundingClientRect();
+      return {
+        left: rect.left,
+        top: rect.top,
+        right: rect.right,
+        bottom: Math.max(rect.bottom, rect.top + 176),
+      };
+    });
   const point = placeDashboardCard(
     trigger.getBoundingClientRect(),
     { width: cardRect.width, height: cardRect.height },
     { width: window.innerWidth, height: window.innerHeight, margin: window.innerWidth <= 720 ? 8 : 14, gap: 8 },
     exclusions,
   );
+  if (!point.visible) {
+    closeDashboardCard({ restoreFocus: false });
+    return;
+  }
   dom.dashboardCard.style.left = `${Math.round(point.left)}px`;
   dom.dashboardCard.style.top = `${Math.round(point.top)}px`;
+  dom.dashboardCard.style.width = `${Math.floor(point.width)}px`;
+  dom.dashboardCard.style.height = `${Math.floor(point.height)}px`;
+  const previousPageSize = dashboardCardPageSize(name, {
+    width: Number(dom.dashboardCard.dataset.layoutWidth),
+    height: Number(dom.dashboardCard.dataset.layoutHeight),
+  });
+  dom.dashboardCard.dataset.layoutWidth = String(Math.floor(point.width));
+  dom.dashboardCard.dataset.layoutHeight = String(Math.floor(point.height));
+  if (previousPageSize !== dashboardCardPageSize(name, point)) renderDashboardCardContent();
 }
 
 function renderDashboardDisclosure() {
   const activeCard = dashboardDisclosure.activeCard;
   const copy = strings();
-  dom.body.dataset.dashboardCard = activeCard || 'none';
+  const cardState = activeCard || 'none';
+  if (dom.body.dataset.dashboardCard !== cardState) dom.body.dataset.dashboardCard = cardState;
   dom.dashboardCardButtons.forEach((button) => {
     const name = button.dataset.dashboardCard;
     const label = renderDashboardCardControl(button, { name, activeCard, copy });
     const labelNode = document.getElementById(`dashboard-${name}-label`);
-    if (labelNode) labelNode.textContent = label;
+    if (labelNode && labelNode.textContent !== label) labelNode.textContent = label;
   });
   if (!dom.dashboardCard) return;
-  dom.dashboardCard.hidden = !activeCard;
-  dom.dashboardCard.dataset.card = activeCard || '';
+  if (dom.dashboardCard.hidden !== !activeCard) dom.dashboardCard.hidden = !activeCard;
+  if (dom.dashboardCard.dataset.card !== (activeCard || '')) dom.dashboardCard.dataset.card = activeCard || '';
   if (!activeCard) return;
-  dom.dashboardCardKicker.textContent = copy.brandTitle;
-  dom.dashboardCardTitle.textContent = dashboardCardLabel(activeCard);
+  if (dom.dashboardCardKicker.textContent !== copy.brandTitle) dom.dashboardCardKicker.textContent = copy.brandTitle;
+  const title = dashboardCardLabel(activeCard);
+  if (dom.dashboardCardTitle.textContent !== title) dom.dashboardCardTitle.textContent = title;
   renderDashboardCardContent();
   window.requestAnimationFrame(positionDashboardCard);
 }
@@ -675,55 +746,48 @@ function persistDashboardDisclosure() {
   writeDashboardDisclosure(dashboardStorage, dashboardDisclosure);
 }
 
-function closeDashboardCard({ restoreFocus = true } = {}) {
+function dashboardActiveTrigger() {
+  return activeDashboardCardTrigger(
+    dashboardDisclosure.activeCard,
+    dashboardLastTrigger,
+    dom.dashboardCardButtons,
+  );
+}
+
+function scheduleDashboardCardFocus(trigger) {
+  cancelDashboardFocusRestore?.();
+  cancelDashboardFocusRestore = deferDashboardCardFocus(trigger, {
+    schedule: (callback) => window.requestAnimationFrame(() => {
+      cancelDashboardFocusRestore = null;
+      callback();
+    }),
+    cancel: (handle) => window.cancelAnimationFrame(handle),
+  });
+}
+
+function closeDashboardCard({ restoreFocus = true, deferFocus = false } = {}) {
   const activeCard = dashboardDisclosure.activeCard;
   if (!activeCard) return false;
-  const trigger = dashboardLastTrigger
-    || dom.dashboardCardButtons.find((button) => button.dataset.dashboardCard === activeCard);
+  const trigger = dashboardActiveTrigger();
   dashboardDisclosure = { ...dashboardDisclosure, activeCard: null };
   persistDashboardDisclosure();
   renderDashboardDisclosure();
-  if (restoreFocus) restoreDashboardCardFocus(trigger);
+  if (restoreFocus) {
+    if (deferFocus) scheduleDashboardCardFocus(trigger);
+    else restoreDashboardCardFocus(trigger);
+  }
   return true;
 }
 
 function changeDashboardCard(requested, trigger) {
+  cancelDashboardFocusRestore?.();
+  cancelDashboardFocusRestore = null;
   const wasActive = dashboardDisclosure.activeCard;
   dashboardLastTrigger = trigger || dashboardLastTrigger;
   dashboardDisclosure = toggleDashboardCard(dashboardDisclosure, requested);
   persistDashboardDisclosure();
   renderDashboardDisclosure();
   if (wasActive === requested && !dashboardDisclosure.activeCard) restoreDashboardCardFocus(trigger);
-}
-
-function buildLiveSnapshot(snapshot = {}, nowMs = Date.now()) {
-  const serverTimeMs = Number(snapshot.server_time_ms || nowMs);
-  const elapsedSeconds = Math.max(0, (nowMs - serverTimeMs) / 1000);
-  const staleAfterSeconds = Number(snapshot.stats?.stale_after_seconds || 0);
-  const agents = Array.isArray(snapshot.agents)
-    ? snapshot.agents.map((agent) => {
-      const ageSeconds = Number((Number(agent.age_seconds || 0) + elapsedSeconds).toFixed(1));
-      const becameStale = staleAfterSeconds > 0
-        && ageSeconds > staleAfterSeconds
-        && agent.connection_status !== 'awaiting_attach';
-      return becameStale ? {
-        ...agent,
-        age_seconds: ageSeconds,
-        state: 'offline',
-        is_stale: true,
-        connection_status: 'stale',
-        can_delete: true,
-      } : {
-        ...agent,
-        age_seconds: ageSeconds,
-      };
-    })
-    : [];
-  return {
-    ...snapshot,
-    server_time_ms: nowMs,
-    agents,
-  };
 }
 
 function updateLastSyncText(snapshot = currentSnapshot, nowMs = Date.now()) {
@@ -796,7 +860,7 @@ function restartTimelineTimer() {
   timelineTimer = window.setInterval(() => {
     if (!currentSnapshot) return;
     const nowMs = Date.now();
-    renderTimelinePanels(buildLiveSnapshot(currentSnapshot, nowMs), { nowMs, windowMs: 20 * 60 * 1000 });
+    renderTimelinePanels(buildDashboardLiveSnapshot(currentSnapshot, nowMs), { nowMs, windowMs: 20 * 60 * 1000 });
   }, interval);
 }
 
@@ -808,7 +872,8 @@ function startLiveUiTicker() {
   uiTickTimer = window.setInterval(() => {
     if (!currentSnapshot) return;
     const nowMs = Date.now();
-    const liveSnapshot = buildLiveSnapshot(currentSnapshot, nowMs);
+    const liveSnapshot = buildDashboardLiveSnapshot(currentSnapshot, nowMs);
+    dashboardLiveSnapshot = liveSnapshot;
     updateLastSyncText(currentSnapshot, nowMs);
     renderHeartbeat(liveSnapshot);
     updateCurrentAgentState(liveSnapshot);
@@ -2040,6 +2105,7 @@ function renderEvents(items = []) {
 
 function renderSnapshot(snapshot) {
   currentSnapshot = snapshot;
+  dashboardLiveSnapshot = buildDashboardLiveSnapshot(snapshot, Number(snapshot.server_time_ms) || Date.now());
   const sequence = snapshot.server_time_ms || Date.now();
   pixelworldBridge.setLocale(currentLocale, sequence);
   pixelworldBridge.setSnapshot(snapshot, sequence);
@@ -2051,9 +2117,9 @@ function renderSnapshot(snapshot) {
   dom.worldState.textContent = snapshot.stats.hermes_connected ? copy.hermesConnected : copy.localOnly;
   dom.worldSummary.textContent = summarizeWorld(snapshot.stats, currentLocale);
   updateLastSyncText(snapshot, snapshot.server_time_ms);
-  renderHeartbeat(snapshot);
-  updateCurrentAgentState(snapshot);
-  renderAgents(snapshot);
+  renderHeartbeat(dashboardLiveSnapshot);
+  updateCurrentAgentState(dashboardLiveSnapshot);
+  renderAgents(dashboardLiveSnapshot);
   renderTimelinePanels(snapshot, { nowMs: snapshot.server_time_ms, windowMs: 20 * 60 * 1000 });
   if (dashboardDisclosure.activeCard) renderDashboardCardContent();
 }
@@ -2545,13 +2611,13 @@ document.addEventListener('pointerdown', (event) => {
   lastDashboardInputModality = dashboardInputModality(event);
   if (!dashboardDisclosure.activeCard) return;
   if (event.target.closest('#dashboard-card, [data-dashboard-card]')) return;
-  closeDashboardCard();
+  closeDashboardCard({ deferFocus: true });
 }, { capture: true });
 
 document.addEventListener('keydown', (event) => {
   lastDashboardInputModality = dashboardInputModality(event);
   if (event.key !== 'Escape') return;
-  closeDashboardCard();
+  closeDashboardCard({ deferFocus: true });
 });
 
 dom.dashboardCardPrevious?.addEventListener('click', () => {
@@ -2607,7 +2673,7 @@ function adjustRefreshInterval(deltaMs) {
   startLiveUiTicker();
   if (pollTimer) startPolling();
   if (currentSnapshot) {
-    renderTimelinePanels(buildLiveSnapshot(currentSnapshot, Date.now()), { nowMs: Date.now(), windowMs: 20 * 60 * 1000 });
+    renderTimelinePanels(buildDashboardLiveSnapshot(currentSnapshot, Date.now()), { nowMs: Date.now(), windowMs: 20 * 60 * 1000 });
   }
 }
 

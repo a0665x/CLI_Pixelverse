@@ -48,8 +48,37 @@ export function dashboardGuideVisible(state, modality, forcedOpen = false) {
 
 export function restoreDashboardCardFocus(trigger) {
   if (typeof trigger?.focus !== 'function') return false;
+  if (trigger.hidden || trigger.disabled || trigger.getAttribute?.('aria-hidden') === 'true') return false;
+  if ('isConnected' in trigger && !trigger.isConnected) return false;
+  if (trigger.closest?.('[hidden], [aria-hidden="true"]')) return false;
+  if (typeof trigger.getClientRects === 'function' && trigger.getClientRects().length === 0) return false;
   trigger.focus();
   return true;
+}
+
+export function deferDashboardCardFocus(trigger, {
+  schedule = (callback) => globalThis.setTimeout(callback, 0),
+  cancel = (handle) => globalThis.clearTimeout(handle),
+} = {}) {
+  let active = true;
+  const handle = schedule(() => {
+    if (!active) return;
+    active = false;
+    restoreDashboardCardFocus(trigger);
+  });
+  return () => {
+    if (!active) return false;
+    active = false;
+    cancel?.(handle);
+    return true;
+  };
+}
+
+export function activeDashboardCardTrigger(activeCard, lastTrigger, buttons = []) {
+  if (!CARDS.has(activeCard)) return null;
+  if (lastTrigger?.dataset?.dashboardCard === activeCard) return lastTrigger;
+  return (Array.isArray(buttons) ? buttons : [])
+    .find((button) => button?.dataset?.dashboardCard === activeCard) || null;
 }
 
 export function dashboardCardLabel(copy, name) {
@@ -62,10 +91,15 @@ export function dashboardCardLabel(copy, name) {
 export function renderDashboardCardControl(button, { name, activeCard, copy }) {
   const label = dashboardCardLabel(copy, name);
   const expanded = activeCard === name;
-  button.setAttribute('aria-expanded', String(expanded));
-  button.setAttribute('aria-label', `${expanded ? copy.hidePanels : copy.showPanels}: ${label}`);
-  button.dataset.tooltip = label;
-  button.title = label;
+  const setAttribute = (attribute, value) => {
+    const next = String(value);
+    if (button.getAttribute?.(attribute) === next) return;
+    button.setAttribute(attribute, next);
+  };
+  setAttribute('aria-expanded', expanded);
+  setAttribute('aria-label', `${expanded ? copy.hidePanels : copy.showPanels}: ${label}`);
+  if (button.dataset.tooltip !== label) button.dataset.tooltip = label;
+  if (button.title !== label) button.title = label;
   return label;
 }
 

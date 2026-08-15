@@ -2184,9 +2184,13 @@
     .dashboard-card-kicker { color: var(--dashboard-card-accent); font-size: 9px; font-weight: 900; letter-spacing: .14em; text-transform: uppercase; }
     .dashboard-card h2 { margin: 2px 0 0; color: #f8fbff; font-size: 18px; }
     .dashboard-card-body { display: grid; min-height: 0; align-content: start; gap: 8px; overflow: hidden; }
-    .dashboard-card-items { display: grid; min-height: 0; gap: 8px; overflow: hidden; }
+    .dashboard-card-items { display: grid; min-height: 0; grid-template-rows: repeat(var(--dashboard-page-size, 1), minmax(0, 1fr)); gap: 8px; overflow: hidden; }
     .dashboard-card-item {
+      display: grid;
+      min-height: 0;
       min-width: 0;
+      grid-template-rows: auto auto minmax(0, 1fr);
+      overflow: hidden;
       padding: 10px;
       border: 1px solid rgba(142, 174, 205, .24);
       border-left: 3px solid var(--dashboard-card-accent);
@@ -2197,6 +2201,14 @@
     .dashboard-card-item-meta,
     .dashboard-card-item-detail { margin-top: 4px; color: #aebed0; font-size: 10px; line-height: 1.35; }
     .dashboard-card-item-detail { color: #dce8f4; }
+    .dashboard-card-item-detail--clamped {
+      display: -webkit-box;
+      overflow: hidden;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+      line-clamp: 2;
+      overflow-wrap: anywhere;
+    }
     .dashboard-help-settings { display: grid; min-height: 0; gap: 7px; overflow: hidden; }
     .dashboard-help-settings[hidden] { display: none; }
     .dashboard-help-settings .lang-switch,
@@ -2484,7 +2496,9 @@
       <button type="button" class="workspace-tool-button dashboard-card-control dashboard-card-control--help" id="dashboard-help-btn" data-dashboard-card="help" data-tooltip="Help" aria-label="Open Help" aria-expanded="false" aria-controls="dashboard-card"><span class="workspace-tool-icon" aria-hidden="true">?</span><span id="dashboard-help-label">Help</span></button>
     </nav>
 
-    <aside class="dashboard-card" id="dashboard-card" role="region" aria-live="polite" aria-atomic="true" aria-labelledby="dashboard-card-title" hidden>
+    <div class="visually-hidden" id="dashboard-card-live" role="status" aria-live="polite" aria-atomic="true"></div>
+
+    <aside class="dashboard-card" id="dashboard-card" role="region" aria-labelledby="dashboard-card-title" hidden>
       <header class="dashboard-card-header">
         <span class="dashboard-card-kicker" id="dashboard-card-kicker"></span>
         <h2 id="dashboard-card-title"></h2>

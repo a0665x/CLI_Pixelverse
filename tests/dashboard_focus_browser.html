@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<body>
+  <button id="trigger">Events</button>
+  <button id="outside">Focusable map control</button>
+  <div id="hidden-host"><button id="hidden-trigger">Hidden trigger</button></div>
+  <script type="module">
+    import { deferDashboardCardFocus } from '../public/dashboard_disclosure.mjs';
+
+    const trigger = document.getElementById('trigger');
+    const outside = document.getElementById('outside');
+    const hiddenHost = document.getElementById('hidden-host');
+    const hiddenTrigger = document.getElementById('hidden-trigger');
+    const scheduled = [];
+    outside.addEventListener('pointerdown', () => {
+      deferDashboardCardFocus(trigger, { schedule: (callback) => scheduled.push(callback) - 1 });
+    });
+    outside.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+    outside.focus();
+    scheduled.shift()();
+    document.body.dataset.result = document.activeElement.id;
+
+    hiddenHost.hidden = true;
+    outside.focus();
+    const hiddenScheduled = [];
+    deferDashboardCardFocus(hiddenTrigger, { schedule: (callback) => hiddenScheduled.push(callback) - 1 });
+    hiddenScheduled.shift()();
+    document.body.dataset.hiddenResult = document.activeElement.id;
+
+    outside.focus();
+    const cancelled = [];
+    const cancel = deferDashboardCardFocus(trigger, {
+      schedule: (callback) => cancelled.push(callback) - 1,
+      cancel: (handle) => { cancelled[handle] = null; },
+    });
+    cancel();
+    cancelled.filter(Boolean).forEach((callback) => callback());
+    document.body.dataset.cancelResult = document.activeElement.id;
+    document.body.dataset.ready = 'true';
+  </script>
+</body>
+</html>

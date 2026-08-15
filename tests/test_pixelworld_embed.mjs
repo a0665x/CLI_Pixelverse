@@ -202,6 +202,130 @@ test('bridge attachment connects iframe load and window message events and can d
   assert.deepEqual(calls, ['load', 'pixelverse.world.ready']);
 });
 
+test('bridge attachment closes cards from the same-origin child document and rebinds safely on reload', () => {
+  const eventTarget = () => {
+    const listeners = new Map();
+    return {
+      listeners,
+      addEventListener(type, listener) {
+        if (!listeners.has(type)) listeners.set(type, new Set());
+        listeners.get(type).add(listener);
+      },
+      removeEventListener(type, listener) { listeners.get(type)?.delete(listener); },
+      dispatch(type, event = {}) { [...(listeners.get(type) || [])].forEach((listener) => listener(event)); },
+      count(type) { return listeners.get(type)?.size || 0; },
+    };
+  };
+  const contentWindow = {};
+  const childDocument = (origin = 'http://localhost', source = contentWindow) => ({
+    ...eventTarget(),
+    defaultView: source,
+    location: { origin },
+  });
+  let documentValue = childDocument();
+  const frame = {
+    ...eventTarget(),
+    contentWindow,
+    get contentDocument() { return documentValue; },
+  };
+  const messageTarget = eventTarget();
+  const closures = [];
+  let activeCard = 'events';
+  const close = (reason) => {
+    if (!activeCard) return;
+    closures.push(`${reason}:${activeCard}`);
+    activeCard = null;
+  };
+  const detach = pixelworldEmbed.attachPixelworldBridge({
+    frame,
+    messageTarget,
+    origin: 'http://localhost',
+    bridge: { handleLoad() {}, handleMessage() {} },
+    onFramePointerDown: () => close('pointer'),
+    onFrameEscape: () => close('escape'),
+  });
+
+  documentValue.dispatch('pointerdown', { pointerType: 'mouse' });
+  assert.deepEqual(closures, ['pointer:events']);
+  activeCard = 'agents';
+  documentValue.dispatch('keydown', { key: 'Escape' });
+  assert.deepEqual(closures, ['pointer:events', 'escape:agents']);
+
+  const firstDocument = documentValue;
+  documentValue = childDocument();
+  frame.dispatch('load');
+  assert.equal(firstDocument.count('pointerdown'), 0);
+  activeCard = 'help';
+  firstDocument.dispatch('pointerdown');
+  assert.equal(activeCard, 'help');
+  documentValue.dispatch('pointerdown');
+  assert.equal(activeCard, null);
+
+  const sameOriginDocument = documentValue;
+  documentValue = childDocument('https://example.test');
+  frame.dispatch('load');
+  assert.equal(sameOriginDocument.count('pointerdown'), 0);
+  assert.equal(documentValue.count('pointerdown'), 0);
+
+  documentValue = childDocument('http://localhost', {});
+  frame.dispatch('load');
+  assert.equal(documentValue.count('pointerdown'), 0);
+
+  documentValue = childDocument();
+  frame.dispatch('load');
+  assert.equal(documentValue.count('pointerdown'), 1);
+  detach();
+  assert.equal(documentValue.count('pointerdown'), 0);
+  assert.equal(documentValue.count('keydown'), 0);
+  assert.equal(frame.count('load'), 0);
+  assert.equal(messageTarget.count('message'), 0);
+});
+
+test('bridge child-document integration fails closed when same-origin access throws', () => {
+  const listeners = new Map();
+  const frame = {
+    contentWindow: {},
+    addEventListener: (type, listener) => listeners.set(type, listener),
+    removeEventListener: (type) => listeners.delete(type),
+    get contentDocument() { throw new DOMException('cross origin', 'SecurityError'); },
+  };
+  let childEvents = 0;
+  const detach = pixelworldEmbed.attachPixelworldBridge({
+    frame,
+    origin: 'http://localhost',
+    bridge: { handleLoad() {}, handleMessage() {} },
+    onFramePointerDown: () => { childEvents += 1; },
+    onFrameEscape: () => { childEvents += 1; },
+  });
+
+  assert.doesNotThrow(() => listeners.get('load')?.());
+  assert.equal(childEvents, 0);
+  assert.doesNotThrow(detach);
+});
+
+test('page lifecycle keeps the bridge attached through BFCache and cleans up real navigation', () => {
+  assert.equal(typeof pixelworldEmbed.attachPageLifecycleCleanup, 'function');
+  const listeners = new Map();
+  const pageTarget = {
+    addEventListener: (type, listener) => listeners.set(type, listener),
+    removeEventListener: (type, listener) => {
+      if (listeners.get(type) === listener) listeners.delete(type);
+    },
+  };
+  let cleanupCount = 0;
+  const detachLifecycle = pixelworldEmbed.attachPageLifecycleCleanup({
+    pageTarget,
+    cleanup: () => { cleanupCount += 1; },
+  });
+
+  listeners.get('pagehide')({ persisted: true });
+  assert.equal(cleanupCount, 0);
+  listeners.get('pagehide')({ persisted: false });
+  assert.equal(cleanupCount, 1);
+  detachLifecycle();
+  assert.equal(listeners.has('pagehide'), false);
+});
+
 test('cutaway status rail is derived from live host and centered cutaway chrome collisions', () => {
   assert.equal(typeof pixelworldEmbed.cutawayChromeCollidesWithHost, 'function');
   const matrix = [
