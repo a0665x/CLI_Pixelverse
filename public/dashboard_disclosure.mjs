@@ -1,14 +1,14 @@
-const STORAGE_KEY = 'pixelverse:dashboard-disclosure:v1';
-const DRAWERS = new Set(['timeline', 'agents', 'diagnostics']);
+const STORAGE_KEY = 'pixelverse:dashboard-disclosure:v2';
+const CARDS = new Set(['events', 'agents', 'help']);
 
-const defaultDisclosure = () => ({ activeDrawer: null, guideDismissed: false });
+const defaultDisclosure = () => ({ activeCard: null, guideDismissed: false });
 
 export function readDashboardDisclosure(storage) {
   if (!storage) return defaultDisclosure();
   try {
     const value = JSON.parse(storage.getItem(STORAGE_KEY) || 'null');
-    const activeDrawer = DRAWERS.has(value?.activeDrawer) ? value.activeDrawer : null;
-    return { activeDrawer, guideDismissed: value?.guideDismissed === true };
+    const activeCard = CARDS.has(value?.activeCard) ? value.activeCard : null;
+    return { activeCard, guideDismissed: value?.guideDismissed === true };
   } catch {
     return defaultDisclosure();
   }
@@ -23,11 +23,11 @@ export function writeDashboardDisclosure(storage, state) {
   return true;
 }
 
-export function toggleDashboardDrawer(state, requested) {
-  if (!DRAWERS.has(requested)) return { ...state };
+export function toggleDashboardCard(state, requested) {
+  if (!CARDS.has(requested)) return { ...state };
   return {
     ...state,
-    activeDrawer: state.activeDrawer === requested ? null : requested,
+    activeCard: state.activeCard === requested ? null : requested,
   };
 }
 
@@ -46,22 +46,22 @@ export function dashboardGuideVisible(state, modality, forcedOpen = false) {
   return forcedOpen || shouldShowGuide(state, modality);
 }
 
-export function restoreDashboardHelpFocus(helpButton) {
-  if (typeof helpButton?.focus !== 'function') return false;
-  helpButton.focus();
+export function restoreDashboardCardFocus(trigger) {
+  if (typeof trigger?.focus !== 'function') return false;
+  trigger.focus();
   return true;
 }
 
-export function dashboardDrawerLabel(copy, name) {
-  if (name === 'timeline') return copy.eventBeltTitle;
-  if (name === 'agents') return copy.inspectorTitle;
-  if (name === 'diagnostics') return copy.diagnosticsLabel;
+export function dashboardCardLabel(copy, name) {
+  if (name === 'events') return copy.dashboardEvents;
+  if (name === 'agents') return copy.dashboardAgents;
+  if (name === 'help') return copy.dashboardHelp;
   return copy.dashboardPanels;
 }
 
-export function renderDashboardDrawerControl(button, { name, activeDrawer, copy }) {
-  const label = dashboardDrawerLabel(copy, name);
-  const expanded = activeDrawer === name;
+export function renderDashboardCardControl(button, { name, activeCard, copy }) {
+  const label = dashboardCardLabel(copy, name);
+  const expanded = activeCard === name;
   button.setAttribute('aria-expanded', String(expanded));
   button.setAttribute('aria-label', `${expanded ? copy.hidePanels : copy.showPanels}: ${label}`);
   button.dataset.tooltip = label;

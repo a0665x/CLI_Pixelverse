@@ -38,6 +38,13 @@ test('getLocaleStrings returns translated HUD labels', () => {
   assert.match(en.mobileMode, /Mobile/);
   assert.match(en.dashboardPanels, /Sidebar/);
   assert.match(en.showPanels, /Open/);
+  assert.equal(en.dashboardEvents, 'Events');
+  assert.equal(en.dashboardAgents, 'Agents');
+  assert.equal(en.dashboardHelp, 'Help');
+  assert.equal(zh.dashboardEvents, '事件');
+  assert.equal(ja.dashboardAgents, 'エージェント');
+  assert.equal(ko.dashboardHelp, '도움말');
+  assert.equal(en.dashboardPage(2, 5), 'Page 2 of 5');
   assert.match(en.heartbeatLive('2s ago'), /2s ago/);
   assert.match(en.layoutCollisionTitle, /overlap/);
   assert.match(ja.layoutDragActiveHint, /ドラッグ中/);

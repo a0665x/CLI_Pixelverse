@@ -73,15 +73,15 @@ import {
 } from './furniture_editing.mjs';
 import { buildAgentTimelinePanels, buildHeartbeatPath, heartbeatBeatWidthPx } from './agent_timeline_graphs.mjs';
 import { setupPressFeedback } from './press_feedback.mjs';
+import { dashboardCardPage, placeDashboardCard } from './dashboard_cards.mjs';
 import {
   applyMapLayerVisibility,
-  dashboardDrawerLabel as localizedDashboardDrawerLabel,
-  dashboardGuideVisible,
+  dashboardCardLabel as localizedDashboardCardLabel,
   dashboardInputModality,
   readDashboardDisclosure,
-  renderDashboardDrawerControl,
-  restoreDashboardHelpFocus,
-  toggleDashboardDrawer,
+  renderDashboardCardControl,
+  restoreDashboardCardFocus,
+  toggleDashboardCard,
   updateLiveRegionText,
   writeDashboardDisclosure,
 } from './dashboard_disclosure.mjs';
@@ -164,13 +164,17 @@ const dom = {
   cameraStage: document.getElementById('camera-stage'),
   cancelFurnitureButton: document.getElementById('cancel-furniture-btn'),
   currentAgentState: document.getElementById('current-agent-state'),
-  dashboardDrawer: document.getElementById('workspace-drawer'),
-  dashboardDrawerButtons: Array.from(document.querySelectorAll('[data-dashboard-drawer]')),
-  dashboardDrawerPanels: Array.from(document.querySelectorAll('[data-dashboard-panel]')),
-  dashboardGuide: document.getElementById('dashboard-guide'),
-  dashboardGuideDismiss: document.getElementById('dashboard-guide-dismiss'),
+  dashboardCard: document.getElementById('dashboard-card'),
+  dashboardCardBody: document.getElementById('dashboard-card-body'),
+  dashboardCardItems: document.getElementById('dashboard-card-items'),
+  dashboardCardButtons: Array.from(document.querySelectorAll('[data-dashboard-card]')),
+  dashboardCardKicker: document.getElementById('dashboard-card-kicker'),
+  dashboardCardNext: document.getElementById('dashboard-card-next'),
+  dashboardCardPage: document.getElementById('dashboard-card-page'),
+  dashboardCardPrevious: document.getElementById('dashboard-card-previous'),
+  dashboardCardTitle: document.getElementById('dashboard-card-title'),
+  dashboardHelpSettings: document.getElementById('dashboard-help-settings'),
   dashboardHelpButton: document.getElementById('dashboard-help-btn'),
-  diagnosticsExplanation: document.getElementById('diagnostics-drawer-explanation'),
   eventSummary: document.getElementById('event-summary'),
   events: document.getElementById('events'),
   exposureLabel: document.getElementById('exposure-label'),
@@ -258,8 +262,9 @@ try {
 }
 let dashboardDisclosure = readDashboardDisclosure(dashboardStorage);
 let dashboardTouchTooltipTimer = null;
-let dashboardGuideForcedOpen = false;
 let lastDashboardInputModality = 'keyboard';
+const dashboardPages = { events: 0, agents: 0, help: 0 };
+let dashboardLastTrigger = null;
 const cutawayStatusRail = createCutawayStatusRailController({
   body: dom.body,
   frame: dom.pixelworldFrame,
@@ -280,13 +285,22 @@ const pixelworldBridge = createPixelworldBridge({
   origin: window.location.origin,
   onCutawayStateChange: (open) => {
     dom.body.dataset.pixelworldCutaway = open ? 'open' : 'closed';
-    if (open) syncCutawayStatusRail();
+    if (open) {
+      closeDashboardCard();
+      syncCutawayStatusRail();
+    }
     else cutawayStatusRail.clear();
   },
 });
 pixelworldBridge.setLocale(currentLocale);
 attachPixelworldBridge({ frame: dom.pixelworldFrame, messageTarget: window, bridge: pixelworldBridge });
-window.addEventListener('resize', syncCutawayStatusRail);
+window.addEventListener('resize', () => {
+  syncCutawayStatusRail();
+  if (dashboardDisclosure.activeCard) {
+    renderDashboardCardContent();
+    window.requestAnimationFrame(positionDashboardCard);
+  }
+});
 let workbenchLayoutController = null;
 let cameraOffset = { x: 0, y: 0 };
 let cameraScale = 1;
@@ -531,68 +545,155 @@ function applyMobileMode() {
   dom.mobileModeButton.textContent = mobileMode ? copy.desktopMode : copy.mobileMode;
   dom.mobileModeButton.setAttribute('aria-pressed', String(mobileMode));
   dom.mobileModeButton.title = mobileMode ? copy.desktopModeHint : copy.mobileModeHint;
-  if (dom.sidebarTitle) dom.sidebarTitle.textContent = copy.dashboardPanels;
-  if (dom.sidebarToggleButton) {
-    dom.sidebarToggleButton.textContent = sidebarOpen ? '‹' : '›';
-    dom.sidebarToggleButton.setAttribute('aria-expanded', String(sidebarOpen));
-    dom.sidebarToggleButton.setAttribute('aria-label', sidebarOpen ? copy.hidePanels : copy.showPanels);
-  }
-  if (dom.sidebarCloseButton) dom.sidebarCloseButton.textContent = copy.closePanels;
   renderDashboardDisclosure();
 }
 
-function dashboardDrawerLabel(name) {
-  return localizedDashboardDrawerLabel(strings(), name);
+function dashboardCardLabel(name) {
+  return localizedDashboardCardLabel(strings(), name);
+}
+
+function escapeDashboardText(value = '') {
+  return String(value).replace(/[&<>"']/g, (character) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  })[character]);
+}
+
+function dashboardCardItems(name) {
+  const copy = strings();
+  if (name === 'events') return Array.isArray(currentSnapshot?.events) ? currentSnapshot.events : [];
+  if (name === 'agents') return Array.isArray(currentSnapshot?.agents) ? currentSnapshot.agents : [];
+  return [
+    { kind: 'guide', title: copy.dashboardGuideTitle, detail: copy.brandSubtitle },
+    { kind: 'settings', title: `${copy.languageLabel} · ${copy.exposureLabel}`, detail: copy.dashboardPanels },
+  ];
+}
+
+function dashboardCardPageSize(name) {
+  if (name === 'help') return 1;
+  return window.innerWidth <= 720 || window.innerHeight <= 520 ? 2 : 3;
+}
+
+function dashboardEventCard(item = {}) {
+  const timestamp = Number(item.time || item.created_at || 0);
+  const timeLabel = timestamp
+    ? new Date(timestamp < 10_000_000_000 ? timestamp * 1000 : timestamp).toLocaleTimeString(currentLocale, { hour12: false })
+    : '';
+  return `<article class="dashboard-card-item">
+    <div class="dashboard-card-item-title">${escapeDashboardText(eventTitle(item))}</div>
+    ${timeLabel ? `<div class="dashboard-card-item-meta">${escapeDashboardText(timeLabel)}</div>` : ''}
+    <div class="dashboard-card-item-detail">${escapeDashboardText(eventSummary(item) || strings().noActions)}</div>
+  </article>`;
+}
+
+function dashboardAgentCard(agent = {}) {
+  const room = getRoomCopy(agent.room_key, currentLocale);
+  const roomName = room.name || agent.room_label || strings().unknownRoom;
+  const detail = localizeTask(agent.task || agent.activity_hint || '') || strings().idleFallback;
+  return `<article class="dashboard-card-item">
+    <div class="dashboard-card-item-title">${escapeDashboardText(displayAgentName(agent))}</div>
+    <div class="dashboard-card-item-meta">${escapeDashboardText(`${roleLabel(agent.role)} · ${stateText(agent.state)} · ${roomName}`)}</div>
+    <div class="dashboard-card-item-detail">${escapeDashboardText(short(detail, 72))}</div>
+  </article>`;
+}
+
+function renderDashboardCardContent() {
+  const name = dashboardDisclosure.activeCard;
+  if (!name || !dom.dashboardCard) return;
+  const copy = strings();
+  const page = dashboardCardPage(
+    dashboardCardItems(name),
+    dashboardPages[name],
+    dashboardCardPageSize(name),
+  );
+  dashboardPages[name] = page.page;
+  const settingsVisible = name === 'help' && page.items[0]?.kind === 'settings';
+  let markup = '';
+  if (name === 'events') {
+    markup = page.items.length
+      ? page.items.map(dashboardEventCard).join('')
+      : `<div class="dashboard-card-item"><div class="dashboard-card-item-detail">${escapeDashboardText(copy.waitingEvents)}</div></div>`;
+  } else if (name === 'agents') {
+    markup = page.items.length
+      ? page.items.map(dashboardAgentCard).join('')
+      : `<div class="dashboard-card-item"><div class="dashboard-card-item-detail">${escapeDashboardText(copy.inspectorEmpty)}</div></div>`;
+  } else if (!settingsVisible) {
+    const item = page.items[0] || {};
+    markup = `<article class="dashboard-card-item"><div class="dashboard-card-item-title">${escapeDashboardText(item.title)}</div><div class="dashboard-card-item-detail">${escapeDashboardText(item.detail)}</div></article>`;
+  }
+  const signature = JSON.stringify({ name, page: page.page, markup, settingsVisible, locale: currentLocale });
+  if (dom.dashboardCard.dataset.renderSignature !== signature) {
+    dom.dashboardCard.dataset.renderSignature = signature;
+    dom.dashboardCardItems.innerHTML = markup;
+  }
+  dom.dashboardHelpSettings.hidden = !settingsVisible;
+  dom.dashboardCardPrevious.textContent = copy.dashboardPrevious;
+  dom.dashboardCardPrevious.disabled = !page.canPrevious;
+  dom.dashboardCardNext.textContent = copy.dashboardNext;
+  dom.dashboardCardNext.disabled = !page.canNext;
+  dom.dashboardCardPage.textContent = copy.dashboardPage(page.page + 1, page.pageCount);
+}
+
+function positionDashboardCard() {
+  const name = dashboardDisclosure.activeCard;
+  const trigger = dom.dashboardCardButtons.find((button) => button.dataset.dashboardCard === name);
+  if (!name || !trigger || !dom.dashboardCard || dom.dashboardCard.hidden) return;
+  const cardRect = dom.dashboardCard.getBoundingClientRect();
+  const exclusions = [document.getElementById('live-status-rail')]
+    .filter((element) => element && !element.hidden)
+    .map((element) => element.getBoundingClientRect());
+  const point = placeDashboardCard(
+    trigger.getBoundingClientRect(),
+    { width: cardRect.width, height: cardRect.height },
+    { width: window.innerWidth, height: window.innerHeight, margin: window.innerWidth <= 720 ? 8 : 14, gap: 8 },
+    exclusions,
+  );
+  dom.dashboardCard.style.left = `${Math.round(point.left)}px`;
+  dom.dashboardCard.style.top = `${Math.round(point.top)}px`;
 }
 
 function renderDashboardDisclosure() {
-  const activeDrawer = dashboardDisclosure.activeDrawer;
-  if (dom.dashboardDrawer) {
-    dom.dashboardDrawer.hidden = !activeDrawer;
-    dom.dashboardDrawer.dataset.activeDrawer = activeDrawer || '';
-  }
-  dom.body.dataset.dashboardDrawer = activeDrawer || 'none';
-  dom.dashboardDrawerPanels.forEach((panel) => {
-    panel.hidden = panel.dataset.dashboardPanel !== activeDrawer;
+  const activeCard = dashboardDisclosure.activeCard;
+  const copy = strings();
+  dom.body.dataset.dashboardCard = activeCard || 'none';
+  dom.dashboardCardButtons.forEach((button) => {
+    const name = button.dataset.dashboardCard;
+    const label = renderDashboardCardControl(button, { name, activeCard, copy });
+    const labelNode = document.getElementById(`dashboard-${name}-label`);
+    if (labelNode) labelNode.textContent = label;
   });
-  dom.dashboardDrawerButtons.forEach((button) => {
-    const name = button.dataset.dashboardDrawer;
-    renderDashboardDrawerControl(button, { name, activeDrawer, copy: strings() });
-  });
-  if (dom.sidebarTitle) dom.sidebarTitle.textContent = activeDrawer ? dashboardDrawerLabel(activeDrawer) : strings().dashboardPanels;
-  if (dom.sidebarCloseButton) dom.sidebarCloseButton.textContent = strings().closePanels;
-  const guideVisible = dashboardGuideVisible(
-    dashboardDisclosure,
-    lastDashboardInputModality,
-    dashboardGuideForcedOpen,
-  );
-  if (dom.dashboardGuide) dom.dashboardGuide.hidden = !guideVisible;
-  if (dom.dashboardHelpButton) dom.dashboardHelpButton.setAttribute('aria-expanded', String(guideVisible));
-  if (dom.dashboardGuideDismiss) dom.dashboardGuideDismiss.textContent = strings().closePanels;
+  if (!dom.dashboardCard) return;
+  dom.dashboardCard.hidden = !activeCard;
+  dom.dashboardCard.dataset.card = activeCard || '';
+  if (!activeCard) return;
+  dom.dashboardCardKicker.textContent = copy.brandTitle;
+  dom.dashboardCardTitle.textContent = dashboardCardLabel(activeCard);
+  renderDashboardCardContent();
+  window.requestAnimationFrame(positionDashboardCard);
 }
 
 function persistDashboardDisclosure() {
   writeDashboardDisclosure(dashboardStorage, dashboardDisclosure);
 }
 
-function changeDashboardDrawer(requested) {
-  dashboardDisclosure = toggleDashboardDrawer(dashboardDisclosure, requested);
+function closeDashboardCard({ restoreFocus = true } = {}) {
+  const activeCard = dashboardDisclosure.activeCard;
+  if (!activeCard) return false;
+  const trigger = dashboardLastTrigger
+    || dom.dashboardCardButtons.find((button) => button.dataset.dashboardCard === activeCard);
+  dashboardDisclosure = { ...dashboardDisclosure, activeCard: null };
   persistDashboardDisclosure();
   renderDashboardDisclosure();
+  if (restoreFocus) restoreDashboardCardFocus(trigger);
+  return true;
 }
 
-function dismissDashboardGuide() {
-  dashboardGuideForcedOpen = false;
-  dashboardDisclosure = { ...dashboardDisclosure, guideDismissed: true };
+function changeDashboardCard(requested, trigger) {
+  const wasActive = dashboardDisclosure.activeCard;
+  dashboardLastTrigger = trigger || dashboardLastTrigger;
+  dashboardDisclosure = toggleDashboardCard(dashboardDisclosure, requested);
   persistDashboardDisclosure();
   renderDashboardDisclosure();
-  restoreDashboardHelpFocus(dom.dashboardHelpButton);
-}
-
-function openDashboardGuide() {
-  dashboardGuideForcedOpen = true;
-  renderDashboardDisclosure();
-  dom.dashboardGuideDismiss?.focus();
+  if (wasActive === requested && !dashboardDisclosure.activeCard) restoreDashboardCardFocus(trigger);
 }
 
 function buildLiveSnapshot(snapshot = {}, nowMs = Date.now()) {
@@ -1006,7 +1107,7 @@ function applyStaticCopy() {
   updateFurnitureToolbar();
   applyMobileMode();
   updateCurrentAgentState(currentSnapshot || {});
-  if (!selectedAgentId) {
+  if (!selectedAgentId && dom.inspectorBody) {
     dom.inspectorBody.className = 'empty';
     dom.inspectorBody.textContent = copy.inspectorEmpty;
   }
@@ -1320,6 +1421,7 @@ function refreshDoorOpenStates() {
 }
 
 function renderInspector(agent) {
+  if (!dom.inspectorBody) return;
   const copy = strings();
   if (!agent) {
     dom.inspectorBody.className = 'empty';
@@ -1849,6 +1951,7 @@ function renderTimelineHeartbeat(panel, nowMs = Date.now()) {
 }
 
 function renderTimelinePanels(snapshot, { nowMs = snapshot?.server_time_ms || Date.now(), windowMs = 20 * 60 * 1000 } = {}) {
+  if (!dom.eventSummary || !dom.events) return;
   const copy = strings();
   const panels = buildAgentTimelinePanels(snapshot, copy, { nowMs, windowMs });
   dom.eventSummary.textContent = panels.length ? copy.eventGraphSummary(panels.length) : copy.noEvents;
@@ -1923,6 +2026,7 @@ function renderAgents(snapshot) {
 
   renderInspectorAgentSelect(agents);
   renderInspector(agents.find((item) => item.agent === selectedAgentId) || agents[0]);
+  if (dashboardDisclosure.activeCard === 'agents') renderDashboardCardContent();
   if (activeDialogAgentId) {
     const active = agents.find((item) => item.agent === activeDialogAgentId);
     if (active) openAgentDialog(active);
@@ -1951,6 +2055,7 @@ function renderSnapshot(snapshot) {
   updateCurrentAgentState(snapshot);
   renderAgents(snapshot);
   renderTimelinePanels(snapshot, { nowMs: snapshot.server_time_ms, windowMs: 20 * 60 * 1000 });
+  if (dashboardDisclosure.activeCard) renderDashboardCardContent();
 }
 
 function beginFurnitureEdit() {
@@ -2422,12 +2527,12 @@ dom.exposureSelect?.addEventListener('change', (event) => {
 
 dom.copyExposureButton?.addEventListener('click', copyExposureUrl);
 
-dom.dashboardDrawerButtons.forEach((button) => {
-  button.addEventListener('click', () => changeDashboardDrawer(button.dataset.dashboardDrawer));
+dom.dashboardCardButtons.forEach((button) => {
+  button.addEventListener('click', () => changeDashboardCard(button.dataset.dashboardCard, button));
   button.addEventListener('pointerdown', (event) => {
     if (event.pointerType !== 'touch') return;
     if (dashboardTouchTooltipTimer) window.clearTimeout(dashboardTouchTooltipTimer);
-    dom.dashboardDrawerButtons.forEach((item) => item.removeAttribute('data-tooltip-visible'));
+    dom.dashboardCardButtons.forEach((item) => item.removeAttribute('data-tooltip-visible'));
     button.dataset.tooltipVisible = 'true';
     dashboardTouchTooltipTimer = window.setTimeout(() => {
       button.removeAttribute('data-tooltip-visible');
@@ -2438,21 +2543,29 @@ dom.dashboardDrawerButtons.forEach((button) => {
 
 document.addEventListener('pointerdown', (event) => {
   lastDashboardInputModality = dashboardInputModality(event);
+  if (!dashboardDisclosure.activeCard) return;
+  if (event.target.closest('#dashboard-card, [data-dashboard-card]')) return;
+  closeDashboardCard();
 }, { capture: true });
-
-dom.dashboardHelpButton?.addEventListener('click', openDashboardGuide);
-dom.dashboardGuideDismiss?.addEventListener('click', dismissDashboardGuide);
 
 document.addEventListener('keydown', (event) => {
   lastDashboardInputModality = dashboardInputModality(event);
-  if (event.key === 'Escape' && dashboardGuideForcedOpen) {
-    dashboardGuideForcedOpen = false;
-    renderDashboardDisclosure();
-    restoreDashboardHelpFocus(dom.dashboardHelpButton);
-    return;
-  }
-  if (event.key !== 'Escape' || !dashboardDisclosure.activeDrawer) return;
-  changeDashboardDrawer(dashboardDisclosure.activeDrawer);
+  if (event.key !== 'Escape') return;
+  closeDashboardCard();
+});
+
+dom.dashboardCardPrevious?.addEventListener('click', () => {
+  const name = dashboardDisclosure.activeCard;
+  if (!name) return;
+  dashboardPages[name] -= 1;
+  renderDashboardCardContent();
+});
+
+dom.dashboardCardNext?.addEventListener('click', () => {
+  const name = dashboardDisclosure.activeCard;
+  if (!name) return;
+  dashboardPages[name] += 1;
+  renderDashboardCardContent();
 });
 
 dom.mobileModeButton?.addEventListener('click', () => {
@@ -2467,15 +2580,6 @@ dom.mobileModeButton?.addEventListener('click', () => {
 dom.sidebarToggleButton?.addEventListener('click', () => {
   sidebarOpen = !sidebarOpen;
   localStorage.setItem('pixelverse:sidebar-open', sidebarOpen ? '1' : '0');
-  applyMobileMode();
-});
-
-dom.sidebarCloseButton?.addEventListener('click', () => {
-  if (dashboardDisclosure.activeDrawer) {
-    changeDashboardDrawer(dashboardDisclosure.activeDrawer);
-  }
-  sidebarOpen = false;
-  localStorage.setItem('pixelverse:sidebar-open', '0');
   applyMobileMode();
 });
 

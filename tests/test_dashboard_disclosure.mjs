@@ -4,54 +4,43 @@ import test from 'node:test';
 import * as dashboardDisclosure from '../public/dashboard_disclosure.mjs';
 import {
   readDashboardDisclosure,
-  shouldShowGuide,
-  toggleDashboardDrawer,
+  restoreDashboardCardFocus,
+  toggleDashboardCard,
   writeDashboardDisclosure,
 } from '../public/dashboard_disclosure.mjs';
 import { getLocaleStrings } from '../public/ui_strings.mjs';
 
-test('secondary drawers start collapsed while core HUD stays visible', () => {
+test('dashboard cards start closed and same-button activation closes the card', () => {
   const initial = readDashboardDisclosure(null);
-  assert.deepEqual(initial, {
-    activeDrawer: null,
-    guideDismissed: false,
-  });
+  assert.deepEqual(initial, { activeCard: null, guideDismissed: false });
 
-  const open = toggleDashboardDrawer(initial, 'timeline');
-  assert.deepEqual(open, { activeDrawer: 'timeline', guideDismissed: false });
-  assert.deepEqual(toggleDashboardDrawer({ ...open, guideDismissed: true }, 'timeline'), {
-    activeDrawer: null,
+  const open = toggleDashboardCard(initial, 'events');
+  assert.deepEqual(open, { activeCard: 'events', guideDismissed: false });
+  assert.deepEqual(toggleDashboardCard({ ...open, guideDismissed: true }, 'events'), {
+    activeCard: null,
     guideDismissed: true,
   });
-});
-
-test('guide appears once for pointer, keyboard, and touch discovery', () => {
-  for (const modality of ['pointer', 'keyboard', 'touch']) {
-    assert.equal(shouldShowGuide({ guideDismissed: false }, modality), true);
-  }
-  assert.equal(shouldShowGuide({ guideDismissed: true }, 'pointer'), false);
-  assert.equal(shouldShowGuide({ guideDismissed: false }, 'unknown'), false);
+  assert.deepEqual(toggleDashboardCard(open, 'agents'), { activeCard: 'agents', guideDismissed: false });
 });
 
 test('stored disclosure is validated and malformed storage fails closed', () => {
   const validStorage = {
-    getItem: () => JSON.stringify({ activeDrawer: 'agents', guideDismissed: true }),
+    getItem: () => JSON.stringify({ activeCard: 'agents', guideDismissed: true }),
   };
   assert.deepEqual(readDashboardDisclosure(validStorage), {
-    activeDrawer: 'agents',
+    activeCard: 'agents',
     guideDismissed: true,
   });
 
   const invalidStorage = {
-    getItem: () => JSON.stringify({ activeDrawer: 'settings', guideDismissed: 'yes' }),
+    getItem: () => JSON.stringify({ activeCard: 'diagnostics', guideDismissed: 'yes' }),
   };
   assert.deepEqual(readDashboardDisclosure(invalidStorage), {
-    activeDrawer: null,
+    activeCard: null,
     guideDismissed: false,
   });
-
   assert.deepEqual(readDashboardDisclosure({ getItem: () => { throw new Error('denied'); } }), {
-    activeDrawer: null,
+    activeCard: null,
     guideDismissed: false,
   });
 });
@@ -59,39 +48,29 @@ test('stored disclosure is validated and malformed storage fails closed', () => 
 test('storage writes report quota or privacy failures without throwing', () => {
   let stored = null;
   const storage = { setItem: (_key, value) => { stored = JSON.parse(value); } };
-  const state = { activeDrawer: 'diagnostics', guideDismissed: true };
+  const state = { activeCard: 'help', guideDismissed: true };
 
   assert.equal(writeDashboardDisclosure(storage, state), true);
   assert.deepEqual(stored, state);
   assert.equal(writeDashboardDisclosure({ setItem: () => { throw new Error('quota'); } }, state), false);
 });
 
-test('actual pointer, keyboard, and touch events resolve to guide modalities', () => {
+test('actual pointer, keyboard, and touch events resolve to input modalities', () => {
   assert.equal(typeof dashboardDisclosure.dashboardInputModality, 'function');
   assert.equal(dashboardDisclosure.dashboardInputModality({ type: 'keydown' }), 'keyboard');
   assert.equal(dashboardDisclosure.dashboardInputModality({ type: 'pointerdown', pointerType: 'touch' }), 'touch');
   assert.equal(dashboardDisclosure.dashboardInputModality({ type: 'pointerdown', pointerType: 'mouse' }), 'pointer');
 });
 
-test('persistent Help reopens guidance after first-use dismissal', () => {
-  assert.equal(typeof dashboardDisclosure.dashboardGuideVisible, 'function');
-  const dismissed = { activeDrawer: null, guideDismissed: true };
-  assert.equal(dashboardDisclosure.dashboardGuideVisible(dismissed, 'keyboard', false), false);
-  assert.equal(dashboardDisclosure.dashboardGuideVisible(dismissed, 'keyboard', true), true);
-  assert.equal(dashboardDisclosure.dashboardGuideVisible({ guideDismissed: false }, 'touch', false), true);
-});
-
-test('the explicit Help dismiss action restores focus to the persistent Help control', () => {
-  assert.equal(typeof dashboardDisclosure.restoreDashboardHelpFocus, 'function');
+test('closing a dashboard card restores focus to its trigger', () => {
   let focusCount = 0;
-  const helpButton = { focus: () => { focusCount += 1; } };
-  assert.equal(dashboardDisclosure.restoreDashboardHelpFocus(helpButton), true);
+  const trigger = { focus: () => { focusCount += 1; } };
+  assert.equal(restoreDashboardCardFocus(trigger), true);
   assert.equal(focusCount, 1);
-  assert.equal(dashboardDisclosure.restoreDashboardHelpFocus(null), false);
+  assert.equal(restoreDashboardCardFocus(null), false);
 });
 
 test('live-region helper only writes when meaningful text changes', () => {
-  assert.equal(typeof dashboardDisclosure.updateLiveRegionText, 'function');
   let writes = 0;
   let value = '';
   const node = {
@@ -106,7 +85,6 @@ test('live-region helper only writes when meaningful text changes', () => {
 });
 
 test('map layer helper makes the iframe interactive by default and restores legacy editing on demand', () => {
-  assert.equal(typeof dashboardDisclosure.applyMapLayerVisibility, 'function');
   const element = () => ({ hidden: false, inert: false, attributes: new Map(), setAttribute(name, value) { this.attributes.set(name, String(value)); } });
   const frame = element();
   const legacyStage = element();
@@ -127,37 +105,38 @@ test('map layer helper makes the iframe interactive by default and restores lega
   assert.equal(legacyControls.hidden, false);
 });
 
-test('every locale provides persistent help and a diagnostic-specific explanation', () => {
+test('every locale provides the three dashboard card labels and pagination copy', () => {
   for (const locale of ['zh-TW', 'en-US', 'ja-JP', 'ko-KR']) {
     const copy = getLocaleStrings(locale);
-    assert.equal(typeof copy.dashboardHelp, 'string');
-    assert.equal(copy.dashboardHelp.length > 0, true);
-    assert.equal(typeof copy.dashboardGuideTitle, 'string');
-    assert.equal(typeof copy.diagnosticsExplanation, 'string');
-    assert.equal(copy.diagnosticsExplanation.length > copy.dashboardPanels.length, true);
+    for (const key of ['dashboardEvents', 'dashboardAgents', 'dashboardHelp', 'dashboardPrevious', 'dashboardNext']) {
+      assert.equal(typeof copy[key], 'string', `${locale}.${key}`);
+      assert.equal(copy[key].length > 0, true, `${locale}.${key}`);
+    }
+    assert.equal(typeof copy.dashboardPage, 'function');
+    assert.match(copy.dashboardPage(2, 4), /2/);
+    assert.match(copy.dashboardPage(2, 4), /4/);
   }
 });
 
-test('diagnostics drawer controls render a diagnostics-specific localized label', () => {
-  assert.equal(typeof dashboardDisclosure.renderDashboardDrawerControl, 'function');
+test('dashboard card controls render localized labels and mutual expanded state', () => {
+  assert.equal(typeof dashboardDisclosure.renderDashboardCardControl, 'function');
   for (const locale of ['zh-TW', 'en-US', 'ja-JP', 'ko-KR']) {
     const copy = getLocaleStrings(locale);
     const attributes = new Map();
     const button = {
-      dataset: { dashboardDrawer: 'diagnostics' },
+      dataset: { dashboardCard: 'events' },
       title: '',
       setAttribute: (name, value) => attributes.set(name, String(value)),
     };
-    const label = dashboardDisclosure.renderDashboardDrawerControl(button, {
-      name: 'diagnostics',
-      activeDrawer: null,
+    const label = dashboardDisclosure.renderDashboardCardControl(button, {
+      name: 'events',
+      activeCard: 'agents',
       copy,
     });
-    assert.equal(typeof copy.diagnosticsLabel, 'string');
-    assert.equal(label, copy.diagnosticsLabel);
-    assert.equal(button.dataset.tooltip, copy.diagnosticsLabel);
-    assert.equal(button.title, copy.diagnosticsLabel);
+    assert.equal(label, copy.dashboardEvents);
+    assert.equal(button.dataset.tooltip, copy.dashboardEvents);
+    assert.equal(button.title, copy.dashboardEvents);
     assert.equal(attributes.get('aria-expanded'), 'false');
-    assert.equal(attributes.get('aria-label'), `${copy.showPanels}: ${copy.diagnosticsLabel}`);
+    assert.equal(attributes.get('aria-label'), `${copy.showPanels}: ${copy.dashboardEvents}`);
   }
 });

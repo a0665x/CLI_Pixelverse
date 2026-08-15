@@ -2004,6 +2004,7 @@
       .functional-glass, button, a[href], [role="button"] { transition: opacity 160ms ease !important; }
       :where(button, a[href], [role="button"])[data-pressed="true"] { scale: 1; }
       [data-tooltip]::after { transition: none !important; transform: translateY(0) !important; }
+      .dashboard-card, .dashboard-card * { transition-duration: .01ms !important; }
     }
     @media (prefers-reduced-transparency: reduce) {
       .functional-glass { background: rgba(17,31,48,.97); backdrop-filter: none; -webkit-backdrop-filter: none; }
@@ -2074,7 +2075,7 @@
       gap: 7px;
       justify-content: flex-end;
       align-items: flex-start;
-      flex-wrap: wrap;
+      flex-wrap: nowrap;
       pointer-events: auto;
     }
     .workspace-tool-button {
@@ -2090,10 +2091,30 @@
       touch-action: manipulation;
     }
     .workspace-tool-button[aria-expanded="true"] {
-      border-color: var(--cyan);
+      border-color: var(--dashboard-control-accent, var(--cyan));
       color: #fff;
-      box-shadow: 0 0 0 3px rgba(110,231,249,.14), 0 8px 20px rgba(0,0,0,.26);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--dashboard-control-accent, var(--cyan)) 28%, transparent), 0 8px 20px rgba(0,0,0,.26);
     }
+    .dashboard-card-control {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border-color: color-mix(in srgb, var(--dashboard-control-accent) 56%, #20354e);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: .02em;
+    }
+    .dashboard-card-control--events { --dashboard-control-accent: #f6b73c; }
+    .dashboard-card-control--agents { --dashboard-control-accent: #35d0e6; }
+    .dashboard-card-control--help { --dashboard-control-accent: #c792ff; }
+    .dashboard-card-control .workspace-tool-icon { color: var(--dashboard-control-accent); font-size: 15px; }
+    .dashboard-card-control[aria-expanded="true"] .workspace-tool-icon { color: #fff; }
+    .dashboard-card-control:focus-visible,
+    .dashboard-card-pagination button:focus-visible {
+      outline: 3px solid var(--dashboard-control-accent, #f8fbff);
+      outline-offset: 3px;
+    }
+    .dashboard-card-control[data-pressed="true"] { transform: translateY(1px) scale(.98); }
     .workspace-tools .lang-switch,
     .workspace-tools .exposure-switch { max-width: min(360px, 100%); }
     .workspace-settings { position: relative; }
@@ -2139,6 +2160,52 @@
     [data-tooltip]:hover::after,
     [data-tooltip]:focus-visible::after,
     [data-tooltip][data-tooltip-visible="true"]::after { opacity: 1; transform: translateY(0); }
+    .dashboard-card {
+      position: fixed;
+      z-index: 58;
+      display: grid;
+      width: min(380px, calc(100vw - 16px));
+      height: min(390px, calc(100vh - 16px));
+      grid-template-rows: auto minmax(0, 1fr) auto;
+      gap: 10px;
+      overflow: hidden;
+      padding: 14px;
+      border: 1px solid color-mix(in srgb, var(--dashboard-card-accent, #35d0e6) 62%, #20354e);
+      border-radius: 16px;
+      background: rgba(11, 24, 34, .96);
+      box-shadow: 0 22px 56px rgba(0,0,0,.5);
+      pointer-events: auto;
+    }
+    .dashboard-card[hidden] { display: none; }
+    .dashboard-card[data-card="events"] { --dashboard-card-accent: #f6b73c; }
+    .dashboard-card[data-card="agents"] { --dashboard-card-accent: #35d0e6; }
+    .dashboard-card[data-card="help"] { --dashboard-card-accent: #c792ff; }
+    .dashboard-card-header { min-width: 0; border-bottom: 1px solid color-mix(in srgb, var(--dashboard-card-accent) 32%, transparent); padding-bottom: 8px; }
+    .dashboard-card-kicker { color: var(--dashboard-card-accent); font-size: 9px; font-weight: 900; letter-spacing: .14em; text-transform: uppercase; }
+    .dashboard-card h2 { margin: 2px 0 0; color: #f8fbff; font-size: 18px; }
+    .dashboard-card-body { display: grid; min-height: 0; align-content: start; gap: 8px; overflow: hidden; }
+    .dashboard-card-items { display: grid; min-height: 0; gap: 8px; overflow: hidden; }
+    .dashboard-card-item {
+      min-width: 0;
+      padding: 10px;
+      border: 1px solid rgba(142, 174, 205, .24);
+      border-left: 3px solid var(--dashboard-card-accent);
+      border-radius: 10px;
+      background: #101d29;
+    }
+    .dashboard-card-item-title { overflow: hidden; color: #f8fbff; font-size: 12px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+    .dashboard-card-item-meta,
+    .dashboard-card-item-detail { margin-top: 4px; color: #aebed0; font-size: 10px; line-height: 1.35; }
+    .dashboard-card-item-detail { color: #dce8f4; }
+    .dashboard-help-settings { display: grid; min-height: 0; gap: 7px; overflow: hidden; }
+    .dashboard-help-settings[hidden] { display: none; }
+    .dashboard-help-settings .lang-switch,
+    .dashboard-help-settings .exposure-switch { width: 100%; max-width: 100%; flex-wrap: wrap; background: #111f2c; }
+    .dashboard-help-settings .exposure-url { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .dashboard-card-pagination { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; }
+    .dashboard-card-pagination button { min-height: 34px; padding: 6px 10px; border-color: color-mix(in srgb, var(--dashboard-card-accent) 52%, #20354e); background: #111f2c; }
+    .dashboard-card-pagination button:last-child { justify-self: stretch; }
+    .dashboard-card-pagination output { min-width: 74px; color: #aebed0; font-size: 10px; text-align: center; }
     .workspace-drawer {
       position: absolute;
       z-index: 58;
@@ -2254,6 +2321,13 @@
       .map-first-workspace .hud.live-hud { inset: 8px auto auto 8px; width: min(330px, calc(100% - 72px)); }
       .workspace-tools { top: 8px; right: 8px; gap: 5px; }
       .workspace-tool-button { min-width: 40px; min-height: 40px; padding: 7px 8px; }
+      .dashboard-card { width: min(336px, calc(100vw - 16px)); height: min(340px, calc(100vh - 64px)); padding: 11px; }
+      .dashboard-card-body { gap: 6px; }
+      .dashboard-card-item { padding: 8px; }
+    }
+    @media (max-width: 520px) {
+      .map-first-workspace .hud.live-hud { width: min(250px, calc(100% - 112px)); }
+      .workspace-tools { flex-direction: column; align-items: stretch; }
     }
     body.cutaway-status-rail[data-pixelworld-cutaway="open"] .map-first-workspace { --compact-cutaway-status-height: 48px; }
       body.cutaway-status-rail[data-pixelworld-cutaway="open"] .map-first-workspace .map-stage {
@@ -2296,8 +2370,7 @@
         grid-template-columns: repeat(2, minmax(42px, 1fr));
       }
       body.cutaway-status-rail[data-pixelworld-cutaway="open"] .workspace-tools,
-      body.cutaway-status-rail[data-pixelworld-cutaway="open"] .workspace-drawer,
-      body.cutaway-status-rail[data-pixelworld-cutaway="open"] .dashboard-guide { display: none !important; }
+      body.cutaway-status-rail[data-pixelworld-cutaway="open"] .dashboard-card { display: none !important; }
     @media (max-width: 720px) {
       .workspace-drawer {
         inset: auto 8px 8px;
@@ -2310,8 +2383,7 @@
     }
     @media (prefers-reduced-transparency: reduce) {
       .live-hud .brand,
-      .workspace-drawer,
-      .dashboard-guide { backdrop-filter: none; background: #101916; }
+      .dashboard-card { backdrop-filter: none; background: #101916; }
     }
   </style>
 </head>
@@ -2407,95 +2479,40 @@
     </aside>
 
     <nav class="workspace-tools" aria-label="Workspace details">
-      <button type="button" class="workspace-tool-button" id="timeline-drawer-btn" data-dashboard-drawer="timeline" data-tooltip="Timeline" aria-label="Open timeline" aria-expanded="false" aria-controls="workspace-drawer">◫</button>
-      <button type="button" class="workspace-tool-button" id="agents-drawer-btn" data-dashboard-drawer="agents" data-tooltip="Agents" aria-label="Open agents" aria-expanded="false" aria-controls="workspace-drawer">◎</button>
-      <button type="button" class="workspace-tool-button" id="diagnostics-drawer-btn" data-dashboard-drawer="diagnostics" data-tooltip="Diagnostics" aria-label="Open diagnostics" aria-expanded="false" aria-controls="workspace-drawer">⌁</button>
-      <button type="button" class="workspace-tool-button" id="dashboard-help-btn" data-tooltip="Help" aria-label="Help" aria-expanded="false" aria-controls="dashboard-guide">?</button>
-      <details class="workspace-settings">
-        <summary class="workspace-tool-button" data-tooltip="Workspace settings" aria-label="Workspace settings" role="button">⚙</summary>
-        <div class="workspace-settings-panel">
-          <div class="lang-switch functional-glass">
-            <span class="muted" id="language-label"></span>
-            <select id="locale-select" aria-label="language selector"></select>
-            <button type="button" id="mobile-mode-btn" aria-pressed="false"></button>
-            <button type="button" id="edit-furniture-btn"></button>
-            <button type="button" id="save-furniture-btn" hidden></button>
-            <button type="button" id="cancel-furniture-btn" hidden></button>
-          </div>
-          <div class="exposure-switch functional-glass">
-            <span class="muted" id="exposure-label"></span>
-            <select id="exposure-select" aria-label="exposure selector"></select>
-            <button type="button" id="copy-exposure-btn" title="Copy URL" aria-label="Copy URL">📋</button>
-            <span class="exposure-url" id="exposure-url"></span>
-          </div>
-        </div>
-      </details>
+      <button type="button" class="workspace-tool-button dashboard-card-control dashboard-card-control--events" id="dashboard-events-btn" data-dashboard-card="events" data-tooltip="Events" aria-label="Open Events" aria-expanded="false" aria-controls="dashboard-card"><span class="workspace-tool-icon" aria-hidden="true">◫</span><span id="dashboard-events-label">Events</span></button>
+      <button type="button" class="workspace-tool-button dashboard-card-control dashboard-card-control--agents" id="dashboard-agents-btn" data-dashboard-card="agents" data-tooltip="Agents" aria-label="Open Agents" aria-expanded="false" aria-controls="dashboard-card"><span class="workspace-tool-icon" aria-hidden="true">◎</span><span id="dashboard-agents-label">Agents</span></button>
+      <button type="button" class="workspace-tool-button dashboard-card-control dashboard-card-control--help" id="dashboard-help-btn" data-dashboard-card="help" data-tooltip="Help" aria-label="Open Help" aria-expanded="false" aria-controls="dashboard-card"><span class="workspace-tool-icon" aria-hidden="true">?</span><span id="dashboard-help-label">Help</span></button>
     </nav>
 
-    <aside class="workspace-drawer" id="workspace-drawer" data-resizable-panel="sidebar" aria-labelledby="sidebar-title" hidden>
-      <div class="drawer-head">
-        <span class="strong" id="sidebar-title"></span>
-        <button type="button" id="sidebar-close-btn" class="workspace-tool-button" aria-controls="workspace-drawer"></button>
+    <aside class="dashboard-card" id="dashboard-card" role="region" aria-live="polite" aria-atomic="true" aria-labelledby="dashboard-card-title" hidden>
+      <header class="dashboard-card-header">
+        <span class="dashboard-card-kicker" id="dashboard-card-kicker"></span>
+        <h2 id="dashboard-card-title"></h2>
+      </header>
+      <div class="dashboard-card-body" id="dashboard-card-body">
+        <div class="dashboard-card-items" id="dashboard-card-items"></div>
+        <div class="dashboard-help-settings" id="dashboard-help-settings" hidden>
+        <div class="lang-switch functional-glass">
+          <span class="muted" id="language-label"></span>
+          <select id="locale-select" aria-label="language selector"></select>
+          <button type="button" id="mobile-mode-btn" aria-pressed="false"></button>
+          <button type="button" id="edit-furniture-btn"></button>
+          <button type="button" id="save-furniture-btn" hidden></button>
+          <button type="button" id="cancel-furniture-btn" hidden></button>
+        </div>
+        <div class="exposure-switch functional-glass">
+          <span class="muted" id="exposure-label"></span>
+          <select id="exposure-select" aria-label="exposure selector"></select>
+          <button type="button" id="copy-exposure-btn" title="Copy URL" aria-label="Copy URL">📋</button>
+          <span class="exposure-url" id="exposure-url"></span>
+        </div>
+        </div>
       </div>
-
-      <section class="drawer-panel" id="timeline-drawer-panel" data-dashboard-panel="timeline" hidden>
-        <section class="events-belt panel" id="event-timeline-belt" data-resizable-panel="timeline">
-          <div class="belt-title" data-drag-handle>
-            <span id="event-belt-title"></span>
-            <span id="event-summary" class="muted"></span>
-            <label class="timeline-refresh-control">
-              <span id="timeline-refresh-label"></span>
-              <span class="refresh-stepper">
-                <button type="button" id="refresh-slower-btn" aria-label="Decrease refresh rate">−</button>
-                <output id="refresh-rate-output">1.0s</output>
-                <button type="button" id="refresh-faster-btn" aria-label="Increase refresh rate">+</button>
-              </span>
-            </label>
-          </div>
-          <div class="events-track" id="events"></div>
-        </section>
-      </section>
-
-      <section class="drawer-panel" id="agents-drawer-panel" data-dashboard-panel="agents" hidden>
-        <aside class="inspector panel" id="inspector-panel" data-resizable-panel="inspector">
-          <div class="inspector-card">
-            <div class="subtitle" id="inspector-title" data-drag-handle></div>
-            <select class="inspector-agent-select" id="inspector-agent-select" aria-label="Select agent"></select>
-            <div id="inspector-body" class="empty"></div>
-          </div>
-        </aside>
-      </section>
-
-      <section class="drawer-panel" id="diagnostics-drawer-panel" data-dashboard-panel="diagnostics" hidden>
-        <p class="muted" id="diagnostics-drawer-explanation"></p>
-        <aside class="dashboard-sidebar" id="dashboard-sidebar">
-          <aside class="legend panel">
-            <div class="subtitle" id="legend-title" data-drag-handle></div>
-            <div class="legend-item"><span class="dot thinking"></span><div><strong id="legend-thinking-title"></strong><br><span class="muted" id="legend-thinking-body"></span></div></div>
-            <div class="legend-item"><span class="dot planning"></span><div><strong id="legend-planning-title"></strong><br><span class="muted" id="legend-planning-body"></span></div></div>
-            <div class="legend-item"><span class="dot working"></span><div><strong id="legend-working-title"></strong><br><span class="muted" id="legend-working-body"></span></div></div>
-            <div class="legend-item"><span class="dot"></span><div><strong id="legend-idle-title"></strong><br><span class="muted" id="legend-idle-body"></span></div></div>
-            <div class="legend-item"><span class="dot offline"></span><div><strong id="legend-offline-title"></strong><br><span class="muted" id="legend-offline-body"></span></div></div>
-          </aside>
-
-          <aside class="hook-state-panel panel" id="hook-state-panel" data-resizable-panel="hook-state">
-            <div class="subtitle" id="hook-state-title"></div>
-            <div class="hook-state-table" id="hook-state-table"></div>
-          </aside>
-        </aside>
-      </section>
-    </aside>
-
-    <div class="workbench-divider workbench-divider--vertical" id="sidebar-resizer" role="separator" aria-label="Resize drawer" aria-orientation="vertical" aria-valuemin="320" tabindex="0"></div>
-
-    <button type="button" id="sidebar-toggle-btn" class="functional-glass" aria-expanded="false" aria-controls="workspace-drawer" aria-label="Toggle sidebar">›</button>
-
-    <div class="workbench-divider workbench-divider--horizontal" id="timeline-resizer" role="separator" aria-label="Resize timeline" aria-orientation="horizontal" aria-valuemin="180" tabindex="0"></div>
-
-    <aside class="dashboard-guide" id="dashboard-guide" role="dialog" aria-modal="false" aria-labelledby="dashboard-guide-title" hidden>
-      <div class="strong" id="dashboard-guide-title">Map-first workspace</div>
-      <div class="subtitle" id="brand-subtitle"></div>
-      <button type="button" class="workspace-tool-button" id="dashboard-guide-dismiss">Got it</button>
+      <footer class="dashboard-card-pagination">
+        <button type="button" id="dashboard-card-previous"></button>
+        <output id="dashboard-card-page"></output>
+        <button type="button" id="dashboard-card-next"></button>
+      </footer>
     </aside>
 
     <div class="dialog-backdrop" id="speech-dialog-backdrop">

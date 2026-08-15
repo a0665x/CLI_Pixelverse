@@ -34,21 +34,15 @@ class DashboardParser(HTMLParser):
             self.stack.pop()
 
 
-def test_dashboard_layout_keeps_timeline_outside_left_sidebar_and_exposes_camera_controls():
+def test_dashboard_layout_keeps_map_primary_and_exposes_only_three_card_controls():
     parser = DashboardParser()
     parser.feed(Path("public/index.html").read_text(encoding="utf-8"))
 
-    assert "dashboard-sidebar" in parser.ids
-    assert "events" in parser.ids
-    assert "event-timeline-belt" in parser.ids
-    assert "dashboard-sidebar" not in parser.parents["events"]
-    assert "dashboard-sidebar" not in parser.parents["event-timeline-belt"]
-    assert {"mobile-mode-btn", "sidebar-toggle-btn", "heartbeat-status", "heartbeat-label"} <= parser.ids
-    assert {"hook-state-title", "hook-state-table"} <= parser.ids
-    assert {"hook-state-panel", "inspector-panel", "inspector-agent-select"} <= parser.ids
-    assert {"event-timeline-belt", "furniture-coord-hud", "furniture-coord-title"} <= parser.ids
-    assert {"refresh-slower-btn", "refresh-faster-btn", "refresh-rate-output"} <= parser.ids
+    assert {"mobile-mode-btn", "heartbeat-status", "heartbeat-label", "current-agent-state", "agent-count"} <= parser.ids
+    assert {"furniture-coord-hud", "furniture-coord-title"} <= parser.ids
     assert {"zoom-in-btn", "zoom-reset-btn", "zoom-out-btn"} <= parser.ids
+    card_controls = [element for element in parser.elements if element["attributes"].get("data-dashboard-card")]
+    assert [element["attributes"]["data-dashboard-card"] for element in card_controls] == ["events", "agents", "help"]
 
 
 def test_dashboard_supports_persistent_furniture_and_visible_timeline_lanes():
@@ -86,7 +80,7 @@ def test_liquid_glass_is_reserved_for_functional_controls():
             identities = identities | {"sidebar-toggle-btn"}
         assert len(identities) == 1, element
         observed_roles.update(identities)
-    assert observed_roles == approved_roles | {"sidebar-toggle-btn"}
+    assert observed_roles == approved_roles
 
     structural_panels = [element for element in parser.elements if "panel" in element["classes"]]
     assert structural_panels
@@ -124,7 +118,7 @@ def test_reduced_motion_preserves_layout_transforms_and_glass_groups_have_shape(
     assert re.search(r"\.lang-switch,\s*\.exposure-switch\s*\{[^}]*border-radius:", html)
 
 
-def test_map_first_dashboard_keeps_live_state_outside_collapsed_drawers():
+def test_map_first_dashboard_keeps_live_state_outside_the_optional_card():
     parser = DashboardParser()
     parser.feed(Path("public/index.html").read_text(encoding="utf-8"))
 
@@ -138,43 +132,44 @@ def test_map_first_dashboard_keeps_live_state_outside_collapsed_drawers():
     }
     assert core_ids <= parser.ids
     for element_id in core_ids:
-        assert "workspace-drawer" not in parser.parents[element_id]
+        assert "dashboard-card" not in parser.parents[element_id]
 
     assert parser.id_counts["pixelworld-frame"] == 1
     assert all(count == 1 for count in parser.id_counts.values())
     assert parser.elements_by_id["current-agent-state"]["attributes"].get("aria-live") == "polite"
 
-    for panel_id in ("timeline-drawer-panel", "agents-drawer-panel", "diagnostics-drawer-panel"):
-        assert panel_id in parser.ids
-        assert "hidden" in parser.elements_by_id[panel_id]["attributes"]
-        assert "workspace-drawer" in parser.parents[panel_id]
-
-    assert "timeline-drawer-panel" in parser.parents["events"]
-    assert "agents-drawer-panel" in parser.parents["inspector-panel"]
-    assert "diagnostics-drawer-panel" in parser.parents["hook-state-panel"]
+    card = parser.elements_by_id["dashboard-card"]
+    assert "hidden" in card["attributes"]
+    assert card["attributes"].get("aria-live") == "polite"
 
 
-def test_map_first_drawers_overlay_the_map_and_offer_discoverable_controls():
+def test_map_first_card_overlays_the_map_and_offers_paginated_discoverable_controls():
     html = Path("public/index.html").read_text(encoding="utf-8")
     parser = DashboardParser()
     parser.feed(html)
 
-    drawer = parser.elements_by_id["workspace-drawer"]
-    assert "hidden" in drawer["attributes"]
-    for drawer_name in ("timeline", "agents", "diagnostics"):
-        button = parser.elements_by_id[f"{drawer_name}-drawer-btn"]
-        assert button["attributes"].get("aria-controls") == "workspace-drawer"
+    card = parser.elements_by_id["dashboard-card"]
+    assert "hidden" in card["attributes"]
+    for card_name in ("events", "agents", "help"):
+        button = parser.elements_by_id[f"dashboard-{card_name}-btn"]
+        assert button["attributes"].get("aria-controls") == "dashboard-card"
         assert button["attributes"].get("aria-expanded") == "false"
         assert button["attributes"].get("aria-label")
         assert button["attributes"].get("data-tooltip")
 
-    assert "dashboard-guide" in parser.ids
-    assert "dashboard-guide-dismiss" in parser.ids
+    assert {"dashboard-card-title", "dashboard-card-body", "dashboard-card-previous", "dashboard-card-next"} <= parser.ids
+    legacy_ids = {
+        "timeline-drawer-btn", "agents-drawer-btn", "diagnostics-drawer-btn",
+        "workspace-drawer", "dashboard-guide", "sidebar-resizer", "timeline-resizer",
+    }
+    assert not (legacy_ids & parser.ids)
     assert ".map-first-workspace { position: fixed; inset: 0; overflow: hidden;" in html
     assert ".map-first-workspace .map-stage { position: absolute; inset: 0;" in html
-    assert ".workspace-drawer {" in html
-    assert "position: absolute;" in html
-    assert ".workspace-drawer[hidden] { display: none; }" in html
+    assert ".dashboard-card {" in html
+    assert "position: fixed;" in html
+    card_css = html[html.index(".dashboard-card {"):html.index(".dashboard-card[hidden]")]
+    assert "overflow: auto" not in card_css
+    assert "overflow: scroll" not in card_css
     assert '[data-tooltip]:hover::after' in html
     assert '[data-tooltip]:focus-visible::after' in html
 
@@ -190,22 +185,20 @@ def test_pixelworld_is_the_default_interactive_layer_and_legacy_editor_is_explic
     assert legacy_stage["attributes"].get("aria-hidden") == "true"
 
 
-def test_persistent_help_diagnostics_copy_and_motion_safe_tooltips_are_structural_contracts():
+def test_persistent_three_button_hud_and_motion_safe_tooltips_are_structural_contracts():
     html = Path("public/index.html").read_text(encoding="utf-8")
     parser = DashboardParser()
     parser.feed(html)
 
     help_button = parser.elements_by_id["dashboard-help-btn"]
     assert help_button["tag"] == "button"
-    assert help_button["attributes"].get("aria-controls") == "dashboard-guide"
+    assert help_button["attributes"].get("aria-controls") == "dashboard-card"
     assert help_button["attributes"].get("data-tooltip")
-    assert "diagnostics-drawer-panel" in parser.parents["diagnostics-drawer-explanation"]
-    assert parser.elements_by_id["diagnostics-drawer-explanation"]["attributes"].get("aria-live") is None
 
-    drawer_rule = re.search(r"\.workspace-drawer\s*\{([^}]*)\}", html, re.S)
-    assert drawer_rule
-    assert "position: absolute" in drawer_rule.group(1)
-    assert "inset: 68px 14px 14px auto" in drawer_rule.group(1)
+    card_rule = re.search(r"\.dashboard-card\s*\{([^}]*)\}", html, re.S)
+    assert card_rule
+    assert "position: fixed" in card_rule.group(1)
+    assert "overflow: hidden" in card_rule.group(1)
     assert "touch-action: manipulation" in html
 
     reduced_motion = re.search(r"@media \(prefers-reduced-motion: reduce\)\s*\{(.*?)\n\s*\}", html, re.S)
@@ -232,8 +225,7 @@ def test_collision_derived_cutaway_status_rail_reserves_exact_space_above_the_if
     assert "height: var(--compact-cutaway-status-height);" in html
     assert 'body[data-pixelworld-cutaway="open"] .map-first-workspace .live-hud,' not in html
     assert 'body.cutaway-status-rail[data-pixelworld-cutaway="open"] .workspace-tools' in html
-    assert 'body.cutaway-status-rail[data-pixelworld-cutaway="open"] .workspace-drawer' in html
-    assert 'body.cutaway-status-rail[data-pixelworld-cutaway="open"] .dashboard-guide' in html
+    assert 'body.cutaway-status-rail[data-pixelworld-cutaway="open"] .dashboard-card' in html
 
 
 def test_dashboard_does_not_link_to_an_uncommitted_map_builder_route():
