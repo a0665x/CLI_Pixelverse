@@ -278,7 +278,7 @@ describe('interior furniture editor model', () => {
     saveInteriorLayout('supported-layer-house', instance, storage);
     const restored = loadInteriorLayout('supported-layer-house', room, storage);
 
-    expect(restored).toEqual(instance);
+    expect(restored).toEqual([{ ...instance[0], semantic: 'work' }, instance[1]]);
     expect(restored[1]?.supportedByIds).toEqual([restored[0]?.id]);
     expect(officeLayoutIssues({ ...room, furniture: restored })).toEqual([]);
   });
@@ -308,6 +308,7 @@ describe('interior furniture editor model', () => {
 
     expect(loadInteriorLayout('old-work-house', workRoom, storage)[0]).toEqual({
       ...saved,
+      semantic: 'work',
       interactionPoint: expectedAnchor,
     });
   });
@@ -379,7 +380,7 @@ describe('interior furniture editor model', () => {
     expect(loadInteriorLayout('network-lab', workRoom, storage)).toEqual(
       saved.furniture.map((item: FurnitureDefinition) => ({
         ...item,
-        requirementId: item.requirementId ?? `${workRoom.id}:${item.id}`,
+        semantic: 'search',
       })),
     );
     expect(memory.get(key)).toBe(originalPayload);
@@ -397,6 +398,26 @@ describe('interior furniture editor model', () => {
     expect(hasSavedInteriorLayout('malformed-house', storage)).toBe(false);
     expect(loadInteriorLayout('malformed-house', room, storage)).toEqual(normalizedRoomLayout());
     expect(memory.get(key)).toBe('{not-json');
+    expect(writes).toBe(0);
+  });
+
+  it('hydrates legacy v5 Hook metadata into a semantic in memory without writing before Save', () => {
+    const key = 'pixelworld:interior-layout:semantic-v5-house';
+    const legacy = {
+      id: 'legacy-search-console', kind: 'decor' as const, point: { x: 3, y: 3 }, facing: 'up' as const,
+      supportedActions: ['read' as const], icon: 'read' as const, requirementId: 'legacy:exact-bookcase',
+      blocksNavigation: true,
+    };
+    const raw = JSON.stringify({ version: 5, authoredRevision: INTERIOR_LAYOUT_REVISION, furniture: [legacy] });
+    let writes = 0;
+    const storage = {
+      getItem: (candidate: string) => candidate === key ? raw : null,
+      setItem: () => { writes += 1; },
+    };
+
+    expect(loadInteriorLayout('semantic-v5-house', room, storage)[0]).toMatchObject({
+      id: legacy.id, semantic: 'search', requirementId: legacy.requirementId,
+    });
     expect(writes).toBe(0);
   });
 

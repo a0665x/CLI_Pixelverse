@@ -3,6 +3,7 @@ import { assignInteriorOccupants, type InteriorAgentSnapshot } from '../src/rend
 import { interiorInteractionPoint } from '../src/rendering/prefabGeometry';
 import { interiorPath } from '../src/rendering/interiorMotion';
 import { INTERIOR_DEFINITIONS } from '../src/world/interiorDefinitions';
+import { semanticForFurniture } from '../src/rendering/interiorFurnitureSemantics';
 
 const snapshot = (overrides: Partial<InteriorAgentSnapshot>): InteriorAgentSnapshot => ({
   agentId: 'main', role: 'main', buildingId: 'rest-cabin', action: 'rest',
@@ -10,17 +11,18 @@ const snapshot = (overrides: Partial<InteriorAgentSnapshot>): InteriorAgentSnaps
 });
 
 describe('interior occupant assignment', () => {
-  it('seats idle at the sofa and puts offline at the bed', () => {
+  it('routes rest-category actions to the nearest compatible seat', () => {
     const rest = INTERIOR_DEFINITIONS['rest-cabin'];
-    expect(assignInteriorOccupants(rest, [snapshot({})])[0]).toMatchObject({
-      agentId: 'main', furnitureId: 'rest-sofa-a', icon: 'rest', seated: true,
-    });
-    expect(assignInteriorOccupants(rest, [snapshot({ action: 'offline', eventKind: 'offline' })])[0]).toMatchObject({
-      furnitureId: 'rest-bed-a', icon: 'offline', seated: true,
-    });
+    for (const assigned of [
+      assignInteriorOccupants(rest, [snapshot({})])[0]!,
+      assignInteriorOccupants(rest, [snapshot({ action: 'offline', eventKind: 'offline' })])[0]!,
+    ]) {
+      expect(semanticForFurniture(rest.furniture.find(({ id }) => id === assigned.furnitureId)!)).toBe('rest');
+      expect(assigned).toMatchObject({ agentId: 'main', seated: true });
+    }
   });
 
-  it('maps web work to an action-bearing research workstation and changes station by activity cycle id', () => {
+  it('maps web work to a stable nearby Search station independently of activity cycle id', () => {
     const research = INTERIOR_DEFINITIONS['research-library'];
     const first = assignInteriorOccupants(research, [snapshot({
       buildingId: 'research-library', action: 'signal', eventKind: 'web', eventId: 'web-cycle-0',
@@ -29,9 +31,9 @@ describe('interior occupant assignment', () => {
       buildingId: 'research-library', action: 'signal', eventKind: 'web', eventId: 'web-cycle-1',
     })])[0]!;
 
-    expect(research.furniture.find(({ id }) => id === first.furnitureId)?.supportedActions).toContain('signal');
-    expect(research.furniture.find(({ id }) => id === second.furnitureId)?.supportedActions).toContain('signal');
-    expect(first.furnitureId).not.toBe(second.furnitureId);
+    expect(semanticForFurniture(research.furniture.find(({ id }) => id === first.furnitureId)!)).toBe('search');
+    expect(semanticForFurniture(research.furniture.find(({ id }) => id === second.furnitureId)!)).toBe('search');
+    expect(first.furnitureId).toBe(second.furnitureId);
   });
 
   it('assigns multiple occupants to stable non-overlapping workstations before overflow', () => {
@@ -120,6 +122,45 @@ describe('interior occupant assignment', () => {
     });
   });
 
+  it('routes to the nearest compatible custom desk without exact Hook metadata', () => {
+    const room = {
+      ...INTERIOR_DEFINITIONS['maker-workshop'], width: 9, height: 7,
+      furniture: [
+        {
+          id: 'far-custom-desk', kind: 'desk' as const, point: { x: 1, y: 1 }, facing: 'down' as const,
+          supportedActions: [], icon: 'generic' as const, blocksNavigation: true,
+          interactionPoint: { x: 1, y: 2 }, requirementId: 'unrelated:legacy-id',
+        },
+        {
+          id: 'near-custom-desk', kind: 'desk' as const, point: { x: 4, y: 3 }, facing: 'down' as const,
+          supportedActions: [], icon: 'generic' as const, blocksNavigation: true,
+          interactionPoint: { x: 4, y: 5 },
+        },
+      ],
+      overflow: [],
+    };
+
+    expect(assignInteriorOccupants(room, [snapshot({
+      buildingId: 'custom-house', action: 'terminal', eventId: 'semantic-work',
+    })], 'custom-house')[0]).toMatchObject({
+      furnitureId: 'near-custom-desk', point: { x: 4, y: 5 },
+    });
+  });
+
+  it('keeps an agent at the entrance and names the missing semantic category', () => {
+    const room = {
+      ...INTERIOR_DEFINITIONS['rest-cabin'], width: 9, height: 7, furniture: [], overflow: [{ x: 1, y: 1 }],
+    };
+
+    const assigned = assignInteriorOccupants(room, [snapshot({
+      buildingId: 'empty-house', action: 'read', eventId: 'missing-search',
+    })], 'empty-house')[0]!;
+    expect(assigned).toMatchObject({
+      point: { x: 4, y: 6 }, missingSemantic: 'search', seated: false,
+    });
+    expect(assigned.furnitureId).toBeUndefined();
+  });
+
   it('exempts only the selected station at its anchor and rejects an unrelated target blocker', () => {
     const station = {
       id: 'blocking-station', kind: 'computer' as const, assetId: 225,
@@ -142,6 +183,7 @@ describe('interior occupant assignment', () => {
     };
     const blocked = assignInteriorOccupants({ ...baseRoom, furniture: [station, unrelated] }, [work], 'test-room')[0]!;
     expect(blocked.furnitureId).toBeUndefined();
-    expect(blocked.point).toEqual({ x: 1, y: 4 });
+    expect(blocked.point).toEqual({ x: 3, y: 5 });
+    expect(blocked.missingSemantic).toBe('work');
   });
 });

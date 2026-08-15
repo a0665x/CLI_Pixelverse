@@ -4,6 +4,7 @@ import type {
   FurnitureScale,
   FurnitureRotation,
   FurnitureLayer,
+  FurnitureSemantic,
   GridPoint,
   InteriorDefinition,
 } from '../world/types';
@@ -30,6 +31,7 @@ import {
   stackDependencies,
   stackRoleForFurniture,
 } from './interiorAutoStack';
+import { semanticForAction, semanticForFurniture } from './interiorFurnitureSemantics';
 
 export type { PlacementDiagnostic } from './interiorPlacement';
 
@@ -249,6 +251,7 @@ const ICON_VALUES = [
   'clone', 'respond', 'generic',
 ] as const;
 const LAYER_VALUES = ['floor', 'furniture', 'surface', 'wall'] as const;
+const SEMANTIC_VALUES = ['rest', 'search', 'work'] as const;
 
 const finitePoint = (value: unknown): value is GridPoint => Boolean(
   value && typeof value === 'object'
@@ -280,6 +283,7 @@ const isSavedFurniture = (value: unknown): value is FurnitureDefinition => {
     && optionalFinite(item.zIndex)
     && (item.blocksNavigation === undefined || typeof item.blocksNavigation === 'boolean')
     && optionalString(item.requirementId)
+    && (item.semantic === undefined || SEMANTIC_VALUES.includes(item.semantic))
     && (item.visualOffset === undefined || finitePoint(item.visualOffset))
     && (item.interactionPoint === undefined || finitePoint(item.interactionPoint))
     && optionalString(item.prefabInstanceId)
@@ -322,34 +326,25 @@ const normalizeLayout = (layout: readonly FurnitureDefinition[]): FurnitureDefin
       scale: normalizeFurnitureScale(item.scale),
       rotation: normalizeRotation(item.rotation ?? 0),
     };
+    const semantic = semanticForFurniture(normalized);
     return {
       ...normalized,
       point: { ...item.point },
       layer: item.layer ?? defaultFurnitureLayer(normalized),
       zIndex: Number.isFinite(item.zIndex) ? Math.trunc(item.zIndex!) : 0,
       blocksNavigation: furnitureBlocksNavigation(normalized),
+      ...(semantic ? { semantic } : {}),
     };
   });
 
-const requiredId = (room: InteriorDefinition, item: FurnitureDefinition): string =>
-  item.requirementId ?? `${room.id}:${item.id}`;
-
 const normalizeRoomLayout = (
-  room: InteriorDefinition,
+  _room: InteriorDefinition,
   layout: readonly FurnitureDefinition[],
-): FurnitureDefinition[] => normalizeLayout(layout).map((item) => {
-  const authoredHook = room.furniture.find(({ id }) => id === item.id && item.supportedActions.length > 0);
-  return item.supportedActions.length > 0 || authoredHook
-    ? {
-        ...item,
-        requirementId: requiredId(room, authoredHook ?? item),
-        blocksNavigation: item.blocksNavigation ?? authoredHook?.blocksNavigation ?? true,
-      }
-    : item;
-});
+): FurnitureDefinition[] => normalizeLayout(layout);
 
 export interface RequiredHookInventoryItem {
   requirementId: string;
+  semantic: FurnitureSemantic;
   furniture: FurnitureDefinition;
   placed: boolean;
 }
@@ -358,16 +353,19 @@ export function requiredHookInventory(
   room: InteriorDefinition,
   layout: readonly FurnitureDefinition[],
 ): RequiredHookInventoryItem[] {
-  return normalizeRoomLayout(room, room.furniture)
-    .filter(({ supportedActions }) => supportedActions.length > 0)
-    .map((furniture) => ({
-      requirementId: requiredId(room, furniture),
+  const authored = normalizeRoomLayout(room, room.furniture);
+  const semantics = [...new Set(authored
+    .flatMap(({ supportedActions }) => supportedActions.map(semanticForAction)))];
+  return semantics.flatMap((semantic) => {
+    const furniture = authored.find((item) => semanticForFurniture(item) === semantic);
+    if (!furniture) return [];
+    return [{
+      requirementId: `semantic:${semantic}`,
+      semantic,
       furniture,
-      placed: layout.some((item) =>
-        item.requirementId === requiredId(room, furniture)
-        || item.id === furniture.id,
-      ),
-    }));
+      placed: layout.some((item) => semanticForFurniture(item) === semantic),
+    }];
+  });
 }
 
 export function collectAllFurniture(_layout: readonly FurnitureDefinition[]): FurnitureDefinition[] {

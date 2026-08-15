@@ -1,5 +1,6 @@
 import type { GridPoint, GridRect, TerrainArea, WorldDefinition } from './types';
 import { INTERIOR_DEFINITIONS, interiorDefinitionForBuilding } from './interiorDefinitions';
+import { semanticForAction, semanticForFurniture } from '../rendering/interiorFurnitureSemantics';
 
 const inside = (point: GridPoint, world: WorldDefinition) =>
   Number.isInteger(point.x) && Number.isInteger(point.y) &&
@@ -139,8 +140,9 @@ export function validateWorld(world: WorldDefinition): string[] {
       .filter((station) => station.buildingId === building.id)
       .flatMap((station) => station.interactionSlots.map((item) => item.action)));
     for (const action of actions) {
-      if (!interior.furniture.some((item) => item.supportedActions.includes(action))) {
-        errors.push(`missing furniture action: ${building.id}@${action}`);
+      const semantic = semanticForAction(action);
+      if (!interior.furniture.some((item) => semanticForFurniture(item) === semantic)) {
+        errors.push(`missing furniture semantic: ${building.id}@${semantic}`);
       }
     }
   }

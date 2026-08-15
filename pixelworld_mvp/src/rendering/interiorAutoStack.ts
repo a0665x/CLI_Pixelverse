@@ -18,6 +18,8 @@ const SURFACE_KINDS = new Set<FurnitureDefinition['kind']>([
 const SUPPORT_LABEL = /desk|table|workstation|console|cabinet|bookcase|shelf|storage|credenza|station/i;
 const NON_SUPPORT_LABEL = /divider|partition|wall/i;
 
+export const isNonSupportCatalogLabel = (label: string): boolean => NON_SUPPORT_LABEL.test(label);
+
 export function stackRoleForFurniture(item: StackRoleFurniture): StackRole {
   if (item.layer === 'floor') return 'floor';
   const asset = resolvedFurnitureAsset(item);
@@ -28,7 +30,7 @@ export function stackRoleForFurniture(item: StackRoleFurniture): StackRole {
   if (asset.category === 'surfaces') return 'floor';
   if (asset.category === 'workstations') return 'support';
   if (asset.category === 'storage-partitions') {
-    return NON_SUPPORT_LABEL.test(asset.label) ? 'free' : 'support';
+    return isNonSupportCatalogLabel(asset.label) ? 'free' : 'support';
   }
   if (asset.category === 'screens-electronics') {
     return SUPPORT_LABEL.test(asset.label) ? 'support' : 'surface';

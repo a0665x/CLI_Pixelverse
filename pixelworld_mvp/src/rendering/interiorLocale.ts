@@ -1,4 +1,5 @@
 import { normalizeVillageLocale, type VillageLocale } from '../i18n/villageLocale';
+import type { FurnitureSemantic } from '../world/types';
 
 export const editorChrome = {
   'zh-TW': { catalog: '家具庫', properties: '屬性', help: '操作說明', fitView: '符合畫面', closeGuide: '知道了', validPlacement: '可以放置', collision: '位置衝突', returnedToOrigin: '已返回原位', previousPage: '上一頁', nextPage: '下一頁', rotateLeft: '向左旋轉', rotateRight: '向右旋轉' },
@@ -31,3 +32,22 @@ const roomCommandCopy: Record<VillageLocale, string> = {
 
 export const interiorRoomCommandCopy = (locale: unknown): string =>
   roomCommandCopy[normalizeVillageLocale(locale)];
+
+export const semanticFurnitureCopy = {
+  'zh-TW': { rest: '休息', search: '搜尋', work: '工作' },
+  'en-US': { rest: 'Rest', search: 'Search', work: 'Work' },
+  'ja-JP': { rest: '休憩', search: '検索', work: '作業' },
+  'ko-KR': { rest: '휴식', search: '검색', work: '작업' },
+} as const satisfies Record<VillageLocale, Record<FurnitureSemantic, string>>;
+
+const missingSemanticCopy = {
+  'zh-TW': '缺少{category}家具',
+  'en-US': 'Missing {category} furniture',
+  'ja-JP': '{category}用の家具がありません',
+  'ko-KR': '{category} 가구가 없습니다',
+} as const satisfies Record<VillageLocale, string>;
+
+export const missingSemanticFurnitureCopy = (locale: unknown, semantic: FurnitureSemantic): string => {
+  const normalized = normalizeVillageLocale(locale);
+  return missingSemanticCopy[normalized].replace('{category}', semanticFurnitureCopy[normalized][semantic]);
+};

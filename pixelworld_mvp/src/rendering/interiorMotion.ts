@@ -2,6 +2,7 @@ import type { Facing, FurnitureDefinition, GridPoint, InteriorDefinition } from 
 import type { InteriorAgentSnapshot, InteriorOccupantAssignment } from './interiorAssignment';
 import { navigationBlockedCellKeys } from './interiorPlacement';
 import { interiorInteractionPoint } from './prefabGeometry';
+import { nearestSemanticStation } from './interiorFurnitureSemantics';
 
 export { interiorInteractionPoint } from './prefabGeometry';
 
@@ -27,40 +28,30 @@ const eventBubble = (snapshot: InteriorAgentSnapshot): string => snapshot.bubble
   idle: '暫時休息', offline: 'Agent 離線', heartbeat: '保持連線', unknown: '處理工作',
 })[snapshot.eventKind];
 
-const firstKind = (
-  interior: InteriorDefinition,
-  kind: FurnitureDefinition['kind'],
-  action: InteriorAgentSnapshot['action'],
-): FurnitureDefinition | undefined => interior.furniture.find((item) => (
-  item.kind === kind && item.supportedActions.includes(action)
-));
-
 export function interiorRouteFor(
   snapshot: InteriorAgentSnapshot,
   interior: InteriorDefinition,
   assignment: InteriorOccupantAssignment,
 ): FurnitureDefinition[] {
-  const byKinds = (kinds: FurnitureDefinition['kind'][]): FurnitureDefinition[] =>
-    kinds.flatMap((kind) => {
-      const match = firstKind(interior, kind, snapshot.action);
-      return match ? [match] : [];
-    });
-  let route: FurnitureDefinition[];
-  if (snapshot.action === 'terminal') route = byKinds(['computer', 'bookcase', 'planning-board', 'computer']);
-  else if (snapshot.action === 'signal') route = byKinds(['computer', 'bookcase', 'computer']);
-  else if (snapshot.action === 'type') route = byKinds(['computer', 'workbench', 'computer']);
-  else if (snapshot.action === 'plan' || snapshot.action === 'ponder') route = byKinds(['planning-board', 'map-table', 'planning-board']);
-  else if (snapshot.action === 'read') route = byKinds(['reading-desk', 'bookcase', 'reading-desk']);
-  else route = [];
-
   const assignedFurniture = interior.furniture.find(({ id }) => id === assignment.furnitureId);
   if (assignedFurniture) {
-    const canonicalStops = route.filter(({ id }) => id !== assignedFurniture.id);
-    return canonicalStops.length > 0
-      ? [assignedFurniture, ...canonicalStops, assignedFurniture]
+    const excluded = new Set([assignedFurniture.id]);
+    const patrol: FurnitureDefinition[] = [];
+    let origin = assignment.point;
+    for (let index = 0; index < 2; index += 1) {
+      const station = nearestSemanticStation(interior, snapshot.action, origin, new Set(), excluded);
+      if (!station) break;
+      const furniture = interior.furniture.find(({ id }) => id === station.furnitureId);
+      if (!furniture) break;
+      patrol.push({ ...furniture, interactionPoint: { ...station.point } });
+      excluded.add(furniture.id);
+      origin = station.point;
+    }
+    return patrol.length > 0
+      ? [assignedFurniture, ...patrol, assignedFurniture]
       : [assignedFurniture];
   }
-  return route.length > 0 ? route : [{
+  return [{
     id: 'interior-overflow', kind: 'decor', point: assignment.point, facing: assignment.facing,
     supportedActions: [snapshot.action], icon: assignment.icon,
   }];

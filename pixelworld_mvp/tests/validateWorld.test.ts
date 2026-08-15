@@ -70,4 +70,12 @@ describe('WORLD_DEFINITION', () => {
 
     expect(validateWorld(world)).toContain('station point outside world: think-plan@-1,2');
   });
+
+  it('validates building Hook coverage by semantic category instead of exact actions', () => {
+    const world = structuredClone(WORLD_DEFINITION);
+    const station = world.stations.find(({ buildingId }) => buildingId === 'maker-workshop')!;
+    station.interactionSlots[0]!.action = 'read';
+
+    expect(validateWorld(world)).toEqual([]);
+  });
 });

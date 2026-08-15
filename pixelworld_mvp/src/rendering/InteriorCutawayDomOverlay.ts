@@ -1,7 +1,7 @@
 import { WORLD_PIXELS } from '../game/constants';
 import type { CutawayLayout } from './InteriorCutawaySystem';
 import type { ModernOfficeCategory } from './modernOfficeCatalog';
-import type { FurnitureDefinition, FurnitureLayer, FurnitureRotation } from '../world/types';
+import type { FurnitureDefinition, FurnitureLayer, FurnitureRotation, FurnitureSemantic } from '../world/types';
 import {
   interiorInspectorAvailable,
   type EditorRect,
@@ -14,7 +14,12 @@ import {
   type ContextSelection,
   type ContextPoint,
 } from './interiorContextMenu';
-import { interiorContextActionCopy, interiorEditorCopy, interiorRoomCommandCopy } from './interiorLocale';
+import {
+  interiorContextActionCopy,
+  interiorEditorCopy,
+  interiorRoomCommandCopy,
+  missingSemanticFurnitureCopy,
+} from './interiorLocale';
 import {
   cutawayMessage,
   furnitureLayerLabel,
@@ -64,6 +69,7 @@ interface CutawayDomModelBase {
   editorLayout?: InteriorEditorLayout;
   selectionBounds?: EditorRect;
   contextMenu?: { pointer: ContextPoint; selection: ContextSelection };
+  missingSemantic?: FurnitureSemantic;
 }
 
 export interface CutawayDisclosureState {
@@ -221,7 +227,10 @@ export class InteriorCutawayDomOverlay {
     const localeCopy = villageCopy(this.locale).cutaway;
     const chrome = interiorEditorCopy(this.locale);
     if (this.title) this.title.textContent = localeCopy.titles[model.titleId] ?? model.title;
-    if (this.status) this.status.textContent = renderCutawayMessageState(this.locale, model);
+    const semanticStatus = model.missingSemantic
+      ? missingSemanticFurnitureCopy(this.locale, model.missingSemantic)
+      : undefined;
+    if (this.status) this.status.textContent = semanticStatus ?? renderCutawayMessageState(this.locale, model);
     const iconActions = {
       edit: model.editMode ? localeCopy.actions.done : localeCopy.actions.edit,
       catalog: chrome.catalog,
@@ -405,7 +414,7 @@ export class InteriorCutawayDomOverlay {
       const diagnostics = model.templateDiagnostics.map((id) => cutawayMessage(this.locale, id));
       const status = diagnostics.length > 0
         ? diagnostics.join(' · ')
-        : renderCutawayMessageState(this.locale, model);
+        : semanticStatus ?? renderCutawayMessageState(this.locale, model);
       this.status.textContent = `${status} · ${localeCopy.status.hook} ${model.requiredPlaced}/${model.requiredTotal} · ${localeCopy.status.prefab} ${model.prefabCount}`;
     }
     this.positionEditorRegions();

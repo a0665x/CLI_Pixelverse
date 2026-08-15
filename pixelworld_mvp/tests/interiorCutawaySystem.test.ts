@@ -314,7 +314,7 @@ const overlayDomHarness = () => {
   ].map((name) => [name, vi.fn()])) as unknown as CutawayDomHandlers;
   return {
     overlay, handlers, panel, header, roomToolbar, catalog, inspector, toolbar, guide, labelLayer,
-    actions, documentStub,
+    actions, status, documentStub,
   };
 };
 
@@ -971,6 +971,50 @@ describe('InteriorCutawaySystem', () => {
     }
   });
 
+  it('publishes the localized missing semantic category in the DOM status without blocking Save', () => {
+    const { overlay, handlers, status } = overlayDomHarness();
+    try {
+      overlay.setLocale('en-US');
+      overlay.open(cutawayLayoutForViewport(1_280, 720), cutawayDomModel({
+        missingSemantic: 'search', saveBlocked: false,
+      }), handlers);
+
+      expect(status.textContent).toBe('Missing Search furniture');
+    } finally {
+      overlay.destroy();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('shows one transient missing-category bubble when multiple agents share the entrance', () => {
+    const values = new Map<string, string>([[
+      'pixelworld:interior-layout:rest-cabin',
+      JSON.stringify({ version: 5, authoredRevision: 2, furniture: [] }),
+    ]]);
+    const storage = {
+      getItem: vi.fn((key: string) => values.get(key) ?? null),
+      setItem: vi.fn((key: string, value: string) => { values.set(key, value); }),
+    };
+    vi.stubGlobal('window', { localStorage: storage, dispatchEvent: vi.fn() });
+    try {
+      const fake = fakeScene();
+      const cutaway = new InteriorCutawaySystem(
+        fake.scene as never, WORLD_DEFINITION, () => ({ width: 1_280, height: 720 }),
+      );
+      cutaway.setLocale('en-US');
+      cutaway.open('rest-cabin');
+      cutaway.update(['agent-b', 'agent-a'].map((agentId, index): InteriorAgentSnapshot => ({
+        agentId, role: 'subagent', buildingId: 'rest-cabin', action: 'read',
+        eventKind: 'web', eventId: `missing-${index}`,
+      })));
+
+      expect(fake.objects.filter(({ text, visible }) => text === 'Missing Search furniture' && visible))
+        .toHaveLength(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('localizes pagination and the compact rotation action for assistive technology', () => {
     const { overlay, handlers, actions, toolbar } = overlayDomHarness();
     try {
@@ -1549,7 +1593,8 @@ describe('InteriorCutawaySystem', () => {
 
     expect(cutaway.isOpen()).toBe(true);
     expect(cutaway.openBuildingId()).toBe('rest-cabin');
-    expect(cutaway.occupants()).toEqual([expect.objectContaining({ agentId: 'main', furnitureId: 'rest-sofa-a' })]);
+    expect(cutaway.occupants()).toEqual([expect.objectContaining({ agentId: 'main', seated: true })]);
+    expect(cutaway.occupants()[0]?.furnitureId).toBeTruthy();
     expect(fake.scene.tweens.add).toHaveBeenCalledTimes(1);
 
     cutaway.close();

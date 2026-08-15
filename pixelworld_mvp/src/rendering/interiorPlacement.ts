@@ -220,11 +220,13 @@ export function navigationBlockedCellKeys(
   stationId?: string,
 ): Set<string> {
   const station = stationId ? furniture.find(({ id }) => id === stationId) : undefined;
+  const targetKey = gridKey({ x: Math.round(target.x), y: Math.round(target.y) });
   const exempt = new Set(furniture.filter((item) => (
-    item.id === station?.id
-    || (Boolean(station?.prefabInstanceId)
-      && item.prefabInstanceId === station!.prefabInstanceId
-      && samePoint(item.interactionPoint, target))
+    (item.id === station?.id
+      || (Boolean(station?.prefabInstanceId)
+        && item.prefabInstanceId === station!.prefabInstanceId
+        && samePoint(item.interactionPoint, target)))
+    && navigationCells(item).some((cell) => gridKey(cell) === targetKey)
   )).map(({ id }) => id));
   return new Set(furniture
     .filter(({ id }) => !exempt.has(id))

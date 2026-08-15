@@ -3,6 +3,7 @@ import { interiorMotionAt, interiorPath, interiorRouteFor } from '../src/renderi
 import { assignInteriorOccupants, type InteriorAgentSnapshot } from '../src/rendering/interiorAssignment';
 import { INTERIOR_DEFINITIONS } from '../src/world/interiorDefinitions';
 import { furnitureCells } from '../src/rendering/interiorLayoutEditor';
+import { semanticForFurniture } from '../src/rendering/interiorFurnitureSemantics';
 
 const toolSnapshot = (elapsedMs: number): InteriorAgentSnapshot => ({
   agentId: 'main', role: 'main', buildingId: 'tool-smithy', action: 'terminal',
@@ -30,14 +31,15 @@ describe('interior motion timeline', () => {
       .some(({ walking }) => !walking)).toBe(true);
   });
 
-  it('cycles tool work through desk, bookcase, board, and back to the desk', () => {
+  it('patrols nearby Work stations and returns to the assigned station', () => {
     const snapshot = toolSnapshot(10_000);
     const assignment = assignInteriorOccupants(interior, [snapshot], 'tool-smithy')[0]!;
     const route = interiorRouteFor(snapshot, interior, assignment);
 
     expect(route[0]!.id).toBe(assignment.furnitureId);
     expect(route.at(-1)!.id).toBe(assignment.furnitureId);
-    expect(route.map(({ kind }) => kind)).toEqual(expect.arrayContaining(['bookcase', 'planning-board']));
+    expect(route.length).toBeGreaterThan(2);
+    expect(route.every((item) => semanticForFurniture(item) === 'work')).toBe(true);
     const early = interiorMotionAt(snapshot, interior, assignment, 10_000);
     const later = interiorMotionAt(toolSnapshot(12_600), interior, assignment, 12_600);
     expect(later.point).not.toEqual(early.point);
@@ -106,6 +108,25 @@ describe('interior motion timeline', () => {
     expect(path).toEqual([{ x: 3, y: 5 }]);
   });
 
+  it('does not exempt an adjacent station as a passage through a solid barrier', () => {
+    const station = {
+      id: 'station', kind: 'desk' as const, point: { x: 1, y: 2 },
+      facing: 'up' as const, supportedActions: ['terminal' as const], icon: 'tool' as const,
+      blocksNavigation: true, interactionPoint: { x: 1, y: 1 },
+    };
+    const blocker = (id: string, x: number) => ({
+      id, kind: 'decor' as const, point: { x, y: 2 }, facing: 'up' as const,
+      supportedActions: [], icon: 'generic' as const, blocksNavigation: true,
+    });
+    const narrowRoom = {
+      ...interior, width: 3, height: 5,
+      furniture: [station, blocker('left', 0), blocker('right', 2)], overflow: [],
+    };
+
+    expect(interiorPath(narrowRoom, { x: 1, y: 4 }, station.interactionPoint, station.id))
+      .toEqual([{ x: 1, y: 4 }]);
+  });
+
   it('adds a subtle breathing bob while an Agent remains at a work point', () => {
     const snapshot = Array.from({ length: 40 }, (_, index) => toolSnapshot(8_000 + index * 500))
       .find((candidate) => !interiorMotionAt(candidate, interior, assignInteriorOccupants(interior, [candidate], 'tool-smithy')[0]!, 20_000).walking)!;
@@ -116,6 +137,18 @@ describe('interior motion timeline', () => {
     expect(Math.abs(first.bob)).toBeLessThanOrEqual(1);
     expect(second.bob).not.toBe(first.bob);
     expect(first.bubbleText).toBe('正在處理工具調用');
+  });
+
+  it('keeps missing-category agents at the entrance without inventing a furniture route', () => {
+    const empty = { ...interior, width: 9, height: 7, furniture: [], overflow: [] };
+    const snapshot = toolSnapshot(8_000);
+    const assignment = assignInteriorOccupants(empty, [snapshot], 'tool-smithy')[0]!;
+    const motion = interiorMotionAt(snapshot, empty, assignment, 8_000);
+
+    expect(assignment).toMatchObject({ point: { x: 4, y: 6 }, missingSemantic: 'work' });
+    expect(interiorRouteFor(snapshot, empty, assignment)).toHaveLength(1);
+    expect(motion.point).toEqual({ x: 4, y: 6 });
+    expect(motion.walking).toBe(false);
   });
 
   it('uses a four-direction A* route that avoids furniture footprints', () => {

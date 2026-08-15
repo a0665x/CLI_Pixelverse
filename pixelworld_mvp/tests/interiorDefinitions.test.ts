@@ -10,6 +10,7 @@ import { builtInPrefab } from '../src/rendering/builtInOfficePrefabs';
 import { furnitureCells } from '../src/rendering/interiorLayoutEditor';
 import { interiorInteractionPoint, interiorPath } from '../src/rendering/interiorMotion';
 import { officeLayoutIssues } from '../src/rendering/prefabGeometry';
+import { semanticForFurniture } from '../src/rendering/interiorFurnitureSemantics';
 
 const expectedActions = {
   'rest-cabin': ['offline', 'queue', 'repair', 'rest'],
@@ -56,6 +57,16 @@ describe('Smallville-style authored interiors', () => {
       expect(new Set(room.furniture.map(({ id: furnitureId }) => furnitureId)).size).toBe(room.furniture.length);
       expect(new Set(room.furniture.flatMap(({ prefabInstanceId }) => prefabInstanceId ? [prefabInstanceId] : [])).size)
         .toBeGreaterThanOrEqual(2);
+    },
+  );
+
+  it.each(['research-library', 'maker-workshop', 'collaboration-barn'] as const)(
+    '%s offers all three semantic categories without relying on requirement IDs',
+    (themeId) => {
+      const categories = new Set(INTERIOR_DEFINITIONS[themeId].furniture.flatMap((item) => (
+        semanticForFurniture(item) ?? []
+      )));
+      expect(categories).toEqual(new Set(['rest', 'search', 'work']));
     },
   );
 

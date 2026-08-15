@@ -7,6 +7,8 @@ import { planAgentTravel } from '../src/navigation/travelPlanner';
 import { StationAllocator } from '../src/stations/stationAllocator';
 import type { AgentWorldEvent, GridPoint, WorldEventKind } from '../src/world/types';
 import { WORLD_DEFINITION } from '../src/world/worldDefinition';
+import { assignInteriorOccupants } from '../src/rendering/interiorAssignment';
+import { INTERIOR_DEFINITIONS } from '../src/world/interiorDefinitions';
 
 const event = (kind: WorldEventKind): AgentWorldEvent => ({
   eventId: `accept-${kind}`,
@@ -95,5 +97,23 @@ describe('complete GBA village hook workflow', () => {
     });
     const heartbeat = routeEvent(event('heartbeat'));
     expect(heartbeat).toMatchObject({ preserveLocation: false, destinationId: 'heartbeat-pulse' });
+  });
+
+  it('completes Hook routing against a custom semantic workstation with no exact action metadata', () => {
+    const route = routeEvent(event('tool'));
+    const room = {
+      ...INTERIOR_DEFINITIONS['maker-workshop'], width: 9, height: 7,
+      furniture: [{
+        id: 'player-desk', kind: 'desk' as const, point: { x: 4, y: 3 }, facing: 'down' as const,
+        supportedActions: [], icon: 'generic' as const, blocksNavigation: true,
+        interactionPoint: { x: 4, y: 5 },
+      }],
+      overflow: [],
+    };
+
+    expect(assignInteriorOccupants(room, [{
+      agentId: 'main', role: 'main', buildingId: 'player-house', action: route.action,
+      eventKind: 'tool', eventId: 'custom-semantic-work',
+    }], 'player-house')[0]).toMatchObject({ furnitureId: 'player-desk', point: { x: 4, y: 5 } });
   });
 });
