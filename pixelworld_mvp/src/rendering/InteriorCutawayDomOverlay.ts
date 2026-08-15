@@ -207,11 +207,15 @@ export class InteriorCutawayDomOverlay {
     const previousContextOpen = Boolean(this.model?.contextMenu);
     const activeElement = typeof document === 'undefined' ? undefined : document.activeElement as HTMLElement | null;
     const guideHadFocus = Boolean(activeElement && this.guidePopover?.contains(activeElement));
+    let shouldRestoreContextFocus = false;
     if (!previousContextOpen && model.contextMenu) {
       this.contextMenuReturnFocus = activeElement && typeof activeElement.focus === 'function'
         ? activeElement
         : this.editButton;
     }
+    const contextReturnWasGuide = Boolean(
+      this.contextMenuReturnFocus && this.guidePopover?.contains(this.contextMenuReturnFocus),
+    );
     this.model = model;
     if (!this.panel) return;
     const localeCopy = villageCopy(this.locale).cutaway;
@@ -350,12 +354,12 @@ export class InteriorCutawayDomOverlay {
         }
       }
       if (previousContextOpen && !model.contextMenu) {
-        (this.contextMenuReturnFocus ?? this.editButton)?.focus();
-        this.contextMenuReturnFocus = undefined;
+        shouldRestoreContextFocus = true;
       } else if (focusedAction && !restoredContextFocus) {
-        (this.contextMenuReturnFocus ?? this.editButton)?.focus();
+        shouldRestoreContextFocus = true;
       }
     }
+    let guideDismiss: HTMLButtonElement | undefined;
     if (this.guidePopover) {
       this.guidePopover.setAttribute('aria-label', chrome.help);
       this.guidePopover.hidden = !model.guideMode;
@@ -367,9 +371,30 @@ export class InteriorCutawayDomOverlay {
         close.type = 'button'; close.textContent = chrome.closeGuide; close.onclick = () => this.handlers?.toggleGuide();
         close.setAttribute('aria-label', chrome.closeGuide); close.setAttribute('data-tooltip', chrome.closeGuide);
         this.guidePopover.append(copy, close);
+        guideDismiss = close;
+        if (model.contextMenu && contextReturnWasGuide) this.contextMenuReturnFocus = close;
         if ((!previousGuideMode || guideHadFocus) && !model.contextMenu) close.focus();
       }
       if (previousGuideMode && !model.guideMode) guideButton?.focus();
+    }
+    const isUsableFocusTarget = (target: HTMLElement | null | undefined): target is HTMLElement => Boolean(
+      target?.isConnected && !target.hidden && !('disabled' in target && target.disabled),
+    );
+    const roomCommand = this.roomToolbar && !this.roomToolbar.hidden
+      ? Array.from(this.roomToolbar.children).find((child): child is HTMLElement => isUsableFocusTarget(child as HTMLElement))
+      : undefined;
+    const fallbackFocus = model.guideMode && isUsableFocusTarget(guideDismiss)
+      ? guideDismiss
+      : roomCommand ?? (isUsableFocusTarget(guideButton) ? guideButton : this.editButton);
+    if (model.contextMenu && !isUsableFocusTarget(this.contextMenuReturnFocus)) {
+      this.contextMenuReturnFocus = fallbackFocus;
+    }
+    if (shouldRestoreContextFocus) {
+      const focusTarget = isUsableFocusTarget(this.contextMenuReturnFocus)
+        ? this.contextMenuReturnFocus
+        : fallbackFocus;
+      focusTarget?.focus();
+      this.contextMenuReturnFocus = model.contextMenu ? focusTarget : undefined;
     }
     Object.entries(actionLabels).forEach(([action, label]) => {
       const button = this.panel?.querySelector<HTMLButtonElement>(`[data-action="${action}"]`);

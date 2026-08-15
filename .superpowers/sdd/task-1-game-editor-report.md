@@ -135,3 +135,50 @@ An empty secondary canvas click now prevents the native browser menu and dismiss
 
 - No browser/manual QA was requested. Real DOM event ordering is covered with the project DOM harness, while Phaser input and persistence behavior are covered with system integration tests.
 - The compact inspector intentionally summarizes the current selection instead of exposing an independently scrolling property drawer; future property expansion should paginate or otherwise remain within the fixed region.
+
+## Re-review focus-restoration follow-up
+
+### Outcome
+
+Context-menu focus restoration now survives DOM replacement. The overlay keeps its stored return target current while the menu is open, delays restoration until after the guide has rerendered, and accepts a target only while it is connected, visible, and enabled. If the stored element was detached, fallback order follows current state: the newly rendered guide dismiss button, an available room command, Help, then Edit. Thus the first Escape closes only the context menu and focuses the current guide dismiss; the second closes the guide and focuses Help.
+
+The stale storage-read test was renamed to describe its actual contract. It now explicitly proves Save and Copy make zero write attempts after failed reads, and no longer invokes group or treats an unchanged `storageFailed` status as evidence of an assembly write.
+
+### TDD evidence
+
+#### RED
+
+- `cd pixelworld_mvp && npm test -- --run tests/interiorCutawaySystem.test.ts -t "restores current guide focus"`
+- Result: 1 failed, 90 skipped. After the first DOM Escape, focus resolved to the detached pre-rerender guide dismiss instead of the current guide dismiss.
+
+#### GREEN and verification
+
+- Same targeted command: 1 passed, 90 skipped.
+- Focused coverage:
+  - `cd pixelworld_mvp && npm test -- --run tests/interiorCutawayDomOverlay.test.ts tests/interiorCutawaySystem.test.ts tests/interiorContextMenu.test.ts`
+  - Result: 3 files passed; 103 tests passed.
+- Typecheck:
+  - First `cd pixelworld_mvp && npm run typecheck`: exit 2 with one nullable `guideButton` parameter error.
+  - After the narrow type correction, the same command ran `tsc --noEmit` with exit 0.
+- Fresh full Pixelworld suite:
+  - `cd pixelworld_mvp && npm test`
+  - Result: 63 files passed; 588 tests passed.
+
+### Changed files
+
+- `pixelworld_mvp/src/rendering/InteriorCutawayDomOverlay.ts`
+- `pixelworld_mvp/tests/interiorCutawayDomOverlay.test.ts`
+- `pixelworld_mvp/tests/interiorCutawaySystem.test.ts`
+- `.superpowers/sdd/task-1-game-editor-report.md`
+
+### Self-review
+
+- The system integration test is non-vacuous: it focuses the live guide dismiss first, opens the production context menu through a real secondary furniture pointer event and mirrored system update, sends two DOM `keydown` Escape events, and asserts focus plus system state after every transition.
+- Test DOM elements now model connection changes on `replaceChildren`, so focus assertions distinguish the old detached guide control from its current replacement.
+- Restoration occurs only after all dynamic guide/menu DOM replacement completes. The connected/visible/enabled guard prevents stale nodes and disabled commands from receiving focus.
+- Existing stable-action focus restoration and disappearing-action fallback tests remain covered by the focused suite.
+- No production persistence or grouping behavior changed in this follow-up.
+
+### Concerns
+
+- No browser/manual QA was requested; the lifecycle is covered by production overlay/system integration in the repository's DOM harness.

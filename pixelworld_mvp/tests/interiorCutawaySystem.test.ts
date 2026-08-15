@@ -203,7 +203,7 @@ const overlayDomHarness = () => {
   const element = () => {
     const listeners = new Map<string, Array<(event?: Record<string, unknown>) => void>>();
     const target: {
-      hidden: boolean; disabled: boolean; textContent: string; className: string;
+      hidden: boolean; disabled: boolean; isConnected: boolean; textContent: string; className: string;
       dataset: Record<string, string>; style: Record<string, string>; children: Array<ReturnType<typeof element>>;
       scrollHeight: number; onclick: (() => void) | undefined;
       addEventListener(event: string, handler: (event?: Record<string, unknown>) => void): void;
@@ -214,7 +214,7 @@ const overlayDomHarness = () => {
       replaceChildren(...children: Array<ReturnType<typeof element>>): void;
       setAttribute(name: string, value: string): void; getAttribute(name: string): string | null;
     } = {
-      hidden: false, disabled: false, textContent: '', className: '', dataset: {} as Record<string, string>,
+      hidden: false, disabled: false, isConnected: true, textContent: '', className: '', dataset: {} as Record<string, string>,
       style: {} as Record<string, string>, children: [],
       scrollHeight: 240,
       onclick: undefined,
@@ -258,8 +258,12 @@ const overlayDomHarness = () => {
         return { left, top, right: left + width, bottom: top + height, width, height };
       },
       remove: vi.fn(),
-      append(...children) { target.children.push(...children); },
-      replaceChildren(...children) { target.children = children; },
+      append(...children) { children.forEach((child) => { child.isConnected = true; }); target.children.push(...children); },
+      replaceChildren(...children) {
+        target.children.forEach((child) => { child.isConnected = false; });
+        children.forEach((child) => { child.isConnected = true; });
+        target.children = children;
+      },
       setAttribute(name: string, value: string) {
         const values = attributes.get(target) ?? new Map<string, string>();
         values.set(name, value); attributes.set(target, values);
@@ -435,20 +439,25 @@ describe('InteriorCutawaySystem', () => {
     expect((cutaway as unknown as { contextMenuPointer?: unknown }).contextMenuPointer).toBeUndefined();
   });
 
-  it('routes real DOM Escape to the context menu before the open guide', () => {
+  it('restores current guide focus while real DOM Escape closes menu before guide', () => {
     const fake = fakeScene();
     const cutaway = new InteriorCutawaySystem(fake.scene as never, WORLD_DEFINITION, () => ({ width: 1_280, height: 720 }));
     const capture = captureCutawayHandlers(cutaway);
     cutaway.open('rest-cabin');
     capture.handlers().toggleEdit();
-    const furniture = fake.objects.find(({ interactive, destroyed, depth }) => interactive && !destroyed && depth > 0)!;
-    furniture.emit('pointerdown', viewportPointerAt(furniture.x, furniture.y, 2));
-    expect(capture.model()).toMatchObject({ guideMode: true, contextMenu: expect.any(Object) });
     const dom = overlayDomHarness();
     try {
       dom.overlay.open(cutawayLayoutForViewport(1_280, 720), capture.model(), capture.handlers());
       capture.mirrorTo(dom.overlay);
+      const originalGuideDismiss = dom.guide.children[1]!;
+      originalGuideDismiss.focus();
+      expect(dom.documentStub.activeElement).toBe(originalGuideDismiss);
+
+      const furniture = fake.objects.find(({ interactive, destroyed, depth }) => interactive && !destroyed && depth > 0)!;
+      furniture.emit('pointerdown', viewportPointerAt(furniture.x, furniture.y, 2));
+      expect(capture.model()).toMatchObject({ guideMode: true, contextMenu: expect.any(Object) });
       expect(dom.documentStub.activeElement).toBe(dom.toolbar.children[0]);
+      expect(dom.guide.children[1]).not.toBe(originalGuideDismiss);
 
       const firstPreventDefault = vi.fn();
       dom.panel.emitEvent('keydown', { key: 'Escape', preventDefault: firstPreventDefault, stopPropagation: vi.fn() });
@@ -456,10 +465,13 @@ describe('InteriorCutawaySystem', () => {
       expect(capture.model().contextMenu).toBeUndefined();
       expect(capture.model().guideMode).toBe(true);
       expect(dom.guide.hidden).toBe(false);
+      expect(dom.documentStub.activeElement).toBe(dom.guide.children[1]);
+      expect(dom.documentStub.activeElement).not.toBe(originalGuideDismiss);
 
       dom.panel.emitEvent('keydown', { key: 'Escape', preventDefault: vi.fn(), stopPropagation: vi.fn() });
       expect(capture.model().guideMode).toBe(false);
       expect(dom.guide.hidden).toBe(true);
+      expect(dom.documentStub.activeElement).toBe(dom.actions.get('guide'));
     } finally {
       dom.overlay.destroy();
       cutaway.destroy();
@@ -2706,7 +2718,7 @@ describe('InteriorCutawaySystem', () => {
     }
   });
 
-  it('survives throwing storage reads and localizes failed Save, Copy, and assembly writes', () => {
+  it('survives throwing storage reads and blocks Save and Copy without attempting writes', () => {
     const readWindow = { get localStorage(): Storage { throw new Error('storage denied'); }, dispatchEvent: vi.fn() };
     vi.stubGlobal('window', readWindow);
     const fake = fakeScene();
@@ -2715,29 +2727,20 @@ describe('InteriorCutawaySystem', () => {
     expect(() => cutaway.open('rest-cabin')).not.toThrow();
     expect(() => capture.handlers().save()).not.toThrow();
     expect(capture.model().statusId).toBe('storageFailed');
+    const setItem = vi.fn(() => { throw new Error('storage full'); });
     vi.stubGlobal('window', {
-      localStorage: { getItem: vi.fn(() => null), setItem: vi.fn(() => { throw new Error('storage full'); }) },
+      localStorage: { getItem: vi.fn(() => null), setItem },
       dispatchEvent: vi.fn(), prompt: vi.fn(() => 'Desk group'),
     });
     capture.handlers().toggleEdit();
 
     expect(() => capture.handlers().save()).not.toThrow();
     expect(capture.model().statusId).toBe('storageFailed');
+    expect(setItem).not.toHaveBeenCalled();
     expect(() => capture.handlers().copy()).not.toThrow();
     expect(capture.model().statusId).toBe('storageFailed');
+    expect(setItem).not.toHaveBeenCalled();
     expect(cutaway.isOpen()).toBe(true);
-
-    const internal = cutaway as unknown as {
-      activeInterior: InteriorDefinition;
-      selectedFurnitureIds: Set<string>;
-      selectedFurnitureId?: string;
-    };
-    const ordinary = internal.activeInterior.furniture.filter(({ supportedActions, requirementId }) =>
-      supportedActions.length === 0 && !requirementId).slice(0, 2);
-    ordinary.forEach(({ id }) => internal.selectedFurnitureIds.add(id));
-    internal.selectedFurnitureId = ordinary[0]!.id;
-    expect(() => capture.handlers().group()).not.toThrow();
-    expect(capture.model().statusId).toBe('storageFailed');
     vi.unstubAllGlobals();
   });
 

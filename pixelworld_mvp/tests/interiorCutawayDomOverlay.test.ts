@@ -24,7 +24,7 @@ const harness = () => {
   const makeElement = () => {
     const listeners = new Map<string, Array<(event?: Record<string, unknown>) => void>>();
     const element: {
-      hidden: boolean; disabled: boolean; type: string; textContent: string; className: string;
+      hidden: boolean; disabled: boolean; isConnected: boolean; type: string; textContent: string; className: string;
       innerHTML: string; dataset: Record<string, string>; style: Record<string, string>;
       children: Array<ReturnType<typeof makeElement>>; scrollHeight: number;
       onclick: (() => void) | undefined; addEventListener(name: string, handler: (event?: Record<string, unknown>) => void): void;
@@ -36,7 +36,7 @@ const harness = () => {
       getBoundingClientRect(): { left: number; top: number; right: number; bottom: number; width: number; height: number };
       remove(): void;
     } = {
-      hidden: false, disabled: false, type: '', textContent: '', className: '', innerHTML: '',
+      hidden: false, disabled: false, isConnected: true, type: '', textContent: '', className: '', innerHTML: '',
       dataset: {}, style: {}, children: [], scrollHeight: 116, onclick: undefined,
       addEventListener(name, handler) { listeners.set(name, [...(listeners.get(name) ?? []), handler]); },
       emit(name, event = {}) { for (const handler of listeners.get(name) ?? []) handler(event); },
@@ -47,8 +47,12 @@ const harness = () => {
         const action = selector.match(/\[data-context-action="([^"]+)"\]/)?.[1];
         return action ? element.children.find((child) => child.dataset.contextAction === action) : undefined;
       },
-      append(...children) { element.children.push(...children); },
-      replaceChildren(...children) { element.children = children; },
+      append(...children) { children.forEach((child) => { child.isConnected = true; }); element.children.push(...children); },
+      replaceChildren(...children) {
+        element.children.forEach((child) => { child.isConnected = false; });
+        children.forEach((child) => { child.isConnected = true; });
+        element.children = children;
+      },
       setAttribute(name, value) {
         const values = attributes.get(element) ?? new Map<string, string>();
         values.set(name, value); attributes.set(element, values);
