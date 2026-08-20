@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 
 const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
 const mainSource = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8');
+const createGameSource = readFileSync(new URL('../src/game/createGame.ts', import.meta.url), 'utf8');
 const markup = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 
 describe('fixed village game config', () => {
@@ -15,6 +16,13 @@ describe('fixed village game config', () => {
     expect(displayScaleFor(1280, 720)).toBe(1.5);
     expect(displayScaleFor(839, 479)).toBeCloseTo(479 / 448);
     expect(displayScaleFor(800, 230)).toBeCloseTo(230 / 448);
+  });
+
+  it('defaults the embedded dashboard to a whole-village fit instead of cropping behind the live rails', () => {
+    expect(createGameSource).toContain("}, 'fit');");
+    expect(createGameSource).not.toContain("embedded ? 'cover' : 'fit'");
+    expect(mainSource).toContain("readVillageCamera(sessionStorage, 'fit')");
+    expect(mainSource).not.toContain("readVillageCamera(sessionStorage, embedded ? 'cover' : 'fit')");
   });
 
   it('lets the canvas own the viewport while the collapsible panel floats above it', () => {
@@ -88,6 +96,8 @@ describe('fixed village game config', () => {
     expect(styles).not.toMatch(/\.cutaway-dom-inspector\s*\{[^}]*(?:width:\s*168px|inset:\s*40px)/s);
     expect(styles).toContain('.cutaway-context-menu { position: absolute; z-index: 4; display: grid;');
     expect(styles).toMatch(/\.cutaway-context-menu\s*\{[^}]*overflow:\s*hidden;/s);
+    expect(styles).toMatch(/\.cutaway-context-menu\s*\{[^}]*inline-size:\s*152px;[^}]*padding:\s*4px;[^}]*gap:\s*3px;/s);
+    expect(styles).toMatch(/\.cutaway-context-menu button\s*\{[^}]*block-size:\s*30px;[^}]*font-size:\s*11px;/s);
     expect(styles).not.toMatch(/\.cutaway-(?:dom-inspector|context-menu|room-toolbar|dom-catalog)\s*\{[^}]*overflow(?:-x|-y)?:\s*(?:auto|scroll)/s);
     expect(styles).toContain('.cutaway-dom-panel button[data-tooltip]:focus-visible::after');
     expect(styles).toContain('.cutaway-context-menu, .cutaway-guide-popover { transition: none; }');

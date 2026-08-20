@@ -37,6 +37,179 @@ Hermes also installs a user plugin under `~/.hermes/plugins/pixelverse`. That pl
 
 The Hermes gateway relay uses its own `PIXELVERSE_BRIDGE_AGENT_ID` identity (default: `henry-main`). This prevents a `run.sh` invocation launched from inside an already-wrapped Codex process from reusing the Codex CLI identity for Hermes gateway events.
 
+## Platform Support And Project Hooking
+
+The standard `./run.sh` flow supports native 64-bit Intel/AMD and ARM hosts:
+
+- `x86_64` / `amd64` builds and runs `linux/amd64`.
+- `aarch64` / `arm64` builds and runs `linux/arm64`.
+
+Docker's multi-architecture Node and Python base images supply the matching
+runtime automatically. Check the resolved target before the first build:
+
+```bash
+./run.sh platform
+docker version
+docker compose version
+```
+
+An intentional emulated/cross-platform build can override the target:
+
+```bash
+PIXELVERSE_DOCKER_PLATFORM=linux/arm64 PIXELVERSE_AGENT_KIND=codex ./run.sh down_up
+```
+
+The Codex project hook invokes `python3` through `/usr/bin/env`, so it is not
+tied to an x86-specific interpreter path. To connect a different repository to
+an already running CLI_Pixelverse service:
+
+```bash
+cd /path/to/other-project
+/path/to/CLI_Pixelverse/run.sh install-codex-hook "$PWD"
+source /path/to/CLI_Pixelverse/.pixelverse-service/activate.sh
+codex
+```
+
+The activation wrapper supplies process presence and heartbeat from any
+directory. Installing the project hook additionally supplies prompt, tool,
+subagent, and stop events for that repository. Run `/hooks` once in the first
+Codex session for that project and trust the generated project hook.
+
+During `start`/`down_up`, project-local hook installation is best effort: a
+read-only checkout still starts the service and installs the CLI adapter. Use
+the explicit `install-codex-hook` command later from a writable project root if
+you want the richer tool/subagent events. The explicit command reports a
+failure instead of silently skipping it.
+
+## Bootstrap Quick Start
+
+For a fresh clone, this is the shortest reliable setup path. Codex is the
+default because it has the deepest project-hook integration.
+
+```bash
+git clone https://github.com/a0665x/CLI_Pixelverse.git
+cd CLI_Pixelverse
+test -x ./run.sh || chmod +x ./run.sh
+./run.sh platform
+./run.sh floorplans
+PIXELVERSE_AGENT_KIND=codex ./run.sh down_up
+source .pixelverse-service/activate.sh
+./run.sh status
+./run.sh bridge-status
+```
+
+Open:
+
+```text
+http://localhost:5660
+```
+
+`down_up` in Codex mode selects/prepares the visible floorplan, starts the
+Docker service, installs the Codex CLI shim, attempts to create this repo's
+`.codex/hooks.json`, enables the managed Bash activation line for new terminals,
+and writes `.pixelverse-service/activate.sh`.
+
+To choose a built-in floorplan non-interactively:
+
+```bash
+PIXELVERSE_AGENT_KIND=codex PIXELVERSE_FLOORPLAN=default ./run.sh down_up
+PIXELVERSE_AGENT_KIND=codex PIXELVERSE_FLOORPLAN=custom ./run.sh down_up
+```
+
+Verify the local connection:
+
+```bash
+bash -lc 'source .pixelverse-service/activate.sh && command -v codex'
+curl -fsS http://127.0.0.1:5660/health
+curl -fsS http://127.0.0.1:4567/health
+curl -fsS http://127.0.0.1:5660/api/world
+./run.sh test-hook
+```
+
+Expected:
+
+- `command -v codex` resolves to `.pixelverse-service/bin/codex`.
+- `5660/health` and `4567/health` are available.
+- `./run.sh test-hook` moves an agent in the UI.
+- The first Codex session in a repo should run `/hooks` and trust the project hook.
+
+Check Tailscale before using remote exposure:
+
+```bash
+command -v tailscale
+tailscale status
+tailscale serve status
+```
+
+If Tailscale is missing, install and authenticate it:
+
+```bash
+curl -fsSL https://tailscale.com/install.sh | sh
+sudo tailscale up
+```
+
+If Tailscale is available and you want remote UI exposure:
+
+```bash
+PIXELVERSE_AGENT_KIND=codex PIXELVERSE_EXPOSURE_MODE=tailscale ./run.sh down_up
+./run.sh status
+```
+
+After the shell adapter is enabled, a new terminal can start a process-level
+Pixelverse-connected Codex session from any directory:
+
+```bash
+codex
+```
+
+For an already-open shell:
+
+```bash
+source /path/to/CLI_Pixelverse/.pixelverse-service/activate.sh && codex
+```
+
+For another repo that also needs high-fidelity Codex tool/subagent events:
+
+```bash
+cd /path/to/other-repo
+/path/to/CLI_Pixelverse/run.sh install-codex-hook
+codex
+```
+
+Connection rule:
+
+- `codex` from any directory is enough for process-level presence, heartbeat, start, stop, and stale/offline tracking once the shell adapter is active.
+- `/path/to/CLI_Pixelverse/run.sh install-codex-hook` is required per repository when you also want Codex tool, prompt, subagent, and stop lifecycle events from that repository.
+- In each repository where `.codex/hooks.json` is installed, run `/hooks` once inside Codex and trust the project hook.
+
+## Using The Codex Skills
+
+This repo includes two local Codex skills under `skill/`.
+
+Use `$CLI_Pixelverse` when you want Codex to bootstrap a fresh clone or repair
+local setup. It is the automation-oriented init skill: start the service,
+install adapters, create hooks, enable shell activation, check Tailscale, and
+verify status.
+
+Example prompts:
+
+```text
+$CLI_Pixelverse 請幫我初始化這個剛 clone 下來的 CLI_Pixelverse repo，安裝 adapter、建立 hook、檢查 Tailscale，最後回報狀態。
+$CLI_Pixelverse 我在另一個 repo 也想讓 Codex 連到 Pixelverse，請幫我建立 activate/hook 步驟並驗證。
+```
+
+Use `$pixelverse-onboarding` when you want Codex to understand the project and
+explain or verify the existing setup without necessarily running the whole
+bootstrap flow. It is better for architecture handoff, lifecycle routing,
+adapter behavior, and hook troubleshooting.
+
+Example prompts:
+
+```text
+$pixelverse-onboarding 請先讀 spec，幫我理解 CLI_Pixelverse 的架構與 hook 資料流。
+$pixelverse-onboarding 請檢查目前 Codex hook/adapter 狀態，說明 Read/Edit/Bash 會怎麼映射到房間。
+```
+
 ## Beginner Quick Start
 
 Use Codex for the first setup because it currently has the deepest built-in
@@ -51,9 +224,6 @@ Run this flow after cloning the repository:
 cd /path/to/CLI_Pixelverse
 
 PIXELVERSE_AGENT_KIND=codex ./run.sh down_up
-./run.sh install-adapter codex
-./run.sh enable-shell-adapter
-
 source .pixelverse-service/activate.sh
 ./run.sh status
 ./run.sh bridge-status
@@ -73,10 +243,43 @@ Inside the first Codex session, run:
 /hooks
 ```
 
-The adapter installer generates a local, git-ignored `.codex/hooks.json`.
-Review and trust that project hook definition. Start a new
-Codex process after activation. A Codex process that was already open before
-`source .pixelverse-service/activate.sh` cannot be attached retroactively.
+Codex mode automatically installs the local CLI shim, writes the git-ignored
+`.codex/hooks.json` project hook for this repo, and enables the shell adapter
+for newly opened Bash terminals. Review and trust that project hook definition.
+Start a new Codex process after activation. A Codex process that was already
+open before `source .pixelverse-service/activate.sh` cannot be attached
+retroactively.
+
+The shell adapter writes a managed Bash startup line that
+automatically sources `.pixelverse-service/activate.sh` in new terminals. The
+activation file also preloads the important runtime variables:
+
+- `PIXELVERSE_URL`
+- `PIXELVERSE_BRIDGE_URL`
+- `PIXELVERSE_STATE_DIR`
+
+After that, a new terminal can usually start a hooked Codex session from any
+directory with a single command:
+
+```bash
+codex
+```
+
+If you are already in an open shell, use the explicit one-liner:
+
+```bash
+source /path/to/CLI_Pixelverse/.pixelverse-service/activate.sh && codex
+```
+
+For another repository, the wrapper gives you process-level lifecycle hooking
+immediately. If you also want Codex tool/subagent events in that repo, install
+the Codex project hook there too:
+
+```bash
+cd /path/to/other-repo
+/path/to/CLI_Pixelverse/run.sh install-codex-hook
+codex
+```
 
 ### Confirm The Connection
 
@@ -163,6 +366,15 @@ Or install one explicitly:
 ./run.sh adapter hermes
 ```
 
+When the service is started with `PIXELVERSE_AGENT_KIND=codex ./run.sh down_up`,
+Pixelverse runs the Codex adapter setup and shell activation setup for you. To
+add high-fidelity Codex hooks to another working directory, run this from that
+directory:
+
+```bash
+/path/to/CLI_Pixelverse/run.sh install-codex-hook
+```
+
 Enable native command interception in the current shell:
 
 ```bash
@@ -175,7 +387,7 @@ Enable interception automatically for newly opened Bash terminals:
 ./run.sh enable-shell-adapter
 ```
 
-Then run your normal CLI command:
+Then run your normal CLI command from any directory:
 
 ```bash
 codex
@@ -183,6 +395,13 @@ gemini
 claude
 ollama list
 hermes chat
+```
+
+If you want the current shell to connect immediately without opening a new
+terminal, use:
+
+```bash
+source /path/to/CLI_Pixelverse/.pixelverse-service/activate.sh && codex
 ```
 
 Start a new CLI process after activation. Pixelverse cannot retroactively attach to a CLI process that was already running before `source .pixelverse-service/activate.sh`.
@@ -584,22 +803,162 @@ Each lifecycle phase is a route endpoint. The character stays at that endpoint u
 
 ## Global Map
 
-The visible floorplan and frontend pathfinding are data-driven from:
+The visible floorplan and frontend pathfinding are data-driven from one YAML
+manifest plus one optional PNG background.
 
-- `global_map/default.yaml`: rooms, room rectangles, door anchors, corridor rectangles, state routing groups, room purpose, event hints, and default furniture positions.
-- `global_map/default.png`: the auditable floorplan image used as the UI background.
+Load order:
 
-To change the house shape, edit the PNG and YAML together. The important YAML fields are:
+1. User override directory: `tmp/global_map/`
+2. Environment override: `PIXELVERSE_GLOBAL_MAP_DIR=/absolute/path/to/global_map`
+3. Built-in fallback: `global_map/`
 
-- `corridors`: global walkable corridor graph.
-- `rooms.<room>.rect`: room rectangle in 0-100 world coordinates.
-- `rooms.<room>.portal`: exact door threshold.
-- `rooms.<room>.aisle`: room-side door approach point.
-- `rooms.<room>.hub`: corridor-side door approach point.
+For user-defined room layouts, create:
+
+```text
+tmp/global_map/default.yaml
+tmp/global_map/default.png
+```
+
+Built-in floorplans live in `global_map/` as matching pairs:
+
+```text
+global_map/default.yaml
+global_map/default.png
+global_map/custom.yaml
+global_map/custom.png
+```
+
+List complete pairs:
+
+```bash
+./run.sh floorplans
+```
+
+Prepare one pair for the runtime override directory:
+
+```bash
+PIXELVERSE_FLOORPLAN=custom ./run.sh prepare-floorplan
+```
+
+`start`, `restart`, and `down_up` run the same preparation step. In an
+interactive terminal, `run.sh` prompts you to choose from `global_map/*.yaml`
+that also have a matching PNG. In a non-interactive shell, it preserves an
+existing `tmp/global_map/default.yaml/png`; if no runtime override exists, it
+falls back to the built-in `default` pair.
+
+`default.yaml` is the source of truth for rooms, corridors, door portals,
+pathfinding, and furniture placement. `default.png` is only the visual
+background. If you want the PNG to follow the YAML floorplan, regenerate it:
+
+```bash
+python3 scripts/generate_global_map_pixel_art.py \
+  --yaml tmp/global_map/default.yaml \
+  --out tmp/global_map/default.png
+```
+
+The built-in map can also be rebuilt from the bundled manifest:
+
+```bash
+python3 scripts/generate_global_map_pixel_art.py
+```
+
+Then restart:
+
+```bash
+PIXELVERSE_AGENT_KIND=codex ./run.sh down_up
+```
+
+### PNG/YAML Map Builder
+
+When you already have a PNG floorplan and need the YAML to match it, use the
+browser builder instead of hand-editing coordinates:
+
+```bash
+./run.sh map-builder
+PIXELVERSE_AGENT_KIND=codex ./run.sh down_up
+```
+
+Open:
+
+```text
+http://localhost:5660/map_builder.html
+```
+
+Builder workflow:
+
+1. Choose the builder language from the top-left selector: Chinese, English, Japanese, or Korean.
+2. Load the PNG floorplan.
+3. If starting from PNG only, use `Room Palette` to pick a room type. Already assigned room keys are disabled to prevent duplicate names.
+4. If repairing a bad YAML, import it after the PNG; rooms, corridors, doors, and furniture appear as editable overlays and layer rows.
+5. In `Room` mode, drag from upper-left to lower-right. A live preview rectangle and coordinate badge follow the pointer. Releasing the mouse opens an assign popover with `Confirm`, `Delete`, and `Cancel`; the room is written only after confirmation.
+6. In `Corridor` mode, drag walkable hallway rectangles. Corridors should touch or overlap so the route graph is connected.
+7. In `Door` mode, click near a black wall line; the builder snaps the door to the nearest dark wall pixel and generates `portal`, `aisle`, and `hub`.
+8. In `Furniture` mode, click inside a room to place props with YAML-compatible `x`, `y`, `w`, `h`, and `scale`.
+9. Use the `Layers` panel to reduce visual noise. Each layer has an eye toggle for visibility, a lock toggle to prevent accidental edits, and a row selector to focus that room/corridor/door/furniture.
+10. In `Select/Edit` mode, click an overlay or layer row. Drag the selected overlay to translate it; drag the room's lower-right handle to resize it. Use the floating toolbar to edit, duplicate, delete, or cancel selection.
+11. Use mouse wheel to zoom. Use `Shift` + drag to pan the floorplan, which makes fine alignment feel closer to a ROS/global-map annotation workflow.
+12. Click `Validate map`; click a validation issue to focus the related overlay. Fix disconnected corridors, missing door anchors, overlapping rooms, or furniture occupancy errors.
+13. Click `Export YAML`.
+14. Save the export as `tmp/global_map/default.yaml` and put the matching PNG at `tmp/global_map/default.png`.
+
+Validate the exported pair before restarting:
+
+```bash
+python3 scripts/check_global_map_alignment.py \
+  --yaml tmp/global_map/default.yaml \
+  --png tmp/global_map/default.png
+```
+
+The builder uses the same `0-100` world coordinate system as the runtime YAML.
+Doors are exported as route anchors, so A* can move between rooms only through
+`aisle -> portal -> hub -> corridor`. Furniture is exported with `x`, `y`, `w`,
+`h`, and `scale`, so collision and visual placement use the same footprint.
+
+Docker Compose mounts `./tmp/global_map` into the container at
+`/app/tmp/global_map`, so users can replace the YAML/PNG without modifying the
+built-in map files. If you want a different host directory:
+
+```bash
+PIXELVERSE_GLOBAL_MAP_DIR_HOST=/path/to/my/global_map ./run.sh down_up
+```
+
+You can combine an external runtime directory with a built-in floorplan choice:
+
+```bash
+PIXELVERSE_GLOBAL_MAP_DIR_HOST=/path/to/my/global_map \
+PIXELVERSE_FLOORPLAN=custom \
+PIXELVERSE_AGENT_KIND=codex \
+./run.sh down_up
+```
+
+Schema checklist:
+
+- `corridors`: required non-empty list. Each corridor needs `key`, `left`, `top`, `width`, `height`.
+- `rooms.<room>.rect`: required room rectangle in 0-100 world coordinates.
+- `rooms.<room>.center`: required default room center.
+- `rooms.<room>.portal`: required exact door threshold. It must touch a corridor.
+- `rooms.<room>.aisle`: required room-side door approach point. It must be inside the room.
+- `rooms.<room>.hub`: required corridor-side door approach point. It must be inside a corridor.
 - `rooms.<room>.states`: lifecycle states shown in that room.
-- `rooms.<room>.furniture`: default furniture type, position, and event handling hints.
+- `rooms.<room>.furniture[]`: optional furniture list. Each movable object should include `x`, `y`, `w`, `h`, and optional `scale`; `w/h/scale` are used by collision, editing overlays, and PNG generation.
+
+Map authoring rules:
+
+- Keep the PNG as one continuous top-down world, not separate room cards.
+- Cross-room movement should pass through `portal -> hub -> corridor -> portal`; do not create visual shortcuts through walls.
+- Put user custom maps in `tmp/global_map/` when you do not want to edit built-in assets.
+- Use `PIXELVERSE_GLOBAL_MAP_DIR_HOST=/path/to/my/global_map ./run.sh down_up` when sharing a map directory outside the repo.
+- `rooms.<room>.furniture`: list of furniture. Each item needs `type`, `x`, `y`, `w`, `h`; optional `scale` must be between `0.55` and `1.8`.
 
 The A* router uses the same loaded YAML data as the UI. Cross-room paths must leave a room through `aisle -> portal -> hub`, travel on `corridors`, then enter the next room through `hub -> portal -> aisle`; non-door wall cuts are rejected.
+
+Design rules:
+
+- Do not put furniture over `aisle`, `portal`, or `hub`.
+- Make corridor rectangles overlap or touch so the corridor graph is connected.
+- If a room has no valid corridor-connected door, agents will fail closed instead of drawing a wall-cut path.
+- Furniture `w/h/scale` is used by collision and path blockers; keep footprints close to the visible PNG size.
+- The UI hides generated corridor/room blocks behind `default.png` when an image is present, but the YAML remains the source of truth for movement.
 
 Common rooms:
 
@@ -621,9 +980,10 @@ tmp/latest_test_hook_route.json
 tmp/latest_world_snapshot.json
 tmp/pixelverse_debug_log.json
 tmp/local_ui_trajectory.jpg
+tmp/global_map_walkability_mask.png
 ```
 
-Use them when checking room routing, A* pathing, door anchors, and multi-agent plans.
+Use them when checking room routing, A* pathing, door anchors, furniture blockers, and multi-agent plans. `global_map_walkability_mask.png` is the planner occupancy view: black is blocked space, white is free space, and gray marks door thresholds.
 
 ## Troubleshooting
 

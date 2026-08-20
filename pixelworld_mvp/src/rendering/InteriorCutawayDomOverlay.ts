@@ -1,6 +1,6 @@
 import { WORLD_PIXELS } from '../game/constants';
 import type { CutawayLayout } from './InteriorCutawaySystem';
-import type { ModernOfficeCategory } from './modernOfficeCatalog';
+import type { InteriorCatalogCategory } from './modernOfficeCompositeCatalog';
 import type { FurnitureDefinition, FurnitureLayer, FurnitureRotation, FurnitureSemantic } from '../world/types';
 import {
   interiorInspectorAvailable,
@@ -45,7 +45,7 @@ interface CutawayDomModelBase {
   titleId: keyof ReturnType<typeof villageCopy>['cutaway']['titles'];
   title: string;
   editMode: boolean;
-  category: ModernOfficeCategory;
+  category: InteriorCatalogCategory;
   page: number;
   totalPages: number;
   requiredPlaced: number;
@@ -87,7 +87,7 @@ export interface CutawayDomHandlers {
   undo(): void;
   previewTemplate(): void;
   applyTemplate(): void;
-  category(category: ModernOfficeCategory): void;
+  category(category: InteriorCatalogCategory): void;
   page(delta: -1 | 1): void;
   resize(delta: -1 | 0 | 1): void;
   rotate(delta: -90 | 90): void;
@@ -284,7 +284,7 @@ export class InteriorCutawayDomOverlay {
         button.textContent = label;
         button.setAttribute('aria-label', label);
         button.dataset.active = String(category === model.category);
-        button.addEventListener('click', () => this.handlers?.category(category as ModernOfficeCategory));
+        button.addEventListener('click', () => this.handlers?.category(category as InteriorCatalogCategory));
         return button;
       }));
     }

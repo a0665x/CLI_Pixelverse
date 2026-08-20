@@ -1,4 +1,4 @@
-import { CORRIDOR_BAND, CORRIDOR_RECTS, roomMapCopy, ROOM_LAYOUTS } from './house_layout.mjs';
+import { BLOCKED_RECTS, CORRIDOR_BAND, CORRIDOR_RECTS, FREE_SPACE_RECTS, roomMapCopy, ROOM_LAYOUTS } from './house_layout.mjs';
 import { getRoomDecor } from './ui_strings.mjs';
 import {
   allFurnitureBlockers,
@@ -32,13 +32,22 @@ const AGENT_CLEARANCE = 1.6;
 const CORRIDOR_CLEARANCE = 0.45;
 const FURNITURE_CLEARANCE = 0.35;
 function decorForRoom(roomKey) {
+  const mapFurniture = roomMapCopy(roomKey).furniture || [];
   const localized = getRoomDecor(roomKey, 'zh-TW');
-  if (localized.length) return localized;
-  return (roomMapCopy(roomKey).furniture || []).map((item) => ({
+  if (localized.length) {
+    return localized.map((item, index) => ({
+      ...item,
+      ...(mapFurniture[index] || {}),
+    }));
+  }
+  return mapFurniture.map((item) => ({
     type: item.type || 'table',
     label: item.label || item.type || 'prop',
     labelKey: item.type || 'prop',
     handles: item.handles || [],
+    w: item.w,
+    h: item.h,
+    scale: item.scale,
   }));
 }
 
@@ -114,11 +123,51 @@ function inRect(candidate, rect, inset = 0.8) {
 }
 
 function inDoorThreshold(candidate, anchor) {
-  return Math.abs(candidate.x - anchor.portal.x) <= 2.7 && Math.abs(candidate.y - anchor.portal.y) <= 2.1;
+  return Math.abs(candidate.x - anchor.portal.x) <= 0.55 && Math.abs(candidate.y - anchor.portal.y) <= 0.65;
+}
+
+function effectiveDoorAisle(anchor, roomKey) {
+  const aisle = anchor.aisle || anchor.portal;
+  if (Math.hypot(aisle.x - anchor.portal.x, aisle.y - anchor.portal.y) > 0.6) return asPoint(aisle, anchor.portal);
+  const rect = roomRect(roomKey);
+  const inset = AGENT_CLEARANCE + 0.4;
+  if (Math.abs(anchor.portal.x - rect.left) <= 0.8) return point(rect.left + inset, anchor.portal.y);
+  if (Math.abs(anchor.portal.x - rect.right) <= 0.8) return point(rect.right - inset, anchor.portal.y);
+  if (Math.abs(anchor.portal.y - rect.top) <= 0.8) return point(anchor.portal.x, rect.top + inset);
+  if (Math.abs(anchor.portal.y - rect.bottom) <= 0.8) return point(anchor.portal.x, rect.bottom - inset);
+  return asPoint(aisle, anchor.portal);
+}
+
+function inDoorApproach(candidate, anchor, roomKey) {
+  const aisle = effectiveDoorAisle(anchor, roomKey);
+  const hub = anchor.hub || anchor.portal;
+  const minY = Math.min(aisle.y, anchor.portal.y, hub.y) - 0.65;
+  const maxY = Math.max(aisle.y, anchor.portal.y, hub.y) + 0.65;
+  const minX = Math.min(aisle.x, anchor.portal.x, hub.x) - 0.65;
+  const maxX = Math.max(aisle.x, anchor.portal.x, hub.x) + 0.65;
+  return candidate.x >= minX
+    && candidate.x <= maxX
+    && candidate.y >= minY
+    && candidate.y <= maxY;
+}
+
+function pointInMapRect(candidate, rect, inset = 0) {
+  return candidate.x >= rect.left + inset
+    && candidate.x <= rect.right - inset
+    && candidate.y >= rect.top + inset
+    && candidate.y <= rect.bottom - inset;
+}
+
+function inDeclaredFreeSpace(candidate) {
+  return !FREE_SPACE_RECTS.length || FREE_SPACE_RECTS.some((rect) => pointInMapRect(candidate, rect));
+}
+
+function inBlockedMask(candidate) {
+  return BLOCKED_RECTS.some((rect) => pointInMapRect(candidate, rect));
 }
 
 function isCorridor(candidate) {
-  return CORRIDOR_RECTS.some((rect) => (
+  return !inBlockedMask(candidate) && inDeclaredFreeSpace(candidate) && CORRIDOR_RECTS.some((rect) => (
     candidate.x >= rect.left + CORRIDOR_CLEARANCE
     && candidate.x <= rect.right - CORRIDOR_CLEARANCE
     && candidate.y >= rect.top + CORRIDOR_CLEARANCE
@@ -129,10 +178,9 @@ function isCorridor(candidate) {
 export function isWalkable(candidate) {
   if (isCorridor(candidate)) return true;
   for (const [roomKey] of Object.entries(ROOM_LAYOUTS)) {
-    if (roomKey === 'offline_corner') continue;
     const rect = roomRect(roomKey);
-    if (inDoorThreshold(candidate, ROOM_ANCHORS[roomKey])) return true;
-    if (inRect(candidate, rect, AGENT_CLEARANCE)) {
+    if (inDoorApproach(candidate, ROOM_ANCHORS[roomKey], roomKey) && !inBlockedMask(candidate) && inDeclaredFreeSpace(candidate)) return true;
+    if (inRect(candidate, rect, AGENT_CLEARANCE) && !inBlockedMask(candidate) && inDeclaredFreeSpace(candidate)) {
       return !isInsideFurnitureBlocker(candidate, FURNITURE_BLOCKERS, FURNITURE_CLEARANCE);
     }
   }
@@ -152,15 +200,17 @@ function isDoorCell(candidate, roomKey) {
 }
 
 function roomPointIsClear(candidate, roomKey) {
-  if (roomKey === 'offline_corner' || !(roomKey in ROOM_LAYOUTS)) return false;
-  if (inDoorThreshold(candidate, ROOM_ANCHORS[roomKey])) return true;
+  if (!(roomKey in ROOM_LAYOUTS)) return false;
+  if (inDoorApproach(candidate, ROOM_ANCHORS[roomKey], roomKey) && !inBlockedMask(candidate) && inDeclaredFreeSpace(candidate)) return true;
   return inRect(candidate, roomRect(roomKey), AGENT_CLEARANCE)
+    && !inBlockedMask(candidate)
+    && inDeclaredFreeSpace(candidate)
     && !isInsideFurnitureBlocker(candidate, FURNITURE_BLOCKERS, FURNITURE_CLEARANCE);
 }
 
 function layerIsWalkable(candidate, layer) {
   const roomKey = roomFromLayer(layer);
-  if (layer === 'corridor') return isCorridor(candidate) || Object.keys(ROOM_ANCHORS).some((key) => isDoorCell(candidate, key));
+  if (layer === 'corridor') return isCorridor(candidate) || (!inBlockedMask(candidate) && inDeclaredFreeSpace(candidate) && Object.keys(ROOM_ANCHORS).some((key) => isDoorCell(candidate, key)));
   if (roomKey) return roomPointIsClear(candidate, roomKey);
   return false;
 }
@@ -189,10 +239,14 @@ function canMoveBetweenLayers(start, startLayer, end, endLayer) {
   const startRoom = roomFromLayer(startLayer);
   const endRoom = roomFromLayer(endLayer);
   if (startRoom && endLayer === 'corridor') {
-    return inDoorThreshold(start, ROOM_ANCHORS[startRoom]) && inDoorThreshold(end, ROOM_ANCHORS[startRoom]);
+    const anchor = ROOM_ANCHORS[startRoom];
+    return (inDoorThreshold(start, anchor) && inDoorThreshold(end, anchor))
+      || (inDoorApproach(start, anchor, startRoom) && inDoorApproach(end, anchor, startRoom));
   }
   if (startLayer === 'corridor' && endRoom) {
-    return inDoorThreshold(start, ROOM_ANCHORS[endRoom]) && inDoorThreshold(end, ROOM_ANCHORS[endRoom]);
+    const anchor = ROOM_ANCHORS[endRoom];
+    return (inDoorThreshold(start, anchor) && inDoorThreshold(end, anchor))
+      || (inDoorApproach(start, anchor, endRoom) && inDoorApproach(end, anchor, endRoom));
   }
   return false;
 }
@@ -400,17 +454,29 @@ function stitchSegments(segments) {
 }
 
 function routeBetweenHubs(fromHub, toHub) {
-  return [];
+  if (pointKey(fromHub) === pointKey(toHub)) return [];
+  const route = findPathSegment(fromHub, toHub, { startLayer: 'corridor', endLayer: 'corridor' });
+  if (!route.length) return null;
+  return route.slice(1, -1);
+}
+
+function directDoorBridge(start, end, allowDirect = false) {
+  if (!allowDirect || !segmentStaysWalkable(start, end)) return [];
+  return dedupe([point(start.x, start.y), point(end.x, end.y)]);
 }
 
 export function buildRoute(start, end, roomFrom, roomTo) {
   refreshRoomAnchors();
   const from = ROOM_ANCHORS[roomFrom] || ROOM_ANCHORS.standby_dock;
   const to = ROOM_ANCHORS[roomTo] || ROOM_ANCHORS.standby_dock;
-  const startPoint = point(start.x, start.y);
-  const endPoint = point(end.x, end.y);
-  const fromAisle = asPoint(from.aisle, from.portal);
-  const toAisle = asPoint(to.aisle, to.portal);
+  const fromLayer = roomLayer(roomFrom);
+  const toLayer = roomLayer(roomTo);
+  const snappedStart = snapToLayer(start, fromLayer);
+  const snappedEnd = snapToLayer(end, toLayer);
+  const startPoint = point(snappedStart.x, snappedStart.y);
+  const endPoint = point(snappedEnd.x, snappedEnd.y);
+  const fromAisle = effectiveDoorAisle(from, roomFrom);
+  const toAisle = effectiveDoorAisle(to, roomTo);
   const fromPortal = asPoint(from.portal, from);
   const toPortal = asPoint(to.portal, to);
   const fromHub = asPoint(from.hub, fromPortal);
@@ -428,28 +494,28 @@ export function buildRoute(start, end, roomFrom, roomTo) {
   }
 
   const corridorWaypoints = routeBetweenHubs(fromHub, toHub);
-  const fromLayer = roomLayer(roomFrom);
-  const toLayer = roomLayer(roomTo);
+  if (!corridorWaypoints) return [startPoint];
   const waypoints = [
     { point: fromAisle, layer: fromLayer },
     { point: fromPortal, layer: fromLayer },
-    { point: fromHub, layer: 'corridor' },
+    { point: fromHub, layer: 'corridor', allowDirect: true },
     ...corridorWaypoints.map((waypoint) => ({ point: waypoint, layer: 'corridor' })),
     { point: toHub, layer: 'corridor' },
-    { point: toPortal, layer: 'corridor' },
-    { point: toAisle, layer: toLayer },
+    { point: toPortal, layer: 'corridor', allowDirect: true },
+    { point: toAisle, layer: toLayer, allowDirect: true },
     { point: endPoint, layer: toLayer },
   ];
   const segments = [];
   let current = { point: startPoint, layer: fromLayer };
   for (const next of waypoints) {
-    const segment = findPathSegment(current.point, next.point, { startLayer: current.layer, endLayer: next.layer });
+    const pathSegment = findPathSegment(current.point, next.point, { startLayer: current.layer, endLayer: next.layer });
+    const segment = pathSegment.length ? pathSegment : directDoorBridge(current.point, next.point, next.allowDirect);
     if (!segment.length) return [startPoint];
     segments.push(segment);
     current = next;
   }
   const route = stitchSegments(segments);
-  return route.length ? route : [startPoint];
+  return route.length && routeUsesDoorThresholds(route, roomFrom, roomTo) ? route : [startPoint];
 }
 
 export function routeUsesDoorThresholds(route = [], roomFrom, roomTo) {

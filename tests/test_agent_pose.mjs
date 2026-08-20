@@ -78,3 +78,18 @@ test('interaction targets include object and action metadata for arrival poses',
   assert.equal(archive.propType, 'cabinet');
   assert.equal(archive.actionLabelZh, '查閱資料');
 });
+
+test('idle prefers sofa while reading and code editing select semantic work furniture', () => {
+  const roomDecor = [
+    { type: 'bed', label: 'Sleep Pod' },
+    { type: 'sofa', label: 'Rest Sofa' },
+    { type: 'bookshelf', label: 'Research Shelf' },
+    { type: 'desk', label: 'Computer Desk' },
+    { type: 'terminal', label: 'Code Monitor' },
+  ];
+  const roomPositions = roomDecor.map((_, index) => ({ x: 10 + index * 10, y: 20 }));
+  assert.equal(selectInteractionTarget({ state: 'idle' }, roomDecor, roomPositions).propType, 'sofa');
+  assert.equal(selectInteractionTarget({ state: 'working', pixel_state: 'reading_files', task: 'read_file' }, roomDecor, roomPositions).propType, 'bookshelf');
+  assert.equal(selectInteractionTarget({ state: 'working', pixel_state: 'editing_files', task: 'patch' }, roomDecor, roomPositions).propType, 'desk');
+  assert.equal(selectInteractionTarget({ state: 'sleeping', pixel_state: 'sleeping' }, roomDecor, roomPositions).propType, 'bed');
+});

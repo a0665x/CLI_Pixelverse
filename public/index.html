@@ -98,24 +98,53 @@
       will-change: transform;
     }
     .camera-stage.is-panning { transition: none; }
+    .pixelworld-frame {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      border: 0;
+      background: #13251b;
+      z-index: 2;
+    }
+    .world:not(.editing) .camera-stage {
+      visibility: hidden;
+      pointer-events: none;
+    }
+    .world:not(.editing) .camera-controls { display: none; }
+    .world.editing .pixelworld-frame { display: none; }
     .house-shell {
       position: absolute;
       inset: 44px 52px 58px 52px;
       pointer-events: none;
       z-index: 1;
     }
-    .house-shell.has-global-map-image::after {
-      content: "";
+    .map-coordinate-plane {
       position: absolute;
       inset: 2%;
-      z-index: 0;
+      z-index: 2;
       border-radius: 16px;
+      pointer-events: none;
+    }
+    .map-coordinate-plane::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      border-radius: inherit;
       background-image: var(--global-map-image);
       background-size: 100% 100%;
       background-repeat: no-repeat;
       image-rendering: pixelated;
-      opacity: 0.82;
+      opacity: 0;
       pointer-events: none;
+    }
+    .house-shell.has-global-map-image .map-coordinate-plane::before {
+      opacity: 1;
+    }
+    .house-shell.has-global-map-image .house-boundary {
+      background: transparent;
+      box-shadow: none;
     }
     .house-boundary {
       position: absolute;
@@ -222,9 +251,9 @@
     .hud > * { pointer-events: auto; }
     .panel {
       background: var(--material-structural);
-      border: 3px solid var(--line);
+      border: 1px solid rgba(107, 145, 196, 0.56);
       border-radius: 14px;
-      box-shadow: 0 0 0 4px rgba(3, 7, 14, 0.92), 0 14px 30px var(--shadow);
+      box-shadow: 0 14px 36px rgba(0, 0, 0, 0.32), inset 0 1px rgba(255, 255, 255, 0.06);
       pointer-events: auto;
       touch-action: none;
     }
@@ -409,7 +438,7 @@
       z-index: 2;
       border: 4px solid #2e2530;
       border-radius: 8px;
-      overflow: hidden;
+      overflow: visible;
       box-shadow: inset 0 0 0 3px rgba(255,255,255,0.1), 0 10px 18px rgba(0,0,0,0.2);
       background-color: var(--district-floor-color, #d4c196);
       background-image:
@@ -438,6 +467,20 @@
       background-size: var(--district-wall-size, 64px 64px);
       opacity: 0.95;
       pointer-events: none;
+    }
+    .house-shell.has-global-map-image .district {
+      border-color: transparent;
+      background: transparent;
+      box-shadow: none;
+    }
+    .house-shell.has-global-map-image .district::before,
+    .house-shell.has-global-map-image .district::after,
+    .house-shell.has-global-map-image .district-label,
+    .house-shell.has-global-map-image .district-floor-accents,
+    .house-shell.has-global-map-image .district-semantics,
+    .house-shell.has-global-map-image .district-walls,
+    .house-shell.has-global-map-image .room-door {
+      display: none;
     }
     .district[data-room="think_lab"] { left: 4%; top: 6%; width: 30%; height: 31%; }
     .district[data-room="blueprint_lab"] { left: 34%; top: 6%; width: 30%; height: 31%; }
@@ -495,7 +538,8 @@
     .district-floor-accents { z-index: 1; }
     .district-semantics { z-index: 2; }
     .district-walls { z-index: 3; pointer-events: none; }
-    .district-props { z-index: 4; }
+    .district-props { z-index: 4; overflow: visible; }
+    .district-props { pointer-events: none; }
     .tile-accent,
     .semantic-zone,
     .wall-segment {
@@ -788,17 +832,17 @@
       white-space: nowrap;
       box-shadow: 0 6px 16px rgba(0,0,0,0.22);
     }
-    .prop[data-asset-pack="office-fallback"][data-prop-type="bed"] { --prop-scale: 1.8 !important; }
-    .prop[data-asset-pack="office-fallback"][data-prop-type="sofa"] { --prop-scale: 1.58 !important; }
+    .prop[data-asset-pack="office-fallback"][data-prop-type="bed"] { --prop-scale: 1.8; }
+    .prop[data-asset-pack="office-fallback"][data-prop-type="sofa"] { --prop-scale: 1.58; }
     .prop[data-asset-pack="office-fallback"][data-prop-type="desk"],
     .prop[data-asset-pack="office-fallback"][data-prop-type="table"],
-    .prop[data-asset-pack="office-fallback"][data-prop-type="workbench"] { --prop-scale: 1.45 !important; }
-    .prop[data-asset-pack="office-fallback"][data-prop-type="chair"] { --prop-scale: 1.3 !important; }
+    .prop[data-asset-pack="office-fallback"][data-prop-type="workbench"] { --prop-scale: 1.45; }
+    .prop[data-asset-pack="office-fallback"][data-prop-type="chair"] { --prop-scale: 1.3; }
     .prop[data-asset-pack="office-fallback"][data-prop-type="bookshelf"],
     .prop[data-asset-pack="office-fallback"][data-prop-type="cabinet"],
     .prop[data-asset-pack="office-fallback"][data-prop-type="locker"],
-    .prop[data-asset-pack="office-fallback"][data-prop-type="server"] { --prop-scale: 1.5 !important; }
-    .prop[data-asset-pack="office-fallback"][data-prop-type="board"] { --prop-scale: 1.58 !important; }
+    .prop[data-asset-pack="office-fallback"][data-prop-type="server"] { --prop-scale: 1.5; }
+    .prop[data-asset-pack="office-fallback"][data-prop-type="board"] { --prop-scale: 1.58; }
     .prop img[data-pack="kenney"],
     .prop img[data-pack="appledog"],
     .prop img[data-pack="office-fallback"] {
@@ -929,10 +973,10 @@
     .agent {
       position: absolute;
       transform: translate(-50%, -50%);
-      width: 124px;
+      width: 72px;
+      height: 72px;
       display: grid;
-      justify-items: center;
-      gap: 4px;
+      place-items: center;
       cursor: pointer;
       user-select: none;
       transition: transform .12s ease, filter .12s ease, left .7s cubic-bezier(.35, 0, .25, 1), top .7s cubic-bezier(.35, 0, .25, 1);
@@ -977,25 +1021,37 @@
       50% { transform: translateY(-1px) scale(1.01); }
     }
     .agent-speech {
-      min-height: 22px;
-      max-width: 176px;
-      padding: 6px 8px;
+      position: absolute;
+      top: 2px;
+      min-height: 20px;
+      max-width: 96px;
+      padding: 5px 7px;
       border-radius: 10px;
-      border: 3px solid #15213a;
-      background: #f8fbff;
+      border: 2px solid #15213a;
+      background: rgba(248, 251, 255, 0.94);
       color: #08111f;
-      font-size: 9px;
-      line-height: 1.4;
+      font-size: 8px;
+      line-height: 1.3;
       display: none;
-      box-shadow: 0 6px 0 rgba(8,15,28,0.4);
-      pointer-events: auto;
+      box-shadow: 0 5px 0 rgba(8,15,28,0.34);
+      pointer-events: none;
+      z-index: 5;
     }
     .agent-speech.show { display: block; }
+    .agent.overlay-left .agent-speech { right: calc(100% - 14px); text-align: right; }
+    .agent.overlay-right .agent-speech { left: calc(100% - 14px); text-align: left; }
+    .agent:hover .agent-speech.clickable,
+    .agent.selected .agent-speech.clickable { pointer-events: auto; }
+    .agent.walking .agent-speech {
+      opacity: .72;
+      transform: translateY(-4px) scale(.86);
+      max-width: 72px;
+    }
     .agent-speech.clickable, .event-chip.clickable { cursor: pointer; }
     .sprite-wrap {
       position: relative;
-      width: 82px;
-      height: 86px;
+      width: 49px;
+      height: 52px;
       display: grid;
       place-items: center;
     }
@@ -1003,8 +1059,8 @@
       position: absolute;
       left: 50%;
       bottom: 3px;
-      width: 82px;
-      height: 22px;
+      width: 49px;
+      height: 13px;
       transform: translateX(-50%);
       background: radial-gradient(circle, rgba(96,165,250,0.7), rgba(96,165,250,0.12) 70%, transparent 100%);
       filter: blur(1px);
@@ -1015,8 +1071,8 @@
     .beam.working { background: radial-gradient(circle, rgba(74,222,128,.76), rgba(74,222,128,.1) 70%, transparent 100%); }
     .beam.offline { background: radial-gradient(circle, rgba(239,68,68,.75), rgba(239,68,68,.1) 70%, transparent 100%); }
     .agent-pixel {
-      width: 64px;
-      height: 64px;
+      width: 38px;
+      height: 38px;
       image-rendering: pixelated;
       z-index: 2;
       filter: drop-shadow(0 8px 0 rgba(0,0,0,0.24));
@@ -1024,8 +1080,8 @@
       transform-origin: center center;
     }
     .agent-pixel[data-pack="kenney"] {
-      width: 72px;
-      height: 72px;
+      width: 43px;
+      height: 43px;
       filter: drop-shadow(0 8px 0 rgba(0,0,0,0.32));
     }
     .role-chip, .tool-chip, .pose-chip, .event-chip, .object-chip {
@@ -1118,15 +1174,34 @@
     .event-chip.offline { border-color: rgba(239,68,68,0.4); color: #fecaca; }
     .event-chip.idle { border-color: rgba(96,165,250,0.34); color: #dbeafe; }
     .agent-card {
-      width: 120px;
-      padding: 8px 8px 7px;
+      position: absolute;
+      top: 100%;
+      width: 112px;
+      padding: 7px 8px 6px;
       border-radius: 10px;
-      background: rgba(6, 11, 22, 0.86);
-      border: 2px solid rgba(74, 116, 174, 0.85);
-      box-shadow: 0 6px 0 rgba(0,0,0,0.22);
+      background: rgba(6, 11, 22, 0.82);
+      border: 2px solid rgba(74, 116, 174, 0.7);
+      box-shadow: 0 5px 0 rgba(0,0,0,0.18);
       display: grid;
       gap: 4px;
       text-align: center;
+      opacity: 0;
+      transform: translateY(-4px) scale(.94);
+      transition: opacity .14s ease, transform .14s ease;
+      pointer-events: none;
+      z-index: 4;
+    }
+    .agent.overlay-left .agent-card { right: calc(100% - 24px); }
+    .agent.overlay-right .agent-card { left: calc(100% - 24px); }
+    .agent:hover .agent-card {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+      pointer-events: auto;
+    }
+    .agent.walking .agent-card {
+      opacity: 0;
+      transform: translateY(-6px) scale(.9);
+      pointer-events: none;
     }
     .agent-name {
       display: flex;
@@ -1383,6 +1458,35 @@
       gap: 8px;
       min-height: 162px;
     }
+    .timeline-live-state {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+      color: var(--muted);
+      font-size: 10px;
+      line-height: 1.35;
+      flex-wrap: wrap;
+    }
+    .timeline-live-state > span {
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .timeline-state-pill, .timeline-live-indicator {
+      padding: 3px 7px;
+      border: 1px solid rgba(110, 231, 249, .3);
+      border-radius: 999px;
+      color: #dff9ff;
+      background: rgba(36, 78, 97, .52);
+      font-weight: 700;
+      letter-spacing: .02em;
+      box-shadow: inset 0 1px rgba(255, 255, 255, .09);
+    }
+    .timeline-live-indicator.live { color: #bbf7d0; border-color: rgba(74, 222, 128, .4); background: rgba(20, 83, 45, .42); }
+    .timeline-live-indicator.waiting { color: #fde68a; border-color: rgba(251, 191, 36, .4); background: rgba(92, 63, 12, .4); }
+    .timeline-live-indicator.stale { color: #fecaca; border-color: rgba(239, 68, 68, .4); background: rgba(90, 24, 32, .42); }
     .timeline-panel svg { width: 100%; height: 98px; display: block; }
     .timeline-meta {
       display: flex;
@@ -1715,7 +1819,7 @@
       body:not([data-mobile-mode="on"]) .brand { width: calc(100vw - 368px); }
     }
     .world {
-      inset: 138px 12px calc(var(--timeline-height) + 28px) calc(var(--sidebar-width) + 24px);
+      inset: var(--workbench-top) 12px calc(var(--timeline-height) + 28px) calc(var(--sidebar-width) + 24px);
       border-radius: 16px;
       border: 2px solid rgba(74,116,174,0.5);
       box-shadow: inset 0 0 0 1px rgba(255,255,255,0.04);
@@ -1730,12 +1834,12 @@
     .dashboard-sidebar {
       left: 12px;
       right: auto;
-      bottom: 254px;
+      bottom: calc(var(--timeline-height) + 28px);
       width: var(--sidebar-width);
-      min-width: 350px;
+      min-width: 320px;
       max-width: min(620px, calc(100vw - 36px));
       grid-template-rows: auto auto minmax(220px, .9fr) minmax(240px, 1.1fr);
-      resize: horizontal;
+      resize: none;
       overflow: auto;
     }
     .dashboard-sidebar .events-belt { display: none; }
@@ -1744,9 +1848,9 @@
       right: 12px;
       bottom: 12px;
       height: var(--timeline-height);
-      min-height: 240px;
+      min-height: 180px;
       max-height: min(70vh, 620px);
-      resize: vertical;
+      resize: none;
     }
     .events-track {
       overflow-x: auto;
@@ -1984,9 +2088,9 @@
     }
     body[data-mobile-mode="on"] .sidebar-head { display: none; }
     @media (max-width: 1180px) {
-      .dashboard-sidebar { width: 350px; }
-      .world { left: 374px; }
-      .hud { left: 374px; }
+      .dashboard-sidebar { width: var(--sidebar-width); }
+      .world { left: calc(var(--sidebar-width) + 24px); }
+      .hud { left: calc(var(--sidebar-width) + 24px); }
     }
     @media (max-width: 920px) {
       body:not([data-mobile-mode="on"]) .dashboard-sidebar {
@@ -2397,6 +2501,191 @@
       .live-hud .brand,
       .dashboard-card { backdrop-filter: none; background: #101916; }
     }
+
+    /* Current-state workspace: fixed rails never cover the village and never scroll. */
+    .map-first-workspace {
+      --live-left-width: 280px;
+      --live-right-width: 260px;
+      display: grid;
+      grid-template-columns: var(--live-left-width) 8px minmax(520px, 1fr) 8px var(--live-right-width);
+      grid-template-rows: 44px minmax(0, 1fr);
+      overflow: hidden;
+      background: #07100d;
+    }
+    .map-first-workspace .world.map-stage {
+      position: relative;
+      inset: auto;
+      grid-column: 3;
+      grid-row: 2;
+      overflow: hidden;
+    }
+    .top-status-bar {
+      grid-column: 1 / -1;
+      grid-row: 1;
+      z-index: 48;
+      min-width: 0;
+      overflow: hidden;
+      border-bottom: 1px solid #294838;
+      background: #0c1813;
+    }
+    .map-first-workspace .hud.live-hud,
+    .map-first-workspace .live-hud {
+      position: static;
+      inset: auto;
+      display: block;
+      width: 100%;
+      height: 44px;
+      overflow: hidden;
+      pointer-events: auto;
+    }
+    .map-first-workspace .live-hud .brand {
+      display: grid;
+      width: 100%;
+      height: 44px;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 12px;
+      overflow: hidden;
+      padding: 5px 12px;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      box-shadow: none;
+      touch-action: none;
+    }
+    .live-hud .brand-top { display: contents; }
+    .live-hud .current-agent-state { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .live-hud #last-sync { justify-self: end; white-space: nowrap; }
+    .live-hud .summary-strip,
+    .live-hud #world-summary,
+    .live-hud .editor-banner { display: none !important; }
+    .agent-live-rail,
+    .hook-live-rail {
+      min-width: 0;
+      min-height: 0;
+      overflow: hidden;
+      padding: 10px;
+      color: #e9f7eb;
+      background: #0d1b15;
+    }
+    .agent-live-rail { grid-column: 1; grid-row: 2; }
+    .hook-live-rail { grid-column: 5; grid-row: 2; }
+    .live-rail-splitter {
+      position: relative;
+      z-index: 12;
+      grid-row: 2;
+      width: 8px;
+      min-width: 8px;
+      cursor: col-resize;
+      touch-action: none;
+      outline: 0;
+      background: #0a1611;
+    }
+    .live-rail-splitter::after {
+      position: absolute;
+      inset: 0 3px;
+      content: '';
+      border-radius: 2px;
+      background: #294838;
+      transition: background 120ms ease, inset 120ms ease;
+    }
+    .live-rail-splitter:hover::after,
+    .live-rail-splitter:focus-visible::after,
+    .map-first-workspace.is-resizing-rails .live-rail-splitter::after {
+      inset: 0 2px;
+      background: #72e2a5;
+    }
+    #live-left-splitter { grid-column: 2; }
+    #live-right-splitter { grid-column: 4; }
+    .map-first-workspace.is-resizing-rails,
+    .map-first-workspace.is-resizing-rails iframe { cursor: col-resize; user-select: none; }
+    .agent-live-rail > header { display: grid; align-content: start; gap: 8px; }
+    .hook-live-rail { display: grid; grid-template-rows: auto auto auto auto minmax(0, 1fr) auto auto; align-content: stretch; gap: 8px; }
+    .agent-live-rail > header { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+    .agent-live-rail output,
+    .hook-live-kicker { color: #72e2a5; font: 800 10px/1.2 ui-monospace, monospace; letter-spacing: .08em; }
+    .agent-live-list { display: grid; min-height: 0; grid-template-rows: repeat(var(--visible-agent-count, 1), minmax(86px, 1fr)); gap: 7px; overflow: hidden; }
+    .agent-live-row { display: grid; grid-template-columns: 30px minmax(0, 1fr); grid-template-rows: auto minmax(32px, 1fr); gap: 7px; min-height: 86px; overflow: hidden; padding: 8px; border: 1px solid #284938; border-radius: 10px; background: #12251c; }
+    .agent-live-avatar { display: grid; width: 30px; height: 30px; place-items: center; border-radius: 9px; color: #092016; background: #79d89c; font-weight: 900; }
+    .agent-live-copy { min-width: 0; overflow: hidden; }
+    .agent-live-name,
+    .agent-live-meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .agent-live-name { font-size: 11px; font-weight: 800; }
+    .agent-live-meta { margin-top: 2px; color: #9cb5a5; font-size: 9px; }
+    .agent-live-ecg { display: block; width: 100%; height: 100%; min-height: 32px; margin-top: 3px; overflow: visible; }
+    .agent-live-ecg path { fill: none; stroke: #5ce69a; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+    .agent-live-row[data-tone='offline'] .agent-live-ecg path { stroke: #718078; stroke-dasharray: 4 3; }
+    .map-first-workspace[data-left-rail-density='compact'] .agent-live-row { grid-template-columns: 26px minmax(0, 1fr); padding: 6px; }
+    .map-first-workspace[data-left-rail-density='compact'] .agent-live-avatar { width: 26px; height: 26px; border-radius: 8px; }
+    .map-first-workspace[data-left-rail-density='compact'] .agent-live-meta { font-size: 8px; }
+    .map-first-workspace[data-left-rail-density='wide'] .agent-live-row { grid-template-columns: 40px minmax(0, 1fr); padding: 12px; }
+    .map-first-workspace[data-left-rail-density='wide'] .agent-live-avatar { width: 40px; height: 40px; font-size: 16px; }
+    .map-first-workspace[data-left-rail-density='wide'] .agent-live-name { font-size: 13px; }
+    .map-first-workspace[data-left-rail-density='wide'] .agent-live-meta { font-size: 10px; }
+    .rail-pagination { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 8px; }
+    .rail-pagination button,
+    .hook-live-rail .workspace-tool-button { min-height: 30px; border: 1px solid #345844; border-radius: 8px; color: #e9f7eb; background: #173326; }
+    .hook-live-rail strong { font-size: 15px; }
+    .hook-live-rail p { min-height: 54px; margin: 0; overflow: hidden; color: #c5d8ca; font-size: 11px; line-height: 1.45; }
+    .hook-live-agent { overflow: hidden; color: #8ea99a; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+    .hook-live-channels { display: grid; min-height: 0; grid-template-rows: repeat(3, minmax(72px, 1fr)); gap: 7px; overflow: hidden; }
+    .hook-live-channel { display: grid; min-height: 0; grid-template-rows: auto auto minmax(28px, 1fr) auto; gap: 5px; overflow: hidden; padding: 9px; border: 1px solid #284938; border-radius: 10px; background: #11231b; }
+    .hook-live-channel[data-active='true'] { border-color: #72e2a5; background: #153326; box-shadow: inset 3px 0 #72e2a5; }
+    .hook-live-channel > header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .hook-live-channel > header strong { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+    .hook-live-channel output { display: grid; min-width: 22px; height: 22px; place-items: center; border-radius: 7px; color: #092016; background: #72e2a5; font: 800 10px/1 ui-monospace, monospace; }
+    .hook-live-channel p { min-height: 0; font-size: 10px; line-height: 1.35; }
+    .hook-live-ecg { display: block; width: 100%; height: 100%; min-height: 28px; overflow: visible; }
+    .hook-live-ecg path { fill: none; stroke: #72e2a5; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+    .hook-live-channel[data-semantic='search'] .hook-live-ecg path { stroke: #72b7e2; }
+    .hook-live-channel[data-semantic='rest'] .hook-live-ecg path { stroke: #d7c878; }
+    .hook-live-channel > span { overflow: hidden; color: #8ea99a; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+    .hook-live-rail .workspace-tools { position: static; inset: auto; display: block; max-width: none; margin-top: 4px; }
+    .hook-live-rail .workspace-tool-button { width: 100%; }
+    .hook-settings { min-height: 0; overflow: hidden; }
+    .hook-settings > summary { display: grid; width: 30px; height: 30px; place-items: center; cursor: pointer; list-style: none; border: 1px solid #345844; border-radius: 8px; color: #9cb5a5; background: #13291f; }
+    .hook-settings > summary::-webkit-details-marker { display: none; }
+    .hook-settings-body { display: grid; max-height: 230px; gap: 6px; overflow: hidden; padding-top: 6px; }
+    .hook-settings-body .functional-glass { display: grid; gap: 4px; min-width: 0; overflow: hidden; padding: 6px; }
+    .hook-settings-body select,
+    .hook-settings-body button { min-width: 0; max-width: 100%; }
+    .dashboard-card {
+      position: absolute !important;
+      inset: 52px 8px 8px auto !important;
+      width: 180px !important;
+      height: auto !important;
+      max-height: calc(100% - 60px);
+      overflow: hidden;
+    }
+    .dashboard-card[data-card="help"] { --dashboard-card-accent: #72e2a5; }
+    .dashboard-card-pagination button { color: #e9f7eb; background: #13291f; }
+    .dashboard-card-pagination button:disabled { color: #6f8177; background: #101d17; }
+    body.cutaway-status-rail[data-pixelworld-cutaway="open"] .map-first-workspace .map-stage { inset: auto !important; }
+    @media (max-width: 899px) {
+      .map-first-workspace {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        grid-template-rows: 44px minmax(180px, 1fr) 164px;
+      }
+      .live-rail-splitter { display: none; }
+      .map-first-workspace .world.map-stage { grid-column: 1 / -1; grid-row: 2; }
+      .agent-live-rail { grid-column: 1; grid-row: 3; border-top: 1px solid #294838; border-right: 1px solid #294838; }
+      .hook-live-rail { grid-column: 2; grid-row: 3; border-top: 1px solid #294838; border-left: 0; }
+      .agent-live-rail { grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto minmax(0, 1fr); gap: 6px; }
+      .agent-live-rail > header { grid-column: 1 / -1; }
+      .agent-live-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .agent-live-row { min-height: 92px; }
+      .hook-live-rail { grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto auto minmax(0, 1fr); gap: 5px 8px; }
+      .hook-live-rail > .hook-live-kicker,
+      .hook-live-rail > strong,
+      .hook-live-rail > p,
+      .hook-live-rail > .hook-live-agent { display: none; }
+      .hook-live-channels { grid-column: 1 / -1; grid-row: 1 / 3; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: minmax(0, 1fr); }
+      .hook-live-channel { padding: 6px; }
+      .hook-live-rail .workspace-tools { grid-column: 1; grid-row: 3; margin: 0; }
+      .hook-settings { grid-column: 2; grid-row: 3; }
+      .rail-pagination { grid-template-columns: 30px 30px; margin: 0 0 0 6px; }
+      .dashboard-card { inset: auto 8px 8px auto !important; width: calc(50% - 16px) !important; height: 148px !important; }
+    }
   </style>
 </head>
 <body data-locale="en-US" data-mobile-mode="off" data-sidebar-open="true">
@@ -2413,39 +2702,41 @@
       <div class="camera-stage" id="camera-stage" hidden aria-hidden="true">
         <div class="house-shell">
           <div class="house-boundary"></div>
-          <div class="house-corridor corridor-main"></div>
-          <div class="house-corridor corridor-vertical corridor-a"></div>
-          <div class="house-corridor corridor-vertical corridor-b"></div>
-          <div class="house-corridor corridor-vertical corridor-c"></div>
-          <div class="house-corridor corridor-vertical corridor-d"></div>
-          <div class="house-corridor corridor-vertical corridor-e"></div>
-          <div class="office-shell">
-            <div class="window-strip"><span></span><span></span><span></span><span></span><span></span></div>
-            <div class="wing-marker left" id="core-wing-label">CORE WING</div>
-            <div class="wing-marker right" id="clone-wing-label">CLONE WING</div>
-            <div class="room-door" data-room="think_lab"></div>
-            <div class="room-door" data-room="blueprint_lab"></div>
-            <div class="room-door" data-room="file_library"></div>
-            <div class="room-door" data-room="tool_forge"></div>
-            <div class="room-door" data-room="code_workbench"></div>
-            <div class="room-door" data-room="terminal_bay"></div>
-            <div class="room-door" data-room="response_studio"></div>
-            <div class="room-door" data-room="standby_dock"></div>
-            <div class="room-door" data-room="clone_bay"></div>
-            <div class="room-door" data-room="session_archive"></div>
+          <div class="map-coordinate-plane" id="map-coordinate-plane">
+            <div class="house-corridor corridor-main"></div>
+            <div class="house-corridor corridor-vertical corridor-a"></div>
+            <div class="house-corridor corridor-vertical corridor-b"></div>
+            <div class="house-corridor corridor-vertical corridor-c"></div>
+            <div class="house-corridor corridor-vertical corridor-d"></div>
+            <div class="house-corridor corridor-vertical corridor-e"></div>
+            <div class="office-shell">
+              <div class="window-strip"><span></span><span></span><span></span><span></span><span></span></div>
+              <div class="wing-marker left" id="core-wing-label">CORE WING</div>
+              <div class="wing-marker right" id="clone-wing-label">CLONE WING</div>
+              <div class="room-door" data-room="think_lab"></div>
+              <div class="room-door" data-room="blueprint_lab"></div>
+              <div class="room-door" data-room="file_library"></div>
+              <div class="room-door" data-room="tool_forge"></div>
+              <div class="room-door" data-room="code_workbench"></div>
+              <div class="room-door" data-room="terminal_bay"></div>
+              <div class="room-door" data-room="response_studio"></div>
+              <div class="room-door" data-room="standby_dock"></div>
+              <div class="room-door" data-room="clone_bay"></div>
+              <div class="room-door" data-room="session_archive"></div>
+            </div>
+            <div class="district" data-room="think_lab"><div class="district-label"></div><div class="district-floor-accents"></div><div class="district-semantics"></div><div class="district-walls"></div><div class="district-props"></div></div>
+            <div class="district" data-room="blueprint_lab"><div class="district-label"></div><div class="district-floor-accents"></div><div class="district-semantics"></div><div class="district-walls"></div><div class="district-props"></div></div>
+            <div class="district" data-room="file_library"><div class="district-label"></div><div class="district-floor-accents"></div><div class="district-semantics"></div><div class="district-walls"></div><div class="district-props"></div></div>
+            <div class="district" data-room="tool_forge"><div class="district-label"></div><div class="district-floor-accents"></div><div class="district-semantics"></div><div class="district-walls"></div><div class="district-props"></div></div>
+            <div class="district" data-room="code_workbench"><div class="district-label"></div><div class="district-floor-accents"></div><div class="district-semantics"></div><div class="district-walls"></div><div class="district-props"></div></div>
+            <div class="district" data-room="terminal_bay"><div class="district-label"></div><div class="district-floor-accents"></div><div class="district-semantics"></div><div class="district-walls"></div><div class="district-props"></div></div>
+            <div class="district" data-room="response_studio"><div class="district-label"></div><div class="district-floor-accents"></div><div class="district-semantics"></div><div class="district-walls"></div><div class="district-props"></div></div>
+            <div class="district" data-room="standby_dock"><div class="district-label"></div><div class="district-floor-accents"></div><div class="district-semantics"></div><div class="district-walls"></div><div class="district-props"></div></div>
+            <div class="district" data-room="clone_bay"><div class="district-label"></div><div class="district-floor-accents"></div><div class="district-semantics"></div><div class="district-walls"></div><div class="district-props"></div></div>
+            <div class="district" data-room="session_archive"><div class="district-label"></div><div class="district-floor-accents"></div><div class="district-semantics"></div><div class="district-walls"></div><div class="district-props"></div></div>
+            <svg class="path-layer" id="path-layer" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>
+            <div class="agents-layer" id="agents-layer"></div>
           </div>
-          <div class="district" data-room="think_lab"><div class="district-label"></div><div class="district-floor-accents"></div><div class="district-semantics"></div><div class="district-walls"></div><div class="district-props"></div></div>
-          <div class="district" data-room="blueprint_lab"><div class="district-label"></div><div class="district-floor-accents"></div><div class="district-semantics"></div><div class="district-walls"></div><div class="district-props"></div></div>
-          <div class="district" data-room="file_library"><div class="district-label"></div><div class="district-floor-accents"></div><div class="district-semantics"></div><div class="district-walls"></div><div class="district-props"></div></div>
-          <div class="district" data-room="tool_forge"><div class="district-label"></div><div class="district-floor-accents"></div><div class="district-semantics"></div><div class="district-walls"></div><div class="district-props"></div></div>
-          <div class="district" data-room="code_workbench"><div class="district-label"></div><div class="district-floor-accents"></div><div class="district-semantics"></div><div class="district-walls"></div><div class="district-props"></div></div>
-          <div class="district" data-room="terminal_bay"><div class="district-label"></div><div class="district-floor-accents"></div><div class="district-semantics"></div><div class="district-walls"></div><div class="district-props"></div></div>
-          <div class="district" data-room="response_studio"><div class="district-label"></div><div class="district-floor-accents"></div><div class="district-semantics"></div><div class="district-walls"></div><div class="district-props"></div></div>
-          <div class="district" data-room="standby_dock"><div class="district-label"></div><div class="district-floor-accents"></div><div class="district-semantics"></div><div class="district-walls"></div><div class="district-props"></div></div>
-          <div class="district" data-room="clone_bay"><div class="district-label"></div><div class="district-floor-accents"></div><div class="district-semantics"></div><div class="district-walls"></div><div class="district-props"></div></div>
-          <div class="district" data-room="session_archive"><div class="district-label"></div><div class="district-floor-accents"></div><div class="district-semantics"></div><div class="district-walls"></div><div class="district-props"></div></div>
-          <svg class="path-layer" id="path-layer" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>
-          <div class="agents-layer" id="agents-layer"></div>
         </div>
       </div>
       <div class="camera-controls functional-glass" id="camera-controls" aria-label="World camera controls" hidden aria-hidden="true">
@@ -2455,7 +2746,8 @@
       </div>
     </section>
 
-    <aside class="hud live-hud" id="live-status-rail" aria-label="Live agent status">
+    <header class="top-status-bar" id="top-status-bar" aria-label="CLI Pixelverse live status">
+    <div class="hud live-hud" id="live-status-rail">
       <div class="brand panel">
         <div class="brand-top">
           <div>
@@ -2488,24 +2780,34 @@
           <div class="editor-banner-meta" id="furniture-edit-meta"></div>
         </div>
       </div>
+    </div>
+    </header>
+
+    <aside class="agent-live-rail" id="agent-live-rail" aria-label="Live agent heartbeats">
+      <header><strong id="agent-live-title">Live agents</strong><output id="agent-live-page">1 / 1</output></header>
+      <div class="agent-live-list" id="agent-live-list"></div>
+      <footer class="rail-pagination">
+        <button type="button" id="agent-live-previous" aria-label="Previous agents">‹</button>
+        <button type="button" id="agent-live-next" aria-label="Next agents">›</button>
+      </footer>
     </aside>
 
-    <nav class="workspace-tools" aria-label="Workspace details">
-      <button type="button" class="workspace-tool-button dashboard-card-control dashboard-card-control--events" id="dashboard-events-btn" data-dashboard-card="events" data-tooltip="Events" aria-label="Open Events" aria-expanded="false" aria-controls="dashboard-card"><span class="workspace-tool-icon" aria-hidden="true">◫</span><span id="dashboard-events-label">Events</span></button>
-      <button type="button" class="workspace-tool-button dashboard-card-control dashboard-card-control--agents" id="dashboard-agents-btn" data-dashboard-card="agents" data-tooltip="Agents" aria-label="Open Agents" aria-expanded="false" aria-controls="dashboard-card"><span class="workspace-tool-icon" aria-hidden="true">◎</span><span id="dashboard-agents-label">Agents</span></button>
+    <div class="live-rail-splitter" id="live-left-splitter" role="separator" aria-label="Resize live agent rail" aria-orientation="vertical" tabindex="0"></div>
+
+    <div class="live-rail-splitter" id="live-right-splitter" role="separator" aria-label="Resize Hook rail" aria-orientation="vertical" tabindex="0"></div>
+
+    <aside class="hook-live-rail" id="hook-live-rail" aria-label="Current Hook status">
+      <div class="hook-live-kicker" id="hook-live-semantic">REST</div>
+      <strong id="hook-live-building">Rest Cabin</strong>
+      <p id="hook-live-activity"></p>
+      <div class="hook-live-agent" id="hook-live-agent"></div>
+      <div class="hook-live-channels" id="hook-live-channels" aria-label="Live Hook channels"></div>
+    <nav class="workspace-tools" aria-label="Hook guide">
       <button type="button" class="workspace-tool-button dashboard-card-control dashboard-card-control--help" id="dashboard-help-btn" data-dashboard-card="help" data-tooltip="Help" aria-label="Open Help" aria-expanded="false" aria-controls="dashboard-card"><span class="workspace-tool-icon" aria-hidden="true">?</span><span id="dashboard-help-label">Help</span></button>
     </nav>
-
-    <div class="visually-hidden" id="dashboard-card-live" role="status" aria-live="polite" aria-atomic="true"></div>
-
-    <aside class="dashboard-card" id="dashboard-card" role="region" aria-labelledby="dashboard-card-title" hidden>
-      <header class="dashboard-card-header">
-        <span class="dashboard-card-kicker" id="dashboard-card-kicker"></span>
-        <h2 id="dashboard-card-title"></h2>
-      </header>
-      <div class="dashboard-card-body" id="dashboard-card-body">
-        <div class="dashboard-card-items" id="dashboard-card-items"></div>
-        <div class="dashboard-help-settings" id="dashboard-help-settings" hidden>
+    <details class="hook-settings">
+      <summary aria-label="Settings">⚙</summary>
+      <div class="hook-settings-body">
         <div class="lang-switch functional-glass">
           <span class="muted" id="language-label"></span>
           <select id="locale-select" aria-label="language selector"></select>
@@ -2520,7 +2822,19 @@
           <button type="button" id="copy-exposure-btn" title="Copy URL" aria-label="Copy URL">📋</button>
           <span class="exposure-url" id="exposure-url"></span>
         </div>
-        </div>
+      </div>
+    </details>
+    </aside>
+
+    <div class="visually-hidden" id="dashboard-card-live" role="status" aria-live="polite" aria-atomic="true"></div>
+
+    <aside class="dashboard-card" id="dashboard-card" role="region" aria-labelledby="dashboard-card-title" hidden>
+      <header class="dashboard-card-header">
+        <span class="dashboard-card-kicker" id="dashboard-card-kicker"></span>
+        <h2 id="dashboard-card-title"></h2>
+      </header>
+      <div class="dashboard-card-body" id="dashboard-card-body">
+        <div class="dashboard-card-items" id="dashboard-card-items"></div>
       </div>
       <footer class="dashboard-card-pagination">
         <button type="button" id="dashboard-card-previous"></button>

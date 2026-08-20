@@ -7,7 +7,65 @@ ENV_FILE="$STATE_DIR/compose.env"
 RUNTIME_DIR="$STATE_DIR/runtime"
 COMMAND="${1:-start}"
 
-PIXELVERSE_PORT="${PIXELVERSE_PORT:-5660}"
+normalized_host_arch() {
+  local machine="${PIXELVERSE_UNAME_M:-$(uname -m)}"
+  case "$machine" in
+    x86_64|amd64) printf 'amd64\n' ;;
+    aarch64|arm64) printf 'arm64\n' ;;
+    *)
+      echo "Unsupported host architecture: $machine" >&2
+      echo "CLI_Pixelverse supports x86_64/amd64 and aarch64/arm64 hosts." >&2
+      echo "Set PIXELVERSE_DOCKER_PLATFORM only when Docker emulation is intentionally configured." >&2
+      return 2
+      ;;
+  esac
+}
+
+native_docker_platform() {
+  case "$(normalized_host_arch)" in
+    amd64) printf 'linux/amd64\n' ;;
+    arm64) printf 'linux/arm64\n' ;;
+  esac
+}
+
+ensure_platform_env() {
+  local platform="${PIXELVERSE_DOCKER_PLATFORM:-}"
+  if [[ -z "$platform" ]]; then
+    platform="$(native_docker_platform)"
+  fi
+  case "$platform" in
+    linux/amd64|linux/arm64) ;;
+    *)
+      echo "Unsupported Docker platform: $platform" >&2
+      echo "Use linux/amd64 or linux/arm64." >&2
+      return 2
+      ;;
+  esac
+  PIXELVERSE_DOCKER_PLATFORM="$platform"
+  export PIXELVERSE_DOCKER_PLATFORM
+}
+
+platform_command() {
+  local host_arch platform suffix=""
+  host_arch="$(normalized_host_arch)"
+  if [[ -n "${PIXELVERSE_DOCKER_PLATFORM:-}" ]]; then suffix=" (override)"; fi
+  ensure_platform_env
+  platform="$PIXELVERSE_DOCKER_PLATFORM"
+  printf 'Host architecture: %s\n' "$host_arch"
+  printf 'Docker platform:  %s%s\n' "$platform" "$suffix"
+}
+
+SAVED_PIXELVERSE_PORT=""
+case "$COMMAND" in
+  start|stop|restart|down_up|status|log|logs|doctor|bridge-status|test-hook|smoke-furniture-drag|down)
+    load_saved_port=1
+    ;;
+  *) load_saved_port=0 ;;
+esac
+if [[ "$load_saved_port" == "1" && -f "$ENV_FILE" ]]; then
+  SAVED_PIXELVERSE_PORT="$(sed -n 's/^PIXELVERSE_PORT=//p' "$ENV_FILE" | tail -n 1)"
+fi
+PIXELVERSE_PORT="${PIXELVERSE_PORT:-${SAVED_PIXELVERSE_PORT:-5660}}"
 BRIDGE_PORT="${PIXELVERSE_BRIDGE_PORT:-4567}"
 COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-cli-pixelverse}"
 PIXELVERSE_TAILSCALE_ENABLE="${PIXELVERSE_TAILSCALE_ENABLE:-1}"
@@ -18,7 +76,7 @@ mkdir -p "$STATE_DIR" "$RUNTIME_DIR"
 
 usage() {
   cat <<EOF
-Usage: ./run.sh [start|stop|restart|down_up|status|log|logs|doctor|bridge-status|adapter|install-adapter|enable-shell-adapter|install-hermes-hook|hermes-chat|test-hook|down]
+Usage: ./run.sh [start|stop|restart|down_up|status|log|logs|doctor|platform|bridge-status|floorplans|prepare-floorplan|map-builder|adapter|install-adapter|install-codex-hook|enable-shell-adapter|install-hermes-hook|hermes-chat|test-hook|smoke-furniture-drag|down]
 
 Commands:
   start      Select agent source and start Docker Compose service.
@@ -28,12 +86,20 @@ Commands:
   status     Show container status and API endpoints.
   log/logs   Follow Docker Compose logs.
   doctor     Diagnose ports, legacy processes, Docker, Compose, and API health.
+  platform   Show normalized host architecture and Docker target platform.
   bridge-status
              Show Pixelverse API, bridge hook, Hermes hook, and local adapter status.
+  floorplans List complete global_map/*.yaml + *.png floorplan pairs.
+  prepare-floorplan
+             Copy the selected floorplan pair to tmp/global_map/default.yaml/png.
+  map-builder
+             Print the PNG/YAML alignment builder URL and export validation flow.
   adapter [codex|gemini-cli|claude-code|antigravity|ollama|hermes|generic|all]
              Install the adapter for the selected/native CLI without modifying the original CLI code.
   install-adapter [codex|gemini-cli|claude-code|antigravity|ollama|hermes|generic|all|hermes-hook|hermes-plugin]
              Install local agent CLI shims/hooks. Default: current selected agent or hermes.
+  install-codex-hook [project-root]
+             Install only the Codex project hook into the current directory or project-root.
   enable-shell-adapter
              Add a managed Bash startup line so new terminals automatically load local CLI shims.
   install-hermes-hook
@@ -41,12 +107,19 @@ Commands:
   hermes-chat
              Launch Hermes chat through the Pixelverse wrapper.
   test-hook  Send a synthetic lifecycle sequence and refresh tmp trajectory/debug files.
+  smoke-furniture-drag
+             Run repeatable Chromium smoke for cross-room furniture drag/clipping.
   down       Alias for stop.
 
 Non-interactive agent selection:
   PIXELVERSE_AGENT_KIND=ollama ./run.sh start
   PIXELVERSE_AGENT_KIND=codex ./run.sh down_up
   PIXELVERSE_AGENT_KIND=antigravity ./run.sh down_up
+
+Non-interactive floorplan selection:
+  PIXELVERSE_FLOORPLAN=default ./run.sh down_up
+  PIXELVERSE_FLOORPLAN=custom ./run.sh prepare-floorplan
+  PIXELVERSE_GLOBAL_MAP_DIR_HOST=/path/to/runtime-map PIXELVERSE_FLOORPLAN=custom ./run.sh down_up
 
 Common service flows:
   PIXELVERSE_AGENT_KIND=hermes ./run.sh down_up
@@ -69,6 +142,7 @@ Agent CLI adapters:
   ./run.sh adapter codex
   ./run.sh adapter antigravity
   ./run.sh install-adapter codex
+  ./run.sh install-codex-hook /path/to/other-repo
   ./run.sh install-adapter gemini-cli
   ./run.sh install-adapter claude-code
   ./run.sh install-adapter antigravity
@@ -105,6 +179,16 @@ Test-hook debug artifacts are overwritten on each run:
   tmp/latest_world_snapshot.json    /api/world snapshot after synthetic events.
   tmp/pixelverse_debug_log.json     Per-agent routes, room anchors, blockers, walkable checks.
   tmp/local_ui_trajectory.jpg       Visual route overlay for the latest task.
+  tmp/global_map_walkability_mask.png  Planner occupancy mask: black=blocked, white=free, gray=door.
+
+Repeatable browser smoke tests:
+  ./run.sh smoke-furniture-drag
+  PIXELVERSE_SMOKE_BASE_URL=http://127.0.0.1:5660 ./run.sh smoke-furniture-drag
+  PIXELVERSE_SMOKE_HEADED=1 PIXELVERSE_SMOKE_SLOW_MO_MS=150 ./run.sh smoke-furniture-drag
+
+Furniture drag smoke artifacts:
+  tmp/furniture_drag_browser_smoke.json  Structured PASS/FAIL result.
+  tmp/furniture_drag_browser_smoke.png   Full-page browser screenshot after drag.
 
 Subagent test behavior:
   clone_bay creates synthetic-subagent-1. Local agents are not deleted automatically;
@@ -114,6 +198,7 @@ EOF
 }
 
 compose() {
+  ensure_platform_env
   docker compose \
     --project-name "$COMPOSE_PROJECT_NAME" \
     --env-file "$ENV_FILE" \
@@ -236,12 +321,14 @@ write_env_file() {
   local agent_kind="$1"
   local exposure_mode="${2:-${PIXELVERSE_EXPOSURE_MODE:-localhost}}"
   local tailscale_public_url="${PIXELVERSE_TAILSCALE_URL:-}"
+  ensure_platform_env
   if [[ -z "$tailscale_public_url" ]]; then
     tailscale_public_url="$(tailscale_url 2>/dev/null || true)"
     tailscale_public_url="${tailscale_public_url%/}"
   fi
   cat > "$ENV_FILE" <<EOF
 PIXELVERSE_AGENT_KIND=$agent_kind
+PIXELVERSE_DOCKER_PLATFORM=$PIXELVERSE_DOCKER_PLATFORM
 PIXELVERSE_PORT=$PIXELVERSE_PORT
 PIXELVERSE_PUBLIC_PORT=$PIXELVERSE_PORT
 PIXELVERSE_BRIDGE_PORT=$BRIDGE_PORT
@@ -264,6 +351,158 @@ PIXELVERSE_TAILSCALE_PORT=$PIXELVERSE_TAILSCALE_PORT
 PIXELVERSE_TAILSCALE_URL=$tailscale_public_url
 PIXELVERSE_NGROK_URL=${PIXELVERSE_NGROK_URL:-}
 PIXELVERSE_EXPOSURE_MODE=$exposure_mode
+PIXELVERSE_GLOBAL_MAP_DIR_HOST=${PIXELVERSE_GLOBAL_MAP_DIR_HOST:-./tmp/global_map}
+EOF
+}
+
+floorplan_output_dir_host() {
+  printf '%s\n' "${PIXELVERSE_GLOBAL_MAP_DIR_HOST:-./tmp/global_map}"
+}
+
+floorplan_output_dir_abs() {
+  local output_dir
+  output_dir="$(floorplan_output_dir_host)"
+  case "$output_dir" in
+    /*) printf '%s\n' "$output_dir" ;;
+    ./*) printf '%s/%s\n' "$ROOT" "${output_dir#./}" ;;
+    *) printf '%s/%s\n' "$ROOT" "$output_dir" ;;
+  esac
+}
+
+list_floorplan_keys() {
+  local yaml png key
+  for yaml in "$ROOT"/global_map/*.yaml; do
+    [[ -f "$yaml" ]] || continue
+    key="$(basename "$yaml" .yaml)"
+    png="$ROOT/global_map/$key.png"
+    [[ -f "$png" ]] || continue
+    printf '%s\n' "$key"
+  done | sort
+}
+
+floorplans_command() {
+  local key count=0
+  echo "Available CLI_Pixelverse floorplans:"
+  while IFS= read -r key; do
+    [[ -n "$key" ]] || continue
+    count=$((count + 1))
+    printf '  %s\n' "$key"
+  done < <(list_floorplan_keys)
+  if [[ "$count" -eq 0 ]]; then
+    echo "  (none)"
+    echo "No complete global_map/*.yaml + *.png floorplan pairs were found." >&2
+    return 1
+  fi
+}
+
+validate_floorplan_key() {
+  local key="$1"
+  case "$key" in
+    ""|*/*|*..*|*[!A-Za-z0-9_.-]*)
+      printf 'Invalid PIXELVERSE_FLOORPLAN: %q\n' "$key" >&2
+      echo "Use a basename from ./run.sh floorplans, for example: default" >&2
+      return 2
+      ;;
+  esac
+}
+
+select_floorplan_key() {
+  local requested="${PIXELVERSE_FLOORPLAN:-}"
+  local keys=()
+  local key index choice
+  mapfile -t keys < <(list_floorplan_keys)
+  if [[ "${#keys[@]}" -eq 0 ]]; then
+    echo "No complete global_map/*.yaml + *.png floorplan pairs were found." >&2
+    return 1
+  fi
+
+  if [[ -n "$requested" ]]; then
+    validate_floorplan_key "$requested"
+    for key in "${keys[@]}"; do
+      if [[ "$key" == "$requested" ]]; then
+        printf '%s\n' "$requested"
+        return 0
+      fi
+    done
+    printf 'Unknown PIXELVERSE_FLOORPLAN: %q\n' "$requested" >&2
+    echo "Available floorplans:" >&2
+    printf '  %s\n' "${keys[@]}" >&2
+    return 2
+  fi
+
+  if [[ ! -t 0 ]]; then
+    if printf '%s\n' "${keys[@]}" | grep -qx 'default'; then
+      printf 'default\n'
+    else
+      printf '%s\n' "${keys[0]}"
+    fi
+    return 0
+  fi
+
+  echo "Select visual floorplan from CLI_Pixelverse/global_map/:" >&2
+  select choice in "${keys[@]}"; do
+    if [[ -n "$choice" ]]; then
+      printf '%s\n' "$choice"
+      return 0
+    fi
+    echo "Invalid floorplan selection." >&2
+  done
+}
+
+prepare_floorplan() {
+  local selected source_yaml source_png output_dir
+  output_dir="$(floorplan_output_dir_abs)"
+  if [[ -z "${PIXELVERSE_FLOORPLAN:-}" && ! -t 0 && -f "$output_dir/default.yaml" && -f "$output_dir/default.png" ]]; then
+    PIXELVERSE_GLOBAL_MAP_DIR_HOST="$(floorplan_output_dir_host)"
+    export PIXELVERSE_GLOBAL_MAP_DIR_HOST
+    echo "Using existing floorplan override: $output_dir/default.yaml + $output_dir/default.png"
+    return 0
+  fi
+
+  selected="$(select_floorplan_key)"
+  source_yaml="$ROOT/global_map/$selected.yaml"
+  source_png="$ROOT/global_map/$selected.png"
+  if [[ ! -f "$source_yaml" || ! -f "$source_png" ]]; then
+    echo "Floorplan '$selected' must have both YAML and PNG:" >&2
+    echo "- $source_yaml" >&2
+    echo "- $source_png" >&2
+    return 2
+  fi
+
+  PIXELVERSE_GLOBAL_MAP_DIR_HOST="$(floorplan_output_dir_host)"
+  export PIXELVERSE_GLOBAL_MAP_DIR_HOST
+  mkdir -p "$output_dir"
+  cp "$source_yaml" "$output_dir/default.yaml"
+  cp "$source_png" "$output_dir/default.png"
+  echo "Selected floorplan: $selected"
+  echo "- YAML: $source_yaml -> $output_dir/default.yaml"
+  echo "- PNG:  $source_png -> $output_dir/default.png"
+}
+
+map_builder_command() {
+  local host_url="http://localhost:${PIXELVERSE_PORT}/map_builder.html"
+  cat <<EOF
+CLI_Pixelverse PNG/YAML map builder:
+- URL: $host_url
+
+Start or refresh the service first:
+  PIXELVERSE_AGENT_KIND=codex ./run.sh down_up
+
+Builder workflow:
+  1. Open $host_url
+  2. Load a PNG floorplan.
+  3. Draw rooms, corridors, doors, and furniture on top of the PNG.
+  4. Export YAML.
+  5. Save the exported YAML to tmp/global_map/default.yaml.
+  6. Put the matching PNG at tmp/global_map/default.png.
+
+Validate before restart:
+  python3 scripts/check_global_map_alignment.py \\
+    --yaml tmp/global_map/default.yaml \\
+    --png tmp/global_map/default.png
+
+Then restart with the runtime override:
+  ./run.sh down_up
 EOF
 }
 
@@ -509,8 +748,12 @@ start_service() {
   if [[ "$exposure_mode" != "tailscale" && -z "${PIXELVERSE_TAILSCALE_ENABLE_SET:-}" ]]; then
     PIXELVERSE_TAILSCALE_ENABLE=0
   fi
+  prepare_floorplan
   write_env_file "$agent_kind" "$exposure_mode"
-  install_agent_adapter "$agent_kind"
+  install_agent_adapter "$agent_kind" "$ROOT" optional
+  if [[ "$agent_kind" != "generic" && "${PIXELVERSE_AUTO_ENABLE_SHELL_ADAPTER:-1}" != "0" ]]; then
+    enable_shell_adapter
+  fi
   agent_command="$(agent_command_name "$agent_kind")"
 
   provision_modern_office_assets
@@ -782,11 +1025,113 @@ install_cli_adapter_for_kind() {
   echo "  $bin_dir/pixelverse-$command_name --help"
 }
 
+write_codex_hooks_json() {
+  local target="$1"
+  local hook_script="$ROOT/scripts/codex_pixelverse_hook.py"
+  cat > "$target" <<EOF
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/bin/env python3 \\"$hook_script\\"",
+            "timeout": 5,
+            "statusMessage": "Syncing Pixelverse session"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/bin/env python3 \\"$hook_script\\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/bin/env python3 \\"$hook_script\\"",
+            "timeout": 5,
+            "statusMessage": "Syncing Pixelverse tool call"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/bin/env python3 \\"$hook_script\\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/bin/env python3 \\"$hook_script\\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/bin/env python3 \\"$hook_script\\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/bin/env python3 \\"$hook_script\\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}
+EOF
+}
+
 install_codex_project_hooks() {
-  local codex_dir="$ROOT/.codex"
+  local project_root="${1:-${PIXELVERSE_CODEX_PROJECT_ROOT:-$PWD}}"
+  local codex_dir="$project_root/.codex"
   local target="$codex_dir/hooks.json"
-  mkdir -p "$codex_dir"
-  cp "$ROOT/scripts/codex_hooks_template.json" "$target"
+  if ! mkdir -p "$codex_dir"; then
+    echo "Could not create Codex hook directory: $codex_dir" >&2
+    return 1
+  fi
+  if ! write_codex_hooks_json "$target"; then
+    echo "Could not write Codex project hooks: $target" >&2
+    return 1
+  fi
   echo
   echo "Installed local Codex project hooks:"
   echo "- $target"
@@ -806,6 +1151,12 @@ case "\${PIXELVERSE_URL:-}" in
     export PIXELVERSE_URL="http://127.0.0.1:${PIXELVERSE_PORT}"
     ;;
 esac
+case "\${PIXELVERSE_BRIDGE_URL:-}" in
+  ""|"http://127.0.0.1:4567"|"http://localhost:4567")
+    export PIXELVERSE_BRIDGE_URL="http://127.0.0.1:${BRIDGE_PORT}"
+    ;;
+esac
+export PIXELVERSE_STATE_DIR="${STATE_DIR}"
 case ":\${PATH:-}:" in
   *":$bin_dir:"*) ;;
   *) export PATH="$bin_dir:\${PATH:-}" ;;
@@ -823,6 +1174,8 @@ EOF
 
 install_agent_adapter() {
   local target="${1:-${PIXELVERSE_AGENT_KIND:-hermes}}"
+  local codex_project_root="${2:-${PIXELVERSE_CODEX_PROJECT_ROOT:-$PWD}}"
+  local hook_policy="${3:-required}"
   case "$target" in
     gemini) target="gemini-cli" ;;
     claude) target="claude-code" ;;
@@ -869,7 +1222,13 @@ install_agent_adapter() {
 
   install_cli_adapter_for_kind "$target"
   if [[ "$target" == "codex" ]]; then
-    install_codex_project_hooks
+    if ! install_codex_project_hooks "$codex_project_root"; then
+      if [[ "$hook_policy" == "optional" ]]; then
+        echo "Warning: Continuing without project-local Codex hooks; the CLI adapter is still available." >&2
+      else
+        return 1
+      fi
+    fi
   fi
   if [[ "$target" == "hermes" ]]; then
     install_hermes_hook
@@ -966,7 +1325,11 @@ hermes_chat() {
 
 render_latest_trajectory() {
   local output
-  if output="$(python3 "$ROOT/scripts/render_local_ui_trajectory.py" 2>&1)"; then
+  local -a renderer_cmd=(python3 "$ROOT/scripts/render_local_ui_trajectory.py")
+  if ! python3 -c 'import PIL' >/dev/null 2>&1 && command -v uv >/dev/null 2>&1; then
+    renderer_cmd=(uv run --with Pillow python "$ROOT/scripts/render_local_ui_trajectory.py")
+  fi
+  if output="$(${renderer_cmd[@]} 2>&1)"; then
     echo "Trajectory image: $output"
   else
     echo "Warning: failed to render trajectory image:" >&2
@@ -1075,6 +1438,25 @@ test_hook() {
   echo "Synthetic hook sequence sent. Check UI or /api/world events."
 }
 
+smoke_furniture_drag() {
+  local base_url="${PIXELVERSE_SMOKE_BASE_URL:-http://127.0.0.1:${PIXELVERSE_PORT}}"
+  local -a cmd=(uv run --with playwright python "$ROOT/scripts/furniture_drag_browser_smoke.py" --base-url "$base_url")
+  if [[ "${PIXELVERSE_SMOKE_HEADED:-0}" == "1" ]]; then
+    cmd+=(--headed)
+  fi
+  if [[ -n "${PIXELVERSE_SMOKE_SLOW_MO_MS:-}" ]]; then
+    cmd+=(--slow-mo-ms "$PIXELVERSE_SMOKE_SLOW_MO_MS")
+  fi
+  if [[ -n "${PIXELVERSE_SMOKE_SOURCE_ROOM:-}" ]]; then
+    cmd+=(--source-room "$PIXELVERSE_SMOKE_SOURCE_ROOM")
+  fi
+  if [[ -n "${PIXELVERSE_SMOKE_TARGET_ROOM:-}" ]]; then
+    cmd+=(--target-room "$PIXELVERSE_SMOKE_TARGET_ROOM")
+  fi
+  echo "Running furniture drag browser smoke against $base_url ..."
+  "${cmd[@]}"
+}
+
 case "$COMMAND" in
   start)
     start_service
@@ -1095,8 +1477,20 @@ case "$COMMAND" in
   doctor)
     doctor_service
     ;;
+  platform)
+    platform_command
+    ;;
   bridge-status)
     bridge_status
+    ;;
+  floorplans)
+    floorplans_command
+    ;;
+  prepare-floorplan)
+    prepare_floorplan
+    ;;
+  map-builder)
+    map_builder_command
     ;;
   adapter)
     adapter_command "${2:-}"
@@ -1110,6 +1504,9 @@ case "$COMMAND" in
       install_agent_adapter hermes
     fi
     ;;
+  install-codex-hook)
+    install_codex_project_hooks "${2:-$PWD}"
+    ;;
   enable-shell-adapter)
     enable_shell_adapter
     ;;
@@ -1122,6 +1519,9 @@ case "$COMMAND" in
     ;;
   test-hook)
     test_hook
+    ;;
+  smoke-furniture-drag)
+    smoke_furniture_drag
     ;;
   help|-h|--help)
     usage

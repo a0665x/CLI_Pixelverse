@@ -7,6 +7,7 @@ import type {
   OfficePrefabDefinition,
 } from '../world/types';
 import { BUILT_IN_OFFICE_PREFABS } from './builtInOfficePrefabs';
+import { modernOfficeCompositePrefabs } from './modernOfficeCompositeCatalog';
 import { catalogItem } from './modernOfficeCatalog';
 import { diagnoseFinePlacement, resolvedFurnitureAsset, snapFurniturePoint } from './interiorPlacement';
 import { cloneOfficePrefab } from './prefabGeometry';
@@ -104,16 +105,18 @@ export function readPrefabs(storage?: StorageLike): StorageReadResult<FurnitureP
   if (read.storageRead === 'failed' || !read.value) return { storageRead: read.storageRead, value: [] };
   try {
     const parsed = JSON.parse(read.value) as { version?: unknown; prefabs?: unknown };
-    if (parsed.version !== 1 || !Array.isArray(parsed.prefabs)) return { storageRead: 'success', value: [] };
-    const value = parsed.prefabs.filter((value): value is FurniturePrefab => {
+    if (parsed.version !== 1 || !Array.isArray(parsed.prefabs)) return { storageRead: 'failed', value: [] };
+    const valid = parsed.prefabs.every((value): value is FurniturePrefab => {
       const prefab = value as FurniturePrefab;
       return Boolean(prefab && typeof prefab.id === 'string' && typeof prefab.name === 'string' &&
         Number.isFinite(prefab.createdAt) && Number.isFinite(prefab.width) && Number.isFinite(prefab.height) &&
         Array.isArray(prefab.items) && prefab.items.length >= 2 && prefab.items.every(isValidTemplate));
-    }).map(clonePrefab);
-    return { storageRead: 'success', value };
+    });
+    return valid
+      ? { storageRead: 'success', value: (parsed.prefabs as FurniturePrefab[]).map(clonePrefab) }
+      : { storageRead: 'failed', value: [] };
   } catch {
-    return { storageRead: 'success', value: [] };
+    return { storageRead: 'failed', value: [] };
   }
 }
 
@@ -129,6 +132,7 @@ export function readAvailablePrefabs(
     storageRead: read.storageRead,
     value: [
       ...BUILT_IN_OFFICE_PREFABS.map((prefab) => deepFreeze(cloneOfficePrefab(prefab))),
+      ...modernOfficeCompositePrefabs.map((prefab) => deepFreeze(cloneOfficePrefab(prefab))),
       ...read.value.map(asUserOfficePrefab),
     ],
   };
@@ -136,6 +140,52 @@ export function readAvailablePrefabs(
 
 export function availablePrefabs(storage?: StorageLike): OfficePrefabDefinition[] {
   return readAvailablePrefabs(storage).value;
+}
+
+export function nextUserGroupName(existing: readonly FurniturePrefab[]): string {
+  const used = new Set(existing.flatMap(({ name }) => {
+    const match = /^Group\s+(\d+)$/i.exec(name);
+    return match ? [Number(match[1])] : [];
+  }));
+  let sequence = 1;
+  while (used.has(sequence)) sequence += 1;
+  return `Group ${String(sequence).padStart(2, '0')}`;
+}
+
+export function createUserGroupPrefab(
+  selection: readonly FurnitureDefinition[],
+  existing: readonly FurniturePrefab[],
+  createdAt: number = Date.now(),
+): FurniturePrefab {
+  if (selection.length < 2) throw new Error('A reusable group needs at least two furniture items');
+  const minX = Math.min(...selection.map(({ point }) => point.x));
+  const minY = Math.min(...selection.map(({ point }) => point.y));
+  const maxX = Math.max(...selection.map(({ point, footprint }) => point.x + (footprint?.width ?? 1)));
+  const maxY = Math.max(...selection.map(({ point, footprint }) => point.y + (footprint?.height ?? 1)));
+  const idMap = new Map(selection.map(({ id }, index) => [id, `group-item-${index + 1}`]));
+  const items = selection.map((source, index): FurnitureDefinition => {
+    const { prefabInstanceId: _prefabInstanceId, supportedByIds, ...item } = cloneFurniture(source);
+    const remappedSupports = supportedByIds?.flatMap((id) => {
+      const mapped = idMap.get(id); return mapped ? [mapped] : [];
+    });
+    return {
+      ...item,
+      id: `group-item-${index + 1}`,
+      point: { x: source.point.x - minX, y: source.point.y - minY },
+      ...(remappedSupports?.length ? { supportedByIds: remappedSupports } : {}),
+    };
+  });
+  let sequence = 1;
+  const usedIds = new Set(existing.map(({ id }) => id));
+  while (usedIds.has(`user-group-${createdAt}-${sequence}`)) sequence += 1;
+  return {
+    id: `user-group-${createdAt}-${sequence}`,
+    name: nextUserGroupName(existing),
+    createdAt,
+    width: maxX - minX,
+    height: maxY - minY,
+    items,
+  };
 }
 
 export function upsertPrefab(

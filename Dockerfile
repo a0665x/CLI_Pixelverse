@@ -8,10 +8,12 @@ RUN npm run build
 
 FROM python:3.11-slim
 
+ARG TARGETARCH
 ARG PIXELVERSE_BUILD_REVISION=unknown
 ARG PIXELVERSE_BUILD_FINGERPRINT=unknown
 LABEL org.opencontainers.image.revision="$PIXELVERSE_BUILD_REVISION" \
-      io.pixelverse.build-fingerprint="$PIXELVERSE_BUILD_FINGERPRINT"
+      io.pixelverse.build-fingerprint="$PIXELVERSE_BUILD_FINGERPRINT" \
+      io.pixelverse.image.architecture="$TARGETARCH"
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1

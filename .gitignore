@@ -1,5 +1,7 @@
 .pixelverse-service/
-tmp/
+tmp/*
+!tmp/global_map/
+!tmp/global_map/.gitkeep
 spec/
 .spec/
 .codex/
@@ -15,3 +17,4 @@ yarn-error.log*
 
 .DS_Store
 .worktrees/
+.gstack/

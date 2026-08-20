@@ -33,8 +33,6 @@ Read these files in order:
 ```bash
 cd /path/to/CLI_Pixelverse
 PIXELVERSE_AGENT_KIND=codex ./run.sh down_up
-./run.sh install-adapter codex
-./run.sh enable-shell-adapter
 source .pixelverse-service/activate.sh
 ./run.sh status
 ./run.sh bridge-status
@@ -51,6 +49,22 @@ codex
 Inside the first Codex session, run `/hooks`, review the project hook
 definition, and trust it. Start a new Codex process after activation; an
 already-running process cannot be attached retroactively.
+
+Codex mode automatically installs the local shim, repo-local Codex hook, and
+new Bash shell activation. In an already-open shell, this one-liner attaches the
+wrapper before launching Codex:
+
+```bash
+source /path/to/CLI_Pixelverse/.pixelverse-service/activate.sh && codex
+```
+
+For another repo that needs high-fidelity Codex tool/subagent hook events:
+
+```bash
+cd /path/to/other-repo
+/path/to/CLI_Pixelverse/run.sh install-codex-hook
+codex
+```
 
 ## Verify The Connection
 

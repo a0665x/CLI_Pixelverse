@@ -43,7 +43,10 @@ export class LiveWorldClient {
 
   start(): void {
     window.addEventListener('message', this.onMessage);
-    if (window.parent !== window) window.parent.postMessage({ type: 'pixelverse.world.ready' }, window.location.origin);
+    if (window.parent !== window) {
+      window.parent.postMessage({ type: 'pixelverse.world.ready' }, window.location.origin);
+      return;
+    }
     void this.fetchSnapshot();
     if (typeof EventSource !== 'undefined') {
       this.eventSource = new EventSource('/api/world/stream');

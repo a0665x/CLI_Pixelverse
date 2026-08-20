@@ -34,12 +34,11 @@ export function buildGameConfig(
           : () => undefined;
         const root = document.getElementById(parent);
         if (!root) throw new Error(`Missing #${parent}`);
-        const embedded = new URLSearchParams(window.location.search).get('embed') === '1';
         const viewport = new VillageViewportController(({ width, height, offsetX, offsetY }) => {
           game.canvas.style.width = `${width}px`;
           game.canvas.style.height = `${height}px`;
           game.canvas.style.transform = `translate3d(${offsetX}px, ${offsetY}px, 0)`;
-        }, embedded ? 'cover' : 'fit');
+        }, 'fit');
         onViewportReady?.(viewport);
         const resize = () => viewport.resize(root.clientWidth, root.clientHeight);
         const observer = new ResizeObserver(resize);

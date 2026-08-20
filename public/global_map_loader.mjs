@@ -121,31 +121,21 @@ function parseRoomBlock(lines, startIndex) {
 }
 
 export function parseGlobalMapYaml(text = '') {
+  const raw = String(text).trim();
+  if (FLOW_OBJECT_RE.test(raw)) return parseFlowObject(raw);
   const lines = String(text).split(/\r?\n/);
   const manifest = { corridors: [], rooms: {} };
   for (let index = 0; index < lines.length;) {
     const info = lineInfo(lines[index]);
-    if (!info) {
-      index += 1;
-      continue;
-    }
-    if (info.indent !== 0) {
-      index += 1;
-      continue;
-    }
+    if (!info || info.indent !== 0) { index += 1; continue; }
     const [key, value] = parseKeyValue(info.text);
-    if (key === 'corridors') {
-      index += 1;
+    if (['corridors', 'free_space', 'blocked'].includes(key)) {
+      manifest[key] = []; index += 1;
       while (index < lines.length) {
         const item = lineInfo(lines[index]);
-        if (!item) {
-          index += 1;
-          continue;
-        }
+        if (!item) { index += 1; continue; }
         if (item.indent === 0) break;
-        if (item.indent === 2 && item.text.startsWith('- ')) {
-          manifest.corridors.push(parseScalar(item.text.slice(2).trim()));
-        }
+        if (item.indent === 2 && item.text.startsWith('- ')) manifest[key].push(parseScalar(item.text.slice(2).trim()));
         index += 1;
       }
       continue;
@@ -154,29 +144,23 @@ export function parseGlobalMapYaml(text = '') {
       index += 1;
       while (index < lines.length) {
         const roomInfo = lineInfo(lines[index]);
-        if (!roomInfo) {
-          index += 1;
-          continue;
-        }
+        if (!roomInfo) { index += 1; continue; }
         if (roomInfo.indent === 0) break;
         if (roomInfo.indent === 2 && roomInfo.text.endsWith(':')) {
-          const roomKey = roomInfo.text.slice(0, -1).trim();
           const parsed = parseRoomBlock(lines, index + 1);
-          manifest.rooms[roomKey] = parsed.room;
-          index = parsed.index;
-          continue;
+          manifest.rooms[roomInfo.text.slice(0, -1).trim()] = parsed.room;
+          index = parsed.index; continue;
         }
         index += 1;
       }
       continue;
     }
-    manifest[key] = parseScalar(value);
-    index += 1;
+    manifest[key] = parseScalar(value); index += 1;
   }
   return manifest;
 }
 
-export async function fetchGlobalMapManifest(url = '/global_map/default.yaml') {
+export async function fetchGlobalMapManifest(url = '/global_map/VLM_Generated.yaml') {
   const response = await fetch(url, { cache: 'no-store' });
   if (!response.ok) throw new Error(`Unable to load global map manifest: HTTP ${response.status}`);
   return parseGlobalMapYaml(await response.text());

@@ -1,0 +1,1218 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CLI Pixelverse Map Builder</title>
+  <style>
+    :root {
+      --ink: #17211a;
+      --muted: #627064;
+      --panel: #f4ead8;
+      --panel-strong: #e8d3ae;
+      --accent: #c95f32;
+      --accent-2: #2f7f72;
+      --danger: #a6382f;
+      --line: rgba(23, 33, 26, 0.18);
+      --shadow: 0 20px 70px rgba(38, 29, 18, 0.22);
+      font-family: "Avenir Next", "Trebuchet MS", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-width: 1260px;
+      min-height: 100vh;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 20% 10%, rgba(201, 95, 50, 0.24), transparent 32%),
+        radial-gradient(circle at 80% 0%, rgba(47, 127, 114, 0.24), transparent 28%),
+        linear-gradient(135deg, #f7efe2 0%, #ddc19a 100%);
+    }
+    .builder-app {
+      display: grid;
+      grid-template-columns: 320px minmax(520px, 1fr) 340px;
+      gap: 18px;
+      min-height: 100vh;
+      padding: 18px;
+    }
+    .builder-app.simple-builder {
+      grid-template-columns: minmax(760px, 1fr);
+      gap: 0;
+    }
+    .builder-app.simple-builder.paint-mode {
+      padding: 10px;
+      background: #efe2ca;
+    }
+    .builder-app.simple-builder > aside {
+      display: none;
+    }
+    .builder-app.simple-builder.paint-mode .stage-head {
+      position: sticky;
+      top: 0;
+      z-index: 30;
+      align-items: flex-start;
+      padding: 10px 12px;
+      background: rgba(244, 234, 216, 0.96);
+      backdrop-filter: blur(10px);
+    }
+    .builder-app.simple-builder.paint-mode .stage-head h2 {
+      display: none;
+    }
+    .builder-app.simple-builder.paint-mode .hint {
+      margin-bottom: 8px;
+      background: rgba(23, 33, 26, 0.88);
+      color: #fffaf1;
+    }
+    .builder-app.simple-builder.paint-mode .simple-quickbar {
+      display: none;
+    }
+    .paint-tool-palette {
+      display: none;
+    }
+    .simple-builder.paint-mode .paint-tool-palette {
+      display: grid;
+      grid-template-columns: repeat(10, minmax(76px, auto));
+      gap: 8px;
+      align-items: center;
+      margin-top: 8px;
+      padding: 8px;
+      border-radius: 18px;
+      background: rgba(23, 33, 26, 0.9);
+      color: #fffaf1;
+      box-shadow: 0 14px 42px rgba(42,32,22,0.16);
+    }
+    .paint-tool,
+    .paint-mini-action {
+      width: auto;
+      min-width: 76px;
+      padding: 10px 11px;
+      border-radius: 14px;
+      background: rgba(255, 250, 241, 0.9);
+      color: var(--ink);
+      font-size: 12px;
+      line-height: 1.15;
+    }
+    .paint-tool {
+      position: relative;
+      overflow: hidden;
+      border: 2px solid transparent;
+    }
+    .paint-tool::before {
+      content: "";
+      display: inline-block;
+      width: 13px;
+      height: 13px;
+      margin-right: 6px;
+      border-radius: 4px;
+      vertical-align: -2px;
+      border: 2px solid rgba(23, 33, 26, 0.28);
+      box-shadow: inset 0 0 0 999px rgba(255,255,255,0.12);
+    }
+    #paint-tool-room { background: rgba(31, 122, 105, 0.20); border-color: rgba(31, 122, 105, 0.62); }
+    #paint-tool-room::before { background: rgba(31, 122, 105, 0.46); border-color: #1f7a69; }
+    #paint-tool-corridor { background: rgba(232, 142, 43, 0.24); border-color: rgba(232, 142, 43, 0.70); }
+    #paint-tool-corridor::before { background: rgba(232, 142, 43, 0.55); border-color: #d6781d; }
+    #paint-tool-free-space { background: rgba(41, 151, 216, 0.20); border-color: rgba(41, 151, 216, 0.72); }
+    #paint-tool-free-space::before { background: rgba(41, 151, 216, 0.50); border-color: #1f85c0; border-style: dashed; }
+    #paint-tool-eraser { background: rgba(195, 57, 57, 0.18); border-color: rgba(195, 57, 57, 0.76); }
+    #paint-tool-eraser::before { background: repeating-linear-gradient(45deg, rgba(195, 57, 57, 0.7) 0 4px, rgba(255,255,255,0.65) 4px 8px); border-color: #b23333; }
+    #paint-tool-door::before { background: #fff0b8; border-color: #c95f32; border-radius: 50%; }
+    #paint-tool-furniture::before { background: rgba(90, 110, 201, 0.50); border-color: #5a6ec9; }
+    .paint-tool.active {
+      color: #fffaf1;
+      outline: 3px solid rgba(255, 250, 241, 0.9);
+      box-shadow: 0 0 0 6px rgba(201, 95, 50, 0.25);
+      filter: saturate(1.18) contrast(1.05);
+    }
+    #paint-tool-room.active { background: #1f7a69; border-color: #fffaf1; }
+    #paint-tool-corridor.active { background: #d6781d; border-color: #fffaf1; }
+    #paint-tool-free-space.active { background: #1f85c0; border-color: #fffaf1; }
+    #paint-tool-eraser.active { background: #b23333; border-color: #fffaf1; }
+    .paint-mini-action.primary {
+      background: var(--accent-2);
+      color: #fffaf1;
+    }
+    .paint-mini-action.submit {
+      background: var(--accent);
+      color: #fffaf1;
+    }
+    .paint-status-strip {
+      display: none;
+    }
+    .paint-layer-legend {
+      display: none;
+    }
+    .simple-builder.paint-mode .paint-layer-legend {
+      display: flex;
+      grid-column: 1 / -1;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+      color: rgba(255,250,241,0.92);
+      font-size: 12px;
+      font-weight: 900;
+    }
+    .paint-legend-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 8px;
+      border-radius: 999px;
+      background: rgba(255, 250, 241, 0.12);
+    }
+    .paint-legend-chip::before {
+      content: "";
+      width: 14px;
+      height: 10px;
+      border-radius: 3px;
+      border: 2px solid currentColor;
+    }
+    .paint-legend-chip.room { color: #79d8c7; }
+    .paint-legend-chip.room::before { background: rgba(31, 122, 105, 0.48); }
+    .paint-legend-chip.corridor { color: #ffc06f; }
+    .paint-legend-chip.corridor::before { background: rgba(232, 142, 43, 0.58); }
+    .paint-legend-chip.free-space { color: #8bd4ff; }
+    .paint-legend-chip.free-space::before { background: rgba(41, 151, 216, 0.52); border-style: dashed; }
+    .paint-legend-chip.eraser { color: #ffaaa1; }
+    .paint-legend-chip.eraser::before { background: repeating-linear-gradient(45deg, rgba(195, 57, 57, 0.78) 0 4px, rgba(255,255,255,0.72) 4px 8px); }
+    .simple-builder.paint-mode .paint-status-strip {
+      display: block;
+      grid-column: 1 / -1;
+      padding: 7px 10px;
+      border-radius: 12px;
+      background: rgba(255, 250, 241, 0.14);
+      color: rgba(255,250,241,0.92);
+      font-size: 12px;
+      font-weight: 900;
+    }
+    .simple-builder.paint-mode:not(.layers-open) .simple-layer-dock,
+    .simple-builder.paint-mode:not(.layers-open) .simple-batch-panel {
+      display: none;
+    }
+    .simple-builder.paint-mode.layers-open .simple-layer-dock,
+    .simple-builder.paint-mode.layers-open .simple-batch-panel {
+      max-height: 180px;
+      overflow: auto;
+    }
+    .simple-builder.paint-mode .simple-command-bar {
+      grid-template-columns: minmax(260px, 1fr);
+      margin-top: 8px;
+      background: transparent;
+      border: 0;
+      padding: 0;
+    }
+    .simple-builder.paint-mode .simple-command-bar > button,
+    .simple-builder.paint-mode .simple-command-bar .selected-summary {
+      display: none;
+    }
+    .simple-builder.paint-mode .simple-feedback {
+      background: rgba(23, 33, 26, 0.9);
+      color: #fffaf1;
+    }
+    .builder-app.simple-builder > aside {
+      display: none;
+    }
+    .builder-app.simple-builder .stage-panel {
+      min-height: calc(100vh - 36px);
+    }
+    .builder-app.simple-builder .stage-wrap {
+      min-height: calc(100vh - 160px);
+    }
+    .simple-quickbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      margin-top: 10px;
+    }
+    .simple-quickbar button {
+      width: auto;
+      min-width: 112px;
+      padding: 9px 11px;
+      border-radius: 999px;
+      font-size: 12px;
+    }
+    .simple-quickbar button.active,
+    .simple-quickbar button[aria-pressed="true"] {
+      background: var(--accent);
+    }
+    .simple-quickbar .wall-summary {
+      max-width: 420px;
+      padding: 8px 10px;
+      border-radius: 999px;
+      background: rgba(255, 250, 241, 0.72);
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 900;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .simple-layer-dock {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      margin-top: 8px;
+      padding: 8px;
+      border-radius: 16px;
+      background: rgba(255, 250, 241, 0.72);
+      border: 1px solid var(--line);
+    }
+    .simple-command-bar {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(108px, auto)) minmax(180px, 0.7fr) minmax(260px, 1fr);
+      gap: 8px;
+      align-items: center;
+      margin-top: 8px;
+      padding: 9px;
+      border-radius: 18px;
+      border: 2px solid rgba(23, 33, 26, 0.12);
+      background: rgba(23, 33, 26, 0.88);
+      color: #fffaf1;
+    }
+    .simple-command-bar button {
+      width: auto;
+      min-width: 120px;
+      padding: 10px 12px;
+      border-radius: 999px;
+      background: #fffaf1;
+      color: var(--ink);
+      font-size: 12px;
+    }
+    .simple-command-bar button.primary-action {
+      background: var(--accent-2);
+      color: #fffaf1;
+    }
+    .simple-command-bar button.submit-action {
+      background: var(--accent);
+      color: #fffaf1;
+    }
+    .simple-command-bar button:disabled {
+      opacity: 0.48;
+      cursor: not-allowed;
+    }
+    .simple-feedback {
+      min-height: 36px;
+      padding: 8px 10px;
+      border-radius: 12px;
+      background: rgba(255, 250, 241, 0.1);
+      color: #fffaf1;
+      font-size: 13px;
+      font-weight: 900;
+      line-height: 1.35;
+    }
+    .simple-feedback.ok { background: rgba(47, 127, 114, 0.35); }
+    .simple-feedback.error { background: rgba(166, 56, 47, 0.4); }
+    .simple-feedback.working { background: rgba(177, 122, 42, 0.38); }
+    .simple-feedback.working::before {
+      content: "";
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      margin-right: 8px;
+      border: 2px solid rgba(255,250,241,0.42);
+      border-top-color: #fffaf1;
+      border-radius: 50%;
+      vertical-align: -2px;
+      animation: builder-spin 0.8s linear infinite;
+    }
+    @keyframes builder-spin { to { transform: rotate(360deg); } }
+    .selected-summary {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 32px;
+      padding: 7px 10px;
+      border-radius: 999px;
+      background: rgba(255, 250, 241, 0.9);
+      color: var(--ink);
+      font-size: 12px;
+      font-weight: 900;
+    }
+    .simple-batch-panel {
+      display: grid;
+      gap: 8px;
+      margin-top: 8px;
+      padding: 10px;
+      border-radius: 16px;
+      background: rgba(255, 250, 241, 0.76);
+      border: 1px solid var(--line);
+    }
+    .batch-layer-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+      align-items: center;
+    }
+    .batch-layer-row strong {
+      min-width: 78px;
+      font-size: 12px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    .batch-chip {
+      width: auto;
+      min-width: auto;
+      padding: 6px 9px;
+      border-radius: 999px;
+      border: 1px solid rgba(23, 33, 26, 0.16);
+      background: rgba(255, 250, 241, 0.9);
+      color: var(--ink);
+      font-size: 11px;
+    }
+    .batch-chip.active {
+      background: var(--accent);
+      color: #fffaf1;
+      outline: 3px solid rgba(255, 255, 255, 0.86);
+      box-shadow: 0 0 0 5px rgba(201, 95, 50, 0.28), 0 8px 24px rgba(42,32,22,0.22);
+      transform: translateY(-1px);
+    }
+    .batch-chip.hidden-chip {
+      opacity: 0.42;
+      text-decoration: line-through;
+    }
+    .simple-layer-dock label {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-width: min(320px, 100%);
+      flex: 1;
+    }
+    .simple-layer-dock select {
+      min-width: 220px;
+      padding: 8px 10px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 900;
+    }
+    .simple-layer-dock button {
+      width: auto;
+      min-width: 84px;
+      padding: 8px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+    }
+    .simple-builder .drop-hint {
+      top: 8px;
+      background: rgba(23, 33, 26, 0.86);
+      color: #fffaf1;
+    }
+    .simple-builder .shape.room,
+    .simple-builder .shape.corridor,
+    .simple-builder .shape.free-space,
+    .simple-builder .shape.furniture {
+      box-shadow: 0 8px 24px rgba(42,32,22,0.16);
+    }
+    .simple-builder.paint-mode .shape.room {
+      border-color: #1f7a69;
+      background: rgba(31, 122, 105, 0.26);
+      box-shadow: inset 0 0 0 999px rgba(31, 122, 105, 0.08), 0 8px 24px rgba(42,32,22,0.16);
+    }
+    .simple-builder.paint-mode .shape.corridor {
+      border-color: #d6781d;
+      background: rgba(232, 142, 43, 0.34);
+      box-shadow: inset 0 0 0 999px rgba(232, 142, 43, 0.10), 0 8px 24px rgba(42,32,22,0.16);
+    }
+    .simple-builder.paint-mode .shape.free-space {
+      border-color: #1f85c0;
+      background: rgba(41, 151, 216, 0.22);
+      border-style: dashed;
+      box-shadow: inset 0 0 0 999px rgba(41, 151, 216, 0.08), 0 8px 24px rgba(42,32,22,0.16);
+    }
+    .simple-builder.paint-mode .shape.room .shape-label { background: rgba(31, 122, 105, 0.88); color: #fffaf1; text-shadow: none; }
+    .simple-builder.paint-mode .shape.corridor .shape-label { background: rgba(214, 120, 29, 0.88); color: #fffaf1; text-shadow: none; }
+    .simple-builder.paint-mode .shape.free-space .shape-label { background: rgba(31, 133, 192, 0.88); color: #fffaf1; text-shadow: none; }
+    .panel {
+      background: rgba(244, 234, 216, 0.92);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    .panel-inner { padding: 18px; }
+    h1, h2 { margin: 0; letter-spacing: -0.04em; }
+    h1 { font-size: 26px; line-height: 1; }
+    h2 { font-size: 15px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted); }
+    p { color: var(--muted); line-height: 1.5; }
+    label { display: grid; gap: 7px; font-size: 12px; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+    input, select, textarea, button {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 11px 12px;
+      color: var(--ink);
+      background: rgba(255, 250, 241, 0.9);
+      font: inherit;
+    }
+    textarea {
+      min-height: 260px;
+      resize: vertical;
+      font-family: "SFMono-Regular", "Cascadia Code", monospace;
+      font-size: 12px;
+    }
+    button {
+      cursor: pointer;
+      border: 0;
+      background: var(--ink);
+      color: #fffaf1;
+      font-weight: 800;
+    }
+    button.secondary { background: var(--accent-2); }
+    button.warn { background: var(--accent); }
+    .stack { display: grid; gap: 14px; }
+    .mode-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 9px;
+    }
+    .top-tools {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      align-items: start;
+    }
+    .locale-select {
+      width: auto;
+      min-width: 116px;
+      padding: 9px 10px;
+      font-size: 12px;
+      font-weight: 900;
+    }
+    .mode-btn {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      background: rgba(255, 250, 241, 0.88);
+      color: var(--ink);
+      border: 1px solid var(--line);
+    }
+    .mode-btn.active {
+      background: var(--accent);
+      color: white;
+    }
+    .help-dot {
+      display: inline-grid;
+      place-items: center;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: rgba(23, 33, 26, 0.1);
+      font-size: 12px;
+      font-weight: 1000;
+    }
+    .mode-btn.active .help-dot {
+      background: rgba(255, 250, 241, 0.24);
+    }
+    .room-palette {
+      display: grid;
+      gap: 8px;
+      max-height: 210px;
+      overflow: auto;
+      padding-right: 4px;
+    }
+    .furniture-palette {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      max-height: 210px;
+      overflow: auto;
+      padding-right: 4px;
+    }
+    .palette-item {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 9px;
+      align-items: center;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 9px 10px;
+      background: rgba(255, 250, 241, 0.82);
+      cursor: grab;
+      font-size: 13px;
+      font-weight: 900;
+    }
+    .palette-item[aria-disabled="true"] {
+      opacity: 0.42;
+      cursor: not-allowed;
+    }
+    .palette-item.active {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(201, 95, 50, 0.14);
+    }
+    .furniture-palette .palette-item {
+      grid-template-columns: auto 1fr;
+      min-height: 52px;
+    }
+    .tool-state {
+      display: grid;
+      gap: 9px;
+      border-radius: 18px;
+      padding: 13px;
+      background: rgba(23, 33, 26, 0.88);
+      color: #fffaf1;
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.08);
+    }
+    .tool-state small {
+      color: rgba(255, 250, 241, 0.72);
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+    }
+    .tool-state strong {
+      font-size: 17px;
+    }
+    .stage-panel {
+      display: grid;
+      grid-template-rows: auto 1fr;
+      min-width: 0;
+    }
+    .stage-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      padding: 16px 18px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255, 250, 241, 0.55);
+    }
+    .stage-wrap {
+      display: grid;
+      place-items: center;
+      padding: 18px;
+      min-height: 720px;
+      overflow: auto;
+    }
+    #builder-stage {
+      position: relative;
+      width: min(100%, 860px);
+      aspect-ratio: 1 / 1;
+      background:
+        linear-gradient(rgba(23, 33, 26, 0.08) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(23, 33, 26, 0.08) 1px, transparent 1px),
+        #fffaf1;
+      background-size: 10% 10%;
+      border: 8px solid #2a2016;
+      border-radius: 18px;
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.35), 0 24px 80px rgba(42,32,22,0.24);
+      overflow: visible;
+      user-select: none;
+      transform-origin: center center;
+    }
+    #builder-canvas,
+    #wall-mask-canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      image-rendering: pixelated;
+    }
+    #wall-mask-canvas {
+      z-index: 1;
+      pointer-events: none;
+      opacity: 0.42;
+      mix-blend-mode: multiply;
+    }
+    #wall-mask-canvas[hidden] { display: none; }
+    #builder-canvas { z-index: 0; }
+    .builder-overlay {
+      position: absolute;
+      inset: 0;
+      z-index: 2;
+      pointer-events: none;
+    }
+    .shape {
+      position: absolute;
+      pointer-events: auto;
+      border: 2px solid;
+      border-radius: 8px;
+      display: block;
+      padding: 0;
+      font-size: 11px;
+      font-weight: 900;
+      text-shadow: 0 1px 0 rgba(255,255,255,0.8);
+    }
+    .shape-label {
+      position: absolute;
+      left: 4px;
+      top: 4px;
+      max-width: calc(100% - 8px);
+      padding: 2px 5px;
+      border-radius: 999px;
+      background: rgba(255, 250, 241, 0.82);
+      color: var(--ink);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      pointer-events: none;
+    }
+    .simple-builder .shape:not(.selected) .shape-label {
+      opacity: 0.56;
+      max-width: 72px;
+      transform: translateY(-115%);
+      background: rgba(255, 250, 241, 0.62);
+    }
+    .simple-builder .shape.corridor:not(.selected) .shape-label,
+    .simple-builder .shape.free-space:not(.selected) .shape-label {
+      max-width: 54px;
+      font-size: 9px;
+    }
+    .shape.room {
+      z-index: 4;
+      border-color: #168b73;
+      background: rgba(27, 156, 130, 0.24);
+      box-shadow: inset 0 0 0 999px rgba(27, 156, 130, 0.06);
+    }
+    .shape.corridor {
+      z-index: 5;
+      border-color: #e27a16;
+      background: rgba(255, 160, 48, 0.34);
+      box-shadow: inset 0 0 0 999px rgba(255, 160, 48, 0.10);
+    }
+    .shape.free-space {
+      z-index: 2;
+      border-color: #1187c8;
+      background:
+        repeating-linear-gradient(135deg, rgba(17, 135, 200, 0.16) 0 8px, rgba(17, 135, 200, 0.05) 8px 16px);
+      border-style: dashed;
+      box-shadow: inset 0 0 0 999px rgba(17, 135, 200, 0.02);
+    }
+    .simple-builder.paint-mode .shape.room {
+      z-index: 4;
+      border-color: #00a884;
+      border-width: 3px;
+      background: rgba(0, 168, 132, 0.30);
+    }
+    .simple-builder.paint-mode .shape.corridor {
+      z-index: 5;
+      border-color: #ff8a00;
+      border-width: 3px;
+      background: rgba(255, 138, 0, 0.44);
+    }
+    .simple-builder.paint-mode .shape.free-space {
+      z-index: 2;
+      border-color: #0098db;
+      border-width: 3px;
+      background:
+        repeating-linear-gradient(135deg, rgba(0, 152, 219, 0.16) 0 7px, rgba(0, 152, 219, 0.045) 7px 14px);
+    }
+    .simple-builder.paint-mode .shape.room::after,
+    .simple-builder.paint-mode .shape.corridor::after,
+    .simple-builder.paint-mode .shape.free-space::after {
+      content: attr(data-layer-kind);
+      position: absolute;
+      right: 4px;
+      bottom: 3px;
+      padding: 2px 5px;
+      border-radius: 999px;
+      background: rgba(23, 33, 26, 0.68);
+      color: #fffaf1;
+      font-size: 9px;
+      font-weight: 1000;
+      letter-spacing: 0.04em;
+      pointer-events: none;
+    }
+    .shape.furniture { border-color: #5a6ec9; background: rgba(90, 110, 201, 0.24); border-radius: 5px; }
+    .shape.door {
+      width: 18px;
+      height: 18px;
+      margin: -9px 0 0 -9px;
+      border-color: #c95f32;
+      background: #fff0b8;
+      border-radius: 999px;
+      padding: 0;
+    }
+    .shape.selected {
+      outline: 4px solid rgba(201, 95, 50, 0.92);
+      box-shadow: 0 0 0 8px rgba(255, 250, 241, 0.82), 0 0 0 13px rgba(201, 95, 50, 0.28), 0 14px 40px rgba(42,32,22,0.26) !important;
+      z-index: 16;
+      animation: selected-pulse 1.05s ease-in-out infinite alternate;
+    }
+    .shape.selected .shape-label {
+      opacity: 1 !important;
+      max-width: 240px !important;
+      background: rgba(23, 33, 26, 0.9) !important;
+      color: #fffaf1;
+      transform: translateY(-2px);
+    }
+    @keyframes selected-pulse { from { filter: saturate(1.05); } to { filter: saturate(1.3) brightness(1.08); } }
+
+    .shape.layer-hidden { display: none; }
+    .shape.layer-locked { filter: grayscale(0.65); }
+    .shape.pending { border-style: dashed; background: rgba(201, 95, 50, 0.14); }
+    .shape.pending.eraser {
+      z-index: 20;
+      border-color: #b23333;
+      border-width: 3px;
+      background: repeating-linear-gradient(45deg, rgba(195, 57, 57, 0.24) 0 9px, rgba(255,255,255,0.18) 9px 18px);
+      box-shadow: 0 0 0 4px rgba(255,255,255,0.75), 0 12px 28px rgba(42,32,22,0.22);
+    }
+    .resize-handle {
+      position: absolute;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #fffaf1;
+      border: 2px solid var(--accent);
+      z-index: 4;
+    }
+    .resize-handle[data-resize="nw"] { left: -7px; top: -7px; cursor: nwse-resize; }
+    .resize-handle[data-resize="n"] { left: 50%; top: -7px; transform: translateX(-50%); cursor: ns-resize; }
+    .resize-handle[data-resize="ne"] { right: -7px; top: -7px; cursor: nesw-resize; }
+    .resize-handle[data-resize="e"] { right: -7px; top: 50%; transform: translateY(-50%); cursor: ew-resize; }
+    .resize-handle[data-resize="se"] { right: -7px; bottom: -7px; cursor: nwse-resize; }
+    .resize-handle[data-resize="s"] { left: 50%; bottom: -7px; transform: translateX(-50%); cursor: ns-resize; }
+    .resize-handle[data-resize="sw"] { left: -7px; bottom: -7px; cursor: nesw-resize; }
+    .resize-handle[data-resize="w"] { left: -7px; top: 50%; transform: translateY(-50%); cursor: ew-resize; }
+    .shape.door-anchor {
+      width: 16px;
+      height: 16px;
+      margin: -8px 0 0 -8px;
+      border-radius: 50%;
+      padding: 0;
+      z-index: 5;
+      place-items: center;
+      background: #fffaf1;
+      border-color: #2f7f72;
+      cursor: grab;
+    }
+    .shape.door-anchor.portal { border-color: #c95f32; background: #fff0b8; }
+    .shape.door-anchor.aisle { border-color: #5a6ec9; background: #eef1ff; }
+    .shape.door-anchor.hub { border-color: #2f7f72; background: #e8fff8; }
+    .shape.door-anchor.selected {
+      outline: 4px solid rgba(201, 95, 50, 0.28);
+    }
+    .shape.door-anchor::after {
+      content: attr(data-anchor-label);
+      position: absolute;
+      left: 18px;
+      top: 50%;
+      transform: translateY(-50%);
+      padding: 3px 6px;
+      border-radius: 999px;
+      background: rgba(255, 250, 241, 0.88);
+      border: 1px solid var(--line);
+      font-size: 10px;
+      pointer-events: none;
+      white-space: nowrap;
+    }
+    .floating-card {
+      position: absolute;
+      z-index: 20;
+      width: 260px;
+      display: grid;
+      gap: 10px;
+      padding: 12px;
+      border: 1px solid rgba(23, 33, 26, 0.16);
+      border-radius: 18px;
+      background: rgba(255, 250, 241, 0.96);
+      box-shadow: 0 18px 54px rgba(42,32,22,0.24);
+    }
+    .floating-card[hidden] { display: none; }
+    .simple-builder #selection-toolbar {
+      display: none !important;
+    }
+    .toolbar-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .toolbar-row button,
+    .zoom-tools button {
+      padding: 8px 10px;
+      border-radius: 11px;
+      font-size: 12px;
+    }
+    .ghost-note {
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.4;
+    }
+    .drag-preview-label {
+      position: absolute;
+      z-index: 18;
+      display: inline-flex;
+      padding: 7px 10px;
+      border-radius: 999px;
+      background: rgba(23, 33, 26, 0.86);
+      color: #fffaf1;
+      font-size: 12px;
+      font-weight: 900;
+      pointer-events: none;
+    }
+    .drag-preview-label[hidden] { display: none; }
+    .builder-help-tooltip {
+      position: fixed;
+      z-index: 100;
+      max-width: 320px;
+      padding: 10px 12px;
+      border-radius: 14px;
+      background: rgba(23, 33, 26, 0.94);
+      color: #fffaf1;
+      box-shadow: 0 16px 46px rgba(42,32,22,0.26);
+      font-size: 13px;
+      line-height: 1.45;
+      font-weight: 800;
+      pointer-events: none;
+    }
+    .builder-help-tooltip[hidden] { display: none; }
+    .drop-hint {
+      position: absolute;
+      left: 50%;
+      top: 12px;
+      z-index: 12;
+      transform: translateX(-50%);
+      max-width: min(92%, 560px);
+      padding: 10px 14px;
+      border-radius: 999px;
+      background: rgba(255, 250, 241, 0.9);
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 900;
+      text-align: center;
+      pointer-events: none;
+      box-shadow: 0 10px 30px rgba(42,32,22,0.16);
+    }
+    .zoom-tools {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px;
+      border-radius: 999px;
+      background: rgba(255, 250, 241, 0.72);
+      border: 1px solid var(--line);
+    }
+    .zoom-tools button {
+      width: auto;
+      min-width: 38px;
+      background: var(--ink);
+    }
+    #zoom-output {
+      min-width: 54px;
+      text-align: center;
+      color: var(--muted);
+      font-weight: 900;
+      font-size: 12px;
+    }
+    .hint {
+      display: inline-flex;
+      gap: 8px;
+      align-items: center;
+      border-radius: 999px;
+      background: rgba(255, 250, 241, 0.72);
+      padding: 8px 11px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+    }
+    .validation-list {
+      display: grid;
+      gap: 8px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+    .validation-list li {
+      border-radius: 12px;
+      padding: 10px 12px;
+      background: rgba(166, 56, 47, 0.12);
+      color: var(--danger);
+      font-size: 13px;
+      font-weight: 800;
+    }
+    .validation-list li.ok {
+      background: rgba(47, 127, 114, 0.13);
+      color: var(--accent-2);
+    }
+    .validation-list button {
+      text-align: left;
+      color: inherit;
+      background: transparent;
+      padding: 0;
+      font-weight: 900;
+    }
+    .inspector {
+      border-radius: 18px;
+      background: rgba(255, 250, 241, 0.72);
+      border: 1px solid var(--line);
+      padding: 12px;
+    }
+    .inspector pre {
+      overflow: auto;
+      margin: 0;
+      white-space: pre-wrap;
+      color: var(--muted);
+      font: 12px/1.5 "SFMono-Regular", "Cascadia Code", monospace;
+    }
+    .layer-list {
+      display: grid;
+      gap: 7px;
+      max-height: 300px;
+      overflow: auto;
+    }
+    .layer-row {
+      display: grid;
+      grid-template-columns: 28px 28px 1fr;
+      gap: 6px;
+      align-items: center;
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      padding: 7px;
+      background: rgba(255, 250, 241, 0.7);
+    }
+    .layer-row.active {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(201, 95, 50, 0.15);
+    }
+    .layer-row button {
+      padding: 5px;
+      border-radius: 9px;
+      background: rgba(23, 33, 26, 0.09);
+      color: var(--ink);
+      font-size: 12px;
+    }
+    .layer-name {
+      border: 0;
+      padding: 5px 6px;
+      text-align: left;
+      background: transparent;
+      color: var(--ink);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    @media (max-width: 1260px) {
+      body { overflow-x: auto; }
+    }
+  </style>
+</head>
+<body>
+  <main class="builder-app">
+    <aside class="panel">
+      <div class="panel-inner stack">
+        <div>
+          <div class="top-tools">
+            <h1>Map Builder</h1>
+            <button type="button" class="secondary" id="simple-editor-toggle" aria-pressed="false">簡易編輯</button>
+            <select class="locale-select" id="builder-locale" aria-label="Builder language">
+              <option value="zh-TW">中文</option>
+              <option value="en-US">English</option>
+              <option value="ja-JP">日本語</option>
+              <option value="ko-KR">한국어</option>
+            </select>
+          </div>
+          <p>用 PNG 當底圖，手動畫出 CLI Pixelverse 可用的 YAML 邏輯地圖。</p>
+          <a id="open-map-builder-link" href="/" class="secondary-link">Back to main world</a>
+        </div>
+        <section class="stack prompt-card">
+          <h2>Prompt / Checklist</h2>
+          <ol id="builder-prompt-checklist"></ol>
+        </section>
+        <label>Load PNG
+          <input id="png-input" type="file" accept="image/png,image/*">
+        </label>
+        <label>Import YAML
+          <input id="yaml-input" type="file" accept=".yaml,.yml,text/yaml">
+        </label>
+        <section class="tool-state" id="current-action">
+          <small>Current action</small>
+          <strong id="current-tool-label">Place Room</strong>
+          <span id="current-payload-label">Thinking Room · drag on the map</span>
+        </section>
+        <section class="stack">
+          <h2>Mode</h2>
+          <div class="mode-grid">
+            <button type="button" class="mode-btn active" id="mode-room" data-mode="room" data-help-mode="room">Room <span class="help-dot">?</span></button>
+            <button type="button" class="mode-btn" id="mode-corridor" data-mode="corridor" data-help-mode="corridor">Corridor <span class="help-dot">?</span></button>
+            <button type="button" class="mode-btn" id="mode-door" data-mode="door" data-help-mode="door">Door <span class="help-dot">?</span></button>
+            <button type="button" class="mode-btn" id="mode-furniture" data-mode="furniture" data-help-mode="furniture">Furniture <span class="help-dot">?</span></button>
+            <button type="button" class="mode-btn" id="mode-select" data-mode="select" data-help-mode="select">Select/Edit <span class="help-dot">?</span></button>
+          </div>
+        </section>
+        <section class="stack">
+          <h2>Room Palette</h2>
+          <div class="room-palette" id="room-palette"></div>
+        </section>
+        <section class="stack">
+          <h2>Furniture Palette</h2>
+          <div class="furniture-palette" id="furniture-palette"></div>
+        </section>
+        <label>Room key
+          <input id="room-key-input" value="think_lab" list="room-key-list">
+          <datalist id="room-key-list">
+            <option value="think_lab"></option>
+            <option value="blueprint_lab"></option>
+            <option value="clone_bay"></option>
+            <option value="file_library"></option>
+            <option value="code_workbench"></option>
+            <option value="terminal_bay"></option>
+            <option value="tool_forge"></option>
+            <option value="response_studio"></option>
+            <option value="standby_dock"></option>
+            <option value="session_archive"></option>
+          </datalist>
+        </label>
+        <label>Furniture type
+          <select id="furniture-type-input">
+            <option value="desk">desk</option>
+            <option value="chair">chair</option>
+            <option value="table">table</option>
+            <option value="sofa">sofa</option>
+            <option value="bed">bed</option>
+            <option value="board">board</option>
+            <option value="bookshelf">bookshelf</option>
+            <option value="cabinet">cabinet</option>
+            <option value="server">server</option>
+            <option value="terminal">terminal</option>
+            <option value="workbench">workbench</option>
+            <option value="portal">portal</option>
+          </select>
+        </label>
+        <button type="button" class="secondary" id="validate-map-btn">Validate map</button>
+        <button type="button" class="warn" id="export-yaml-btn">Export YAML</button>
+        <button type="button" class="primary" id="submit-map-btn" disabled>Submit validated map</button>
+      </div>
+    </aside>
+
+    <section class="panel stage-panel">
+      <header class="stage-head">
+        <div>
+          <h2>PNG / YAML Alignment Surface</h2>
+          <div class="hint" id="builder-status">小畫家模式：先選工具，再在圖上拖拉。框線可重疊；補空間就是可走區。</div>
+          <div class="paint-tool-palette" id="paint-tool-palette" aria-label="小畫家模式工具列">
+            <button type="button" class="paint-tool" id="paint-tool-select" data-paint-mode="select">↖ 選取<br><small>拖拉/調整</small></button>
+            <button type="button" class="paint-tool" id="paint-tool-room" data-paint-mode="room">房間<br><small>綠色可走房間</small></button>
+            <button type="button" class="paint-tool" id="paint-tool-corridor" data-paint-mode="corridor">走廊<br><small>橘色通道</small></button>
+            <button type="button" class="paint-tool" id="paint-tool-free-space" data-paint-mode="free_space">補空間<br><small>藍色補橋</small></button>
+            <button type="button" class="paint-tool" id="paint-tool-eraser" data-paint-mode="eraser">橡皮擦<br><small>拖拉刪除</small></button>
+            <button type="button" class="paint-tool" id="paint-tool-door" data-paint-mode="door">● 門<br><small>點門洞</small></button>
+            <button type="button" class="paint-tool" id="paint-tool-furniture" data-paint-mode="furniture">▣ 家具<br><small>點房內</small></button>
+            <button type="button" class="paint-mini-action primary" id="paint-validate-btn">驗證</button>
+            <button type="button" class="paint-mini-action submit" id="paint-submit-btn">提交</button>
+            <button type="button" class="paint-mini-action" id="paint-layer-toggle-btn" aria-pressed="false">圖層</button>
+            <div class="paint-layer-legend" id="paint-layer-legend" aria-label="小畫家圖層顏色說明">
+              <span class="paint-legend-chip room">房間</span>
+              <span class="paint-legend-chip corridor">走廊</span>
+              <span class="paint-legend-chip free-space">補空間</span>
+              <span class="paint-legend-chip eraser">橡皮擦</span>
+            </div>
+            <div class="paint-status-strip" id="paint-status-strip">目前工具：選取。提示：像小畫家一樣，選工具後直接在 PNG 上拖拉；需要找圖層再打開「圖層」。</div>
+          </div>
+          <div class="simple-quickbar" aria-label="簡易地圖校正工具列">
+            <button type="button" id="simple-load-png-btn">載入 PNG</button>
+            <button type="button" id="simple-load-yaml-btn">載入 YAML</button>
+            <button type="button" id="simple-step-rooms">圈選房間</button>
+            <button type="button" id="simple-step-corridors">圈選走廊</button>
+            <button type="button" id="simple-step-free-space">補空間</button>
+            <button type="button" id="simple-step-doors">新增門</button>
+            <button type="button" id="simple-step-furniture">家具</button>
+            <button type="button" id="simple-step-validate">驗證/提交</button>
+            <button type="button" id="simple-exit-btn">完整工具</button>
+            <button type="button" id="wall-mask-toggle" aria-pressed="true">深色牆面遮罩</button>
+            <span class="wall-summary" id="wall-mask-summary">載入 PNG 後會標示極深色牆面；框內非深色像素視為 free space 候選。</span>
+          </div>
+          <div class="simple-command-bar" aria-label="主要儲存與驗證操作">
+            <button type="button" class="primary-action" id="simple-validate-now-btn">驗證地圖</button>
+            <button type="button" class="submit-action" id="simple-submit-now-btn">提交並儲存</button>
+            <button type="button" id="simple-export-now-btn">產生 YAML</button>
+            <button type="button" id="simple-duplicate-btn" title="Ctrl+C 複製目前選取圖層">複製 Ctrl+C</button>
+            <button type="button" id="simple-delete-btn" title="Delete 刪除目前選取圖層">刪除 Delete</button>
+            <button type="button" id="simple-clear-selection-btn">取消選取</button>
+            <span class="selected-summary" id="selected-summary" data-selected-summary>目前沒有選取圖層</span>
+            <div class="simple-feedback" id="simple-feedback" role="status" aria-live="polite" aria-busy="false">載入 PNG/YAML 後，拖拉圖層；按「驗證地圖」會立刻顯示能不能提交。</div>
+          </div>
+          <div class="simple-layer-dock" aria-label="圖層選擇器">
+            <label>Layerout
+              <select id="simple-layer-select" aria-label="選擇要編輯的 layer"></select>
+            </label>
+            <button type="button" id="simple-layer-focus-btn">選取</button>
+            <button type="button" id="simple-layer-hide-btn">顯示/隱藏</button>
+            <button type="button" id="simple-layer-lock-btn">鎖定/解鎖</button>
+          </div>
+          <div class="simple-batch-panel" aria-label="批次圖層顯示">
+            <div class="batch-layer-row" id="batch-room-row"><strong>Rooms</strong></div>
+            <div class="batch-layer-row" id="batch-corridor-row"><strong>Corridors</strong></div>
+            <div class="batch-layer-row" id="batch-free-space-row"><strong>Free space</strong></div>
+            <div class="batch-layer-row" id="batch-door-row"><strong>Doors</strong></div>
+            <div class="batch-layer-row" id="batch-furniture-row"><strong>Furniture</strong></div>
+          </div>
+        </div>
+        <div class="zoom-tools" aria-label="Builder zoom controls">
+          <button type="button" id="zoom-out-btn">-</button>
+          <span id="zoom-output">100%</span>
+          <button type="button" id="zoom-in-btn">+</button>
+          <button type="button" id="zoom-reset-btn">Reset</button>
+        </div>
+      </header>
+      <div class="stage-wrap">
+        <div id="builder-stage">
+          <canvas id="builder-canvas" width="1000" height="1000"></canvas>
+          <canvas id="wall-mask-canvas" width="1000" height="1000"></canvas>
+          <div class="builder-overlay" id="builder-overlay"></div>
+          <div class="drop-hint" id="drop-hint">Drag a room or furniture tile from the left, or draw directly on the map.</div>
+          <div class="drag-preview-label" id="drag-preview-label" hidden></div>
+          <div class="builder-help-tooltip" id="builder-help-tooltip" hidden></div>
+          <form class="floating-card" id="assign-popover" hidden>
+            <strong>Assign room info</strong>
+            <label>Room key
+              <input id="assign-room-key" value="think_lab">
+            </label>
+            <label>Room name
+              <input id="assign-room-name" value="Thinking Room">
+            </label>
+            <div class="toolbar-row">
+              <button type="button" class="secondary" id="assign-confirm-btn">Confirm</button>
+              <button type="button" id="assign-cancel-btn">Cancel</button>
+              <button type="button" class="warn" id="assign-delete-btn">Delete</button>
+            </div>
+            <div class="ghost-note">放開滑鼠後先確認資訊，Confirm 才寫入 YAML model。</div>
+          </form>
+          <div class="floating-card" id="selection-toolbar" hidden>
+            <strong id="selection-title">No selection</strong>
+            <div class="toolbar-row">
+              <button type="button" class="secondary" id="selection-edit-btn">Edit info</button>
+              <button type="button" id="selection-cancel-btn">Cancel</button>
+              <button type="button" id="selection-duplicate-btn">Duplicate</button>
+              <button type="button" class="warn" id="selection-delete-btn">Delete</button>
+            </div>
+            <div class="ghost-note">Select/Edit 模式下拖曳元素可整體平移，拖右下角可 resize room。</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <aside class="panel">
+      <div class="panel-inner stack">
+        <section class="stack">
+          <h2>Validation</h2>
+          <ul class="validation-list" id="validation-list">
+            <li class="ok">尚未檢查。</li>
+          </ul>
+        </section>
+        <section class="stack">
+          <h2>Movement Planning</h2>
+          <ul class="validation-list" id="route-plan-list">
+            <li>尚未檢查房間互通。</li>
+          </ul>
+        </section>
+        <section class="stack inspector" id="layer-panel">
+          <h2>Layers</h2>
+          <div class="layer-list" id="layer-list"></div>
+        </section>
+        <section class="stack inspector" id="builder-inspector">
+          <h2>Inspector</h2>
+          <pre id="inspector-body">No selection.</pre>
+        </section>
+        <section class="stack">
+          <h2>Export</h2>
+          <textarea id="yaml-output" spellcheck="false" placeholder="Exported YAML will appear here."></textarea>
+        </section>
+      </div>
+    </aside>
+  </main>
+  <script type="module" src="./map_builder.mjs"></script>
+</body>
+</html>

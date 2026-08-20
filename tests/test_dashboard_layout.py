@@ -38,7 +38,7 @@ class DashboardParser(HTMLParser):
             self.stack.pop()
 
 
-def test_dashboard_layout_keeps_map_primary_and_exposes_only_three_card_controls():
+def test_dashboard_layout_keeps_map_primary_and_exposes_only_help_as_a_card_control():
     parser = DashboardParser()
     parser.feed(Path("public/index.html").read_text(encoding="utf-8"))
 
@@ -46,7 +46,7 @@ def test_dashboard_layout_keeps_map_primary_and_exposes_only_three_card_controls
     assert {"furniture-coord-hud", "furniture-coord-title"} <= parser.ids
     assert {"zoom-in-btn", "zoom-reset-btn", "zoom-out-btn"} <= parser.ids
     card_controls = [element for element in parser.elements if element["attributes"].get("data-dashboard-card")]
-    assert [element["attributes"]["data-dashboard-card"] for element in card_controls] == ["events", "agents", "help"]
+    assert [element["attributes"]["data-dashboard-card"] for element in card_controls] == ["help"]
 
 
 def test_dashboard_supports_persistent_furniture_and_visible_timeline_lanes():
@@ -56,9 +56,81 @@ def test_dashboard_supports_persistent_furniture_and_visible_timeline_lanes():
 
     assert "PIXELVERSE_RUNTIME_DIR: /app/runtime" in compose
     assert ":/app/runtime" in compose
+    assert "PIXELVERSE_GLOBAL_MAP_DIR: /app/tmp/global_map" in compose
+    assert ":/app/tmp/global_map" in compose
     assert "furniture-drag-ghost" in html
     assert "updateFurnitureDragGhost" in app
     assert "overflow-y: auto;" in html
+
+
+def test_global_map_png_mode_hides_generated_room_card_chrome():
+    html = Path("public/index.html").read_text(encoding="utf-8")
+
+    assert ".house-shell.has-global-map-image .district {" in html
+    assert "background: transparent;" in html
+    assert ".house-shell.has-global-map-image .district-label" in html
+    assert ".house-shell.has-global-map-image .district-floor-accents" in html
+    assert ".house-shell.has-global-map-image .district:not(.editing) .district-props" not in html
+
+
+def test_global_map_background_and_live_overlays_share_one_coordinate_plane():
+    html = Path("public/index.html").read_text(encoding="utf-8")
+    app = Path("public/app.mjs").read_text(encoding="utf-8")
+
+    assert '<div class="map-coordinate-plane" id="map-coordinate-plane">' in html
+    assert '.map-coordinate-plane {' in html
+    assert '.map-coordinate-plane::before {' in html
+    assert '.house-shell.has-global-map-image .map-coordinate-plane::before' in html
+    assert '.house-shell.has-global-map-image::after' not in html
+
+    plane_start = html.index('<div class="map-coordinate-plane" id="map-coordinate-plane">')
+    agents_fragment = '<div class="agents-layer" id="agents-layer"></div>'
+    plane_end = html.index(agents_fragment, plane_start) + len(agents_fragment)
+    plane_markup = html[plane_start:plane_end]
+    for fragment in [
+        '<div class="office-shell">',
+        '<div class="district" data-room="think_lab">',
+        '<svg class="path-layer" id="path-layer"',
+        agents_fragment,
+    ]:
+        assert fragment in plane_markup
+
+    assert "mapCoordinatePlane: document.getElementById('map-coordinate-plane')" in app
+    assert "mapCoordinatePlane.insertBefore(district" in app
+
+
+def test_agent_overlays_do_not_occlude_sprites_or_map_by_default():
+    html = Path("public/index.html").read_text(encoding="utf-8")
+    app = Path("public/app.mjs").read_text(encoding="utf-8")
+
+    assert "agentOverlayClass" in app
+    assert "overlay-left" in app
+    assert ".agent-speech {" in html
+    assert "position: absolute;" in html
+    assert "max-width: 96px;" in html
+    assert ".agent.overlay-left .agent-speech" in html
+    assert ".agent.overlay-right .agent-speech" in html
+    assert ".agent-card {" in html
+    assert "opacity: 0;" in html
+    assert "pointer-events: none;" in html
+    assert ".agent:hover .agent-card" in html
+    assert ".agent.selected .agent-card" not in html
+    assert ".agent.walking .agent-card" in html
+    assert ".agent.walking .agent-speech" in html
+
+
+def test_furniture_layer_can_escape_room_clip_during_cross_room_drag():
+    html = Path("public/index.html").read_text(encoding="utf-8")
+    app = Path("public/app.mjs").read_text(encoding="utf-8")
+
+    assert ".district {" in html
+    assert "overflow: visible;" in html
+    assert ".district-props { z-index: 4; overflow: visible; }" in html
+    assert ".district-props { pointer-events: none; }" in html
+    assert ".prop {" in html
+    assert "pointer-events: auto;" in html
+    assert "document.body.append(ghost);" in app
+    assert "districtAtPoint(event.clientX, event.clientY)" in app
 
 
 def test_liquid_glass_is_reserved_for_functional_controls():
@@ -147,14 +219,14 @@ def test_map_first_dashboard_keeps_live_state_outside_the_optional_card():
     assert card["attributes"].get("aria-live") is None
 
 
-def test_map_first_card_overlays_the_map_and_offers_paginated_discoverable_controls():
+def test_map_first_help_card_is_paginated_and_discoverable():
     html = Path("public/index.html").read_text(encoding="utf-8")
     parser = DashboardParser()
     parser.feed(html)
 
     card = parser.elements_by_id["dashboard-card"]
     assert "hidden" in card["attributes"]
-    for card_name in ("events", "agents", "help"):
+    for card_name in ("help",):
         button = parser.elements_by_id[f"dashboard-{card_name}-btn"]
         assert button["attributes"].get("aria-controls") == "dashboard-card"
         assert button["attributes"].get("aria-expanded") == "false"
@@ -226,7 +298,7 @@ def test_dashboard_card_dismissal_is_bridged_into_the_pixelworld_document():
     assert "detachChildDocument" in bridge
 
 
-def test_deferred_dashboard_focus_wins_in_a_real_dom_and_skips_hidden_or_destroyed_targets():
+def test_deferred_dashboard_focus_wins_in_a_real_dom_and_skips_hidden_or_destroyed_targets(tmp_path):
     chromium = shutil.which("chromium") or shutil.which("chromium-browser") or shutil.which("google-chrome")
     if not chromium:
         pytest.skip("Chromium is required for the real-DOM dashboard focus contract")
@@ -236,8 +308,9 @@ def test_deferred_dashboard_focus_wins_in_a_real_dom_and_skips_hidden_or_destroy
             chromium,
             "--headless=new",
             "--no-sandbox",
-            "--disable-gpu",
-            "--allow-file-access-from-files",
+                "--disable-gpu",
+                f"--user-data-dir={tmp_path / 'chromium-profile'}",
+                "--allow-file-access-from-files",
             "--dump-dom",
             fixture.as_uri(),
         ],
@@ -314,3 +387,37 @@ def test_dashboard_does_not_link_to_an_uncommitted_map_builder_route():
 
     assert "map-builder-tab-link" not in parser.ids
     assert 'href="/map_builder.html"' not in html
+
+
+def test_live_monitoring_uses_fixed_no_scroll_rails_around_the_village():
+    html = Path("public/index.html").read_text(encoding="utf-8")
+    parser = DashboardParser()
+    parser.feed(html)
+
+    assert {"top-status-bar", "agent-live-rail", "hook-live-rail", "pixelworld-frame"} <= parser.ids
+    assert "grid-template-columns: var(--live-left-width) 8px minmax(520px, 1fr) 8px var(--live-right-width)" in html
+    assert "grid-template-rows: 44px minmax(0, 1fr)" in html
+    assert "overflow: hidden" in html
+    assert "dashboard-events-btn" not in parser.ids
+    assert "dashboard-agents-btn" not in parser.ids
+    assert "dashboard-help-btn" in parser.ids
+    assert "agent-live-list" in parser.ids
+    assert "hook-live-activity" in parser.ids
+    assert "dashboard-help-settings" not in parser.ids
+    assert "{ kind: 'settings'" not in Path("public/app.mjs").read_text(encoding="utf-8")
+    assert '.dashboard-card[data-card="help"] { --dashboard-card-accent: #72e2a5; }' in html
+    assert ".dashboard-card-pagination button { color: #e9f7eb;" in html
+    assert ".dashboard-card-pagination button:disabled { color: #6f8177;" in html
+    assert 'body.cutaway-status-rail[data-pixelworld-cutaway="open"] .map-first-workspace .map-stage { inset: auto !important; }' in html
+    assert {"live-left-splitter", "live-right-splitter"} <= parser.ids
+    assert parser.elements_by_id["live-left-splitter"]["attributes"].get("role") == "separator"
+    assert parser.elements_by_id["live-right-splitter"]["attributes"].get("role") == "separator"
+    assert "createLiveRailLayoutController" in Path("public/app.mjs").read_text(encoding="utf-8")
+
+
+def test_fast_ui_ticker_reprojects_live_heartbeat_and_hook_waveforms():
+    app = Path("public/app.mjs").read_text(encoding="utf-8")
+    ticker = re.search(r"function startLiveUiTicker\(\)\s*\{(.*?)\n\}", app, re.S)
+
+    assert ticker
+    assert "renderLiveMonitoring(liveSnapshot, nowMs);" in ticker.group(1)

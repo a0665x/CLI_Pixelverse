@@ -13,6 +13,8 @@ import {
   placePrefab,
   saveLayoutClipboard,
   savePrefabs,
+  createUserGroupPrefab,
+  deletePrefab,
 } from '../src/rendering/interiorPrefabStore';
 
 const room: InteriorDefinition = {
@@ -37,6 +39,24 @@ const storage = () => {
 };
 
 describe('interior prefab and room clipboard store', () => {
+  it('normalizes a selected group into a durable template with local support references', () => {
+    const desk = item('room-desk', 4, 5);
+    const monitor = { ...item('room-monitor', 4, 5), layer: 'surface' as const, supportedByIds: ['room-desk'] };
+    const prefab = createUserGroupPrefab([desk, monitor], [], 100);
+    expect(prefab).toMatchObject({ id: 'user-group-100-1', name: 'Group 01', createdAt: 100, width: 1, height: 1 });
+    expect(prefab.items.map(({ id, point, supportedByIds }) => ({ id, point, supportedByIds }))).toEqual([
+      { id: 'group-item-1', point: { x: 0, y: 0 }, supportedByIds: undefined },
+      { id: 'group-item-2', point: { x: 0, y: 0 }, supportedByIds: ['group-item-1'] },
+    ]);
+  });
+
+  it('deletes only the reusable group record and leaves placed room instances intact', () => {
+    const placed = [item('placed-a', 2, 2), item('placed-b', 3, 2)];
+    const original = structuredClone(placed);
+    const prefab = createUserGroupPrefab(placed, [], 100);
+    expect(deletePrefab([prefab], prefab.id)).toEqual([]);
+    expect(placed).toEqual(original);
+  });
   it('persists prefabs independently from room layouts', () => {
     const memory = storage();
     const prefab: FurniturePrefab = { id: 'prefab-1', name: 'Desk kit', createdAt: 1, width: 2, height: 2, items: [item('a', 0, 0), item('b', 1, 1)] };
@@ -56,10 +76,12 @@ describe('interior prefab and room clipboard store', () => {
     const listed = availablePrefabs(memory);
 
     expect(listed.map(({ id }) => id)).toEqual([
-      'bench-four', 'pod-l-two', 'control-m-three', 'user-desk-kit',
+      'bench-four', 'pod-l-two', 'control-m-three',
+      'modern-office-storage-run-dark', 'modern-office-storage-run-blue', 'modern-office-storage-run-light',
+      'user-desk-kit',
     ]);
-    expect(listed.slice(0, 3).every((prefab) => isBuiltInPrefab(prefab) && prefab.immutable)).toBe(true);
-    expect(listed[3]).toMatchObject({ source: 'user', immutable: false, anchor: { x: 0, y: 0 } });
+    expect(listed.slice(0, 6).every((prefab) => isBuiltInPrefab(prefab) && prefab.immutable)).toBe(true);
+    expect(listed.find(({ id }) => id === 'user-desk-kit')).toMatchObject({ source: 'user', immutable: false, anchor: { x: 0, y: 0 } });
 
     savePrefabs(listed, memory);
     const persisted = JSON.parse(memory.getItem('pixelworld:interior-prefabs:v1')!) as { prefabs: FurniturePrefab[] };
@@ -74,7 +96,9 @@ describe('interior prefab and room clipboard store', () => {
       items: [item('a', 0, 0), item('b', 1, 1)],
     }], memory);
 
-    const [builtIn, , , user] = availablePrefabs(memory);
+    const listed = availablePrefabs(memory);
+    const builtIn = listed[0];
+    const user = listed.find(({ id }) => id === 'user-kit');
 
     expect(Object.isFrozen(builtIn)).toBe(true);
     expect(Object.isFrozen(builtIn!.anchor)).toBe(true);
@@ -242,6 +266,7 @@ describe('interior prefab and room clipboard store', () => {
     expect(loadPrefabs(throwingStorage)).toEqual([]);
     expect(availablePrefabs(throwingStorage).map(({ id }) => id)).toEqual([
       'bench-four', 'pod-l-two', 'control-m-three',
+      'modern-office-storage-run-dark', 'modern-office-storage-run-blue', 'modern-office-storage-run-light',
     ]);
     expect(loadLayoutClipboard(throwingStorage)).toBeUndefined();
   });
@@ -254,6 +279,14 @@ describe('interior prefab and room clipboard store', () => {
 
     expect(readPrefabs(throwingStorage)).toEqual({ storageRead: 'failed', value: [] });
     expect(readLayoutClipboard(throwingStorage)).toEqual({ storageRead: 'failed', value: undefined });
+  });
+
+  it('treats malformed prefab payloads as failed reads instead of a writable empty library', () => {
+    const malformedStorage = {
+      getItem: () => '{"version":1,"prefabs":[{"id":"broken"}]}',
+      setItem: () => undefined,
+    };
+    expect(readPrefabs(malformedStorage)).toEqual({ storageRead: 'failed', value: [] });
   });
 
   it('deeply clones visual offsets for copied persisted layout furniture', () => {

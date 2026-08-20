@@ -1,0 +1,231 @@
+import { buildHeartbeatPath } from './agent_timeline_graphs.mjs';
+
+const byIdentity = (first = {}, second = {}) => {
+  const firstMain = first.role === 'main_agent' ? 0 : 1;
+  const secondMain = second.role === 'main_agent' ? 0 : 1;
+  return firstMain - secondMain || String(first.agent || first.id || '').localeCompare(String(second.agent || second.id || ''));
+};
+
+const heartbeatState = (agent = {}) => {
+  const state = String(agent.state || '').toLowerCase();
+  const pixelState = String(agent.pixel_state || '').toLowerCase();
+  if (agent.state === 'offline' || agent.is_stale) return { tone: 'offline', state: 'offline', load: 0 };
+  if (['thinking', 'planning', 'reading_files', 'browsing'].includes(pixelState)) {
+    return { tone: 'search', state: 'thinking', load: .62 };
+  }
+  if (['tool_call', 'invoking_skill', 'executing', 'responding', 'self_healing', 'editing_files', 'shell_command', 'external_tool', 'collaborating'].includes(pixelState)) {
+    return { tone: 'work', state: 'working', load: .94 };
+  }
+  if (['thinking', 'planning'].includes(state)) {
+    return { tone: 'search', state: 'thinking', load: .62 };
+  }
+  if (['working', 'executing', 'responding'].includes(state)) {
+    return { tone: 'work', state: 'working', load: .94 };
+  }
+  if (['idle', 'sleeping'].includes(pixelState) || ['idle', 'resting', 'waiting'].includes(state)) {
+    return { tone: 'rest', state: 'idle', load: .18 };
+  }
+  return { tone: 'work', state: agent.state || 'working', load: .94 };
+};
+
+const displayName = (agent = {}) => agent.full_name || agent.name || agent.agent || 'Agent';
+
+const sourceIdentity = (agent = {}) => String(agent.source || agent.agent_kind || '');
+
+export function normalizeVisibleAgents(snapshot = {}) {
+  const agents = Array.isArray(snapshot.agents) ? snapshot.agents : [];
+  const attachedSources = new Set(agents
+    .filter((agent) => !agent.source_placeholder
+      && !agent.is_stale
+      && agent.state !== 'offline'
+      && (agent.connection_status === 'attached' || agent.process_id || agent.state === 'working'))
+    .map(sourceIdentity)
+    .filter(Boolean));
+  return agents.filter((agent) => !(
+    agent.source_placeholder
+    && (agent.is_stale || agent.connection_status === 'awaiting_attach')
+    && attachedSources.has(sourceIdentity(agent))
+  ));
+}
+
+export function resolvedAgentActivity(agent = {}) {
+  const heartbeat = heartbeatState(agent);
+  const semantic = heartbeat.tone === 'search' ? 'search' : heartbeat.tone === 'work' ? 'work' : 'rest';
+  const restRooms = new Set(['standby_dock', 'offline_corner', 'rest-cabin']);
+  let roomKey = agent.room_key || '';
+  if (semantic === 'work' && restRooms.has(roomKey)) roomKey = 'response_studio';
+  if (semantic === 'search' && restRooms.has(roomKey)) roomKey = 'think_lab';
+  if (!roomKey) roomKey = semantic === 'work' ? 'response_studio' : semantic === 'search' ? 'think_lab' : 'standby_dock';
+  return { state: heartbeat.state, tone: heartbeat.tone, load: heartbeat.load, semantic, roomKey };
+}
+
+export function normalizeAgentForWorld(agent = {}) {
+  const activity = resolvedAgentActivity(agent);
+  const currentPixelState = String(agent.pixel_state || '').toLowerCase();
+  const compatibleStates = {
+    work: new Set(['tool_call', 'invoking_skill', 'executing', 'responding', 'self_healing', 'editing_files', 'shell_command']),
+    search: new Set(['thinking', 'planning', 'reading_files', 'browsing']),
+    rest: new Set(['idle', 'sleeping', 'offline']),
+  };
+  const pixelState = activity.state === 'offline'
+    ? 'offline'
+    : compatibleStates[activity.semantic].has(currentPixelState)
+      ? currentPixelState
+      : activity.semantic === 'search'
+        ? 'thinking'
+        : activity.semantic === 'work'
+          ? 'responding'
+          : 'idle';
+  return { ...agent, state: activity.state, pixel_state: pixelState, room_key: activity.roomKey };
+}
+
+export function buildLiveAgentRail(snapshot = {}, locale = {}, nowMs = Date.now()) {
+  const rooms = locale.rooms || {};
+  const states = locale.states || {};
+  return normalizeVisibleAgents(snapshot).sort(byIdentity).map((agent) => {
+    const heartbeat = resolvedAgentActivity(agent);
+    return {
+      id: agent.agent,
+      name: displayName(agent),
+      state: agent.state || 'idle',
+      stateLabel: states[agent.state] || agent.state || 'idle',
+      room: rooms[heartbeat.roomKey]?.name || agent.room_label || heartbeat.roomKey || '',
+      hook: heartbeat.semantic,
+      tone: heartbeat.tone,
+      load: heartbeat.load,
+      path: buildHeartbeatPath({
+        state: heartbeat.state,
+        heartbeatTone: heartbeat.tone,
+        heartbeatLoad: heartbeat.load,
+      }, nowMs, 1000, 176),
+    };
+  });
+}
+
+export function liveAgentPage(agents = [], page = 0, pageSize = 4) {
+  const ordered = [...(Array.isArray(agents) ? agents : [])].sort(byIdentity);
+  const size = Math.max(1, Math.trunc(Number(pageSize) || 1));
+  const pageCount = Math.max(1, Math.ceil(ordered.length / size));
+  const resolved = Math.max(0, Math.min(pageCount - 1, Math.trunc(Number(page) || 0)));
+  return {
+    items: ordered.slice(resolved * size, (resolved + 1) * size),
+    page: resolved,
+    pageCount,
+    canPrevious: resolved > 0,
+    canNext: resolved + 1 < pageCount,
+  };
+}
+
+const semanticFor = (agent = {}) => {
+  const state = String(agent.state || '').toLowerCase();
+  const pixelState = String(agent.pixel_state || '').toLowerCase();
+  const task = String(agent.task || '').toLowerCase();
+  if (state === 'offline' || agent.is_stale) return 'rest';
+  if (/(think|plan|search|read|ponder|web)/.test(`${pixelState} ${state} ${task}`)
+    && !['working', 'executing', 'responding'].includes(state)) return 'search';
+  if (['working', 'executing', 'responding'].includes(state)
+    || /(tool|edit|repair|dispatch|respond|execute)/.test(`${pixelState} ${task}`)) return 'work';
+  if (/(idle|sleep|rest|waiting|blocked)/.test(`${pixelState} ${state}`)) return 'rest';
+  if (/(think|plan|search|read|ponder|web)/.test(`${pixelState} ${state} ${task}`)) return 'search';
+  return 'work';
+};
+
+const BUILDING_BY_SEMANTIC = {
+  rest: 'Rest Cabin',
+  search: 'Research Library',
+  work: 'Maker Workshop',
+};
+
+const CHANNEL_LABELS = {
+  'zh-TW': { work: '工作', search: '搜尋', rest: '休息' },
+  'en-US': { work: 'Work', search: 'Search', rest: 'Rest' },
+  'ja-JP': { work: '作業', search: '検索', rest: '休憩' },
+  'ko-KR': { work: '작업', search: '검색', rest: '휴식' },
+};
+
+export function hookChannelsForAgents(agents = [], locale = 'en-US', selectedAgentId = '', nowMs = Date.now()) {
+  const labels = CHANNEL_LABELS[locale] || CHANNEL_LABELS['en-US'];
+  const visible = normalizeVisibleAgents({ agents });
+  const selected = hookRailForAgents(visible, selectedAgentId);
+  return ['work', 'search', 'rest'].map((semantic) => {
+    const occupants = visible
+      .filter((agent) => resolvedAgentActivity(agent).semantic === semantic)
+      .sort((first, second) => Number(second.last_seen_ms || second.last_action_at || 0)
+        - Number(first.last_seen_ms || first.last_action_at || 0));
+    const freshest = occupants[0];
+    const tone = semantic === 'search' ? 'search' : semantic === 'rest' ? 'rest' : 'work';
+    const state = occupants.length === 0 ? 'offline' : semantic === 'rest' ? 'idle' : semantic === 'search' ? 'thinking' : 'working';
+    return {
+      semantic,
+      label: labels[semantic],
+      count: occupants.length,
+      building: BUILDING_BY_SEMANTIC[semantic],
+      activity: freshest?.task || freshest?.activity_hint || freshest?.state || '',
+      agentId: freshest?.agent || '',
+      active: selected.semantic === semantic,
+      path: buildHeartbeatPath({
+        state,
+        heartbeatTone: tone,
+        heartbeatLoad: occupants.length === 0 ? 0 : semantic === 'rest' ? .18 : semantic === 'search' ? .62 : .94,
+      }, nowMs, 1000, 176),
+    };
+  });
+}
+
+const HOOK_GUIDE = {
+  'zh-TW': [
+    ['休息 Hook → 休息小屋', '座椅、沙發與床位；等待、休息、離線狀態。'],
+    ['搜尋 Hook → 研究圖書館', '書櫃、收納與閱讀桌；思考、規劃、搜尋狀態。'],
+    ['工作 Hook → 製作工房', '辦公桌、工作台與設備；編輯、工具調用、修復狀態。'],
+    ['協作 Hook → 協作公會', '控制台與會議桌；分身、派遣、回應狀態。'],
+  ],
+  'en-US': [
+    ['Rest Hook → Rest Cabin', 'Seats, sofas, and beds for waiting, resting, and offline states.'],
+    ['Search Hook → Research Library', 'Shelves, storage, and reading desks for thinking, planning, and search.'],
+    ['Work Hook → Maker Workshop', 'Desks, benches, and equipment for editing, tools, and repair.'],
+    ['Collaboration Hook → Agent Guild', 'Consoles and meeting tables for cloning, dispatch, and responses.'],
+  ],
+  'ja-JP': [
+    ['休憩 Hook → 休憩小屋', '椅子、ソファ、ベッド。待機・休憩・オフライン状態。'],
+    ['検索 Hook → 研究図書館', '本棚、収納、読書机。思考・計画・検索状態。'],
+    ['作業 Hook → 制作工房', '机、作業台、設備。編集・ツール・修復状態。'],
+    ['協働 Hook → エージェントギルド', 'コンソールと会議机。分身・派遣・応答状態。'],
+  ],
+  'ko-KR': [
+    ['휴식 Hook → 휴식 오두막', '의자, 소파, 침대. 대기·휴식·오프라인 상태.'],
+    ['검색 Hook → 연구 도서관', '책장, 수납, 독서 책상. 생각·계획·검색 상태.'],
+    ['작업 Hook → 제작 공방', '책상, 작업대, 장비. 편집·도구·복구 상태.'],
+    ['협업 Hook → 에이전트 길드', '콘솔과 회의 테이블. 분신·파견·응답 상태.'],
+  ],
+};
+
+export function hookGuideForLocale(locale = 'en-US') {
+  return (HOOK_GUIDE[locale] || HOOK_GUIDE['en-US']).map(([title, detail]) => ({ kind: 'guide', title, detail }));
+}
+
+export function hookRailForAgents(agents = [], selectedAgentId = '') {
+  const source = normalizeVisibleAgents({ agents });
+  const agent = source.find(({ agent: id }) => id === selectedAgentId)
+    || [...source].sort((first, second) => {
+      const rank = ({ state = '', pixel_state = '', is_stale = false } = {}) => {
+        if (state === 'offline' || is_stale) return 0;
+        if (['working', 'executing', 'responding'].includes(state)) return 4;
+        if (['thinking', 'planning'].includes(state) || ['thinking', 'planning'].includes(pixel_state)) return 3;
+        return state === 'idle' ? 1 : 2;
+      };
+      const activity = rank(second) - rank(first);
+      const freshness = Number(second.last_seen_ms || second.last_action_at || 0)
+        - Number(first.last_seen_ms || first.last_action_at || 0);
+      return activity || freshness || byIdentity(first, second);
+    })[0];
+  if (!agent) return { agentId: '', semantic: 'rest', building: 'Rest Cabin', activity: '', roomKey: '' };
+  const resolved = resolvedAgentActivity(agent);
+  const semantic = resolved.semantic;
+  return {
+    agentId: agent.agent || '',
+    semantic,
+    building: BUILDING_BY_SEMANTIC[semantic],
+    activity: agent.task || agent.activity_hint || agent.state || '',
+    roomKey: resolved.roomKey,
+  };
+}

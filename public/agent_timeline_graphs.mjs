@@ -165,12 +165,19 @@ export function buildAgentTimelinePanels(snapshot = {}, localeStrings = {}, opti
       name: agent.full_name || agent.name || agent.agent,
       shortName: agent.name || agent.agent,
       state: agent.state || 'idle',
+      stateLabel: localeStrings.states?.[agent.state || 'idle'] || agent.state || 'idle',
       heartbeatLoad: heartbeatLoad(agent),
       heartbeatTone: agent.state === 'offline' || agent.is_stale ? 'stale' : agent.connection_status === 'awaiting_attach' ? 'waiting' : 'live',
       canDelete: agent.can_delete === true,
       role: agent.role || 'main_agent',
       ageSeconds: agent.age_seconds || 0,
-      roomLabel: agent.room_label || '',
+      roomLabel: localeStrings.rooms?.[agent.room_key]?.name || agent.room_label || agent.room_key || '',
+      taskLabel: agent.task || agent.tool_label || agent.activity_hint || localeStrings.noEvents || '',
+      connectionLabel: agent.state === 'offline' || agent.is_stale
+        ? (localeStrings.states?.offline || 'Offline')
+        : agent.connection_status === 'awaiting_attach'
+          ? (localeStrings.waitingAttach || 'Waiting')
+          : (localeStrings.connectionLive || 'Live'),
       latestSummary: latest?.summary || agent.activity_hint || agent.task || localeStrings.noEvents,
       latestCategory: latest?.rowLabel || (localeStrings.eventCategories?.status || 'Status'),
       rows,

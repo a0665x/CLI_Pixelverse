@@ -345,6 +345,9 @@ def test_furniture_layout_overlap_validation_rejects_colliding_positions():
     assert furniture_layout_has_overlaps(overlapping) is True
     assert furniture_layout_has_overlaps(spaced) is False
 
+    scaled_overlap = normalize_furniture_layout({"tool_forge": [{"x": 40, "y": 40, "scale": 1.8}, {"x": 46, "y": 45}]})
+    assert furniture_layout_has_overlaps(scaled_overlap) is True
+
 
 def test_furniture_layout_preserves_cross_room_moves_and_rejects_target_room_overlap():
     from pixelverse_server import furniture_layout_has_overlaps, normalize_furniture_layout
@@ -355,6 +358,7 @@ def test_furniture_layout_preserves_cross_room_moves_and_rejects_target_room_ove
     })
 
     assert layout["think_lab"][0]["room"] == "tool_forge"
+    assert layout["think_lab"][0]["scale"] == 1.0
     assert layout["tool_forge"][0]["room"] == "tool_forge"
     assert furniture_layout_has_overlaps(layout) is True
 

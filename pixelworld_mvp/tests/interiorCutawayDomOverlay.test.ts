@@ -95,10 +95,20 @@ const harness = () => {
     'copy', 'paste', 'group', 'dissolveGroup', 'shiftLayer', 'reorder', 'duplicate', 'returnToShelf',
     'cancelSelection', 'dismissContextMenu',
   ].map((name) => [name, vi.fn()])) as unknown as CutawayDomHandlers;
-  return { overlay: new InteriorCutawayDomOverlay(() => ({ left: 0, top: 0, width: 768, height: 448 }) as DOMRect), handlers, panel, roomToolbar, inspector, contextMenu, actions, get activeElement() { return activeElement; } };
+  return { overlay: new InteriorCutawayDomOverlay(() => ({ left: 0, top: 0, width: 768, height: 448 }) as DOMRect), handlers, panel, roomToolbar, inspector, contextMenu, categories, actions, get activeElement() { return activeElement; } };
 };
 
 describe('InteriorCutawayDomOverlay context menu', () => {
+  it('shows Grouped Furniture immediately after workstations', () => {
+    const dom = harness();
+    try {
+      const layout = cutawayLayoutForViewport(1_280, 720);
+      dom.overlay.open(layout, model({ editorLayout: editorLayoutForCutaway(layout, {
+        editMode: true, catalogExpanded: true, inspectorExpanded: false,
+      }) }), dom.handlers);
+      expect(dom.categories.children.map(({ textContent }) => textContent).slice(0, 2)).toEqual(['工作桌組', '群組家具']);
+    } finally { dom.overlay.destroy(); vi.unstubAllGlobals(); }
+  });
   it('renders only Save, Undo, and Collect all in room chrome', () => {
     const dom = harness();
     try {

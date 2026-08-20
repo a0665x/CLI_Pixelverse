@@ -40,3 +40,11 @@ test('agent sprites map by role, facing, and walk frame', () => {
 test('door sprite is present', () => {
   assert.match(getKenneyDoorSprite(), /tile_0255\.png$/);
 });
+
+test('subagents use deterministic visual variants instead of one cloned character', () => {
+  const cyan = getKenneyAgentSprite({ role: 'subagent', state: 'idle', facing: 'right', color: '#22d3ee' });
+  const rose = getKenneyAgentSprite({ role: 'subagent', state: 'idle', facing: 'right', color: '#fb7185' });
+  assert.notEqual(cyan.src, rose.src);
+  assert.match(cyan.pixelClass, /variant-/);
+  assert.match(rose.pixelClass, /variant-/);
+});

@@ -1540,7 +1540,6 @@ describe('InteriorCutawaySystem', () => {
     capture.handlers().toggleCatalog();
     capture.handlers().category('storage-partitions');
     capture.handlers().page(1);
-    capture.handlers().page(1);
     const internal = cutaway as unknown as { paletteLayer: FakeObject; roomCell: number };
     const assetId = 207;
     const catalogItem = internal.paletteLayer.children.find(({ texture, interactive, destroyed }) => (
@@ -3078,13 +3077,13 @@ describe('InteriorCutawaySystem', () => {
       .every(({ prefabInstanceId }) => prefabInstanceId === instanceId)).toBe(true);
   });
 
-  it('groups and dissolves through draft handlers with one undo entry and no write before Save', () => {
+  it('groups furniture into a durable reusable library item while room layout still waits for Save', () => {
     const values = new Map<string, string>();
     const storage = {
       getItem: vi.fn((key: string) => values.get(key) ?? null),
       setItem: vi.fn((key: string, value: string) => { values.set(key, value); }),
     };
-    const prompt = vi.fn(() => 'must not prompt');
+      const prompt = vi.fn(() => 'must not prompt');
     vi.stubGlobal('window', { localStorage: storage, dispatchEvent: vi.fn(), prompt });
     try {
       const fake = fakeScene();
@@ -3100,7 +3099,9 @@ describe('InteriorCutawaySystem', () => {
         syncOverlay(): void;
       };
       const selection = internal.activeInterior.furniture
-        .filter(({ prefabInstanceId }) => !prefabInstanceId)
+        .filter(({ prefabInstanceId, supportedActions, requirementId }) => (
+          !prefabInstanceId && supportedActions.length === 0 && !requirementId
+        ))
         .slice(0, 2);
       expect(selection).toHaveLength(2);
       internal.undoStore.reset(internal.activeInterior.furniture);
@@ -3115,10 +3116,16 @@ describe('InteriorCutawaySystem', () => {
       expect(capture.model()).toMatchObject({ selectedCount: 2, canDissolve: true });
       expect(internal.undoStore.past).toHaveLength(1);
       expect(prompt).not.toHaveBeenCalled();
-      expect(storage.setItem).not.toHaveBeenCalled();
+      expect(storage.setItem).toHaveBeenCalledTimes(1);
+      const prefabPayload = JSON.parse(values.get('pixelworld:interior-prefabs:v1') ?? 'null');
+      expect(prefabPayload).toMatchObject({ version: 1 });
+      expect(prefabPayload.prefabs).toHaveLength(1);
+      expect(prefabPayload.prefabs[0]).toMatchObject({ name: 'Group 01', width: expect.any(Number), height: expect.any(Number) });
+      expect(prefabPayload.prefabs[0].items).toHaveLength(2);
+      expect(values.has('pixelworld:interior-layout:rest-cabin')).toBe(false);
 
       capture.handlers().save();
-      expect(storage.setItem).toHaveBeenCalledTimes(1);
+      expect(storage.setItem).toHaveBeenCalledTimes(2);
       const persisted = JSON.parse(values.get('pixelworld:interior-layout:rest-cabin') ?? 'null');
       expect(persisted).toMatchObject({ version: 5 });
       expect(persisted.furniture.filter(({ id }: { id: string }) => selection.some((item) => item.id === id))
@@ -3138,7 +3145,7 @@ describe('InteriorCutawaySystem', () => {
         .every(({ prefabInstanceId }) => prefabInstanceId === undefined)).toBe(true);
       expect(capture.model()).toMatchObject({ selectedCount: 2, canDissolve: false });
       expect(internal.undoStore.past).toHaveLength(1);
-      expect(storage.setItem).toHaveBeenCalledTimes(1);
+      expect(storage.setItem).toHaveBeenCalledTimes(2);
 
       capture.handlers().undo();
       expect(internal.activeInterior.furniture.filter(({ id }) => selection.some((item) => item.id === id))
@@ -3163,6 +3170,25 @@ describe('InteriorCutawaySystem', () => {
       dispatchEvent: vi.fn(), prompt: vi.fn(() => 'Desk group'),
     });
     capture.handlers().toggleEdit();
+
+    const internal = cutaway as unknown as {
+      activeInterior: InteriorDefinition;
+      selectedFurnitureIds: Set<string>;
+      selectedFurnitureId?: string;
+      undoStore: { past: InteriorDefinition['furniture'][] };
+      syncOverlay(): void;
+    };
+    const selection = internal.activeInterior.furniture
+      .filter(({ supportedActions, requirementId, prefabInstanceId }) => (
+        supportedActions.length === 0 && !requirementId && !prefabInstanceId
+      )).slice(0, 2);
+    selection.forEach(({ id }) => internal.selectedFurnitureIds.add(id));
+    if (selection[0]) internal.selectedFurnitureId = selection[0].id;
+    internal.syncOverlay();
+    capture.handlers().group();
+    expect(capture.model().statusId).toBe('storageFailed');
+    expect(setItem).not.toHaveBeenCalled();
+    expect(internal.undoStore.past).toHaveLength(0);
 
     expect(() => capture.handlers().save()).not.toThrow();
     expect(capture.model().statusId).toBe('storageFailed');

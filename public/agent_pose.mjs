@@ -59,6 +59,8 @@ export function getAgentPose(agent = {}) {
   if (pixelState === 'self_healing') return { pose: 'terminal', icon: '🔧', preferredTypes: ['workbench', 'terminal', 'server'], state };
   if (pixelState === 'awaiting_input') return { pose: 'ponder', icon: '⌛', preferredTypes: ['terminal', 'desk', 'chair'], state };
   if (pixelState === 'sleeping') return { pose: 'rest', icon: '💤', preferredTypes: ['bed', 'sofa', 'chair'], state };
+  if (pixelState === 'reading_files') return { pose: 'notes', icon: '📚', preferredTypes: ['bookshelf', 'cabinet', 'desk'], state };
+  if (pixelState === 'editing_files') return { pose: 'terminal', icon: '💻', preferredTypes: ['desk', 'terminal', 'workbench'], state };
   if (pixelState === 'collaborating') return { pose: 'dispatch', icon: '💬', preferredTypes: ['portal', 'desk', 'terminal'], state };
   if (pixelState === 'invoking_skill') return { pose: 'dispatch', icon: '✨', preferredTypes: ['portal', 'terminal', 'desk'], state };
   if (pixelState === 'responding') return { pose: 'writing', icon: '✍️', preferredTypes: ['desk', 'terminal', 'table'], state };
@@ -70,7 +72,7 @@ export function getAgentPose(agent = {}) {
   if (state === 'thinking') return { pose: 'ponder', icon: '💭', preferredTypes: ['board', 'whiteboard', 'desk', 'bookshelf', 'lamp'], state };
   if (state === 'planning') return { pose: 'planning', icon: '🗺️', preferredTypes: ['board', 'whiteboard', 'table', 'desk', 'terminal'], state };
   if (state === 'working') return { pose: 'terminal', icon: '💻', preferredTypes: ['terminal', 'desk', 'workbench', 'table'], state };
-  if (state === 'idle') return { pose: 'rest', icon: '🛋️', preferredTypes: ['bed', 'sofa', 'chair', 'coffee'], state };
+  if (state === 'idle') return { pose: 'rest', icon: '🛋️', preferredTypes: ['sofa', 'chair', 'coffee', 'bed'], state };
   return { pose: 'neutral', icon: '✨', preferredTypes: ['desk', 'table'], state };
 }
 

@@ -12,6 +12,7 @@ from PIL import Image, ImageDraw
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "tmp" / "local_ui_trajectory.jpg"
+MASK_OUT = ROOT / "tmp" / "global_map_walkability_mask.png"
 LOG_OUT = ROOT / "tmp" / "pixelverse_debug_log.json"
 LATEST = ROOT / "tmp" / "latest_test_hook_route.json"
 SNAPSHOT = ROOT / "tmp" / "latest_world_snapshot.json"
@@ -31,7 +32,7 @@ import {
   roomLocalToWorld,
 } from './public/room_furniture.mjs';
 import { selectInteractionTarget } from './public/agent_pose.mjs';
-import { buildRoute, FURNITURE_BLOCKERS, routeStaysWalkable } from './public/world_motion.mjs';
+import { buildRoute, FURNITURE_BLOCKERS, isWalkable, routeStaysWalkable } from './public/world_motion.mjs';
 
 const latestPath = './tmp/latest_test_hook_route.json';
 const latest = fs.existsSync(latestPath)
@@ -105,6 +106,26 @@ const routes = agentPlans.map((plan, index) => {
   };
 });
 
+function insideVisualDoor(candidate, door) {
+  return candidate.x >= door.left
+    && candidate.x <= door.left + door.width
+    && candidate.y >= door.top
+    && candidate.y <= door.top + door.height;
+}
+
+const walkability = [];
+for (let y = 0; y < 100; y += 1) {
+  for (let x = 0; x < 100; x += 1) {
+    const candidate = { x, y };
+    walkability.push({
+      x,
+      y,
+      walkable: isWalkable(candidate),
+      door: HOUSE_DOORS.some((door) => insideVisualDoor(candidate, door)),
+    });
+  }
+}
+
 console.log(JSON.stringify({
   latest,
   rooms: ROOM_LAYOUTS,
@@ -112,6 +133,7 @@ console.log(JSON.stringify({
   doors: HOUSE_DOORS,
   props,
   furnitureBlockers: FURNITURE_BLOCKERS,
+  walkability,
   routes,
   route: routes[0],
 }));
@@ -202,6 +224,7 @@ def write_debug_log(data: dict) -> None:
             "corridors": data.get("corridors", []),
             "doors": data.get("doors", []),
             "furniture_blockers": data.get("furnitureBlockers", []),
+            "walkability_mask": str(MASK_OUT.relative_to(ROOT)),
         },
     }
     for route in [item for item in routes if item]:
@@ -248,10 +271,25 @@ def write_debug_log(data: dict) -> None:
     LOG_OUT.write_text(json.dumps(debug, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def render_walkability_mask(data: dict) -> None:
+    image = Image.new("L", (WIDTH, HEIGHT), 0)
+    draw = ImageDraw.Draw(image)
+    for sample in data.get("walkability", []):
+        x = int(sample["x"]) * SCALE
+        y = int(sample["y"]) * SCALE
+        value = 0
+        if sample.get("walkable"):
+            value = 170 if sample.get("door") else 255
+        draw.rectangle((x, y, x + SCALE - 1, y + SCALE - 1), fill=value)
+    MASK_OUT.parent.mkdir(parents=True, exist_ok=True)
+    image.save(MASK_OUT)
+
+
 def main() -> None:
     payload = subprocess.check_output(["node", "--input-type=module", "-e", NODE_CODE], cwd=ROOT, text=True)
     data = json.loads(payload)
     OUT.parent.mkdir(parents=True, exist_ok=True)
+    render_walkability_mask(data)
     write_debug_log(data)
 
     image = Image.new("RGB", (WIDTH + MARGIN * 2, HEIGHT + MARGIN * 2), (20, 24, 31))
@@ -309,7 +347,7 @@ def main() -> None:
     label(draw, (MARGIN + 575, 44), "multi-color dashed routes; green dots=interaction stand points; debug JSON beside image", fill=(215, 223, 235))
 
     image.save(OUT, quality=92)
-    print(f"{OUT}\n{LOG_OUT}")
+    print(f"{OUT}\n{LOG_OUT}\n{MASK_OUT}")
 
 
 if __name__ == "__main__":

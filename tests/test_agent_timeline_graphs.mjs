@@ -31,6 +31,19 @@ test('agent timeline panels map recent activity onto time and event lanes', () =
   assert.equal(panels[0].rows.length, 7);
 });
 
+test('timeline panel carries localized live state, room, task, connection, and age', () => {
+  const panels = buildAgentTimelinePanels({ agents: [{
+    agent: 'codex-main', name: 'Codex', role: 'main_agent', state: 'working',
+    room_key: 'tool_forge', room_label: '工具工坊', task: 'terminal', age_seconds: 3,
+    connection_status: 'connected', recent_actions: [{ time: Date.now(), type: 'tool', message: 'terminal' }],
+  }], events: [] }, getLocaleStrings('en-US'));
+  assert.equal(panels[0].stateLabel, 'Working');
+  assert.match(panels[0].roomLabel, /Tool|External/i);
+  assert.equal(panels[0].taskLabel, 'terminal');
+  assert.equal(panels[0].connectionLabel, 'Live');
+  assert.equal(panels[0].ageSeconds, 3);
+});
+
 test('agent timeline panels respect explicit live refresh timing', () => {
   const now = 1_700_000_000_000;
   const panels = buildAgentTimelinePanels({

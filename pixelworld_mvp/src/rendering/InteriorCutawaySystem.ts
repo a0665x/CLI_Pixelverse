@@ -16,10 +16,14 @@ import { agentSkinFor } from './assetManifest';
 import { agentFrameForSkin } from './agentAnimation';
 import { modernOfficeAsset, type ModernOfficeFurnitureKind } from './modernOfficeManifest';
 import {
-  catalogPage,
   MODERN_OFFICE_CATALOG,
-  type ModernOfficeCategory,
 } from './modernOfficeCatalog';
+import {
+  isModernOfficeCompositeInstanceId,
+  visibleCatalogPage,
+  visiblePrefabPage,
+  type InteriorCatalogCategory,
+} from './modernOfficeCompositeCatalog';
 import {
   InteriorCutawayDomOverlay,
   selectionCapabilities,
@@ -74,11 +78,15 @@ import {
 } from './interiorSelection';
 import {
   copyDecorativeLayout,
+  createUserGroupPrefab,
+  deletePrefab,
   isBuiltInPrefab,
   pasteDecorativeLayout,
   readAvailablePrefabs,
   readLayoutClipboard,
+  savePrefabs,
   saveLayoutClipboard,
+  upsertPrefab,
 } from './interiorPrefabStore';
 import { officeLayoutIssues, placeOfficePrefab } from './prefabGeometry';
 import {
@@ -401,7 +409,7 @@ export class InteriorCutawaySystem {
   private furnitureDragCleanup: (() => void) | undefined;
   private contextMenuPointer: GridPoint | undefined;
   private contextMenuSuppressionCleanup: (() => void) | undefined;
-  private catalogCategory: ModernOfficeCategory = 'workstations';
+  private catalogCategory: InteriorCatalogCategory = 'workstations';
   private catalogPageIndex = 0;
   private readonly domOverlay: InteriorCutawayDomOverlay;
   private locale: VillageLocale = 'zh-TW';
@@ -633,7 +641,14 @@ export class InteriorCutawaySystem {
         if (this.activeInterior) this.renderFurniture(this.activeInterior, layout);
       },
       page: (delta) => {
-        const total = catalogPage(this.catalogCategory, this.catalogPageIndex, 12).totalPages;
+        const requiredMissing = this.activeInterior
+          ? requiredHookInventory(this.activeDefinition ?? this.activeInterior, this.activeInterior.furniture)
+            .filter(({ placed }) => !placed).length
+          : 0;
+        const capacity = Math.max(1, 12 - Math.min(12, requiredMissing));
+        const total = this.catalogCategory === 'grouped'
+          ? visiblePrefabPage(this.prefabs, this.catalogCategory, this.catalogPageIndex, capacity).totalPages
+          : visibleCatalogPage(this.catalogCategory, this.catalogPageIndex, 12).totalPages;
         this.catalogPageIndex = Math.max(0, Math.min(total - 1, this.catalogPageIndex + delta));
         if (this.activeInterior) this.renderFurniture(this.activeInterior, layout);
       },
@@ -1296,7 +1311,7 @@ export class InteriorCutawaySystem {
     this.paletteLayer = palette;
     root.add(palette);
     const rootPointForPointer = (pointer: unknown): GridPoint | undefined => this.pointerScreenPoint(pointer);
-    const page = catalogPage(this.catalogCategory, this.catalogPageIndex, 12);
+    const page = visibleCatalogPage(this.catalogCategory, this.catalogPageIndex, 12);
     const required = requiredHookInventory(this.activeDefinition ?? interior, interior.furniture);
     const catalogBounds = this.reservedEditorLayout(layout).catalog;
     const slotSpacing = Math.min(34, (catalogBounds.width - 30) / 11);
@@ -1315,7 +1330,11 @@ export class InteriorCutawaySystem {
       palette.add(item);
     });
     const prefabOffset = Math.min(12, missingRequired.length);
-    this.prefabs.slice(0, Math.max(0, 12 - prefabOffset)).forEach((prefab, index) => {
+    const prefabCapacity = Math.max(1, 12 - prefabOffset);
+    const visiblePrefabs = visiblePrefabPage(
+      this.prefabs, this.catalogCategory, this.catalogPageIndex, prefabCapacity,
+    ).items;
+    visiblePrefabs.forEach((prefab, index) => {
       const prefabName = prefabDisplayName(prefab, this.locale);
       const points = prefab.items.map((part) => {
         const { center } = furnitureRenderGeometry(part);
@@ -1352,6 +1371,36 @@ export class InteriorCutawaySystem {
       });
       item.setInteractive({ useHandCursor: true, draggable: true });
       this.scene.input.setDraggable(item);
+      if (prefab.source === 'user') {
+        const remove = this.scene.add.text(12, -13, '×', {
+          fontFamily: 'sans-serif', fontSize: '11px', color: '#ffffff', backgroundColor: '#b93636ee',
+          padding: { x: 3, y: 1 },
+        }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+        remove.setName?.(`delete-prefab:${prefab.id}`);
+        remove.on('pointerdown', (_pointer: unknown, _localX: number, _localY: number, event: { stopPropagation?(): void } | undefined) => {
+          event?.stopPropagation?.();
+          if (this.prefabStorageReadFailed) {
+            this.setStatus('storageFailed');
+            this.syncOverlay();
+            return;
+          }
+          const users = this.prefabs.filter(({ source }) => source === 'user');
+          try {
+            savePrefabs(deletePrefab(users, prefab.id));
+            const refreshed = readAvailablePrefabs();
+            if (refreshed.storageRead === 'failed') throw new Error('Prefab storage unavailable');
+            this.prefabs = refreshed.value;
+            const remaining = this.prefabs.filter(({ source }) => source === 'user').length;
+            this.catalogPageIndex = Math.min(this.catalogPageIndex, Math.max(0, Math.ceil(remaining / 12) - 1));
+            this.setStatus('editing');
+          } catch {
+            this.prefabStorageReadFailed = true;
+            this.setStatus('storageFailed');
+          }
+          this.renderFurniture(interior, layout);
+        });
+        item.add(remove);
+      }
       item.on('pointerover', () => nameLabel.setVisible(true));
       item.on('pointerout', () => nameLabel.setVisible(false));
       let ghosts: Phaser.GameObjects.Image[] = [];
@@ -1627,7 +1676,7 @@ export class InteriorCutawaySystem {
   }
 
   private overlayModel() {
-    const page = catalogPage(this.catalogCategory, this.catalogPageIndex, 12);
+    const page = visibleCatalogPage(this.catalogCategory, this.catalogPageIndex, 12);
     const selected = this.activeInterior?.furniture.find(({ id }) => id === this.selectedFurnitureId);
     const selection = this.activeInterior?.furniture.filter(({ id }) => this.selectedFurnitureIds.has(id)) ?? [];
     const catalog = selected ? resolvedFurnitureAsset(selected) : undefined;
@@ -1656,6 +1705,14 @@ export class InteriorCutawaySystem {
     const activeMissing = this.missingFeedbackActive()
       ? this.currentAssignments.find(({ missingSemantic }) => Boolean(missingSemantic))
       : undefined;
+    const missingRequiredCount = this.activeInterior
+      ? requiredHookInventory(this.activeDefinition ?? this.activeInterior, this.activeInterior.furniture)
+        .filter(({ placed }) => !placed).length
+      : 0;
+    const groupedCapacity = Math.max(1, 12 - Math.min(12, missingRequiredCount));
+    const groupedTotalPages = visiblePrefabPage(
+      this.prefabs, 'grouped', this.catalogPageIndex, groupedCapacity,
+    ).totalPages;
     return {
       titleId: this.activeInterior?.id ?? 'rest-cabin',
       title: this.activeInterior?.label ?? '', ...this.status,
@@ -1672,7 +1729,9 @@ export class InteriorCutawaySystem {
         },
       } } : {}),
       ...(activeMissing?.missingSemantic ? { missingSemantic: activeMissing.missingSemantic } : {}),
-      category: this.catalogCategory, page: page.page, totalPages: page.totalPages,
+      category: this.catalogCategory,
+      page: this.catalogCategory === 'grouped' ? Math.min(this.catalogPageIndex, groupedTotalPages - 1) : page.page,
+      totalPages: this.catalogCategory === 'grouped' ? groupedTotalPages : page.totalPages,
       requiredPlaced: this.activeInterior ? requiredHookInventory(this.activeDefinition ?? this.activeInterior, this.activeInterior.furniture).filter(({ placed }) => placed).length : 0,
       requiredTotal: this.activeInterior ? requiredHookInventory(this.activeDefinition ?? this.activeInterior, this.activeInterior.furniture).length : 0,
       prefabCount: this.prefabs.length,
@@ -1680,7 +1739,9 @@ export class InteriorCutawaySystem {
       saveBlocked: this.layoutStorageReadFailed,
       selectedCount: this.selectedFurnitureIds.size,
       ...capabilities,
-      canDissolve: Boolean(selectedInstanceId) && selection.every(({ prefabInstanceId }) => prefabInstanceId === selectedInstanceId),
+      canDissolve: Boolean(selectedInstanceId)
+        && !isModernOfficeCompositeInstanceId(selectedInstanceId)
+        && selection.every(({ prefabInstanceId }) => prefabInstanceId === selectedInstanceId),
       canUndo: this.undoStore.canUndo,
       templatePreviewing: Boolean(this.templatePreview),
       templateValid: Boolean(this.templatePreview) && this.templateDiagnostics.length === 0,
@@ -1766,7 +1827,8 @@ export class InteriorCutawaySystem {
   private dissolveSelectedGroup(interior: InteriorDefinition, layout: CutawayLayout): void {
     const selection = interior.furniture.filter(({ id }) => this.selectedFurnitureIds.has(id));
     const instanceId = selection[0]?.prefabInstanceId;
-    if (!instanceId || !selection.every(({ prefabInstanceId }) => prefabInstanceId === instanceId)) return;
+    if (!instanceId || isModernOfficeCompositeInstanceId(instanceId)
+      || !selection.every(({ prefabInstanceId }) => prefabInstanceId === instanceId)) return;
     this.commitFurnitureMutation(interior, dissolvePrefabInstance(interior.furniture, instanceId));
     this.setStatus('groupDissolved');
     this.renderFurniture(interior, layout);
@@ -2006,16 +2068,47 @@ export class InteriorCutawaySystem {
 
   private groupSelectedDraft(interior: InteriorDefinition, layout: CutawayLayout): void {
     if (this.selectedFurnitureIds.size < 2) return;
+    if (this.prefabStorageReadFailed) {
+      this.setStatus('storageFailed');
+      this.syncOverlay();
+      return;
+    }
+    const selected = interior.furniture.filter(({ id }) => this.selectedFurnitureIds.has(id));
+    const reusable = selected.filter(({ supportedActions, requirementId, prefabInstanceId }) => (
+      supportedActions.length === 0 && !requirementId && !isModernOfficeCompositeInstanceId(prefabInstanceId)
+    ));
+    if (reusable.length < 2) {
+      this.setStatus('prefabNeedsTwo');
+      this.syncOverlay();
+      return;
+    }
     const usedInstanceIds = new Set(interior.furniture
       .map(({ prefabInstanceId }) => prefabInstanceId)
       .filter((id): id is string => Boolean(id)));
     let sequence = 1;
     while (usedInstanceIds.has(`draft-group-${sequence}`)) sequence += 1;
     const instanceId = `draft-group-${sequence}`;
+    const reusableIds = new Set(reusable.map(({ id }) => id));
     const grouped = cloneFurnitureLayout(interior.furniture).map((item) => (
-      this.selectedFurnitureIds.has(item.id) ? { ...item, prefabInstanceId: instanceId } : item
+      reusableIds.has(item.id) ? { ...item, prefabInstanceId: instanceId } : item
     ));
     this.commitFurnitureMutation(interior, grouped);
+    this.selectedFurnitureIds.clear();
+    reusableIds.forEach((id) => this.selectedFurnitureIds.add(id));
+    this.selectedFurnitureId = reusable[0]?.id;
+    const users = this.prefabs.filter(({ source }) => source === 'user');
+    const prefab = createUserGroupPrefab(reusable, users);
+    const name = prefab.name;
+    try {
+      savePrefabs(upsertPrefab(users, prefab));
+      const refreshed = readAvailablePrefabs();
+      if (refreshed.storageRead === 'failed') throw new Error('Prefab storage unavailable');
+      this.prefabs = refreshed.value;
+      this.setStatus('prefabCreated', { name });
+    } catch {
+      this.prefabStorageReadFailed = true;
+      this.setStatus('storageFailed');
+    }
     this.renderFurniture(interior, layout);
   }
 

@@ -24,13 +24,12 @@ function mountViewportControls(viewport: VillageViewportController): void {
   const controls = document.createElement('nav');
   controls.id = 'village-zoom-controls';
   controls.setAttribute('aria-label', '村莊縮放控制');
-  const embedded = new URLSearchParams(window.location.search).get('embed') === '1';
   controls.innerHTML = `
     <button type="button" data-zoom="out" aria-label="縮小村莊">−</button>
     <button type="button" data-zoom="fit" aria-label="完整顯示村莊"><span>Fit</span><output>100%</output></button>
     <button type="button" data-zoom="in" aria-label="放大村莊">+</button>
   `;
-  viewport.restore(readVillageCamera(sessionStorage, embedded ? 'cover' : 'fit'));
+  viewport.restore(readVillageCamera(sessionStorage, 'fit'));
   const output = controls.querySelector<HTMLOutputElement>('output');
   const localizeControls = () => {
     const copy = villageCopy(activeLocale).controls;

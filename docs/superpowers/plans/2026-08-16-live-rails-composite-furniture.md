@@ -330,6 +330,43 @@ git commit -m "feat: persist reusable furniture groups"
 export const CONTEXT_MENU_SIZE = Object.freeze({ width: 152, height: 92 });
 ```
 
+---
+
+### Task 5: Make Startup and Project Hooks Architecture-Portable
+
+**Files:**
+- Modify: `run.sh`
+- Modify: `docker-compose.yml`
+- Modify: `Dockerfile`
+- Modify: `README.md`
+- Create: `tests/test_run_architecture.py`
+- Modify: `tests/test_docker_release_integrity.py`
+
+**Interfaces:**
+- Produces: `./run.sh platform`, which reports normalized host architecture and the Docker platform used for the build.
+- Supports: native `linux/amd64` for `x86_64`/`amd64` hosts and native `linux/arm64` for `aarch64`/`arm64` hosts, with `PIXELVERSE_DOCKER_PLATFORM` as an explicit override.
+- Produces: project-local Codex hooks that invoke Python through `/usr/bin/env python3`, avoiding architecture- and distribution-specific interpreter paths.
+
+- [ ] **Step 1: Write failing architecture and hook portability tests**
+
+Cover normalized x86_64 and aarch64 output, unsupported architecture failure, explicit platform override, Compose platform wiring, OCI architecture labels, and generated hook commands that avoid `/usr/bin/python3`.
+
+- [ ] **Step 2: Run RED tests**
+
+Run `pytest -q tests/test_run_architecture.py tests/test_docker_release_integrity.py` and confirm the new contracts fail for missing platform detection and the hard-coded hook interpreter.
+
+- [ ] **Step 3: Implement native platform detection and portable hooks**
+
+Keep Docker's multi-architecture base images and make the selected native platform explicit in the Compose environment. Reject unsupported machines before build with actionable guidance. Preserve the override for emulation/cross-build users.
+
+- [ ] **Step 4: Document startup and cross-project connection**
+
+Put one concise amd64/arm64 quick-start and one other-project Codex hook flow near the top of `README.md`, including verification commands and the difference between process presence and project tool/subagent events.
+
+- [ ] **Step 5: Verify shell, tests, image metadata, and live service**
+
+Run `bash -n run.sh`, the focused tests, the full project suites, build the image, verify its OCI revision/architecture label and read-only private mount, then start the service and smoke-test health plus the browser UI.
+
 - [ ] **Step 1: Write RED geometry and toggle tests**
 
 Assert the menu is exactly two columns/two rows, outer geometry never exceeds 152 × 92 CSS px, every edge/corner placement remains inside the active room, a second right-click closes it, and left-clicking empty room closes it without clearing selection.

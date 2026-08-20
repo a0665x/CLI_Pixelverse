@@ -66,4 +66,30 @@ describe('LiveWorldClient payload parsing', () => {
       vi.unstubAllGlobals();
     }
   });
+
+  it('uses the normalized parent feed exclusively while embedded', () => {
+    const parent = { postMessage: vi.fn() };
+    const host = {
+      location: { origin: 'https://pixelverse.test' }, parent,
+      addEventListener: vi.fn(), removeEventListener: vi.fn(),
+      setInterval: vi.fn(() => 1), clearInterval: vi.fn(),
+    };
+    const fetchSnapshot = vi.fn(async () => ({ ok: true, json: async () => snapshot }));
+    const EventSource = vi.fn();
+    vi.stubGlobal('window', host);
+    vi.stubGlobal('fetch', fetchSnapshot);
+    vi.stubGlobal('EventSource', EventSource);
+    try {
+      new LiveWorldClient(vi.fn()).start();
+      expect(parent.postMessage).toHaveBeenCalledWith(
+        { type: 'pixelverse.world.ready' },
+        host.location.origin,
+      );
+      expect(fetchSnapshot).not.toHaveBeenCalled();
+      expect(EventSource).not.toHaveBeenCalled();
+      expect(host.setInterval).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });

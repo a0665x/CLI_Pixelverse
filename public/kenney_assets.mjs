@@ -29,6 +29,8 @@ const AGENT_SETS = {
   },
 };
 
+const SUBAGENT_VARIANTS = [AGENT_SETS.subagent, AGENT_SETS.main_agent, AGENT_SETS.branch_session];
+
 const ROOM_THEMES = {
   think_lab: {
     floorTile: tile(90),
@@ -315,8 +317,10 @@ export function getKenneyPropSprite(type = 'desk') {
   return PROP_LIBRARY[type] || null;
 }
 
-export function getKenneyAgentSprite({ role = 'main_agent', state = 'idle', frame = 0, facing = 'right' } = {}) {
-  const roleSet = AGENT_SETS[role] || AGENT_SETS.main_agent;
+export function getKenneyAgentSprite({ role = 'main_agent', state = 'idle', frame = 0, facing = 'right', color = '' } = {}) {
+  const colorSeed = Number.parseInt(String(color).replace('#', '').slice(0, 2), 16);
+  const variant = role === 'subagent' && Number.isFinite(colorSeed) ? colorSeed % SUBAGENT_VARIANTS.length : 0;
+  const roleSet = role === 'subagent' ? SUBAGENT_VARIANTS[variant] : (AGENT_SETS[role] || AGENT_SETS.main_agent);
   const directionIndex = DIRECTION_INDEX[facing] ?? DIRECTION_INDEX.right;
   const walking = state === 'working' || state === 'planning' || state === 'thinking';
   const useActiveFrame = walking && Math.abs(frame) % 2 === 1;
@@ -325,6 +329,6 @@ export function getKenneyAgentSprite({ role = 'main_agent', state = 'idle', fram
   return {
     src,
     flipX: false,
-    pixelClass: `kenney-${role} facing-${facing}`,
+    pixelClass: `kenney-${role} variant-${variant} facing-${facing}`,
   };
 }
