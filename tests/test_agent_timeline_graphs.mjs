@@ -115,3 +115,16 @@ test('heartbeat density uses a fixed pixel beat width independent of timeline wi
   assert.equal(heartbeatBeatWidthPx(active), 16);
   assert.match(buildHeartbeatPath(active, 1_700_000_000_000, 1000, 16), /L 16,/);
 });
+
+test('timeline points preserve semantic event identity and drill-down targets', () => {
+  const now = 1_700_000_000_000;
+  const panels = buildAgentTimelinePanels({
+    server_time_ms: now,
+    agents: [{ agent: 'main', role: 'main_agent', state: 'working', room_key: 'tool_forge' }],
+    events: [{ id: 'event-1', agent: 'main', room_key: 'tool_forge', time: now - 100, kind: 'tool.started' }],
+  }, getLocaleStrings('en-US'), { nowMs: now });
+
+  assert.equal(panels[0].points[0].id, 'event-1');
+  assert.equal(panels[0].points[0].agentId, 'main');
+  assert.equal(panels[0].points[0].buildingId, 'tool_forge');
+});

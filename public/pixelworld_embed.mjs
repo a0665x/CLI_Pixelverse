@@ -10,6 +10,29 @@ export function publishPixelworldLocale(frame, locale, sequence = Date.now(), or
   return true;
 }
 
+export function commandDeckFocusMessage(selection, sequence) {
+  return { type: 'pixelverse.command.focus', selection, sequence };
+}
+
+export function publishPixelworldFocus(frame, selection, sequence = Date.now(), origin = window.location.origin) {
+  if (!frame?.contentWindow) return false;
+  frame.contentWindow.postMessage(commandDeckFocusMessage(selection, sequence), origin);
+  return true;
+}
+
+export function isCommandDeckFocusMessage(value) {
+  return Boolean(
+    value
+    && typeof value === 'object'
+    && value.type === 'pixelverse.command.focus'
+    && value.selection
+    && typeof value.selection === 'object'
+    && ['agent', 'building', 'hook', 'event'].includes(value.selection.kind)
+    && String(value.selection.id || '')
+    && Number.isFinite(Number(value.sequence)),
+  );
+}
+
 export function isPixelworldReadyMessage(value) {
   return Boolean(value && typeof value === 'object' && value.type === 'pixelverse.world.ready');
 }
@@ -122,10 +145,14 @@ export function createPixelworldBridge({
   origin = globalThis.location?.origin || '',
   now = () => Date.now(),
   onCutawayStateChange = () => {},
+  onFocus = () => {},
 } = {}) {
   let currentLocale = null;
   let currentSnapshot = null;
   let snapshotSequence = null;
+  let currentFocus = null;
+  let focusSequence = -Infinity;
+  let receivedFocusSequence = -Infinity;
 
   const replay = () => {
     let published = false;
@@ -140,6 +167,9 @@ export function createPixelworldBridge({
         origin,
       ) || published;
     }
+    if (currentFocus) {
+      published = publishPixelworldFocus(frame, currentFocus, focusSequence, origin) || published;
+    }
     return published;
   };
 
@@ -153,6 +183,13 @@ export function createPixelworldBridge({
       snapshotSequence = sequence;
       return publishPixelworldSnapshot(frame, snapshot, sequence, origin);
     },
+    setFocus(selection, sequence = now()) {
+      const nextSequence = Number(sequence);
+      if (!Number.isFinite(nextSequence) || nextSequence <= focusSequence) return false;
+      currentFocus = selection;
+      focusSequence = nextSequence;
+      return publishPixelworldFocus(frame, selection, nextSequence, origin);
+    },
     handleLoad() {
       onCutawayStateChange(false);
       return replay();
@@ -165,6 +202,13 @@ export function createPixelworldBridge({
       }
       if (isPixelworldCutawayStateMessage(event.data)) {
         onCutawayStateChange(event.data.open);
+        return true;
+      }
+      if (isCommandDeckFocusMessage(event.data)) {
+        const nextSequence = Number(event.data.sequence);
+        if (nextSequence <= receivedFocusSequence) return false;
+        receivedFocusSequence = nextSequence;
+        onFocus(event.data.selection);
         return true;
       }
       return false;

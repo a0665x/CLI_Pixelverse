@@ -65,6 +65,9 @@ function lanePoints(events = [], nowMs, windowMs, locale) {
     const time = toTime(event.time);
     const ratio = Math.max(0, Math.min(1, (time - (nowMs - windowMs)) / windowMs));
     return {
+      id: String(event.id ?? event.event_id ?? event.eventId ?? `${eventAgentId(event) || 'event'}:${time}`),
+      agentId: String(eventAgentId(event) || ''),
+      buildingId: String(event.buildingId || event.room_key || event.payload?.room_key || ''),
       category,
       row: row.index,
       rowLabel: row.label,

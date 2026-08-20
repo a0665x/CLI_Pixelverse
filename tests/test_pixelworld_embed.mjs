@@ -23,6 +23,50 @@ test('dashboard publishes locale updates to Pixelworld', () => {
   assert.deepEqual(sent, [[{ type: 'pixelverse.locale.update', locale: 'en-US', sequence: 22 }, 'http://localhost']]);
 });
 
+test('command deck focus messages preserve selection and monotonic sequence values', () => {
+  assert.equal(typeof pixelworldEmbed.commandDeckFocusMessage, 'function');
+  assert.deepEqual(pixelworldEmbed.commandDeckFocusMessage({ kind: 'agent', id: 'main' }, 12), {
+    type: 'pixelverse.command.focus',
+    selection: { kind: 'agent', id: 'main' },
+    sequence: 12,
+  });
+
+  const sent = [];
+  const bridge = pixelworldEmbed.createPixelworldBridge({
+    frame: { contentWindow: { postMessage: (...args) => sent.push(args) } },
+    origin: 'http://localhost',
+  });
+  assert.equal(bridge.setFocus({ kind: 'agent', id: 'main' }, 12), true);
+  assert.equal(bridge.setFocus({ kind: 'building', id: 'maker' }, 12), false);
+  assert.equal(bridge.setFocus({ kind: 'building', id: 'maker' }, 13), true);
+  assert.deepEqual(sent.map(([message]) => message), [
+    pixelworldEmbed.commandDeckFocusMessage({ kind: 'agent', id: 'main' }, 12),
+    pixelworldEmbed.commandDeckFocusMessage({ kind: 'building', id: 'maker' }, 13),
+  ]);
+  assert.ok(sent.every(([, targetOrigin]) => targetOrigin === 'http://localhost'));
+});
+
+test('focus bridge rejects foreign-origin and stale iframe focus messages', () => {
+  const contentWindow = {};
+  const selections = [];
+  const bridge = pixelworldEmbed.createPixelworldBridge({
+    frame: { contentWindow },
+    origin: 'http://localhost',
+    onFocus: (selection) => selections.push(selection),
+  });
+  const event = (sequence, origin = 'http://localhost') => ({
+    data: pixelworldEmbed.commandDeckFocusMessage({ kind: 'agent', id: 'main' }, sequence),
+    origin,
+    source: contentWindow,
+  });
+
+  assert.equal(bridge.handleMessage(event(4)), true);
+  assert.equal(bridge.handleMessage(event(4)), false);
+  assert.equal(bridge.handleMessage(event(3)), false);
+  assert.equal(bridge.handleMessage(event(5, 'https://foreign.test')), false);
+  assert.deepEqual(selections, [{ kind: 'agent', id: 'main' }]);
+});
+
 test('publisher tolerates an iframe that has not mounted yet', () => {
   assert.equal(publishPixelworldSnapshot(null, { agents: [] }, 1, 'http://localhost'), false);
 });

@@ -114,6 +114,8 @@ import {
 } from './dashboard_disclosure.mjs';
 import { createLiveEcgController } from './live_ecg_controller.mjs';
 import { createCommandDeckLayoutController } from './command_deck_layout.mjs';
+import { buildCommandDeckModel, resolveCommandSelection } from './command_deck_model.mjs';
+import { createMissionTraceController } from './mission_trace.mjs';
 
 const ROOM_ACTIVITY_TARGETS = {
   think_lab: {
@@ -196,6 +198,7 @@ const dom = {
   dashboardHelpButton: document.getElementById('dashboard-help-btn'),
   eventSummary: document.getElementById('event-summary'),
   events: document.getElementById('events'),
+  missionTraceLive: document.getElementById('mission-trace-live'),
   exposureLabel: document.getElementById('exposure-label'),
   exposureSelect: document.getElementById('exposure-select'),
   exposureUrl: document.getElementById('exposure-url'),
@@ -264,6 +267,10 @@ const dom = {
 
 const agentViews = new Map();
 let currentSnapshot = null;
+let currentCommandDeckModel = null;
+let currentCommandSelection = null;
+let currentMissionTrace = null;
+let commandFocusSequence = 0;
 let currentExposure = null;
 let selectedAgentId = null;
 let pollTimer = null;
@@ -368,6 +375,7 @@ const syncCutawayStatusRail = () => {
 const pixelworldBridge = createPixelworldBridge({
   frame: dom.pixelworldFrame,
   origin: window.location.origin,
+  onFocus: (selection) => selectCommandDeck(selection, { publish: false }),
   onCutawayStateChange: (open) => {
     if (open) {
       cancelDashboardFocusRestore?.();
@@ -385,6 +393,17 @@ const pixelworldBridge = createPixelworldBridge({
       if (trigger) scheduleDashboardCardFocus(trigger);
     }
   },
+});
+const missionTraceController = createMissionTraceController({
+  now: () => Date.now(),
+  requestAnimationFrame: (callback) => window.requestAnimationFrame(callback),
+  cancelAnimationFrame: (handle) => window.cancelAnimationFrame(handle),
+  setInterval: (callback, delay) => window.setInterval(callback, delay),
+  clearInterval: (handle) => window.clearInterval(handle),
+  reducedMotion: window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches === true,
+  windowMs: 20 * 60 * 1000,
+  maxEvents: 240,
+  onRender: renderMissionTrace,
 });
 pixelworldBridge.setLocale(currentLocale);
 const detachPixelworldBridge = attachPixelworldBridge({
@@ -405,6 +424,7 @@ attachPageLifecycleCleanup({ pageTarget: window, cleanup: () => {
   detachPixelworldBridge();
   resetCutawayFocusHandoff();
   liveEcgController.stop();
+  missionTraceController.stop();
   commandDeckLayoutController.destroy();
 } });
 window.addEventListener('resize', () => {
@@ -954,12 +974,6 @@ function restartTimelineTimer() {
     clearInterval(timelineTimer);
     timelineTimer = null;
   }
-  const interval = Math.max(100, timelineRefreshMs || DEFAULT_TIMELINE_REFRESH_MS);
-  timelineTimer = window.setInterval(() => {
-    if (!currentSnapshot) return;
-    const nowMs = Date.now();
-    renderTimelinePanels(buildDashboardLiveSnapshot(currentSnapshot, nowMs), { nowMs, windowMs: 20 * 60 * 1000 });
-  }, interval);
 }
 
 function startLiveUiTicker() {
@@ -1343,6 +1357,8 @@ function renderDistricts() {
     district.style.top = `${layoutRect.top}%`;
     district.style.width = `${layoutRect.width}%`;
     district.style.height = `${layoutRect.height}%`;
+    district.tabIndex = 0;
+    district.setAttribute('role', 'button');
     if (Array.isArray(layoutRect.polygon) && layoutRect.polygon.length >= 3) {
       const points = layoutRect.polygon.map((point) => `${((point.x - layoutRect.left) / layoutRect.width) * 100}% ${((point.y - layoutRect.top) / layoutRect.height) * 100}%`);
       district.style.clipPath = `polygon(${points.join(', ')})`;
@@ -1649,7 +1665,7 @@ function renderInspectorAgentSelect(agents = []) {
   dom.inspectorAgentSelect.hidden = !agents.length;
   if (selectedAgentId && agents.some((agent) => agent.agent === selectedAgentId)) {
     dom.inspectorAgentSelect.value = selectedAgentId;
-  } else if (agents[0]) {
+  } else if (agents[0] && !currentCommandSelection) {
     selectedAgentId = agents[0].agent;
     dom.inspectorAgentSelect.value = selectedAgentId;
   }
@@ -1679,6 +1695,8 @@ function openAgentDialog(agent) {
 function createAgentElement(agent) {
   const el = document.createElement('div');
   el.className = 'agent';
+  el.tabIndex = 0;
+  el.setAttribute('role', 'button');
   el.dataset.agentId = agent.agent;
   el.innerHTML = `
     <div class="agent-speech"></div>
@@ -1700,14 +1718,18 @@ function createAgentElement(agent) {
   const openDetail = (event) => {
     event.stopPropagation();
     const current = agentViews.get(agent.agent)?.data || agent;
+    selectCommandDeck({ kind: 'agent', id: agent.agent });
     openAgentDialog(current);
   };
   el.querySelector('.agent-speech')?.addEventListener('click', openDetail);
   el.querySelector('.event-chip')?.addEventListener('click', openDetail);
   el.addEventListener('click', () => {
-    selectedAgentId = agent.agent;
-    repaintAgents();
-    renderInspector(agentViews.get(agent.agent)?.data || agent);
+    selectCommandDeck({ kind: 'agent', id: agent.agent });
+  });
+  el.addEventListener('keydown', (event) => {
+    if (!['Enter', ' '].includes(event.key)) return;
+    event.preventDefault();
+    selectCommandDeck({ kind: 'agent', id: agent.agent });
   });
   dom.agentsLayer.appendChild(el);
   return el;
@@ -2111,6 +2133,115 @@ function showFurnitureToast(kind = 'info', title = '', body = '') {
   }, 2600);
 }
 
+const missionCategoryColor = (category) => ({
+  reasoning: '#a78bfa',
+  tool: '#60a5fa',
+  subagent: '#8b5cf6',
+  session: '#22c55e',
+  status: '#fbbf24',
+  message: '#f472b6',
+  completion: '#4ade80',
+})[category] || '#fbbf24';
+
+function createMissionLane(lane) {
+  const article = document.createElement('article');
+  article.className = 'mission-trace-lane';
+  article.dataset.missionLane = lane.agentId;
+  const header = document.createElement('header');
+  const focus = document.createElement('button');
+  focus.type = 'button';
+  focus.className = 'mission-lane-agent';
+  focus.dataset.selectionKind = 'agent';
+  focus.dataset.selectionId = lane.agentId;
+  const state = document.createElement('span');
+  state.className = 'mission-lane-state';
+  header.append(focus, state);
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('class', 'mission-lane-track');
+  svg.setAttribute('viewBox', '0 0 100 70');
+  svg.setAttribute('preserveAspectRatio', 'none');
+  svg.setAttribute('role', 'group');
+  for (let index = 0; index < 7; index += 1) {
+    const line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    const y = (index + 0.5) * 10;
+    line.setAttribute('class', 'mission-lane-grid');
+    line.setAttribute('d', `M 0 ${y} L 100 ${y}`);
+    svg.append(line);
+  }
+  const events = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+  events.setAttribute('class', 'mission-lane-events');
+  svg.append(events);
+  article.append(header, svg);
+  return article;
+}
+
+function reconcileMissionLane(article, lane) {
+  const agent = lane.agent || {};
+  const focus = article.querySelector('.mission-lane-agent');
+  const state = article.querySelector('.mission-lane-state');
+  focus.textContent = agent.name || agent.agent || lane.agentId;
+  state.textContent = `${stateText(agent.state || 'idle')} · ${getRoomCopy(agent.buildingId || agent.room_key, currentLocale).name || agent.buildingId || agent.room_key || ''}`;
+  const group = article.querySelector('.mission-lane-events');
+  const wanted = new Set(lane.events.map(({ id }) => id));
+  group.querySelectorAll('[data-event-id]').forEach((node) => {
+    if (!wanted.has(node.dataset.eventId)) node.remove();
+  });
+  lane.events.forEach((item) => {
+    let node = Array.from(group.querySelectorAll('[data-event-id]')).find((candidate) => candidate.dataset.eventId === item.id);
+    if (!node) {
+      node = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      node.dataset.eventId = item.id;
+      node.dataset.selectionKind = 'event';
+      node.dataset.selectionId = item.id;
+      node.setAttribute('class', 'mission-event-node');
+      node.setAttribute('cx', '0');
+      node.setAttribute('r', '3.2');
+      node.setAttribute('tabindex', '0');
+      node.setAttribute('role', 'button');
+      const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+      node.append(title);
+      group.append(node);
+    }
+    node.setAttribute('cy', String((item.categoryIndex + 0.5) * 10));
+    node.setAttribute('fill', missionCategoryColor(item.category));
+    node.setAttribute('aria-label', `${item.category}: ${item.summary || item.category}`);
+    node.querySelector('title').textContent = item.summary || item.category;
+  });
+}
+
+function renderMissionTrace(trace, { structureChanged = false } = {}) {
+  if (!dom.events || !dom.eventSummary) return;
+  currentMissionTrace = trace;
+  dom.eventSummary.textContent = `${trace.live ? 'Live' : 'Paused'} · ${trace.lanes.length} lanes`;
+  if (dom.missionTraceLive) {
+    dom.missionTraceLive.hidden = trace.live;
+    dom.missionTraceLive.setAttribute('aria-pressed', String(trace.live));
+  }
+  if (structureChanged) {
+    const wanted = new Set(trace.lanes.map(({ agentId }) => agentId));
+    dom.events.querySelectorAll('[data-mission-lane]').forEach((article) => {
+      if (!wanted.has(article.dataset.missionLane)) article.remove();
+    });
+    trace.lanes.forEach((lane) => {
+      let article = Array.from(dom.events.querySelectorAll('[data-mission-lane]')).find((candidate) => candidate.dataset.missionLane === lane.agentId);
+      if (!article) article = createMissionLane(lane);
+      reconcileMissionLane(article, lane);
+      dom.events.append(article);
+    });
+  }
+  trace.lanes.forEach((lane) => {
+    const article = Array.from(dom.events.querySelectorAll('[data-mission-lane]')).find((candidate) => candidate.dataset.missionLane === lane.agentId);
+    if (!article) return;
+    article.classList.toggle('selected', currentCommandSelection?.kind === 'agent' && currentCommandSelection.id === lane.agentId);
+    lane.events.forEach((item) => {
+      const node = Array.from(article.querySelectorAll('[data-event-id]')).find((candidate) => candidate.dataset.eventId === item.id);
+      if (!node) return;
+      node.setAttribute('transform', `translate(${item.xPct} 0)`);
+      node.classList.toggle('selected', item.selected);
+    });
+  });
+}
+
 function renderTimelineSvg(panel) {
   const rowHeight = 98 / Math.max(1, panel.rows.length);
   const gridLines = panel.rows.map((row) => {
@@ -2211,7 +2342,8 @@ function renderAgents(snapshot) {
   });
 
   renderInspectorAgentSelect(agents);
-  renderInspector(agents.find((item) => item.agent === selectedAgentId) || agents[0]);
+  const resolvedSelection = resolveCurrentCommandSelection(currentCommandSelection);
+  renderInspector(resolvedSelection?.agent || agents.find((item) => item.agent === selectedAgentId) || (!currentCommandSelection ? agents[0] : null));
   if (dashboardDisclosure.activeCard === 'agents') renderDashboardCardContent();
   if (activeDialogAgentId) {
     const active = agents.find((item) => item.agent === activeDialogAgentId);
@@ -2220,8 +2352,72 @@ function renderAgents(snapshot) {
   }
 }
 
+function applyCommandSelectionStyling(resolved = null) {
+  const agentId = resolved?.agent?.id || resolved?.agent?.agent || '';
+  const buildingId = resolved?.buildingId || resolved?.building?.id || '';
+  const hookId = resolved?.hook?.id || '';
+  agentViews.forEach((view, id) => view.el.classList.toggle('selected', id === agentId));
+  document.querySelectorAll('.district[data-room]').forEach((district) => district.classList.toggle('command-selected', district.dataset.room === buildingId));
+  dom.agentLiveList?.querySelectorAll('[data-selection-kind="agent"]').forEach((row) => row.classList.toggle('selected', row.dataset.selectionId === agentId));
+  dom.hookLiveChannels?.querySelectorAll('[data-selection-kind="hook"]').forEach((row) => row.classList.toggle('selected', row.dataset.selectionId === hookId));
+}
+
+function resolveCurrentCommandSelection(selection) {
+  if (!currentCommandDeckModel || !selection) return null;
+  const normalized = { kind: selection.kind, id: String(selection.id || '') };
+  let resolved = resolveCommandSelection(currentCommandDeckModel, normalized);
+  if (!resolved && ['event', 'agent'].includes(normalized.kind)) {
+    const retainedLane = currentMissionTrace?.lanes.find((lane) => lane.agentId === normalized.id);
+    const retainedEvent = currentMissionTrace?.lanes.flatMap((lane) => lane.events).find((item) => item.id === normalized.id);
+    if (normalized.kind === 'event' && retainedEvent) {
+      resolved = {
+        kind: 'event', id: retainedEvent.id, event: retainedEvent,
+        agent: retainedEvent.agent, building: retainedEvent.building,
+        buildingId: retainedEvent.buildingId,
+        hook: currentCommandDeckModel.selectionIndex?.hook?.[retainedEvent.hookSemantic] || null,
+      };
+    } else if (normalized.kind === 'agent' && retainedLane) {
+      const agent = retainedLane.agent;
+      const buildingId = retainedLane.buildingId;
+      resolved = {
+        kind: 'agent', id: retainedLane.agentId, agent, buildingId,
+        building: currentCommandDeckModel.selectionIndex?.building?.[buildingId] || { id: buildingId },
+        hook: currentCommandDeckModel.selectionIndex?.hook?.[agent.hookSemantic] || null,
+        events: retainedLane.events,
+      };
+    }
+  }
+  return resolved;
+}
+
+function selectCommandDeck(selection, { publish = true } = {}) {
+  if (!currentCommandDeckModel) return false;
+  const normalized = selection && { kind: selection.kind, id: String(selection.id || '') };
+  const resolved = resolveCurrentCommandSelection(normalized);
+  if (!resolved) return false;
+  currentCommandSelection = normalized;
+  selectedAgentId = resolved.agent?.id || resolved.agent?.agent || selectedAgentId;
+  const selectedEvent = resolved.event || [...(resolved.events || [])].sort((left, right) => Number(right.time || 0) - Number(left.time || 0))[0] || null;
+  missionTraceController.select(selectedEvent?.id ?? null);
+  repaintAgents();
+  renderInspector(resolved.agent || null);
+  applyCommandSelectionStyling(resolved);
+  if (publish) {
+    commandFocusSequence = Math.max(commandFocusSequence + 1, Date.now());
+    pixelworldBridge.setFocus(normalized, commandFocusSequence);
+  }
+  return true;
+}
+
+function resumeCommandDeckLive() {
+  currentCommandSelection = null;
+  missionTraceController.resume();
+  applyCommandSelectionStyling(null);
+}
+
 function renderEvents(items = []) {
-  renderTimelinePanels(currentSnapshot || { events: items, agents: [], server_time_ms: Date.now() }, { nowMs: Date.now() });
+  if (currentCommandDeckModel) missionTraceController.setModel(currentCommandDeckModel);
+  else if (!items.length && dom.events) dom.events.replaceChildren();
 }
 
 function renderLiveMonitoring(snapshot = {}, nowMs = Date.now()) {
@@ -2236,6 +2432,10 @@ function renderLiveMonitoring(snapshot = {}, nowMs = Date.now()) {
     const items = page.items.map((row) => {
       const article = document.createElement('article');
       article.className = 'agent-live-row';
+      article.tabIndex = 0;
+      article.setAttribute('role', 'button');
+      article.dataset.selectionKind = 'agent';
+      article.dataset.selectionId = row.id;
       article.dataset.tone = row.tone;
       article.setAttribute('aria-label', `${row.name} · ${row.stateLabel} · ${row.room}`);
       const avatar = document.createElement('div');
@@ -2269,6 +2469,10 @@ function renderLiveMonitoring(snapshot = {}, nowMs = Date.now()) {
     dom.hookLiveChannels.replaceChildren(...channels.map((channel) => {
       const article = document.createElement('article');
       article.className = 'hook-live-channel';
+      article.tabIndex = 0;
+      article.setAttribute('role', 'button');
+      article.dataset.selectionKind = 'hook';
+      article.dataset.selectionId = channel.semantic;
       article.dataset.semantic = channel.semantic;
       article.dataset.active = String(channel.active);
       const header = document.createElement('header');
@@ -2305,6 +2509,11 @@ function renderSnapshot(snapshot) {
     },
   };
   currentSnapshot = dashboardLiveSnapshot;
+  currentCommandDeckModel = buildCommandDeckModel(dashboardLiveSnapshot, {
+    nowMs: Number(snapshot.server_time_ms) || Date.now(),
+    buildings: Object.keys(ROOM_LAYOUTS).map((id) => ({ id })),
+  });
+  missionTraceController.setModel(currentCommandDeckModel);
   const sequence = snapshot.server_time_ms || Date.now();
   pixelworldBridge.setLocale(currentLocale, sequence);
   pixelworldBridge.setSnapshot(dashboardLiveSnapshot, sequence);
@@ -2320,6 +2529,14 @@ function renderSnapshot(snapshot) {
   updateCurrentAgentState(dashboardLiveSnapshot);
   renderLiveMonitoring(dashboardLiveSnapshot);
   renderAgents(dashboardLiveSnapshot);
+  if (currentCommandSelection) {
+    const resolved = resolveCurrentCommandSelection(currentCommandSelection);
+    if (resolved) {
+      selectedAgentId = resolved.agent?.id || resolved.agent?.agent || selectedAgentId;
+      renderInspector(resolved.agent || null);
+      applyCommandSelectionStyling(resolved);
+    }
+  }
   if (dashboardDisclosure.activeCard) renderDashboardCardContent();
 }
 
@@ -2888,16 +3105,64 @@ dom.dialogBackdrop?.addEventListener('click', (event) => {
 });
 
 dom.inspectorAgentSelect?.addEventListener('change', (event) => {
-  selectedAgentId = event.target.value;
-  repaintAgents();
-  renderInspector((currentSnapshot?.agents || []).find((agent) => agent.agent === selectedAgentId));
+  selectCommandDeck({ kind: 'agent', id: event.target.value });
 });
 
 dom.events?.addEventListener('click', (event) => {
   const button = event.target.closest('[data-delete-agent]');
-  if (!button) return;
-  deleteOfflineAgent(decodeURIComponent(button.dataset.deleteAgent || ''));
+  if (button) {
+    deleteOfflineAgent(decodeURIComponent(button.dataset.deleteAgent || ''));
+    return;
+  }
+  const target = event.target.closest('[data-selection-kind][data-selection-id]');
+  if (target) selectCommandDeck({ kind: target.dataset.selectionKind, id: target.dataset.selectionId });
 });
+
+dom.events?.addEventListener('keydown', (event) => {
+  if (!['Enter', ' '].includes(event.key)) return;
+  const target = event.target.closest('[data-selection-kind][data-selection-id]');
+  if (!target) return;
+  event.preventDefault();
+  selectCommandDeck({ kind: target.dataset.selectionKind, id: target.dataset.selectionId });
+});
+
+dom.agentLiveList?.addEventListener('click', (event) => {
+  const target = event.target.closest('[data-selection-kind="agent"]');
+  if (target) selectCommandDeck({ kind: 'agent', id: target.dataset.selectionId });
+});
+dom.agentLiveList?.addEventListener('keydown', (event) => {
+  if (!['Enter', ' '].includes(event.key)) return;
+  const target = event.target.closest('[data-selection-kind="agent"]');
+  if (!target) return;
+  event.preventDefault();
+  selectCommandDeck({ kind: 'agent', id: target.dataset.selectionId });
+});
+
+dom.hookLiveChannels?.addEventListener('click', (event) => {
+  const target = event.target.closest('[data-selection-kind="hook"]');
+  if (target) selectCommandDeck({ kind: 'hook', id: target.dataset.selectionId });
+});
+dom.hookLiveChannels?.addEventListener('keydown', (event) => {
+  if (!['Enter', ' '].includes(event.key)) return;
+  const target = event.target.closest('[data-selection-kind="hook"]');
+  if (!target) return;
+  event.preventDefault();
+  selectCommandDeck({ kind: 'hook', id: target.dataset.selectionId });
+});
+
+dom.world?.addEventListener('click', (event) => {
+  const district = event.target.closest('.district[data-room]');
+  if (district && !furnitureEditMode) selectCommandDeck({ kind: 'building', id: district.dataset.room });
+});
+dom.world?.addEventListener('keydown', (event) => {
+  if (!['Enter', ' '].includes(event.key)) return;
+  const district = event.target.closest('.district[data-room]');
+  if (!district || furnitureEditMode) return;
+  event.preventDefault();
+  selectCommandDeck({ kind: 'building', id: district.dataset.room });
+});
+
+dom.missionTraceLive?.addEventListener('click', resumeCommandDeckLive);
 
 function adjustRefreshInterval(deltaMs) {
   timelineRefreshMs = clampNumber(timelineRefreshMs + deltaMs, 100, 10_000);
@@ -2906,9 +3171,6 @@ function adjustRefreshInterval(deltaMs) {
   restartTimelineTimer();
   startLiveUiTicker();
   if (pollTimer) startPolling();
-  if (currentSnapshot) {
-    renderTimelinePanels(buildDashboardLiveSnapshot(currentSnapshot, Date.now()), { nowMs: Date.now(), windowMs: 20 * 60 * 1000 });
-  }
 }
 
 dom.refreshSlowerButton?.addEventListener('click', () => adjustRefreshInterval(100));
@@ -2933,6 +3195,7 @@ async function initializeApp() {
   setupCameraPan();
   setupFurnitureEditor();
   liveEcgController.start();
+  missionTraceController.start();
   commandDeckLayoutController.start();
   renderCommandDeckControls();
   startLiveUiTicker();
