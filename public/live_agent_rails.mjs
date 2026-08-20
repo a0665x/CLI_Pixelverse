@@ -1,5 +1,6 @@
 import { buildHeartbeatPath } from './agent_timeline_graphs.mjs';
 import {
+  compareCommandDeckAgents,
   normalizeAgentForWorld,
   normalizeVisibleAgents,
   resolvedAgentActivity,
@@ -7,25 +8,19 @@ import {
 
 export { normalizeAgentForWorld, normalizeVisibleAgents, resolvedAgentActivity };
 
-const byIdentity = (first = {}, second = {}) => {
-  const firstMain = first.role === 'main_agent' ? 0 : 1;
-  const secondMain = second.role === 'main_agent' ? 0 : 1;
-  return firstMain - secondMain || String(first.agent || first.id || '').localeCompare(String(second.agent || second.id || ''));
-};
-
 const displayName = (agent = {}) => agent.full_name || agent.name || agent.agent || 'Agent';
 
 export function buildLiveAgentRail(snapshot = {}, locale = {}, nowMs = Date.now()) {
   const rooms = locale.rooms || {};
   const states = locale.states || {};
   const source = Array.isArray(snapshot) ? snapshot : normalizeVisibleAgents(snapshot);
-  return [...source].sort(byIdentity).map((agent) => {
+  return [...source].sort(compareCommandDeckAgents).map((agent) => {
     const heartbeat = resolvedAgentActivity(agent);
     return {
       id: agent.id || agent.agent,
       name: displayName(agent),
       state: heartbeat.state || agent.state || 'idle',
-      stateLabel: states[agent.state] || agent.state || 'idle',
+      stateLabel: states[heartbeat.state] || heartbeat.state || 'idle',
       room: rooms[heartbeat.roomKey]?.name || agent.room_label || heartbeat.roomKey || '',
       hook: heartbeat.semantic,
       tone: heartbeat.tone,
@@ -40,7 +35,7 @@ export function buildLiveAgentRail(snapshot = {}, locale = {}, nowMs = Date.now(
 }
 
 export function liveAgentPage(agents = [], page = 0, pageSize = 4) {
-  const ordered = [...(Array.isArray(agents) ? agents : [])].sort(byIdentity);
+  const ordered = [...(Array.isArray(agents) ? agents : [])].sort(compareCommandDeckAgents);
   const size = Math.max(1, Math.trunc(Number(pageSize) || 1));
   const pageCount = Math.max(1, Math.ceil(ordered.length / size));
   const resolved = Math.max(0, Math.min(pageCount - 1, Math.trunc(Number(page) || 0)));
@@ -139,7 +134,7 @@ export function hookRailForAgents(agents = [], selectedAgentId = '') {
       const activity = rank(second) - rank(first);
       const freshness = Number(second.last_seen_ms || second.last_action_at || 0)
         - Number(first.last_seen_ms || first.last_action_at || 0);
-      return activity || freshness || byIdentity(first, second);
+      return activity || freshness || compareCommandDeckAgents(first, second);
     })[0];
   if (!agent) return { agentId: '', semantic: 'rest', building: 'Rest Cabin', activity: '', roomKey: '' };
   const resolved = resolvedAgentActivity(agent);

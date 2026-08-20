@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   buildCommandDeckModel,
   commandDeckFindings,
+  compareCommandDeckAgents,
   resolveCommandSelection,
 } from '../public/command_deck_model.mjs';
 
@@ -112,4 +113,34 @@ test('building and event records expose product label keys while preserving exte
   assert.equal(event.categoryLabelKey, 'eventCategories.tool');
   assert.equal(model.selectionIndex.building.tool_forge.labelKey, 'rooms.tool_forge.name');
   assert.equal(model.situation.agentCount, 2);
+});
+
+test('API action payload supplies the authoritative event category and text', () => {
+  const model = buildCommandDeckModel({
+    agents: [{ agent: 'main', role: 'main_agent', state: 'working' }],
+    events: [{
+      id: 'evt-payload-tool', kind: 'action', agent: 'main',
+      payload: { action: { type: 'tool', message: 'Running payload tool' } },
+    }],
+  });
+  assert.equal(model.events[0].category, 'tool');
+  assert.equal(model.events[0].summary, 'Running payload tool');
+
+  const withEmptyPreview = buildCommandDeckModel({
+    agents: [{ agent: 'main', role: 'main_agent', state: 'working' }],
+    events: [{
+      id: 'evt-payload-empty-preview', kind: 'action', agent: 'main',
+      payload: { action: { type: 'tool', preview: '', message: 'Fallback payload message' } },
+    }],
+  });
+  assert.equal(withEmptyPreview.events[0].summary, 'Fallback payload message');
+});
+
+test('command deck exports the one canonical identity ordering helper', () => {
+  const unordered = [
+    { id: 'sub-b', role: 'subagent' },
+    { id: 'main', role: 'main_agent' },
+    { id: 'sub-a', role: 'subagent' },
+  ];
+  assert.deepEqual([...unordered].sort(compareCommandDeckAgents).map(({ id }) => id), ['main', 'sub-a', 'sub-b']);
 });

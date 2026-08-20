@@ -9,7 +9,7 @@ const stateRank = (agent = {}) => {
   return 1;
 };
 
-const byIdentity = (first = {}, second = {}) => {
+export const compareCommandDeckAgents = (first = {}, second = {}) => {
   const firstMain = first.role === MAIN_ROLE ? 0 : 1;
   const secondMain = second.role === MAIN_ROLE ? 0 : 1;
   return firstMain - secondMain || String(first.agent || first.id || '').localeCompare(String(second.agent || second.id || ''));
@@ -86,10 +86,21 @@ export function normalizeAgentForWorld(agent = {}) {
   return { ...agent, state: activity.state, pixel_state: pixelState, room_key: activity.roomKey };
 }
 
+const payloadEventContent = (event = {}) => {
+  const action = event.payload?.action || {};
+  const tool = action.tool ?? action.tool_name ?? action.tool_names ?? event.tool ?? event.tool_name ?? event.tool_names ?? '';
+  const toolText = Array.isArray(tool) ? tool.join(', ') : String(tool || '');
+  return {
+    kind: event.category || action.type || event.type || event.event_name || event.kind || '',
+    text: event.summary || action.preview || action.message || event.message || event.preview
+      || event.title || toolText || '',
+    tool: toolText,
+  };
+};
+
 const eventCategory = (event = {}) => {
-  const kind = normalized(event.category || event.kind || event.type || event.event_name);
-  const text = normalized(event.summary || event.message || event.preview);
-  const value = `${kind} ${text}`;
+  const content = payloadEventContent(event);
+  const value = `${normalized(content.kind)} ${normalized(content.text)} ${normalized(content.tool)}`;
   if (/(complete|completed|done|finish|完成|完了|완료)/.test(value)) return 'completion';
   if (/(reason|thought|thinking|planning|plan|思考|規劃|推理|計画|推論|추론|계획)/.test(value)) return 'reasoning';
   if (/(tool|patch|read_file|write_file|terminal|execute|browser|工具)/.test(value)) return 'tool';
@@ -120,10 +131,11 @@ const hashString = (value) => {
 const stableEventId = (event = {}) => {
   const explicit = event.id ?? event.event_id ?? event.eventId;
   if (explicit !== undefined && explicit !== null && String(explicit)) return String(explicit);
+  const content = payloadEventContent(event);
   return `event-${hashString(JSON.stringify([
-    eventAgentId(event), event.type || event.kind || event.event_name || '',
+    eventAgentId(event), content.kind,
     Number(event.time ?? event.timestamp ?? event.created_at ?? 0) || 0,
-    event.message || event.summary || event.preview || '', eventRoom(event),
+    content.text, content.tool, eventRoom(event),
   ]))}`;
 };
 
@@ -132,9 +144,10 @@ const eventTime = (event = {}) => {
   return Number.isFinite(value) ? value : 0;
 };
 
-const eventSummary = (event = {}) => (
-  event.summary ?? event.message ?? event.preview ?? event.title ?? event.type ?? event.kind ?? ''
-);
+const eventSummary = (event = {}) => {
+  const content = payloadEventContent(event);
+  return content.text || content.tool || content.kind;
+};
 
 const makeAgent = (agent, nowMs) => {
   const activity = resolvedAgentActivity(agent);
@@ -301,7 +314,7 @@ export function commandDeckFindings(model = {}, rendered = {}) {
 
 export function buildCommandDeckModel(snapshot = {}, options = {}) {
   const nowMs = Number(options.nowMs ?? snapshot.server_time_ms ?? 0) || 0;
-  const agents = normalizeVisibleAgents(snapshot).map((agent) => makeAgent(agent, nowMs)).sort(byIdentity);
+  const agents = normalizeVisibleAgents(snapshot).map((agent) => makeAgent(agent, nowMs)).sort(compareCommandDeckAgents);
   const agent = objectIndex(agents);
   const events = (Array.isArray(snapshot.events) ? snapshot.events : [])
     .map((item) => makeEvent(item, agent, nowMs))
@@ -380,7 +393,9 @@ export function resolveCommandSelection(model = {}, selection = null) {
     };
   }
   if (selection.kind === 'hook') {
-    const agent = [...record.agents].sort((first, second) => second.priority - first.priority || byIdentity(first, second))[0] || null;
+    const agent = [...record.agents].sort((first, second) => (
+      second.priority - first.priority || compareCommandDeckAgents(first, second)
+    ))[0] || null;
     const event = record.events[0] || null;
     const building = agent ? model.selectionIndex.building[agent.buildingId] : record.buildings[0] || null;
     return {

@@ -61,6 +61,14 @@ test('authoritative working state overrides a stale idle animation hint', () => 
   assert.equal(hookRailForAgents(working).semantic, 'work');
 });
 
+test('agent rail state and label both use the normalized heartbeat state', () => {
+  const [row] = buildLiveAgentRail({ agents: [{
+    agent: 'main', role: 'main_agent', state: 'working', pixel_state: 'planning', room_key: 'think_lab',
+  }] }, { states: { working: 'Working label', thinking: 'Thinking label' }, rooms: {} }, 100);
+  assert.equal(row.state, 'thinking');
+  assert.equal(row.stateLabel, 'Thinking label');
+});
+
 test('Hook rail prefers the freshest active agent over an offline main identity', () => {
   const rows = [
     { agent: 'main', role: 'main_agent', state: 'offline', is_stale: true, last_seen_ms: 500 },
