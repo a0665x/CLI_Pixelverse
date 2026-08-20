@@ -28,6 +28,7 @@ import {
 import {
   attachPageLifecycleCleanup,
   attachPixelworldBridge,
+  commandDeckFocusSelection,
   createCutawayStatusRailController,
   createPixelworldBridge,
 } from './pixelworld_embed.mjs';
@@ -2408,13 +2409,7 @@ function selectCommandDeck(selection, { publish = true } = {}) {
   applyCommandSelectionStyling(resolved);
   if (publish) {
     commandFocusSequence = Math.max(commandFocusSequence + 1, Date.now());
-    const villageSelection = normalized.kind === 'event'
-      ? {
-        ...normalized,
-        agentId: resolved.agent?.id || resolved.agent?.agent || '',
-        buildingId: resolved.buildingId || resolved.building?.id || '',
-      }
-      : normalized;
+    const villageSelection = commandDeckFocusSelection(normalized, resolved);
     pixelworldBridge.setFocus(villageSelection, commandFocusSequence);
   }
   return true;

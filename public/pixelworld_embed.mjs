@@ -14,6 +14,18 @@ export function commandDeckFocusMessage(selection, sequence) {
   return { type: 'pixelverse.command.focus', selection, sequence };
 }
 
+export function commandDeckFocusSelection(selection, resolved = {}) {
+  const normalized = { kind: selection?.kind, id: String(selection?.id || '') };
+  if (!['hook', 'event'].includes(normalized.kind)) return normalized;
+  const agentId = String(resolved.agent?.id || resolved.agent?.agent || '');
+  const buildingId = String(resolved.buildingId || resolved.building?.id || '');
+  return {
+    ...normalized,
+    ...(agentId ? { agentId } : {}),
+    ...(buildingId ? { buildingId } : {}),
+  };
+}
+
 export function publishPixelworldFocus(frame, selection, sequence = Date.now(), origin = window.location.origin) {
   if (!frame?.contentWindow) return false;
   frame.contentWindow.postMessage(commandDeckFocusMessage(selection, sequence), origin);
@@ -29,7 +41,8 @@ export function isCommandDeckFocusMessage(value) {
     && typeof value.selection === 'object'
     && ['agent', 'building', 'hook', 'event'].includes(value.selection.kind)
     && String(value.selection.id || '')
-    && Number.isFinite(Number(value.sequence)),
+    && typeof value.sequence === 'number'
+    && Number.isFinite(value.sequence),
   );
 }
 

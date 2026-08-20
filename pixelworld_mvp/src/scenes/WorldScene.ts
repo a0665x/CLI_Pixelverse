@@ -278,8 +278,10 @@ export class WorldScene extends Phaser.Scene {
   focusCommandSelection(selection: CommandFocusSelection): boolean {
     if (selection.kind === 'agent') return this.selectAgent(selection.id, false);
     if (selection.kind === 'building') return this.selectBuilding(selection.id, false);
-    if (selection.kind !== 'event') return false;
-    const event = this.lastLiveSnapshot?.events?.find((item) => String(item.id ?? item.event_id ?? item.eventId ?? '') === selection.id);
+    if (!['event', 'hook'].includes(selection.kind)) return false;
+    const event = selection.kind === 'event'
+      ? this.lastLiveSnapshot?.events?.find((item) => String(item.id ?? item.event_id ?? item.eventId ?? '') === selection.id)
+      : undefined;
     if (!event && !selection.agentId && !selection.buildingId) return false;
     const payload = event?.payload && typeof event.payload === 'object' ? event.payload as Record<string, unknown> : {};
     const agentId = String(selection.agentId ?? event?.agent ?? event?.agent_id ?? event?.agentId ?? payload.agent ?? '');

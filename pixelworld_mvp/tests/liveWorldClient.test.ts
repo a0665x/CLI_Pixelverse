@@ -1,5 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
-import { focusFromMessage, LiveWorldClient, localeFromMessage, snapshotFromMessage, snapshotFromStreamData } from '../src/live/LiveWorldClient';
+import {
+  focusFromMessage,
+  LiveWorldClient,
+  localeFromMessage,
+  snapshotFromMessage,
+  snapshotFromStreamData,
+  type CommandFocusSelection,
+} from '../src/live/LiveWorldClient';
 
 const snapshot = { agents: [{ agent: 'codex-main', role: 'main_agent', state: 'idle' }] };
 
@@ -35,6 +42,14 @@ describe('LiveWorldClient payload parsing', () => {
     expect(focusFromMessage({
       type: 'pixelverse.command.focus', selection: { kind: 'agent', id: 'main' }, sequence: null,
     })).toBeUndefined();
+    expect(focusFromMessage({
+      type: 'pixelverse.command.focus',
+      selection: { kind: 'hook', id: 'work', agentId: 'main', buildingId: 'code_workbench' },
+      sequence: 9,
+    })).toEqual({
+      selection: { kind: 'hook', id: 'work', agentId: 'main', buildingId: 'code_workbench' },
+      sequence: 9,
+    });
   });
 
   it('accepts monotonic focus only from the exact parent and publishes clicks back to that origin', () => {
@@ -52,9 +67,14 @@ describe('LiveWorldClient payload parsing', () => {
       const client = new LiveWorldClient(vi.fn(), vi.fn(), publishFocus);
       client.start();
       parent.postMessage.mockClear();
-      const focus = (sequence: number, source: unknown = parent, origin = host.location.origin) => onMessage?.({
+      const focus = (
+        sequence: number,
+        source: unknown = parent,
+        origin = host.location.origin,
+        selection: CommandFocusSelection = { kind: 'agent', id: 'main' },
+      ) => onMessage?.({
         origin, source, data: {
-          type: 'pixelverse.command.focus', selection: { kind: 'agent', id: 'main' }, sequence,
+          type: 'pixelverse.command.focus', selection, sequence,
         },
       } as unknown as MessageEvent);
 
@@ -63,8 +83,13 @@ describe('LiveWorldClient payload parsing', () => {
       focus(4);
       focus(6, {});
       focus(7, parent, 'https://foreign.test');
-      expect(publishFocus).toHaveBeenCalledTimes(1);
-      expect(publishFocus).toHaveBeenCalledWith({ kind: 'agent', id: 'main' });
+      focus(8, parent, host.location.origin, {
+        kind: 'hook', id: 'work', agentId: 'main', buildingId: 'code_workbench',
+      });
+      expect(publishFocus.mock.calls).toEqual([
+        [{ kind: 'agent', id: 'main' }],
+        [{ kind: 'hook', id: 'work', agentId: 'main', buildingId: 'code_workbench' }],
+      ]);
 
       expect(client.sendFocus({ kind: 'building', id: 'maker-workshop' }, 10)).toBe(true);
       expect(client.sendFocus({ kind: 'agent', id: 'main' }, 10)).toBe(false);

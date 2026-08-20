@@ -46,6 +46,33 @@ test('command deck focus messages preserve selection and monotonic sequence valu
   assert.ok(sent.every(([, targetOrigin]) => targetOrigin === 'http://localhost'));
 });
 
+test('hook focus messages carry their resolved visible agent and building context', () => {
+  const selection = pixelworldEmbed.commandDeckFocusSelection(
+    { kind: 'hook', id: 'work' },
+    { agent: { id: 'main' }, buildingId: 'code_workbench' },
+  );
+  assert.deepEqual(selection, {
+    kind: 'hook', id: 'work', agentId: 'main', buildingId: 'code_workbench',
+  });
+  const sent = [];
+  const bridge = pixelworldEmbed.createPixelworldBridge({
+    frame: { contentWindow: { postMessage: (...args) => sent.push(args) } },
+    origin: 'http://localhost',
+  });
+  assert.equal(bridge.setFocus(selection, 15), true);
+  assert.deepEqual(sent, [[{
+    type: 'pixelverse.command.focus', selection, sequence: 15,
+  }, 'http://localhost']]);
+});
+
+test('focus message validation rejects coerced non-numeric sequences', () => {
+  const message = (sequence) => pixelworldEmbed.commandDeckFocusMessage({ kind: 'hook', id: 'work' }, sequence);
+
+  assert.equal(pixelworldEmbed.isCommandDeckFocusMessage(message(4)), true);
+  assert.equal(pixelworldEmbed.isCommandDeckFocusMessage(message(null)), false);
+  assert.equal(pixelworldEmbed.isCommandDeckFocusMessage(message('')), false);
+});
+
 test('focus bridge rejects foreign-origin and stale iframe focus messages', () => {
   const contentWindow = {};
   const selections = [];

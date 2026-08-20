@@ -44,6 +44,20 @@ describe('WorldScene command focus endpoint', () => {
     expect(emitted).not.toHaveBeenCalled();
   });
 
+  it('routes parent hook focus context to its visible agent and building without echo', () => {
+    const { open, scene, select } = harness();
+    const emitted = vi.fn();
+    scene.onCommandSelection(emitted);
+
+    expect(scene.focusCommandSelection({
+      kind: 'hook', id: 'work', agentId: 'main', buildingId: 'code_workbench',
+    })).toBe(true);
+
+    expect(select).toHaveBeenCalledWith('main');
+    expect(open).toHaveBeenCalledWith('maker-workshop');
+    expect(emitted).not.toHaveBeenCalled();
+  });
+
   it('publishes iframe agent and building clicks as command selections', () => {
     const { scene } = harness();
     const emitted: unknown[] = [];
