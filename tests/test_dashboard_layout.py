@@ -480,3 +480,57 @@ def test_command_deck_controls_render_persisted_expand_collapse_copy_at_startup(
     assert "button.title" in app
     assert "Expand" in app
     assert "Collapse" in app
+
+
+def test_narrow_help_card_computed_style_ignores_persisted_inspector_collapse(tmp_path):
+    chromium = shutil.which("chromium") or shutil.which("chromium-browser") or shutil.which("google-chrome")
+    if not chromium:
+        pytest.skip("Chromium is required for the computed command-deck layout contract")
+    html = Path("public/index.html").read_text(encoding="utf-8")
+    styles = re.search(r"<style>(?P<css>.*?)</style>", html, re.S)
+    assert styles
+    fixture = tmp_path / "narrow-command-deck-card.html"
+    fixture.write_text(f"""<!doctype html>
+      <html><head><meta name="viewport" content="width=device-width,initial-scale=1">
+      <style>{styles.group('css')}</style></head><body>
+      <main class="map-first-workspace" data-command-deck-mode="narrow"
+        data-left-dock="agents" data-right-dock="inspector"
+        data-collapsed-left="false" data-collapsed-right="true">
+        <aside class="dashboard-card" id="right-inspector-card">Help</aside>
+      </main>
+      <main class="map-first-workspace" data-command-deck-mode="narrow"
+        data-left-dock="inspector" data-right-dock="agents"
+        data-collapsed-left="true" data-collapsed-right="false">
+        <aside class="dashboard-card" id="left-inspector-card">Help</aside>
+      </main>
+      <script>
+        for (const side of ['right', 'left']) {{
+          const style = getComputedStyle(document.getElementById(`${{side}}-inspector-card`));
+          document.documentElement.dataset[`${{side}}Display`] = style.display;
+          document.documentElement.dataset[`${{side}}Position`] = style.position;
+          document.documentElement.dataset[`${{side}}GridColumn`] = style.gridColumnStart;
+        }}
+      </script></body></html>""", encoding="utf-8")
+    result = subprocess.run(
+        [
+            chromium,
+            "--headless=new",
+            "--no-sandbox",
+            "--disable-gpu",
+            f"--user-data-dir={tmp_path / 'chromium-profile'}",
+            "--window-size=720,780",
+            "--dump-dom",
+            fixture.as_uri(),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=20,
+    )
+
+    assert 'data-right-display="grid"' in result.stdout
+    assert 'data-left-display="grid"' in result.stdout
+    assert 'data-right-position="relative"' in result.stdout
+    assert 'data-left-position="relative"' in result.stdout
+    assert 'data-right-grid-column="2"' in result.stdout
+    assert 'data-left-grid-column="2"' in result.stdout

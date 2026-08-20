@@ -2739,8 +2739,8 @@
     }
     .map-first-workspace[data-right-dock="inspector"] .dashboard-card { grid-column: 5; }
     .map-first-workspace[data-left-dock="inspector"] .dashboard-card { grid-column: 1; }
-    .map-first-workspace[data-right-dock="inspector"][data-collapsed-right="true"] .dashboard-card,
-    .map-first-workspace[data-left-dock="inspector"][data-collapsed-left="true"] .dashboard-card { display: none !important; }
+    .map-first-workspace[data-command-deck-mode="desktop"][data-right-dock="inspector"][data-collapsed-right="true"] .dashboard-card,
+    .map-first-workspace[data-command-deck-mode="desktop"][data-left-dock="inspector"][data-collapsed-left="true"] .dashboard-card { display: none !important; }
     .map-first-workspace[data-left-dock="agents"][data-collapsed-left="true"] .agent-live-rail,
     .map-first-workspace[data-left-dock="inspector"][data-collapsed-left="true"] .hook-live-rail,
     .map-first-workspace[data-right-dock="agents"][data-collapsed-right="true"] .agent-live-rail,
@@ -2797,7 +2797,7 @@
       .map-first-workspace[data-left-dock="inspector"] .agent-live-rail { grid-column: 1; }
       .hook-live-rail,
       .map-first-workspace[data-left-dock="inspector"] .hook-live-rail { grid-column: 2; }
-      .map-first-workspace .dashboard-card { grid-column: 2; grid-row: 3; }
+      .map-first-workspace[data-command-deck-mode="narrow"] .dashboard-card { grid-column: 2; grid-row: 3; }
       .map-first-workspace .dashboard-card:not([hidden]) { display: grid !important; }
     }
   </style>
