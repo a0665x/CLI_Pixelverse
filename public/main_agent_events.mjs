@@ -1,17 +1,27 @@
-import { localizeToolSummary } from './ui_strings.mjs';
+import { agentTaskText, localizeToolSummary, uiText } from './ui_strings.mjs';
 
 function latestAction(agent = {}) {
   return Array.isArray(agent.recent_actions) ? agent.recent_actions[0] || {} : {};
 }
 
 function toolLabel(action = {}, locale = 'zh-TW') {
-  const names = [];
-  if (action.tool_name) names.push(action.tool_name);
-  if (Array.isArray(action.tool_names) && action.tool_names.length) names.push(action.tool_names.join(', '));
-  if (action.preview) names.push(action.preview);
-  const localized = localizeToolSummary(names[0] || '', locale);
-  return localized || names[0] || '';
+  const explicit = action.tool_name || (Array.isArray(action.tool_names) ? action.tool_names.join(', ') : '');
+  return explicit ? (localizeToolSummary(explicit, locale) || String(explicit)) : '';
 }
+
+function rawActionPayload(action = {}) {
+  if (action.preview !== undefined && action.preview !== null && action.preview !== '') return String(action.preview);
+  if (action.message !== undefined && action.message !== null && action.message !== '') return String(action.message);
+  return '';
+}
+
+const PIXEL_VISUALS = {
+  reading_files: ['planning', '📖'], editing_files: ['working', '✏️'], shell_command: ['working', '⌨️'],
+  browsing: ['working', '🌐'], external_tool: ['working', '🔌'],
+  blocked: ['offline', '⚠️'], self_healing: ['working', '🔧'], awaiting_input: ['thinking', '⌛'],
+  initializing: ['planning', '🌀'], sleeping: ['idle', '💤'], collaborating: ['working', '💬'],
+  invoking_skill: ['working', '✨'], tool_call: ['working', '🧰'], executing: ['working', '💻'], responding: ['working', '✍️'],
+};
 
 export function deriveAgentEventVisual(agent = {}, locale = 'zh-TW') {
   const action = latestAction(agent);
@@ -19,72 +29,55 @@ export function deriveAgentEventVisual(agent = {}, locale = 'zh-TW') {
   const state = agent.state || 'idle';
   const pixelState = agent.pixel_state || state;
   const localizedTool = toolLabel(action, locale);
-  const pixelVisuals = {
-    blocked: ['offline', '⚠️', 'Blocked', '受阻'],
-    self_healing: ['working', '🔧', 'Self-healing', '自我修復'],
-    awaiting_input: ['thinking', '⌛', 'Awaiting input', '等待輸入'],
-    initializing: ['planning', '🌀', 'Initializing', '初始化'],
-    sleeping: ['idle', '💤', 'Sleeping', '休眠'],
-    collaborating: ['working', '💬', 'Collaborating', '分身討論'],
-    invoking_skill: ['working', '✨', 'Invoking skill', '技能調用'],
-    tool_call: ['working', '🧰', 'Tool call', '工具調用'],
-    executing: ['working', '💻', 'Executing', '代碼執行'],
-    responding: ['working', '✍️', 'Responding', '輸出響應'],
-  };
-  if (pixelVisuals[pixelState]) {
-    const [tone, icon, en, zh] = pixelVisuals[pixelState];
-    return { tone, icon, label: locale === 'zh-TW' ? zh : en, detail: localizedTool || agent.task || agent.activity_hint || '' };
-  }
+  const rawPayload = rawActionPayload(action);
   if (agent.role === 'main_agent') {
-    if (eventName === 'main.reasoning') {
-      return {
-        tone: 'planning',
-        icon: '🧠',
-        label: locale === 'zh-TW' ? '規劃推演' : 'Reasoning',
-        detail: action.preview || action.message || (locale === 'zh-TW' ? '正在整理藍圖與策略' : 'Planning the next step'),
-      };
-    }
-    if (eventName === 'main.tool.started') {
-      return {
-        tone: 'working',
-        icon: '▶',
-        label: locale === 'zh-TW' ? `${localizedTool || '工具'} 啟動` : `${localizedTool || 'Tool'} start`,
-        detail: locale === 'zh-TW'
-          ? `開始：${action.preview || action.message || '開始執行工具'}`
-          : `Started: ${action.preview || action.message || 'Tool execution started'}`,
-      };
-    }
-    if (eventName === 'main.tool.completed') {
-      return {
-        tone: 'working',
-        icon: '✓',
-        label: locale === 'zh-TW' ? `${localizedTool || '工具'} 完成` : `${localizedTool || 'Tool'} done`,
-        detail: locale === 'zh-TW'
-          ? `完成：${action.preview || action.message || '工具已完成'}`
-          : `Finished: ${action.preview || action.message || 'Tool finished'}`,
-      };
-    }
-    if (eventName === 'main.tool.batch') {
-      return {
-        tone: 'working',
-        icon: '🛠️',
-        label: locale === 'zh-TW' ? '工具序列' : 'Tool route',
-        detail: localizedTool || action.message || (locale === 'zh-TW' ? '切換工具序列' : 'Tool sequence updated'),
-      };
-    }
-    if (eventName === 'main.task.completed') {
-      return {
-        tone: 'idle',
-        icon: '🏁',
-        label: locale === 'zh-TW' ? '回到待命' : 'Standby',
-        detail: action.preview || action.message || (locale === 'zh-TW' ? '任務完成，回到客廳待命區' : 'Task completed, back to standby'),
-      };
-    }
+    if (eventName === 'main.task.started') return {
+      tone: 'planning', icon: '🚩', label: uiText(locale, 'commandDeck.eventChip.events.taskStart'),
+      detail: uiText(locale, 'commandDeck.eventChip.details.taskStarted', { value: rawPayload }),
+    };
+    if (eventName === 'main.reasoning') return {
+      tone: 'planning', icon: '🧠', label: uiText(locale, 'commandDeck.eventChip.events.reasoning'),
+      detail: rawPayload || uiText(locale, 'commandDeck.eventChip.details.reasoning'),
+    };
+    if (eventName === 'main.tool.started') return {
+      tone: 'working', icon: '▶', label: uiText(locale, 'commandDeck.eventChip.events.toolStart', { tool: localizedTool }),
+      detail: uiText(locale, 'commandDeck.eventChip.details.started', { value: rawPayload }),
+    };
+    if (eventName === 'main.tool.completed') return {
+      tone: 'working', icon: '✓', label: uiText(locale, 'commandDeck.eventChip.events.toolDone', { tool: localizedTool }),
+      detail: uiText(locale, 'commandDeck.eventChip.details.finished', { value: rawPayload }),
+    };
+    if (eventName === 'main.tool.batch') return {
+      tone: 'working', icon: '🛠️', label: uiText(locale, 'commandDeck.eventChip.events.toolRoute'),
+      detail: [localizedTool, rawPayload].filter(Boolean).join(' · ') || uiText(locale, 'commandDeck.eventChip.details.toolRoute'),
+    };
+    if (eventName === 'main.task.completed') return {
+      tone: 'idle', icon: '🏁', label: uiText(locale, 'commandDeck.eventChip.events.standby'),
+      detail: uiText(locale, 'commandDeck.eventChip.details.completed', { value: rawPayload }),
+    };
   }
+  if (PIXEL_VISUALS[pixelState]) {
+    const [tone, icon] = PIXEL_VISUALS[pixelState];
+    return { tone, icon, label: uiText(locale, `commandDeck.eventChip.pixel.${pixelState}`), detail: localizedTool || agentTaskText(agent) };
+  }
+  const stateKey = ['working', 'planning', 'thinking', 'offline'].includes(state) ? state : 'standby';
+  return {
+    tone: state === 'offline' ? 'offline' : state === 'planning' ? 'planning' : state === 'thinking' ? 'thinking' : state === 'working' ? 'working' : 'idle',
+    icon: state === 'offline' ? '⛔' : state === 'planning' ? '🗺️' : state === 'thinking' ? '💭' : state === 'working' ? '⚙️' : '🛋️',
+    label: uiText(locale, `commandDeck.eventChip.states.${stateKey}`),
+    detail: localizedTool || agentTaskText(agent),
+  };
+}
 
-  if (state === 'working') return { tone: 'working', icon: '⚙️', label: locale === 'zh-TW' ? '執行中' : 'Working', detail: localizedTool || agent.task || '' };
-  if (state === 'planning') return { tone: 'planning', icon: '🗺️', label: locale === 'zh-TW' ? '規劃中' : 'Planning', detail: localizedTool || agent.task || '' };
-  if (state === 'thinking') return { tone: 'thinking', icon: '💭', label: locale === 'zh-TW' ? '思考中' : 'Thinking', detail: localizedTool || agent.task || '' };
-  if (state === 'offline') return { tone: 'offline', icon: '⛔', label: locale === 'zh-TW' ? '離線' : 'Offline', detail: localizedTool || agent.task || '' };
-  return { tone: 'idle', icon: '🛋️', label: locale === 'zh-TW' ? '待命中' : 'Standby', detail: localizedTool || agent.task || '' };
+const shortLabel = (value, limit = 16) => String(value || '').length > limit ? `${String(value).slice(0, limit - 1)}…` : String(value || '');
+
+export function agentEventChipPresentation(agent = {}, locale = 'zh-TW') {
+  const visual = deriveAgentEventVisual(agent, locale);
+  return {
+    visual,
+    textContent: `${visual.icon} ${shortLabel(visual.label)}`,
+    title: visual.detail || visual.label || '',
+    className: `event-chip ${visual.tone || 'idle'}`,
+    visible: Boolean(visual.label),
+  };
 }

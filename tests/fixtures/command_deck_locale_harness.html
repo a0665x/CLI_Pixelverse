@@ -6,7 +6,7 @@
   </select>
   <div id="situation" aria-live="polite"></div><div id="agent-rail"></div><div id="hook-rail"></div>
   <div id="help"></div><div id="live" aria-live="polite"></div><div id="selection"></div>
-  <div id="card"></div><div id="tooltip"></div><div id="speech"></div><div id="dialog"></div>
+  <div id="card"></div><div id="tooltip"></div><div id="event-chip"></div><div id="speech"></div><div id="dialog"></div>
   <div id="trace"></div><div id="editor"></div><div id="coordinate"></div><div id="inspector"></div>
   <div id="door"></div><iframe id="pixelworld" title="Pixelworld"></iframe><pre id="result" data-status="running"></pre>
   <script type="module">
@@ -14,6 +14,7 @@
     import { attachPixelworldBridge, createPixelworldBridge } from '/public/pixelworld_embed.mjs';
     import { agentTaskText, agentToolText, agentTooltipText, furnitureCoordinateText, timelineItemForLocale, uiText } from '/public/ui_strings.mjs';
     import { buildAgentDialog, buildAgentSpeech } from '/public/agent_dialog.mjs';
+    import { agentEventChipPresentation } from '/public/main_agent_events.mjs';
 
     const result = document.querySelector('#result');
     const locales = ['en-US', 'zh-TW', 'ja-JP', 'ko-KR'];
@@ -50,6 +51,10 @@
       node('selection').setAttribute('aria-label', node('selection').textContent);
       node('card').textContent = `${uiText(locale, 'commandDeck.rails.agentsTitle')}: ${raw}`;
       node('tooltip').textContent = agentTooltipText(agent, locale);
+      const eventChip = agentEventChipPresentation({ ...agent, pixel_state: 'reading_files', recent_actions: [{ event_name: 'main.tool.started', tool_name: 'read_file', preview: 'read_file' }] }, locale);
+      node('event-chip').textContent = eventChip.textContent;
+      node('event-chip').title = eventChip.title;
+      node('event-chip').className = eventChip.className;
       node('speech').textContent = buildAgentSpeech(agent, locale).summary;
       node('dialog').textContent = buildAgentDialog(agent, locale).rows.map(({ label, value }) => `${label}:${value}`).join('|');
     };
@@ -81,7 +86,7 @@
         node('locale-select').value = next;
         node('locale-select').dispatchEvent(new Event('change', { bubbles: true }));
         await wait(() => receivedLocales.includes(next));
-        rendered[next] = Object.fromEntries(['situation','agent-rail','hook-rail','help','live','selection','card','tooltip','speech','dialog','trace','editor','coordinate','inspector','door'].map((id) => [id, { text: node(id).textContent, title: node(id).title, aria: node(id).getAttribute('aria-label') }]));
+        rendered[next] = Object.fromEntries(['situation','agent-rail','hook-rail','help','live','selection','card','tooltip','event-chip','speech','dialog','trace','editor','coordinate','inspector','door'].map((id) => [id, { text: node(id).textContent, title: node(id).title, aria: node(id).getAttribute('aria-label') }]));
       }
       const surfaces = Object.keys(rendered['en-US']);
       for (const surface of surfaces) {
@@ -92,6 +97,7 @@
           if (!rendered[next][path].text.includes('read_file')) throw new Error(`${path} changed raw task for ${next}`);
         }
         if (!rendered[next].trace.text.includes('RAW_PREVIEW_7b42')) throw new Error(`trace changed preview for ${next}`);
+        if (!rendered[next]['event-chip'].title.includes('read_file')) throw new Error(`event chip changed raw preview for ${next}`);
       }
       if (document.body.dataset.pixelworldCutaway !== 'open' || receivedLocales.length < 4) throw new Error('open cutaway locale route not observed');
       result.dataset.status = 'pass'; result.textContent = JSON.stringify({ rendered, receivedLocales });

@@ -68,7 +68,7 @@ import { createCommandDeckLocaleController } from './command_deck_locale_control
 import { clampCameraOffset, centeredCamera, clampZoom, nextDraggedOffset, nextZoomState } from './ui_state.mjs';
 import { CORRIDOR_RECTS, GLOBAL_MAP, HOUSE_DOORS, loadGlobalMap, roomMapCopy, ROOM_LAYOUTS, ROOM_STATE_GROUPS } from './house_layout.mjs';
 import { hookStateRoutes } from './hook_state_map.mjs';
-import { deriveAgentEventVisual } from './main_agent_events.mjs';
+import { agentEventChipPresentation } from './main_agent_events.mjs';
 import { getAppleDogDoorSprite, getAppleDogPropSprite, getAppleDogRoomTheme } from './appledog_assets.mjs';
 import { shouldUseHighClarityProp } from './office_life_assets.mjs';
 import {
@@ -1715,7 +1715,8 @@ function decorateAgent(view) {
   const dotEl = view.el.querySelector('.state-dot');
   const pose = getAgentPose(agent);
   const interaction = view.interactionTarget || activityTarget(agent, 0);
-  const eventVisual = deriveAgentEventVisual(agent, currentLocale);
+  const eventChip = agentEventChipPresentation(agent, currentLocale);
+  const eventVisual = eventChip.visual;
   const bubble = buildAgentSpeech(agent, currentLocale);
   view.el.classList.toggle('selected', selectedAgentId === agent.agent);
   view.el.classList.remove('overlay-left', 'overlay-right');
@@ -1735,10 +1736,10 @@ function decorateAgent(view) {
   toolChipEl.title = agentTooltipText(agent, currentLocale) || strings().idleFallback;
   poseChipEl.textContent = pose.icon || '✨';
   poseChipEl.title = poseLabelForLocale(currentLocale, pose.pose);
-  eventChipEl.textContent = `${eventVisual.icon} ${short(eventVisual.label, 16)}`;
-  eventChipEl.title = eventVisual.detail || eventVisual.label || '';
-  eventChipEl.className = `event-chip ${eventVisual.tone || 'idle'}`;
-  eventChipEl.classList.toggle('show', !!eventVisual.label);
+  eventChipEl.textContent = eventChip.textContent;
+  eventChipEl.title = eventChip.title;
+  eventChipEl.className = eventChip.className;
+  eventChipEl.classList.toggle('show', eventChip.visible);
   eventChipEl.classList.toggle('clickable', !!bubble.clickable);
   const sprite = getKenneyAgentSprite({ role: agent.role, state: agent.state, color: agent.color, facing: view.facing, frame: view.frame });
   imgEl.src = sprite?.src || createAgentSprite({ role: agent.role, state: agent.state, color: agent.color, facing: view.facing, frame: view.frame });

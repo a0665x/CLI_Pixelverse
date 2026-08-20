@@ -21,6 +21,12 @@ const EN_ACTIVE_SURFACES = {
   ambient: { planning: ({ task }) => task ? `Plan: ${task}` : 'Planning route…', thinking: ({ task }) => task ? `Think: ${task}` : 'Reasoning quietly', working: ({ task }) => task ? `Doing: ${task}` : 'Running tools', offline: () => 'Signal lost', standby: () => 'Standing by' },
   furniture: { scale: ({ scale }) => `Scale ${scale}`, fallback: 'Furniture', coordinate: ({ label, room, x, y, snap, scale }) => `${label} · ${room} · x ${x}%, y ${y}% · Grid ${snap}% · Scale ${scale}` },
   accessibility: { pose: ({ pose }) => `${pose} pose`, interaction: ({ interaction }) => `${interaction} interaction`, poseFallback: 'Active', appleDogDoor: 'AppleDog room door' },
+  eventChip: {
+    pixel: { reading_files: 'Reading files', editing_files: 'Editing files', shell_command: 'Running shell command', browsing: 'Browsing', external_tool: 'Using external tool', blocked: 'Blocked', self_healing: 'Self-healing', awaiting_input: 'Awaiting input', initializing: 'Initializing', sleeping: 'Sleeping', collaborating: 'Collaborating', invoking_skill: 'Invoking skill', tool_call: 'Tool call', executing: 'Executing', responding: 'Responding' },
+    events: { taskStart: 'Task started', reasoning: 'Reasoning', toolStart: ({ tool }) => `${tool || 'Tool'} start`, toolDone: ({ tool }) => `${tool || 'Tool'} done`, toolRoute: 'Tool route', standby: 'Standby' },
+    states: { working: 'Working', planning: 'Planning', thinking: 'Thinking', offline: 'Offline', standby: 'Standby' },
+    details: { taskStarted: ({ value }) => value ? `Task: ${value}` : 'Task accepted', reasoning: 'Planning the next step', started: ({ value }) => value ? `Started: ${value}` : 'Tool execution started', finished: ({ value }) => value ? `Finished: ${value}` : 'Tool finished', toolRoute: 'Tool sequence updated', completed: ({ value }) => value || 'Task completed, back to standby' },
+  },
   timelineDetail: {
     labels: { reasoning: 'Reasoning', toolStart: 'Tool start', toolDone: 'Tool done', toolRoute: 'Tool route', complete: 'Complete', tool: 'Tool', thought: 'Thought', status: 'Status', action: 'Action' },
     messages: { reasoning: ({ value }) => `Reasoning: ${value}`, started: ({ tool, preview }) => `Started ${tool}${preview ? ` | ${preview}` : ''}`, finished: ({ tool, preview }) => `Finished ${tool}${preview ? ` | ${preview}` : ''}`, route: ({ value }) => `Tool route: ${value}`, completed: ({ value }) => `Completed: ${value}`, returned: 'Returned to standby', toolStep: ({ value }) => `Tool step: ${value}`, thought: ({ value }) => `Thinking: ${value}`, status: ({ value }) => `Status: ${value}`, fallback: ({ value }) => `Action: ${value}` },
@@ -33,6 +39,12 @@ const ZH_ACTIVE_SURFACES = {
   ambient: { planning: ({ task }) => task ? `規劃：${task}` : '正在拆解需求', thinking: ({ task }) => task ? `思考：${task}` : '正在整理推理', working: ({ task }) => task ? `執行：${task}` : '工具運作中', offline: () => '訊號中斷', standby: () => '待命中' },
   furniture: { scale: ({ scale }) => `縮放 ${scale}`, fallback: '家具', coordinate: ({ label, room, x, y, snap, scale }) => `${label} · ${room} · x ${x}%、y ${y}% · 網格 ${snap}% · 縮放 ${scale}` },
   accessibility: { pose: ({ pose }) => `${pose}姿勢`, interaction: ({ interaction }) => `互動：${interaction}`, poseFallback: '活動中', appleDogDoor: 'AppleDog 房間門' },
+  eventChip: {
+    pixel: { reading_files: '讀取檔案', editing_files: '編輯檔案', shell_command: '執行 Shell 指令', browsing: '瀏覽網頁', external_tool: '使用外部工具', blocked: '受阻', self_healing: '自我修復', awaiting_input: '等待輸入', initializing: '初始化', sleeping: '休眠', collaborating: '分身討論', invoking_skill: '技能調用', tool_call: '工具調用', executing: '代碼執行', responding: '輸出響應' },
+    events: { taskStart: '任務開始', reasoning: '規劃推演', toolStart: ({ tool }) => `${tool || '工具'} 啟動`, toolDone: ({ tool }) => `${tool || '工具'} 完成`, toolRoute: '工具序列', standby: '回到待命' },
+    states: { working: '執行中', planning: '規劃中', thinking: '思考中', offline: '離線', standby: '待命中' },
+    details: { taskStarted: ({ value }) => value ? `任務：${value}` : '已接受任務', reasoning: '正在整理藍圖與策略', started: ({ value }) => value ? `開始：${value}` : '開始執行工具', finished: ({ value }) => value ? `完成：${value}` : '工具已完成', toolRoute: '切換工具序列', completed: ({ value }) => value || '任務完成，回到客廳待命區' },
+  },
   timelineDetail: {
     labels: { reasoning: '規劃', toolStart: '工具啟動', toolDone: '工具完成', toolRoute: '工具序列', complete: '完成', tool: '工具', thought: '思考', status: '狀態', action: '動作' },
     messages: { reasoning: ({ value }) => `主代理正在規劃：${value}`, started: ({ tool, preview }) => `開始使用 ${tool}${preview ? `｜${preview}` : ''}`, finished: ({ tool, preview }) => `完成 ${tool}${preview ? `｜${preview}` : ''}`, route: ({ value }) => `目前工具：${value}`, completed: ({ value }) => `已完成：${value}`, returned: '回到待命站', toolStep: ({ value }) => `工具步驟：${value}`, thought: ({ value }) => `思考中：${value}`, status: ({ value }) => `狀態：${value}`, fallback: ({ value }) => `動作：${value}` },
@@ -45,6 +57,12 @@ const JA_ACTIVE_SURFACES = {
   ambient: { planning: ({ task }) => task ? `計画：${task}` : '要件を整理中…', thinking: ({ task }) => task ? `思考：${task}` : '静かに推論中', working: ({ task }) => task ? `実行：${task}` : 'ツールを実行中', offline: () => '通信が途切れました', standby: () => '待機中' },
   furniture: { scale: ({ scale }) => `倍率 ${scale}`, fallback: '家具', coordinate: ({ label, room, x, y, snap, scale }) => `${label}・${room}・x ${x}%、y ${y}%・グリッド ${snap}%・倍率 ${scale}` },
   accessibility: { pose: ({ pose }) => `${pose}の姿勢`, interaction: ({ interaction }) => `操作：${interaction}`, poseFallback: '活動中', appleDogDoor: 'AppleDog の部屋ドア' },
+  eventChip: {
+    pixel: { reading_files: 'ファイルを読取中', editing_files: 'ファイルを編集中', shell_command: 'シェルコマンド実行中', browsing: '閲覧中', external_tool: '外部ツール使用中', blocked: 'ブロック中', self_healing: '自己修復中', awaiting_input: '入力待ち', initializing: '初期化中', sleeping: '休止中', collaborating: '共同作業中', invoking_skill: 'スキル実行中', tool_call: 'ツール呼び出し', executing: '実行中', responding: '応答作成中' },
+    events: { taskStart: 'タスク開始', reasoning: '推論中', toolStart: ({ tool }) => `${tool || 'ツール'}を開始`, toolDone: ({ tool }) => `${tool || 'ツール'}を完了`, toolRoute: 'ツール経路', standby: '待機へ戻る' },
+    states: { working: '実行中', planning: '計画中', thinking: '思考中', offline: 'オフライン', standby: '待機中' },
+    details: { taskStarted: ({ value }) => value ? `タスク：${value}` : 'タスクを受け付けました', reasoning: '次の手順を計画中', started: ({ value }) => value ? `開始：${value}` : 'ツール実行を開始', finished: ({ value }) => value ? `完了：${value}` : 'ツールが完了しました', toolRoute: 'ツール経路を更新', completed: ({ value }) => value || 'タスク完了、待機場所へ戻りました' },
+  },
   timelineDetail: {
     labels: { reasoning: '推論', toolStart: 'ツール開始', toolDone: 'ツール完了', toolRoute: 'ツール経路', complete: '完了', tool: 'ツール', thought: '思考', status: '状態', action: '動作' },
     messages: { reasoning: ({ value }) => `推論：${value}`, started: ({ tool, preview }) => `${tool} を開始${preview ? `｜${preview}` : ''}`, finished: ({ tool, preview }) => `${tool} を完了${preview ? `｜${preview}` : ''}`, route: ({ value }) => `ツール経路：${value}`, completed: ({ value }) => `完了：${value}`, returned: '待機場所へ戻りました', toolStep: ({ value }) => `ツール手順：${value}`, thought: ({ value }) => `思考：${value}`, status: ({ value }) => `状態：${value}`, fallback: ({ value }) => `動作：${value}` },
@@ -57,6 +75,12 @@ const KO_ACTIVE_SURFACES = {
   ambient: { planning: ({ task }) => task ? `계획: ${task}` : '요구사항 정리 중…', thinking: ({ task }) => task ? `생각: ${task}` : '조용히 추론 중', working: ({ task }) => task ? `실행: ${task}` : '도구 실행 중', offline: () => '신호가 끊겼습니다', standby: () => '대기 중' },
   furniture: { scale: ({ scale }) => `배율 ${scale}`, fallback: '가구', coordinate: ({ label, room, x, y, snap, scale }) => `${label} · ${room} · x ${x}%, y ${y}% · 그리드 ${snap}% · 배율 ${scale}` },
   accessibility: { pose: ({ pose }) => `${pose} 자세`, interaction: ({ interaction }) => `상호작용: ${interaction}`, poseFallback: '활동 중', appleDogDoor: 'AppleDog 방 문' },
+  eventChip: {
+    pixel: { reading_files: '파일 읽는 중', editing_files: '파일 편집 중', shell_command: '셸 명령 실행 중', browsing: '탐색 중', external_tool: '외부 도구 사용 중', blocked: '차단됨', self_healing: '자가 복구 중', awaiting_input: '입력 대기', initializing: '초기화 중', sleeping: '절전 중', collaborating: '협업 중', invoking_skill: '스킬 호출 중', tool_call: '도구 호출', executing: '실행 중', responding: '응답 작성 중' },
+    events: { taskStart: '작업 시작', reasoning: '추론 중', toolStart: ({ tool }) => `${tool || '도구'} 시작`, toolDone: ({ tool }) => `${tool || '도구'} 완료`, toolRoute: '도구 경로', standby: '대기로 복귀' },
+    states: { working: '작업 중', planning: '계획 중', thinking: '생각 중', offline: '오프라인', standby: '대기 중' },
+    details: { taskStarted: ({ value }) => value ? `작업: ${value}` : '작업 접수', reasoning: '다음 단계를 계획 중', started: ({ value }) => value ? `시작: ${value}` : '도구 실행 시작', finished: ({ value }) => value ? `완료: ${value}` : '도구 완료', toolRoute: '도구 경로 업데이트', completed: ({ value }) => value || '작업 완료, 대기 위치로 복귀' },
+  },
   timelineDetail: {
     labels: { reasoning: '추론', toolStart: '도구 시작', toolDone: '도구 완료', toolRoute: '도구 경로', complete: '완료', tool: '도구', thought: '생각', status: '상태', action: '동작' },
     messages: { reasoning: ({ value }) => `추론: ${value}`, started: ({ tool, preview }) => `${tool} 시작${preview ? `｜${preview}` : ''}`, finished: ({ tool, preview }) => `${tool} 완료${preview ? `｜${preview}` : ''}`, route: ({ value }) => `도구 경로: ${value}`, completed: ({ value }) => `완료: ${value}`, returned: '대기 위치로 돌아갔습니다', toolStep: ({ value }) => `도구 단계: ${value}`, thought: ({ value }) => `생각: ${value}`, status: ({ value }) => `상태: ${value}`, fallback: ({ value }) => `동작: ${value}` },
