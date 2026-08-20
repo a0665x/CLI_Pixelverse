@@ -67,6 +67,43 @@ const ROOM_EVENT_KINDS: Record<string, WorldEventKind> = {
   standby_dock: 'idle',
 };
 
+const COMMAND_ROOM_TO_BUILDING: Record<string, string> = {
+  think_lab: 'thinkers-cottage',
+  blueprint_lab: 'thinkers-cottage',
+  file_library: 'archive-library',
+  code_workbench: 'maker-workshop',
+  terminal_bay: 'tool-smithy',
+  tool_forge: 'network-lab',
+  response_studio: 'collaboration-barn',
+  clone_bay: 'collaboration-barn',
+  session_archive: 'archive-library',
+  offline_corner: 'offline-dormitory',
+  standby_dock: 'rest-cabin',
+};
+
+const BUILDING_TO_COMMAND_ROOM: Record<string, string> = {
+  'thinkers-cottage': 'think_lab',
+  'archive-library': 'file_library',
+  'network-lab': 'tool_forge',
+  'offline-dormitory': 'offline_corner',
+  'maker-workshop': 'code_workbench',
+  'tool-smithy': 'terminal_bay',
+  'awaiting-post': 'standby_dock',
+  'collaboration-barn': 'clone_bay',
+  'recovery-clinic': 'offline_corner',
+  'rest-cabin': 'standby_dock',
+};
+
+export function buildingIdForCommandRoom(value: unknown): string {
+  const id = normalized(value);
+  return COMMAND_ROOM_TO_BUILDING[id] || String(value ?? '');
+}
+
+export function commandRoomForBuilding(value: unknown): string {
+  const id = String(value ?? '');
+  return BUILDING_TO_COMMAND_ROOM[id] || id;
+}
+
 const DEFAULT_ACTIVITY: Record<WorldEventKind, string> = {
   session_start: '初始化工作階段', think: '整理推理', plan: '規劃步驟', read: '讀取資料',
   edit: '編輯代碼', tool: '使用工具', web: '查詢外部資料', clone: '協作與分身', respond: '整理回覆',

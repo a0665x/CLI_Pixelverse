@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { buildMissionTrace, createMissionTraceController } from '../public/mission_trace.mjs';
+import { classifyCommandEvent } from '../public/command_deck_model.mjs';
 
 const model = (events = []) => {
   const agents = [
@@ -43,6 +44,14 @@ test('mission trace creates stable per-agent lanes and classifies canonical even
   assert.deepEqual(second.lanes.map(({ agentId }) => agentId), ['main', 'sub']);
   assert.equal(first.lanes[0].events[0].category, 'tool');
   assert.equal(first.lanes[1].events[0].category, 'reasoning');
+});
+
+test('mission trace reuses the canonical classifier for a plain plan event', () => {
+  const event = { id: 'plan', agentId: 'main', time: 900, kind: 'plan' };
+  const trace = buildMissionTrace(model([event]), { nowMs: 1_000 });
+
+  assert.equal(classifyCommandEvent(event), 'reasoning');
+  assert.equal(trace.lanes[0].events[0].category, classifyCommandEvent(event));
 });
 
 test('mission trace retains only the newest bounded events and advances without a new snapshot', () => {
@@ -120,4 +129,50 @@ test('reduced motion uses low-frequency static refresh instead of animation fram
   staticTick();
   assert.equal(rendered.at(-1).change.structureChanged, false);
   controller.stop();
+});
+
+test('live ticks request semantic reconciliation when an event crosses the retention boundary', () => {
+  let nowMs = 1_000;
+  const frames = [];
+  const rendered = [];
+  const controller = createMissionTraceController({
+    now: () => nowMs,
+    windowMs: 200,
+    frameIntervalMs: 0,
+    requestAnimationFrame: (callback) => { frames.push(callback); return frames.length; },
+    cancelAnimationFrame: () => {},
+    onRender: (trace, change) => rendered.push({ trace, change }),
+  });
+  controller.setModel(model([{ id: 'expires', agentId: 'main', time: 900, kind: 'tool' }]));
+  controller.start();
+  nowMs = 1_101;
+  frames.shift()(nowMs);
+
+  assert.deepEqual(rendered.at(-1).trace.lanes[0].events, []);
+  assert.equal(rendered.at(-1).change.structureChanged, true);
+  controller.stop();
+});
+
+test('paused selection survives repeated bounded snapshot updates until resume', () => {
+  let nowMs = 1_000;
+  const rendered = [];
+  const controller = createMissionTraceController({
+    now: () => nowMs,
+    windowMs: 1_000,
+    maxEvents: 2,
+    onRender: (trace, change) => rendered.push({ trace, change }),
+  });
+  controller.setModel(model([{ id: 'selected', agentId: 'main', time: 900, kind: 'tool' }]));
+  controller.select('selected');
+  controller.setModel(model([{ id: 'new-1', agentId: 'main', time: 950, kind: 'status' }]));
+  controller.setModel(model([{ id: 'new-2', agentId: 'main', time: 975, kind: 'message' }]));
+
+  assert.equal(rendered.at(-1).trace.selectedEventId, 'selected');
+  assert.equal(rendered.at(-1).trace.live, false);
+  assert.equal(rendered.at(-1).trace.lanes[0].events.some((event) => event.id === 'selected' && event.selected), true);
+
+  nowMs = 2_100;
+  controller.resume();
+  assert.equal(rendered.at(-1).trace.selectedEventId, null);
+  assert.equal(rendered.at(-1).trace.lanes[0].events.some((event) => event.id === 'selected'), false);
 });

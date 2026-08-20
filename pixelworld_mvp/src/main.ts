@@ -123,7 +123,12 @@ createGame('game-root', (world: WorldScene) => {
       document.documentElement.lang = activeLocale;
       window.dispatchEvent(new Event('pixelverse:locale'));
     },
+    (selection) => world.focusCommandSelection?.(selection),
   );
+  const detachCommandSelection = world.onCommandSelection?.((selection) => live.sendFocus(selection)) || (() => undefined);
   live.start();
-  world.events.once('shutdown', () => live.destroy());
+  world.events.once('shutdown', () => {
+    detachCommandSelection();
+    live.destroy();
+  });
 }, mountViewportControls);

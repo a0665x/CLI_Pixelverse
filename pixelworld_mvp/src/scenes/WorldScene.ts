@@ -22,6 +22,8 @@ import { createDemoEvent } from '../ui/demoEvents';
 import {
   backendAgentRole,
   backendAgentSignature,
+  buildingIdForCommandRoom,
+  commandRoomForBuilding,
   isBackendWorldSnapshot,
   worldEventForBackendAgent,
   type BackendWorldSnapshot,
@@ -29,6 +31,7 @@ import {
 import type { AgentWorldEvent, WorldEventKind } from '../world/types';
 import { WORLD_DEFINITION } from '../world/worldDefinition';
 import { validateWorld } from '../world/validateWorld';
+import type { CommandFocusSelection } from '../live/LiveWorldClient';
 
 export type { RenderedForeground } from '../rendering/buildingForeground';
 
@@ -50,6 +53,8 @@ export class WorldScene extends Phaser.Scene {
   private readonly pendingCloneAgents = new Set<string>();
   private sceneReady = false;
   private readonly listeners = new Set<() => void>();
+  private readonly commandSelectionListeners = new Set<(selection: CommandFocusSelection) => void>();
+  private lastLiveSnapshot: BackendWorldSnapshot | undefined;
   private lastError = '';
   private readonly liveAgentSignatures = new Map<string, string>();
   private locale: VillageLocale = 'zh-TW';
@@ -83,7 +88,7 @@ export class WorldScene extends Phaser.Scene {
       let down: { x: number; y: number } | undefined;
       object.on('pointerdown', (pointer: Phaser.Input.Pointer) => { down = { x: pointer.x, y: pointer.y }; });
       object.on('pointerup', (pointer: Phaser.Input.Pointer) => {
-        if (down && Phaser.Math.Distance.Between(down.x, down.y, pointer.x, pointer.y) < 6) this.cutawaySystem?.open(buildingId);
+        if (down && Phaser.Math.Distance.Between(down.x, down.y, pointer.x, pointer.y) < 6) this.selectBuilding(buildingId);
         down = undefined;
       });
     });
@@ -198,6 +203,7 @@ export class WorldScene extends Phaser.Scene {
 
   syncLiveSnapshot(snapshot: BackendWorldSnapshot, sequence = Date.now()): { added: number; removed: number; dispatched: number } {
     if (!this.sceneReady || !isBackendWorldSnapshot(snapshot)) return { added: 0, removed: 0, dispatched: 0 };
+    this.lastLiveSnapshot = snapshot;
     const liveIds = new Set(snapshot.agents.map(({ agent }) => agent));
     let added = 0;
     let removed = 0;
@@ -250,11 +256,42 @@ export class WorldScene extends Phaser.Scene {
     if (this.sceneReady) this.debugOverlay?.setVisible(name, visible);
   }
 
-  selectAgent(agentId: string): boolean {
+  selectAgent(agentId: string, announce = true): boolean {
     if (!this.sceneReady) return false;
     const selected = this.agents?.select(agentId) ?? false;
-    if (selected) this.notifyRoster();
+    if (selected) {
+      this.notifyRoster();
+      if (announce) this.notifyCommandSelection({ kind: 'agent', id: agentId });
+    }
     return selected;
+  }
+
+  selectBuilding(buildingId: string, announce = true): boolean {
+    const resolvedBuildingId = buildingIdForCommandRoom(buildingId);
+    const exists = (this.worldDefinition?.buildings ?? WORLD_DEFINITION.buildings).some(({ id }) => id === resolvedBuildingId);
+    if (!this.sceneReady || !exists) return false;
+    this.cutawaySystem?.open(resolvedBuildingId);
+    if (announce) this.notifyCommandSelection({ kind: 'building', id: commandRoomForBuilding(resolvedBuildingId) });
+    return true;
+  }
+
+  focusCommandSelection(selection: CommandFocusSelection): boolean {
+    if (selection.kind === 'agent') return this.selectAgent(selection.id, false);
+    if (selection.kind === 'building') return this.selectBuilding(selection.id, false);
+    if (selection.kind !== 'event') return false;
+    const event = this.lastLiveSnapshot?.events?.find((item) => String(item.id ?? item.event_id ?? item.eventId ?? '') === selection.id);
+    if (!event && !selection.agentId && !selection.buildingId) return false;
+    const payload = event?.payload && typeof event.payload === 'object' ? event.payload as Record<string, unknown> : {};
+    const agentId = String(selection.agentId ?? event?.agent ?? event?.agent_id ?? event?.agentId ?? payload.agent ?? '');
+    const backendAgent = this.lastLiveSnapshot?.agents.find(({ agent }) => agent === agentId);
+    const buildingId = String(
+      selection.buildingId ?? event?.buildingId ?? event?.building_id ?? event?.room_key
+      ?? payload.buildingId ?? payload.room_key
+      ?? backendAgent?.room_key ?? '',
+    );
+    const selectedAgent = agentId ? this.selectAgent(agentId, false) : false;
+    const selectedBuilding = buildingId ? this.selectBuilding(buildingId, false) : false;
+    return selectedAgent || selectedBuilding;
   }
 
   selectedAgentId(): string { return this.sceneReady ? (this.agents?.selected()?.agentId ?? '') : ''; }
@@ -274,8 +311,15 @@ export class WorldScene extends Phaser.Scene {
     this.statusOverlay?.setLocale(locale);
   }
   onRosterChanged(listener: () => void): () => void { this.listeners.add(listener); return () => this.listeners.delete(listener); }
+  onCommandSelection(listener: (selection: CommandFocusSelection) => void): () => void {
+    this.commandSelectionListeners.add(listener);
+    return () => this.commandSelectionListeners.delete(listener);
+  }
 
   private notifyRoster(): void { this.listeners.forEach((listener) => listener()); }
+  private notifyCommandSelection(selection: CommandFocusSelection): void {
+    this.commandSelectionListeners?.forEach((listener) => listener(selection));
+  }
   private attachCutawaySystem(system: InteriorCutawaySystem): void {
     this.cutawaySystem = system;
     system.setLocale(this.locale);
@@ -318,6 +362,8 @@ export class WorldScene extends Phaser.Scene {
     this.pendingCloneAgents.clear();
     this.liveAgentSignatures?.clear();
     this.listeners.clear();
+    this.commandSelectionListeners?.clear();
+    this.lastLiveSnapshot = undefined;
   }
 
 }

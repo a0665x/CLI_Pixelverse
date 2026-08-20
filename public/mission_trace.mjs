@@ -1,16 +1,6 @@
-const CATEGORY_ORDER = ['reasoning', 'tool', 'subagent', 'session', 'status', 'message', 'completion'];
+import { classifyCommandEvent } from './command_deck_model.mjs';
 
-const categoryFor = (event = {}) => {
-  if (CATEGORY_ORDER.includes(event.category)) return event.category;
-  const value = `${event.kind || event.type || event.event_name || ''} ${event.summary || event.message || ''}`.toLowerCase();
-  if (/(complete|completed|done|finish|完成|完了|완료)/.test(value)) return 'completion';
-  if (/(reason|thought|think|planning|思考|規劃|推理|計画|推論|추론|계획)/.test(value)) return 'reasoning';
-  if (/(tool|patch|read_file|write_file|terminal|execute|browser|工具)/.test(value)) return 'tool';
-  if (/(subagent|clone|分身|クローン|서브)/.test(value)) return 'subagent';
-  if (/(session|branch|工作階段|セッション|세션)/.test(value)) return 'session';
-  if (/(message|speak|reply|訊息|メッセージ|메시지)/.test(value)) return 'message';
-  return 'status';
-};
+const CATEGORY_ORDER = ['reasoning', 'tool', 'subagent', 'session', 'status', 'message', 'completion'];
 
 const eventTime = (event = {}) => {
   const value = Number(event.time ?? event.timestamp ?? event.created_at ?? event.freshness?.timestampMs);
@@ -38,11 +28,15 @@ export function buildMissionTrace(model = {}, options = {}) {
   const maxEvents = Math.max(1, Number(options.maxEvents) || 240);
   const selectedEventId = options.selectedEventId == null ? null : String(options.selectedEventId);
   const sourceEvents = Array.isArray(model.events) ? model.events : [];
-  const retained = sourceEvents
+  const candidates = sourceEvents
     .map((event, index) => ({ event, id: eventId(event, index), time: eventTime(event) }))
     .filter(({ time }) => time >= windowStartMs && time <= windowEndMs)
-    .sort((left, right) => right.time - left.time || left.id.localeCompare(right.id))
-    .slice(0, maxEvents)
+    .sort((left, right) => right.time - left.time || left.id.localeCompare(right.id));
+  const selectedCandidate = selectedEventId ? candidates.find(({ id }) => id === selectedEventId) : null;
+  const retained = candidates
+    .filter(({ id }) => id !== selectedEventId)
+    .slice(0, Math.max(0, maxEvents - (selectedCandidate ? 1 : 0)))
+    .concat(selectedCandidate || [])
     .sort((left, right) => left.time - right.time || left.id.localeCompare(right.id));
 
   const agentsById = new Map();
@@ -58,7 +52,7 @@ export function buildMissionTrace(model = {}, options = {}) {
   const lanes = [...agentsById.values()].sort(compareAgents).map((agent, laneIndex) => {
     const id = String(agent.id || agent.agent || '');
     const events = retained.filter(({ event }) => agentId(event) === id).map(({ event, id: idValue, time }) => {
-      const category = categoryFor(event);
+      const category = classifyCommandEvent(event);
       const eventAgent = event.agent || model.selectionIndex?.agent?.[id] || agent;
       const buildingId = String(event.buildingId || event.room_key || eventAgent?.buildingId || eventAgent?.room_key || '');
       const building = model.selectionIndex?.building?.[buildingId] || (buildingId ? { id: buildingId } : null);
@@ -117,11 +111,16 @@ export function createMissionTraceController(options = {}) {
   let frameHandle = null;
   let staticHandle = null;
   let lastFrameMs = -Infinity;
+  let lastMembership = '';
+  let pinnedSelectedEvent = null;
 
   const retainedModel = (nextModel = model) => ({
     ...nextModel,
     agents: [...agentHistory.values()],
-    events: [...eventHistory.values()],
+    events: [
+      ...eventHistory.values(),
+      ...(pinnedSelectedEvent && !eventHistory.has(eventId(pinnedSelectedEvent)) ? [pinnedSelectedEvent] : []),
+    ],
     selectionIndex: {
       ...(nextModel.selectionIndex || {}),
       agent: Object.fromEntries([...agentHistory].map(([id, agent]) => [id, agent])),
@@ -136,13 +135,19 @@ export function createMissionTraceController(options = {}) {
       live,
       selectedEventId,
     });
-    options.onRender?.(trace, { structureChanged });
+    const membership = trace.lanes.map((lane) => `${lane.agentId}:${lane.events.map(({ id }) => id).join(',')}`).join('|');
+    const reconcile = structureChanged || membership !== lastMembership;
+    lastMembership = membership;
+    options.onRender?.(trace, { structureChanged: reconcile });
     return trace;
   };
 
   const pruneHistory = () => {
-    const entries = [...eventHistory.entries()].sort(([, left], [, right]) => eventTime(right) - eventTime(left));
-    entries.slice(maxEvents).forEach(([id]) => eventHistory.delete(id));
+    const reserved = !live && selectedEventId ? 1 : 0;
+    const entries = [...eventHistory.entries()]
+      .filter(([id]) => id !== selectedEventId)
+      .sort(([, left], [, right]) => eventTime(right) - eventTime(left));
+    entries.slice(Math.max(0, maxEvents - reserved)).forEach(([id]) => eventHistory.delete(id));
     const referenced = new Set([...eventHistory.values()].map(agentId));
     [...agentHistory.keys()].forEach((id) => {
       if (!referenced.has(id) && !(model.agents || []).some((agent) => String(agent.id || agent.agent) === id)) agentHistory.delete(id);
@@ -171,6 +176,7 @@ export function createMissionTraceController(options = {}) {
     },
     select(id) {
       selectedEventId = id == null ? null : String(id);
+      pinnedSelectedEvent = selectedEventId ? eventHistory.get(selectedEventId) || null : null;
       pausedAtMs = now();
       live = false;
       const trace = render(false);
@@ -180,8 +186,10 @@ export function createMissionTraceController(options = {}) {
     },
     resume() {
       selectedEventId = null;
+      pinnedSelectedEvent = null;
       pausedAtMs = null;
       live = true;
+      pruneHistory();
       return render(false);
     },
     start() {

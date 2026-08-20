@@ -105,7 +105,7 @@ const payloadEventContent = (event = {}) => {
   };
 };
 
-const eventCategory = (event = {}) => {
+export const classifyCommandEvent = (event = {}) => {
   const content = payloadEventContent(event);
   const value = `${normalized(content.kind)} ${normalized(content.text)} ${normalized(content.tool)}`;
   if (/(complete|completed|done|finish|完成|完了|완료)/.test(value)) return 'completion';
@@ -190,7 +190,7 @@ const makeEvent = (event, agentsById, nowMs) => {
   const agentId = eventAgentId(event);
   const agent = agentsById[agentId] || null;
   const buildingId = eventRoom(event) || agent?.buildingId || '';
-  const category = eventCategory(event);
+  const category = classifyCommandEvent(event);
   const time = eventTime(event);
   return {
     ...event,

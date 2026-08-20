@@ -2142,6 +2142,7 @@ const missionCategoryColor = (category) => ({
   message: '#f472b6',
   completion: '#4ade80',
 })[category] || '#fbbf24';
+const missionLaneDom = new Map();
 
 function createMissionLane(lane) {
   const article = document.createElement('article');
@@ -2172,22 +2173,23 @@ function createMissionLane(lane) {
   events.setAttribute('class', 'mission-lane-events');
   svg.append(events);
   article.append(header, svg);
-  return article;
+  const entry = { article, focus, state, events, eventNodes: new Map() };
+  missionLaneDom.set(lane.agentId, entry);
+  return entry;
 }
 
-function reconcileMissionLane(article, lane) {
+function reconcileMissionLane(entry, lane) {
   const agent = lane.agent || {};
-  const focus = article.querySelector('.mission-lane-agent');
-  const state = article.querySelector('.mission-lane-state');
-  focus.textContent = agent.name || agent.agent || lane.agentId;
-  state.textContent = `${stateText(agent.state || 'idle')} · ${getRoomCopy(agent.buildingId || agent.room_key, currentLocale).name || agent.buildingId || agent.room_key || ''}`;
-  const group = article.querySelector('.mission-lane-events');
+  entry.focus.textContent = agent.name || agent.agent || lane.agentId;
+  entry.state.textContent = `${stateText(agent.state || 'idle')} · ${getRoomCopy(agent.buildingId || agent.room_key, currentLocale).name || agent.buildingId || agent.room_key || ''}`;
   const wanted = new Set(lane.events.map(({ id }) => id));
-  group.querySelectorAll('[data-event-id]').forEach((node) => {
-    if (!wanted.has(node.dataset.eventId)) node.remove();
+  entry.eventNodes.forEach((node, id) => {
+    if (wanted.has(id)) return;
+    node.remove();
+    entry.eventNodes.delete(id);
   });
   lane.events.forEach((item) => {
-    let node = Array.from(group.querySelectorAll('[data-event-id]')).find((candidate) => candidate.dataset.eventId === item.id);
+    let node = entry.eventNodes.get(item.id);
     if (!node) {
       node = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
       node.dataset.eventId = item.id;
@@ -2200,7 +2202,8 @@ function reconcileMissionLane(article, lane) {
       node.setAttribute('role', 'button');
       const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
       node.append(title);
-      group.append(node);
+      entry.events.append(node);
+      entry.eventNodes.set(item.id, node);
     }
     node.setAttribute('cy', String((item.categoryIndex + 0.5) * 10));
     node.setAttribute('fill', missionCategoryColor(item.category));
@@ -2219,22 +2222,23 @@ function renderMissionTrace(trace, { structureChanged = false } = {}) {
   }
   if (structureChanged) {
     const wanted = new Set(trace.lanes.map(({ agentId }) => agentId));
-    dom.events.querySelectorAll('[data-mission-lane]').forEach((article) => {
-      if (!wanted.has(article.dataset.missionLane)) article.remove();
+    missionLaneDom.forEach((entry, agentId) => {
+      if (wanted.has(agentId)) return;
+      entry.article.remove();
+      missionLaneDom.delete(agentId);
     });
     trace.lanes.forEach((lane) => {
-      let article = Array.from(dom.events.querySelectorAll('[data-mission-lane]')).find((candidate) => candidate.dataset.missionLane === lane.agentId);
-      if (!article) article = createMissionLane(lane);
-      reconcileMissionLane(article, lane);
-      dom.events.append(article);
+      const entry = missionLaneDom.get(lane.agentId) || createMissionLane(lane);
+      reconcileMissionLane(entry, lane);
+      dom.events.append(entry.article);
     });
   }
   trace.lanes.forEach((lane) => {
-    const article = Array.from(dom.events.querySelectorAll('[data-mission-lane]')).find((candidate) => candidate.dataset.missionLane === lane.agentId);
-    if (!article) return;
-    article.classList.toggle('selected', currentCommandSelection?.kind === 'agent' && currentCommandSelection.id === lane.agentId);
+    const entry = missionLaneDom.get(lane.agentId);
+    if (!entry) return;
+    entry.article.classList.toggle('selected', currentCommandSelection?.kind === 'agent' && currentCommandSelection.id === lane.agentId);
     lane.events.forEach((item) => {
-      const node = Array.from(article.querySelectorAll('[data-event-id]')).find((candidate) => candidate.dataset.eventId === item.id);
+      const node = entry.eventNodes.get(item.id);
       if (!node) return;
       node.setAttribute('transform', `translate(${item.xPct} 0)`);
       node.classList.toggle('selected', item.selected);
@@ -2404,7 +2408,14 @@ function selectCommandDeck(selection, { publish = true } = {}) {
   applyCommandSelectionStyling(resolved);
   if (publish) {
     commandFocusSequence = Math.max(commandFocusSequence + 1, Date.now());
-    pixelworldBridge.setFocus(normalized, commandFocusSequence);
+    const villageSelection = normalized.kind === 'event'
+      ? {
+        ...normalized,
+        agentId: resolved.agent?.id || resolved.agent?.agent || '',
+        buildingId: resolved.buildingId || resolved.building?.id || '',
+      }
+      : normalized;
+    pixelworldBridge.setFocus(villageSelection, commandFocusSequence);
   }
   return true;
 }

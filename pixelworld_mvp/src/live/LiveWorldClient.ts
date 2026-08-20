@@ -6,6 +6,41 @@ export interface LiveSnapshotEnvelope {
   sequence: number;
 }
 
+export type CommandFocusSelection = {
+  kind: 'agent' | 'building' | 'hook' | 'event';
+  id: string;
+  agentId?: string;
+  buildingId?: string;
+};
+
+export interface CommandFocusEnvelope {
+  selection: CommandFocusSelection;
+  sequence: number;
+}
+
+export function focusFromMessage(value: unknown): CommandFocusEnvelope | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const message = value as { type?: unknown; sequence?: unknown; selection?: { kind?: unknown; id?: unknown; agentId?: unknown; buildingId?: unknown } };
+  const sequence = message.sequence;
+  const kind = message.selection?.kind;
+  const id = typeof message.selection?.id === 'string' ? message.selection.id.trim() : '';
+  if (message.type !== 'pixelverse.command.focus'
+    || !['agent', 'building', 'hook', 'event'].includes(String(kind))
+    || !id
+    || typeof sequence !== 'number'
+    || !Number.isFinite(sequence)) return undefined;
+  const agentId = typeof message.selection?.agentId === 'string' ? message.selection.agentId.trim() : '';
+  const buildingId = typeof message.selection?.buildingId === 'string' ? message.selection.buildingId.trim() : '';
+  return {
+    selection: {
+      kind: kind as CommandFocusSelection['kind'], id,
+      ...(agentId ? { agentId } : {}),
+      ...(buildingId ? { buildingId } : {}),
+    },
+    sequence,
+  };
+}
+
 export function snapshotFromMessage(value: unknown): LiveSnapshotEnvelope | undefined {
   if (!value || typeof value !== 'object') return undefined;
   const message = value as { type?: unknown; sequence?: unknown; snapshot?: unknown };
@@ -28,18 +63,35 @@ export const localeFromMessage = localeMessage;
 export class LiveWorldClient {
   private eventSource?: EventSource;
   private pollTimer?: number;
+  private receivedFocusSequence = Number.NEGATIVE_INFINITY;
+  private sentFocusSequence = Number.NEGATIVE_INFINITY;
   private readonly onMessage = (event: MessageEvent) => {
     if (event.origin !== window.location.origin || event.source !== window.parent) return;
     const envelope = snapshotFromMessage(event.data);
     if (envelope) this.publish(envelope);
     const locale = localeFromMessage(event.data);
     if (locale) this.publishLocale(locale);
+    const focus = focusFromMessage(event.data);
+    if (focus && focus.sequence > this.receivedFocusSequence) {
+      this.receivedFocusSequence = focus.sequence;
+      this.publishFocus(focus.selection);
+    }
   };
 
   constructor(
     private readonly publish: (envelope: LiveSnapshotEnvelope) => void,
     private readonly publishLocale: (locale: ReturnType<typeof localeMessage>) => void = () => undefined,
+    private readonly publishFocus: (selection: CommandFocusSelection) => void = () => undefined,
   ) {}
+
+  sendFocus(selection: CommandFocusSelection, sequence?: number): boolean {
+    const nextSequence = sequence === undefined ? Math.max(Date.now(), this.sentFocusSequence + 1) : sequence;
+    const envelope = focusFromMessage({ type: 'pixelverse.command.focus', selection, sequence: nextSequence });
+    if (!envelope || envelope.sequence <= this.sentFocusSequence || window.parent === window) return false;
+    this.sentFocusSequence = envelope.sequence;
+    window.parent.postMessage({ type: 'pixelverse.command.focus', ...envelope }, window.location.origin);
+    return true;
+  }
 
   start(): void {
     window.addEventListener('message', this.onMessage);
