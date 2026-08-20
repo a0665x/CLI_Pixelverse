@@ -586,7 +586,7 @@ def classify_room(
         key = "standby_dock"
     elif normalized == "initializing":
         key = "clone_bay"
-    elif hint in ROOM_DISPLAY and hint != "offline_corner":
+    elif normalized != "idle" and hint in ROOM_DISPLAY and hint != "offline_corner":
         key = hint
     elif role == "subagent":
         key = "clone_bay"
@@ -695,6 +695,14 @@ def build_session_position(index: int) -> tuple[int, int]:
     return slots[index % len(slots)]
 
 
+def build_agent_position(role: str, room_key: str, agent_id: str) -> tuple[int, int]:
+    if role == "subagent" and room_key == "clone_bay":
+        return build_clone_position(abs(hash(agent_id)) % 8)
+    if role == "branch_session" and room_key == "session_archive":
+        return build_session_position(abs(hash(agent_id)) % 6)
+    return build_main_agent_position(room_key)
+
+
 @dataclass
 class AgentState:
     agent: str
@@ -717,6 +725,7 @@ class AgentState:
     source_placeholder: bool = False
     process_id: int | None = None
     instance_name: str | None = None
+    route_evidence: dict[str, Any] | None = None
 
     def latest_recent_action(self) -> dict[str, Any] | None:
         if not self.recent_actions:
@@ -779,6 +788,18 @@ class AgentState:
             return summarize_action_task(latest.get("type", ""), latest.get("message"), latest)
         return None
 
+    def route_location(self) -> tuple[str, tuple[int, int]]:
+        effective_state = self.effective_state()
+        effective_task = self.effective_task()
+        role = self.role if self.role in {"main_agent", "subagent", "branch_session"} else "main_agent"
+        room = classify_room(
+            effective_state,
+            effective_task,
+            role=role,
+            room_hint=self.effective_room_hint(effective_state),
+        )["room_key"]
+        return room, build_agent_position(role, room, self.agent)
+
     def to_public(self) -> dict[str, Any]:
         data = asdict(self)
         effective_state = self.effective_state()
@@ -786,12 +807,7 @@ class AgentState:
         room_hint = self.effective_room_hint(effective_state)
         role = self.role if self.role in {"main_agent", "subagent", "branch_session"} else "main_agent"
         room_meta = classify_room(effective_state, effective_task, role=role, room_hint=room_hint)
-        if role == "subagent":
-            px, py = build_clone_position(abs(hash(self.agent)) % 8)
-        elif role == "branch_session":
-            px, py = build_session_position(abs(hash(self.agent)) % 6)
-        else:
-            px, py = build_main_agent_position(room_meta["room_key"])
+        px, py = build_agent_position(role, room_meta["room_key"], self.agent)
         data["state"] = effective_state
         latest = self.latest_recent_action() or {}
         data["pixel_state"] = infer_pixel_state(self.pixel_state if self.pixel_state != "idle" or effective_state == "idle" else effective_state, effective_task, latest)
@@ -837,10 +853,33 @@ class WorldState:
         slots = [(15, 44), (23, 16), (50, 16), (28, 35), (50, 35)]
         return slots[index % len(slots)]
 
-    def add_event(self, kind: str, payload: dict[str, Any]) -> None:
+    def add_event(self, kind: str, payload: dict[str, Any]) -> int:
         self.event_seq += 1
         self.events.appendleft({"id": self.event_seq, "time": int(now_ts() * 1000), "kind": kind, "payload": payload})
         self.event_cv.notify_all()
+        return self.event_seq
+
+    def _record_route_evidence(
+        self,
+        agent: AgentState,
+        before: tuple[str, tuple[int, int]] | None,
+        after: tuple[str, tuple[int, int]],
+        event_id: int,
+    ) -> dict[str, Any] | None:
+        if before is None or before == after:
+            return None
+        from_room, from_position = before
+        to_room, to_position = after
+        evidence = {
+            "from_room": from_room,
+            "to_room": to_room,
+            "from_position": {"x": from_position[0], "y": from_position[1]},
+            "to_position": {"x": to_position[0], "y": to_position[1]},
+            "position_changed": from_position != to_position,
+            "event_id": event_id,
+        }
+        agent.route_evidence = evidence
+        return evidence
 
     def current_event_seq(self) -> int:
         with self.lock:
@@ -873,6 +912,7 @@ class WorldState:
         agent_id = payload.get("agent") or payload.get("id") or "unknown"
         with self.lock:
             agent = self.agents.get(agent_id)
+            before = agent.route_location() if agent else None
             preserve_phase = bool(payload.get("preserve_phase")) and agent is not None
             if not agent:
                 x, y = self._next_position(len(self.agents))
@@ -905,7 +945,12 @@ class WorldState:
             elif payload.get("room_key") in ROOM_DISPLAY and not preserve_phase:
                 agent.room_key_hint = payload.get("room_key")
             agent.last_seen = now_ts()
-            self.add_event("heartbeat", {"agent": agent.agent, "state": agent.state, "task": agent.task})
+            event_id = self.event_seq + 1
+            route_evidence = self._record_route_evidence(agent, before, agent.route_location(), event_id)
+            heartbeat = {"agent": agent.agent, "state": agent.state, "task": agent.task}
+            if route_evidence:
+                heartbeat["route_evidence"] = route_evidence
+            self.add_event("heartbeat", heartbeat)
             return agent
 
     def act(self, agent_id: str, action: dict[str, Any]) -> None:
@@ -915,6 +960,7 @@ class WorldState:
                 x, y = self._next_position(len(self.agents))
                 agent = AgentState(agent=agent_id, name=agent_id, x=x, y=y)
                 self.agents[agent_id] = agent
+            before = agent.route_location()
             entry = {
                 "type": action.get("type", "unknown"),
                 "message": action.get("message"),
@@ -950,6 +996,14 @@ class WorldState:
                     self.inboxes.setdefault(to, []).append(
                         {"from": agent_id, "message": action.get("message", ""), "time": entry["time"]}
                     )
+            route_evidence = self._record_route_evidence(
+                agent,
+                before,
+                agent.route_location(),
+                self.event_seq + 1,
+            )
+            if route_evidence:
+                entry["route_evidence"] = route_evidence
             event_kind = entry.get("event_name") or "action"
             self.add_event(event_kind, {"agent": agent_id, "action": entry})
 

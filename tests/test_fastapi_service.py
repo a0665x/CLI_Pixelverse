@@ -266,6 +266,125 @@ def test_fastapi_counts_and_keeps_local_subagents_in_clone_bay(monkeypatch):
     assert stopped_world["stats"]["subagent_count"] == 1
 
 
+def test_fastapi_subagent_routes_have_real_coordinate_displacement_and_event_ids(monkeypatch):
+    monkeypatch.setenv("PIXELVERSE_AGENT_KIND", "codex")
+    monkeypatch.setenv("PIXELVERSE_HERMES_ENABLE", "0")
+
+    import pixelverse_server
+    import pixelverse_fastapi
+
+    importlib.reload(pixelverse_server)
+    pixelverse_fastapi = importlib.reload(pixelverse_fastapi)
+
+    def emit(event, **kwargs):
+        result = pixelverse_fastapi.generic_event(pixelverse_fastapi.GenericAgentEvent(
+            agent_type="codex",
+            agent="codex-subagent:child-route-1",
+            name="Route Scout",
+            role="subagent",
+            event=event,
+            **kwargs,
+        ))
+        agent = next(
+            item for item in result["snapshot"]["agents"]
+            if item["agent"] == "codex-subagent:child-route-1"
+        )
+        return result["snapshot"], agent
+
+    _, started = emit(
+        "subagent.started",
+        state="working",
+        message="Child spawned",
+        target_room="clone_bay",
+    )
+    started_position = (started["x"], started["y"])
+
+    working_world, working = emit(
+        "tool.started",
+        state="working",
+        tool_name="WebSearch",
+        message="Searching external sources",
+        target_room="tool_forge",
+    )
+    working_position = (working["x"], working["y"])
+
+    assert working["state"] == "working"
+    assert working["room_key"] == "tool_forge"
+    assert working_position != started_position
+    outbound = working["route_evidence"]
+    assert outbound["from_room"] == "clone_bay"
+    assert outbound["to_room"] == "tool_forge"
+    assert outbound["from_position"] == {"x": started_position[0], "y": started_position[1]}
+    assert outbound["to_position"] == {"x": working_position[0], "y": working_position[1]}
+    assert outbound["position_changed"] is True
+    assert isinstance(outbound["event_id"], int)
+    assert any(
+        (item.get("payload", {}).get("route_evidence") or item.get("payload", {}).get("action", {}).get("route_evidence")) == outbound
+        for item in working_world["events"]
+    )
+
+    _, tool_done = emit(
+        "tool.completed",
+        state="working",
+        tool_name="WebSearch",
+        message="External search completed",
+        target_room="tool_forge",
+    )
+    assert tool_done["state"] == "working"
+    assert (tool_done["x"], tool_done["y"]) == working_position
+
+    _, stopped = emit(
+        "subagent.stopped",
+        state="idle",
+        message="Child completed",
+        target_room="clone_bay",
+    )
+    inbound = stopped["route_evidence"]
+    assert stopped["room_key"] == "clone_bay"
+    assert (stopped["x"], stopped["y"]) == started_position
+    assert inbound["from_room"] == "tool_forge"
+    assert inbound["to_room"] == "clone_bay"
+    assert inbound["from_position"] == {"x": working_position[0], "y": working_position[1]}
+    assert inbound["to_position"] == {"x": started_position[0], "y": started_position[1]}
+    assert inbound["position_changed"] is True
+    assert inbound["event_id"] > outbound["event_id"]
+
+
+def test_fastapi_main_agent_routes_to_clone_then_only_completion_returns_standby(monkeypatch):
+    monkeypatch.setenv("PIXELVERSE_AGENT_KIND", "codex")
+    monkeypatch.setenv("PIXELVERSE_HERMES_ENABLE", "0")
+
+    import pixelverse_server
+    import pixelverse_fastapi
+
+    importlib.reload(pixelverse_server)
+    pixelverse_fastapi = importlib.reload(pixelverse_fastapi)
+
+    def emit(event, **kwargs):
+        result = pixelverse_fastapi.generic_event(pixelverse_fastapi.GenericAgentEvent(
+            agent_type="codex",
+            agent="codex-main",
+            event=event,
+            **kwargs,
+        ))
+        return next(item for item in result["snapshot"]["agents"] if item["agent"] == "codex-main")
+
+    thinking = emit("start", message="Analyze delegation")
+    clone = emit("subagent.started", state="collaborating", message="Delegating", target_room="clone_bay")
+    tool_done = emit("tool.completed", state="working", tool_name="Task", message="Delegation tool completed", target_room="clone_bay")
+    completed = emit("completed", message="Session complete")
+
+    assert thinking["room_key"] == "think_lab"
+    assert clone["room_key"] == "clone_bay"
+    assert (clone["x"], clone["y"]) != (thinking["x"], thinking["y"])
+    assert tool_done["state"] == "working"
+    assert tool_done["room_key"] == "clone_bay"
+    assert completed["state"] == "idle"
+    assert completed["room_key"] == "standby_dock"
+    assert completed["route_evidence"]["from_room"] == "clone_bay"
+    assert completed["route_evidence"]["to_room"] == "standby_dock"
+
+
 def test_fastapi_only_deletes_offline_local_agents(monkeypatch):
     monkeypatch.setenv("PIXELVERSE_HERMES_ENABLE", "0")
 

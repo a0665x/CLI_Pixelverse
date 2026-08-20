@@ -19,6 +19,7 @@ from pixelverse_server import (
     infer_pixel_state,
     merge_hermes_events,
 )
+from scripts.codex_pixelverse_hook import build_events
 
 
 def test_humanize_tool_name_maps_known_tools():
@@ -377,3 +378,61 @@ def test_humanize_event_supports_main_tool_lifecycle():
     assert event["title"] == "主代理工具啟動"
     assert "修改檔案" in event["summary"]
     assert done["title"] == "主代理工具完成"
+
+
+def test_codex_child_identity_survives_start_tool_activity_and_stop(monkeypatch):
+    monkeypatch.setenv("PIXELVERSE_AGENT_ID", "codex-main")
+    child = {"id": "child-stable-7", "name": "Route Scout"}
+
+    lifecycle = [
+        build_events({
+            "hook_event_name": "SubagentStart",
+            "session_id": "session-7",
+            "agent_id": "codex-main",
+            "subagent": child,
+            "prompt": "Inspect route evidence",
+        })[-1],
+        build_events({
+            "hook_event_name": "PreToolUse",
+            "session_id": "session-7",
+            "agent_id": "child-stable-7",
+            "agent_name": "Route Scout",
+            "tool_name": "WebSearch",
+        })[-1],
+        build_events({
+            "hook_event_name": "PostToolUse",
+            "session_id": "session-7",
+            "agent_id": "child-stable-7",
+            "agent_name": "Route Scout",
+            "tool_name": "WebSearch",
+        })[-1],
+        build_events({
+            "hook_event_name": "SubagentStop",
+            "session_id": "session-7",
+            "agent_id": "codex-main",
+            "subagent": child,
+            "summary": "Route evidence inspected",
+        })[-1],
+    ]
+
+    assert {event["agent"] for event in lifecycle} == {"codex-subagent:child-stable-7"}
+    assert [event["event"] for event in lifecycle] == [
+        "subagent.started",
+        "tool.started",
+        "tool.completed",
+        "subagent.stopped",
+    ]
+    assert [event["target_room"] for event in lifecycle] == [
+        "clone_bay",
+        "tool_forge",
+        "tool_forge",
+        "clone_bay",
+    ]
+    assert all(event["role"] == "subagent" for event in lifecycle)
+
+
+def test_room_normalization_honors_only_active_valid_hints_after_special_states():
+    assert classify_room("blocked", "patch", room_hint="tool_forge")["room_key"] == "offline_corner"
+    assert classify_room("initializing", "boot", room_hint="tool_forge")["room_key"] == "clone_bay"
+    assert classify_room("working", "patch", role="subagent", room_hint="tool_forge")["room_key"] == "tool_forge"
+    assert classify_room("idle", "patch", role="subagent", room_hint="tool_forge")["room_key"] == "clone_bay"

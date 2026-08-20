@@ -1324,37 +1324,48 @@ hermes_chat() {
 }
 
 render_latest_trajectory() {
+  local target_room="${1:-}"
   local output
   local -a renderer_cmd=(python3 "$ROOT/scripts/render_local_ui_trajectory.py")
   if ! python3 -c 'import PIL' >/dev/null 2>&1 && command -v uv >/dev/null 2>&1; then
     renderer_cmd=(uv run --with Pillow python "$ROOT/scripts/render_local_ui_trajectory.py")
   fi
-  if output="$(${renderer_cmd[@]} 2>&1)"; then
+  if [[ -n "$target_room" ]]; then
+    renderer_cmd+=(--require-hook-evidence "$target_room")
+  fi
+  if output="$("${renderer_cmd[@]}" 2>&1)"; then
     echo "Trajectory image: $output"
   else
-    echo "Warning: failed to render trajectory image:" >&2
+    echo "Failed to render or validate trajectory evidence:" >&2
     echo "$output" >&2
+    return 1
   fi
 }
 
 capture_world_snapshot() {
   local snapshot_url="http://127.0.0.1:${PIXELVERSE_PORT}/api/world"
   local output="$ROOT/tmp/latest_world_snapshot.json"
-  if curl -fsS "$snapshot_url" > "$output"; then
+  local connect_timeout="${PIXELVERSE_TEST_HOOK_CONNECT_TIMEOUT:-2}"
+  local max_time="${PIXELVERSE_TEST_HOOK_MAX_TIME:-10}"
+  if curl -fsS --connect-timeout "$connect_timeout" --max-time "$max_time" "$snapshot_url" > "$output"; then
     return 0
   fi
-  docker exec cli-pixelverse curl -fsS "$snapshot_url" > "$output"
+  timeout "${max_time}s" docker exec cli-pixelverse \
+    curl -fsS --connect-timeout "$connect_timeout" --max-time "$max_time" "$snapshot_url" > "$output"
 }
 
 post_json() {
   local url="$1"
   local payload="$2"
-  if curl -fsS -X POST "$url" \
+  local connect_timeout="${PIXELVERSE_TEST_HOOK_CONNECT_TIMEOUT:-2}"
+  local max_time="${PIXELVERSE_TEST_HOOK_MAX_TIME:-10}"
+  if curl -fsS --connect-timeout "$connect_timeout" --max-time "$max_time" -X POST "$url" \
     -H 'Content-Type: application/json' \
     -d "$payload" >/dev/null; then
     return 0
   fi
-  docker exec cli-pixelverse curl -fsS -X POST "$url" \
+  timeout "${max_time}s" docker exec cli-pixelverse \
+    curl -fsS --connect-timeout "$connect_timeout" --max-time "$max_time" -X POST "$url" \
     -H 'Content-Type: application/json' \
     -d "$payload" >/dev/null
 }
@@ -1404,37 +1415,63 @@ test_hook() {
   echo "Sending synthetic Hermes events to $bridge_url/hook ..."
   echo "Random test route: think_lab -> ${target_room} -> standby_dock (${label})"
   mkdir -p "$ROOT/tmp"
+  if ! capture_world_snapshot; then
+    echo "Unable to capture the pre-run world event sequence." >&2
+    return 1
+  fi
+  local baseline_event_id
+  baseline_event_id="$(python3 -c 'import json, sys; data=json.load(open(sys.argv[1], encoding="utf-8")); print(max((int(item.get("id") or 0) for item in data.get("events", [])), default=0))' "$ROOT/tmp/latest_world_snapshot.json")"
+  local minimum_event_id=$((baseline_event_id + 1))
   local agents_json
   if [[ "$target_room" == "clone_bay" ]]; then
     agents_json=",\"agents\":[{\"agent\":\"henry-main\",\"name\":\"Henry\",\"role\":\"main_agent\",\"start_room\":\"think_lab\",\"target_room\":\"clone_bay\",\"return_room\":\"standby_dock\",\"state\":\"working\",\"tool_csv\":\"delegate_task\"},{\"agent\":\"synthetic-subagent-1\",\"name\":\"Test Subagent\",\"role\":\"subagent\",\"start_room\":\"clone_bay\",\"target_room\":\"tool_forge\",\"return_room\":\"clone_bay\",\"state\":\"working\",\"tool_csv\":\"patch,terminal\"}]"
   else
     agents_json=",\"agents\":[{\"agent\":\"henry-main\",\"name\":\"Henry\",\"role\":\"main_agent\",\"start_room\":\"think_lab\",\"target_room\":\"${target_room}\",\"return_room\":\"standby_dock\",\"state\":\"working\",\"tool_csv\":\"${tool_csv}\"}]"
   fi
-  printf '{"target_room":"%s","tool_csv":"%s","label":"%s","start_room":"think_lab","return_room":"standby_dock","created_at":"%s","event_sequence":["main:start","main:step","subagent:step-if-clone","subagent:end-if-clone","main:end"]%s}\n' \
-    "$target_room" "$tool_csv" "$label" "$(date -Iseconds)" "$agents_json" > "$ROOT/tmp/latest_test_hook_route.json"
+  printf '{"target_room":"%s","tool_csv":"%s","label":"%s","start_room":"think_lab","return_room":"standby_dock","created_at":"%s","minimum_event_id":%s,"event_sequence":["main:start","main:step","subagent:step-if-clone","subagent:end-if-clone","main:end"]%s}\n' \
+    "$target_room" "$tool_csv" "$label" "$(date -Iseconds)" "$minimum_event_id" "$agents_json" > "$ROOT/tmp/latest_test_hook_route.json"
 
   local start_json="{\"event\":\"agent:start\",\"context\":{\"message\":\"Pixelverse random route test started\",\"target_room\":\"think_lab\"}}"
   local step_json="{\"event\":\"agent:step\",\"context\":{\"tool_names\":${tools_json},\"target_room\":\"${target_room}\"}}"
   local end_json="{\"event\":\"agent:end\",\"context\":{\"response\":\"Synthetic hook test completed: ${label}.\"}}"
 
   if ! post_json "$bridge_url/hook" "$start_json"; then
-    echo "Host bridge URL was unavailable; retrying inside Docker container..."
-    bridge_url="http://127.0.0.1:${BRIDGE_PORT}"
+    echo "Unable to deliver synthetic hook start event to the bridge or service container." >&2
+    return 1
   fi
   sleep "$delay"
-  post_json "$bridge_url/hook" "$step_json"
+  if ! post_json "$bridge_url/hook" "$step_json"; then
+    echo "Unable to deliver synthetic hook step event." >&2
+    return 1
+  fi
   if [[ "$target_room" == "clone_bay" ]]; then
-    post_json "http://127.0.0.1:${PIXELVERSE_PORT}/api/event" \
-      '{"agent_type":"hermes","agent":"synthetic-subagent-1","name":"Test Subagent","role":"subagent","event":"tool.started","tool_names":["patch","terminal"],"target_room":"tool_forge","message":"Synthetic subagent is patching from delegated task.","color":"#a78bfa"}'
+    if ! post_json "http://127.0.0.1:${PIXELVERSE_PORT}/api/event" \
+      '{"agent_type":"hermes","agent":"synthetic-subagent-1","name":"Test Subagent","role":"subagent","event":"subagent.started","state":"working","target_room":"clone_bay","message":"Synthetic subagent spawned in clone bay.","color":"#a78bfa"}'; then
+      echo "Unable to deliver synthetic subagent start event." >&2
+      return 1
+    fi
+    sleep "$delay"
+    if ! post_json "http://127.0.0.1:${PIXELVERSE_PORT}/api/event" \
+      '{"agent_type":"hermes","agent":"synthetic-subagent-1","name":"Test Subagent","role":"subagent","event":"tool.started","tool_names":["patch","terminal"],"target_room":"tool_forge","message":"Synthetic subagent is patching from delegated task.","color":"#a78bfa"}'; then
+      echo "Unable to deliver synthetic subagent tool event." >&2
+      return 1
+    fi
   fi
   sleep "$delay"
   if [[ "$target_room" == "clone_bay" ]]; then
-    post_json "http://127.0.0.1:${PIXELVERSE_PORT}/api/event" \
-      '{"agent_type":"hermes","agent":"synthetic-subagent-1","name":"Test Subagent","role":"subagent","event":"completed","state":"idle","target_room":"clone_bay","message":"Synthetic subagent completed delegated patch work.","color":"#a78bfa"}'
+    if ! post_json "http://127.0.0.1:${PIXELVERSE_PORT}/api/event" \
+      '{"agent_type":"hermes","agent":"synthetic-subagent-1","name":"Test Subagent","role":"subagent","event":"completed","state":"idle","target_room":"clone_bay","message":"Synthetic subagent completed delegated patch work.","color":"#a78bfa"}'; then
+      echo "Unable to deliver synthetic subagent completion event." >&2
+      return 1
+    fi
   fi
-  post_json "$bridge_url/hook" "$end_json"
-  capture_world_snapshot || true
-  render_latest_trajectory
+  if ! post_json "$bridge_url/hook" "$end_json"; then
+    echo "Unable to deliver synthetic hook completion event." >&2
+    return 1
+  fi
+  capture_world_snapshot
+  render_latest_trajectory "$target_room"
+  echo "Hook movement evidence accepted: ${target_room} route and coordinate checks passed."
   echo "Synthetic hook sequence sent. Check UI or /api/world events."
 }
 

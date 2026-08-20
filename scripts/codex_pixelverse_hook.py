@@ -74,24 +74,33 @@ def find_uuid(value: Any) -> str | None:
 
 def subagent_identity(data: dict[str, Any]) -> tuple[str, str]:
     session_id = str(data.get("session_id") or "unknown")
-    raw_id = first_string(
-        data,
-        (
-            "subagent_id",
-            "child_agent_id",
-            "spawned_agent_id",
-            "agent_id",
-            "subagent",
-            "agent",
-            "child",
-            "spawned_agent",
-            "task_id",
-            "id",
-        ),
+    raw_id = first_string(data, ("subagent_id", "child_agent_id", "spawned_agent_id"))
+    nested_child = next(
+        (data.get(key) for key in ("subagent", "child", "spawned_agent") if isinstance(data.get(key), dict)),
+        None,
     )
+    if not raw_id and nested_child:
+        raw_id = first_string(
+            nested_child,
+            ("subagent_id", "child_agent_id", "spawned_agent_id", "agent_id", "task_id", "id"),
+        )
+    if not raw_id:
+        raw_id = first_string(data, ("agent_id", "task_id", "id"))
     child_id = raw_id or find_uuid(data) or f"{session_id}:{data.get('agent_type') or data.get('model') or 'subagent'}"
-    name = first_string(data, ("name", "agent_name", "subagent", "agent", "child", "agent_type", "model")) or "Codex Subagent"
+    name = first_string(nested_child, ("name", "agent_name", "agent_type", "model")) if nested_child else None
+    name = name or first_string(data, ("name", "agent_name", "agent", "agent_type", "model")) or "Codex Subagent"
     return f"codex-subagent:{child_id}", trim(name, 48) or "Codex Subagent"
+
+
+def has_subagent_context(data: dict[str, Any]) -> bool:
+    for key in ("subagent_id", "child_agent_id", "spawned_agent_id"):
+        if first_string(data, (key,)):
+            return True
+    if any(isinstance(data.get(key), dict) for key in ("subagent", "child", "spawned_agent")):
+        return True
+    agent_id = first_string(data, ("agent_id",))
+    main_agent_id = os.getenv("PIXELVERSE_AGENT_ID")
+    return bool(agent_id and (not main_agent_id or agent_id != main_agent_id))
 
 
 def tool_route(tool_name: str) -> tuple[str, str]:
@@ -139,6 +148,14 @@ def build_events(data: dict[str, Any]) -> list[dict[str, Any]]:
         tool_name = str(data.get("tool_name") or "tool")
         phase = "started" if hook == "PreToolUse" else "completed"
         state, target_room = tool_route(tool_name)
+        if has_subagent_context(data):
+            subagent_id, subagent_name = subagent_identity(data)
+            payload.update(
+                agent=subagent_id,
+                name=subagent_name,
+                role="subagent",
+                color="#8b5cf6",
+            )
         payload.update(
             event=f"tool.{phase}",
             state=state,

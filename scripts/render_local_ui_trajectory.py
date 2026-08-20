@@ -3,8 +3,11 @@
 
 from __future__ import annotations
 
+import argparse
 import json
+import math
 import subprocess
+import sys
 from pathlib import Path
 
 from PIL import Image, ImageDraw
@@ -206,6 +209,77 @@ def draw_marker(draw: ImageDraw.ImageDraw, point: dict[str, float], text: str, f
     label(draw, (x + 16, y - 12), text, fill=fill)
 
 
+def _runtime_route_evidence(
+    snapshot: dict | None,
+    agent_id: str,
+    from_room: str,
+    to_room: str,
+    minimum_event_id: int = 0,
+) -> dict:
+    for event in (snapshot or {}).get("events", []):
+        payload = event.get("payload") or {}
+        if payload.get("agent") != agent_id:
+            continue
+        evidence = payload.get("route_evidence") or (payload.get("action") or {}).get("route_evidence")
+        if not isinstance(evidence, dict):
+            continue
+        if int(evidence.get("event_id") or 0) < minimum_event_id:
+            continue
+        if evidence.get("from_room") == from_room and evidence.get("to_room") == to_room:
+            return evidence
+    return {}
+
+
+def _positive_displacement(first: dict | None, second: dict | None) -> bool:
+    if not first or not second:
+        return False
+    return math.dist((first.get("x", 0), first.get("y", 0)), (second.get("x", 0), second.get("y", 0))) > 0
+
+
+def validate_hook_evidence(debug: dict, expected_target: str) -> list[str]:
+    expected = {
+        "henry-main": ("think_lab", expected_target, "standby_dock"),
+    }
+    if expected_target == "clone_bay":
+        expected["synthetic-subagent-1"] = ("clone_bay", "tool_forge", "clone_bay")
+
+    agents = {item.get("agent"): item for item in debug.get("agents", [])}
+    minimum_event_id = int((debug.get("latest") or {}).get("minimum_event_id") or 0)
+    failures: list[str] = []
+    for agent_id, rooms in expected.items():
+        agent = agents.get(agent_id)
+        if not agent:
+            failures.append(f"missing expected agent {agent_id}")
+            continue
+        actual_rooms = agent.get("rooms") or {}
+        actual = (actual_rooms.get("start"), actual_rooms.get("work"), actual_rooms.get("return"))
+        if actual != rooms:
+            failures.append(f"{agent_id} rooms were {actual}, expected {rooms}")
+        points = agent.get("points") or {}
+        evidence = agent.get("route_evidence") or {}
+        for leg, first_key, second_key, from_room, to_room, route_key in (
+            ("outbound", "start", "work", rooms[0], rooms[1], "outbound_route"),
+            ("return", "work", "return", rooms[1], rooms[2], "return_route"),
+        ):
+            if not _positive_displacement(points.get(first_key), points.get(second_key)):
+                failures.append(f"{agent_id} {leg} lacks positive coordinate displacement")
+            route = agent.get(route_key) or []
+            if len(route) < 2 or not any(_positive_displacement(route[index - 1], route[index]) for index in range(1, len(route))):
+                failures.append(f"{agent_id} {leg} lacks distinct route points")
+            runtime = evidence.get(leg) or {}
+            if runtime.get("from_room") != from_room or runtime.get("to_room") != to_room:
+                failures.append(f"{agent_id} {leg} lacks matching runtime rooms")
+            if not runtime.get("position_changed"):
+                failures.append(f"{agent_id} {leg} lacks runtime position change")
+            if not _positive_displacement(runtime.get("from_position"), runtime.get("to_position")):
+                failures.append(f"{agent_id} {leg} lacks runtime coordinate displacement")
+            if runtime.get("event_id") is None:
+                failures.append(f"{agent_id} {leg} lacks a runtime event id")
+            elif int(runtime["event_id"]) < minimum_event_id:
+                failures.append(f"{agent_id} {leg} evidence is not from the current test-hook run")
+    return failures
+
+
 def write_debug_log(data: dict) -> None:
     snapshot = None
     if SNAPSHOT.exists():
@@ -228,6 +302,21 @@ def write_debug_log(data: dict) -> None:
         },
     }
     for route in [item for item in routes if item]:
+        minimum_event_id = int((data.get("latest") or {}).get("minimum_event_id") or 0)
+        outbound_evidence = _runtime_route_evidence(
+            snapshot,
+            route.get("agent"),
+            route.get("startRoom"),
+            route.get("targetRoom"),
+            minimum_event_id,
+        )
+        return_evidence = _runtime_route_evidence(
+            snapshot,
+            route.get("agent"),
+            route.get("targetRoom"),
+            route.get("returnRoom"),
+            minimum_event_id,
+        )
         debug["agents"].append({
             "agent": route.get("agent"),
             "name": route.get("name"),
@@ -250,6 +339,10 @@ def write_debug_log(data: dict) -> None:
             "route_point_count": route.get("routePointCount"),
             "outbound_route": route.get("outbound", []),
             "return_route": route.get("inbound", []),
+            "route_evidence": {
+                "outbound": outbound_evidence,
+                "return": return_evidence,
+            },
             "door_anchors": {
                 "start": {
                     "aisle": route.get("anchors", {}).get("start", {}).get("aisle"),
@@ -285,7 +378,10 @@ def render_walkability_mask(data: dict) -> None:
     image.save(MASK_OUT)
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--require-hook-evidence", choices=["blueprint_lab", "tool_forge", "response_studio", "clone_bay", "session_archive"])
+    args = parser.parse_args(argv)
     payload = subprocess.check_output(["node", "--input-type=module", "-e", NODE_CODE], cwd=ROOT, text=True)
     data = json.loads(payload)
     OUT.parent.mkdir(parents=True, exist_ok=True)
@@ -348,7 +444,17 @@ def main() -> None:
 
     image.save(OUT, quality=92)
     print(f"{OUT}\n{LOG_OUT}\n{MASK_OUT}")
+    if args.require_hook_evidence:
+        debug = json.loads(LOG_OUT.read_text(encoding="utf-8"))
+        failures = validate_hook_evidence(debug, args.require_hook_evidence)
+        if failures:
+            print("Hook movement evidence rejected:", file=sys.stderr)
+            for failure in failures:
+                print(f"- {failure}", file=sys.stderr)
+            return 2
+        print(f"Hook movement evidence accepted for {args.require_hook_evidence}")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
