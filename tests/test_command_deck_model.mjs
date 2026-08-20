@@ -144,3 +144,38 @@ test('command deck exports the one canonical identity ordering helper', () => {
   ];
   assert.deepEqual([...unordered].sort(compareCommandDeckAgents).map(({ id }) => id), ['main', 'sub-a', 'sub-b']);
 });
+
+test('specific API envelope kind governs category over generic payload action type', () => {
+  const model = buildCommandDeckModel({
+    agents: [{ agent: 'main', role: 'main_agent', state: 'working' }],
+    events: [
+      {
+        id: 'evt-complete', kind: 'main.task.completed', agent: 'main',
+        payload: { action: { type: 'tool', message: 'Shared payload' } },
+      },
+      {
+        id: 'evt-reasoning', event_name: 'main.reasoning', agent: 'main',
+        payload: { action: { type: 'tool', message: 'Shared payload' } },
+      },
+    ],
+  });
+  assert.equal(model.selectionIndex.event['evt-complete'].category, 'completion');
+  assert.equal(model.selectionIndex.event['evt-reasoning'].category, 'reasoning');
+});
+
+test('specific started and completed envelopes have distinct stable fallback IDs', () => {
+  const shared = {
+    agent: 'main', time: 500,
+    payload: { action: { type: 'tool', message: 'Same tool payload', tool_name: 'patch' } },
+  };
+  const model = buildCommandDeckModel({
+    agents: [{ agent: 'main', role: 'main_agent', state: 'working' }],
+    events: [
+      { ...shared, kind: 'main.tool.started' },
+      { ...shared, kind: 'main.tool.completed' },
+    ],
+  });
+  assert.equal(model.events.length, 2);
+  assert.notEqual(model.events[0].id, model.events[1].id);
+  assert.deepEqual(new Set(model.events.map(({ category }) => category)), new Set(['tool', 'completion']));
+});

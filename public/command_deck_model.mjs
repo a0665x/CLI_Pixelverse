@@ -1,6 +1,7 @@
 const MAIN_ROLE = 'main_agent';
 
 const REST_ROOMS = new Set(['standby_dock', 'offline_corner', 'rest-cabin']);
+const GENERIC_EVENT_KINDS = new Set(['', 'action', 'event', 'update']);
 
 const stateRank = (agent = {}) => {
   if (agent.lifecycle === 'offline' || agent.state === 'offline' || agent.is_stale) return 0;
@@ -88,10 +89,16 @@ export function normalizeAgentForWorld(agent = {}) {
 
 const payloadEventContent = (event = {}) => {
   const action = event.payload?.action || {};
+  const envelopeKinds = [event.type, event.event_name, event.kind].filter(Boolean).map(String);
+  const envelopeKind = envelopeKinds.find((kind) => !GENERIC_EVENT_KINDS.has(normalized(kind)))
+    || envelopeKinds[0] || '';
+  const actionType = String(action.type || '');
   const tool = action.tool ?? action.tool_name ?? action.tool_names ?? event.tool ?? event.tool_name ?? event.tool_names ?? '';
   const toolText = Array.isArray(tool) ? tool.join(', ') : String(tool || '');
   return {
-    kind: event.category || action.type || event.type || event.event_name || event.kind || '',
+    kind: event.category || (GENERIC_EVENT_KINDS.has(normalized(envelopeKind)) ? actionType || envelopeKind : envelopeKind),
+    envelopeKind,
+    actionType,
     text: event.summary || action.preview || action.message || event.message || event.preview
       || event.title || toolText || '',
     tool: toolText,
@@ -133,7 +140,7 @@ const stableEventId = (event = {}) => {
   if (explicit !== undefined && explicit !== null && String(explicit)) return String(explicit);
   const content = payloadEventContent(event);
   return `event-${hashString(JSON.stringify([
-    eventAgentId(event), content.kind,
+    eventAgentId(event), content.kind, content.envelopeKind, content.actionType,
     Number(event.time ?? event.timestamp ?? event.created_at ?? 0) || 0,
     content.text, content.tool, eventRoom(event),
   ]))}`;
