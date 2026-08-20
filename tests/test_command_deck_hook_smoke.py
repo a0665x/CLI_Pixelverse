@@ -123,3 +123,11 @@ def test_run_sh_test_hook_fails_when_runtime_events_cannot_be_delivered():
     assert "--connect-timeout" in post_json
     assert "--max-time" in post_json
     assert '"minimum_event_id"' in run_sh
+
+
+def test_run_sh_test_hook_loads_saved_bridge_port_like_saved_ui_port():
+    run_sh = RUN_SH.read_text(encoding="utf-8")
+
+    assert 'SAVED_BRIDGE_PORT=""' in run_sh
+    assert "SAVED_BRIDGE_PORT=\"$(sed -n 's/^PIXELVERSE_BRIDGE_PORT=//p' \"$ENV_FILE\" | tail -n 1)\"" in run_sh
+    assert 'BRIDGE_PORT="${PIXELVERSE_BRIDGE_PORT:-${SAVED_BRIDGE_PORT:-4567}}"' in run_sh

@@ -56,6 +56,7 @@ platform_command() {
 }
 
 SAVED_PIXELVERSE_PORT=""
+SAVED_BRIDGE_PORT=""
 case "$COMMAND" in
   start|stop|restart|down_up|status|log|logs|doctor|bridge-status|test-hook|smoke-furniture-drag|down)
     load_saved_port=1
@@ -64,9 +65,10 @@ case "$COMMAND" in
 esac
 if [[ "$load_saved_port" == "1" && -f "$ENV_FILE" ]]; then
   SAVED_PIXELVERSE_PORT="$(sed -n 's/^PIXELVERSE_PORT=//p' "$ENV_FILE" | tail -n 1)"
+  SAVED_BRIDGE_PORT="$(sed -n 's/^PIXELVERSE_BRIDGE_PORT=//p' "$ENV_FILE" | tail -n 1)"
 fi
 PIXELVERSE_PORT="${PIXELVERSE_PORT:-${SAVED_PIXELVERSE_PORT:-5660}}"
-BRIDGE_PORT="${PIXELVERSE_BRIDGE_PORT:-4567}"
+BRIDGE_PORT="${PIXELVERSE_BRIDGE_PORT:-${SAVED_BRIDGE_PORT:-4567}}"
 COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-cli-pixelverse}"
 PIXELVERSE_TAILSCALE_ENABLE="${PIXELVERSE_TAILSCALE_ENABLE:-1}"
 PIXELVERSE_TAILSCALE_PORT="${PIXELVERSE_TAILSCALE_PORT:-10000}"

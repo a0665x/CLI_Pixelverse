@@ -201,6 +201,8 @@ local offline agent 可在 timeline 手動刪除；server 會拒絕刪除仍在�
 
 `test-hook` 是 hard acceptance gate：bridge/API event 無法送達、預期 agent 缺失、room sequence 不符、runtime event id 缺失、座標沒有正向位移，或 route 只有單點時都會以 non-zero 結束。執行前會記錄目前最大 server event id，只有本次執行之後產生的 evidence 才能通過，舊 snapshot 不可 false-pass；direct/container curl 也都有 connect/overall timeout，避免 transport stall 無限等待。`clone_bay` 必須同時驗證主代理與 `synthetic-subagent-1`，不能以文字或 room label 變更替代 movement evidence。
 
+`test-hook`、status 與其他 runtime commands 會同時從 `.pixelverse-service/compose.env` 載入已儲存的 `PIXELVERSE_PORT` 與 `PIXELVERSE_BRIDGE_PORT`；shell 顯式環境變數仍優先。這可確保重新開 shell 後的 smoke command 連到實際 compose host ports，而不是退回 5660/4567 defaults。
+
 ## 9. 驗證標準
 - 改動 schema 時，要先補測試再改實作
 - 改動房間語意或移動規則時，要補純函式測試
