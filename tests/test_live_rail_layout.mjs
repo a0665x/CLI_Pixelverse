@@ -8,6 +8,7 @@ import {
   railDensity,
   readRailWidths,
 } from '../public/live_rail_layout.mjs';
+import { createCommandDeckLayoutController } from '../public/command_deck_layout.mjs';
 
 test('saved rail widths are validated and preserve the minimum map width', () => {
   const storage = { getItem: (key) => ({
@@ -61,4 +62,35 @@ test('controller applies persisted widths on the workspace that owns the CSS var
   assert.equal(values.get('--live-left-width'), '296px');
   assert.equal(values.get('--live-right-width'), '276px');
   assert.equal(rootValues.size, 0);
+});
+
+test('v2 command deck migration consumes both live rail widths without deleting them', () => {
+  const values = new Map([
+    ['pixelverse:live-left-width', '312'],
+    ['pixelverse:live-right-width', '288'],
+  ]);
+  const storage = {
+    getItem: (key) => values.has(key) ? values.get(key) : null,
+    setItem: (key, value) => values.set(key, value),
+  };
+  const workspace = {
+    dataset: {}, classList: { add() {}, remove() {} },
+    style: { setProperty() {} },
+  };
+  const handle = { addEventListener() {}, removeEventListener() {}, setAttribute() {} };
+  const controller = createCommandDeckLayoutController({
+    workspace,
+    leftHandle: handle,
+    rightHandle: handle,
+    bottomHandle: handle,
+    storage,
+    resizeTarget: handle,
+    viewport: () => ({ width: 1_440, height: 900, topHeight: 44 }),
+  });
+  controller.start();
+
+  assert.equal(controller.getLayout().leftWidth, 312);
+  assert.equal(controller.getLayout().rightWidth, 288);
+  assert.equal(values.get('pixelverse:live-left-width'), '312');
+  assert.equal(values.get('pixelverse:live-right-width'), '288');
 });

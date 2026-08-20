@@ -2686,12 +2686,108 @@
       .rail-pagination { grid-template-columns: 30px 30px; margin: 0 0 0 6px; }
       .dashboard-card { inset: auto 8px 8px auto !important; width: calc(50% - 16px) !important; height: 148px !important; }
     }
+
+    /* Command deck v2 */
+    .map-first-workspace {
+      --command-gap: 8px;
+      --command-panel-padding: 10px;
+      --command-left-width: 280px;
+      --command-right-width: 260px;
+      --command-bottom-height: 180px;
+      --command-left-track: var(--command-left-width);
+      --command-right-track: var(--command-right-width);
+      --command-bottom-track: var(--command-bottom-height);
+      grid-template-columns: var(--command-left-track) var(--command-gap) minmax(520px, 1fr) var(--command-gap) var(--command-right-track);
+      grid-template-rows: 44px minmax(320px, 1fr) var(--command-gap) var(--command-bottom-track);
+      font-size: 13px;
+    }
+    .command-deck-region { position: relative; min-width: 0; min-height: 0; overflow: hidden; }
+    .top-status-bar { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
+    .command-deck-controls { display: flex; align-items: center; gap: 4px; padding: 5px 8px 5px 0; }
+    .command-deck-controls button {
+      display: grid;
+      min-width: 32px;
+      height: 32px;
+      place-items: center;
+      padding: 0 7px;
+      border: 1px solid #345844;
+      border-radius: 7px;
+      color: #d8ede0;
+      background: #13291f;
+      font: 800 12px/1 ui-monospace, monospace;
+    }
+    .command-deck-controls button:hover,
+    .command-deck-controls button:focus-visible { border-color: #72e2a5; color: #fff; outline: none; }
+    .map-first-workspace .world.map-stage { grid-column: 3; grid-row: 2; }
+    .agent-live-rail,
+    .hook-live-rail { grid-row: 2 / 5; padding: var(--command-panel-padding); }
+    .agent-live-rail { grid-column: 1; }
+    .hook-live-rail { grid-column: 5; }
+    .map-first-workspace[data-left-dock="inspector"] .hook-live-rail { grid-column: 1; }
+    .map-first-workspace[data-left-dock="inspector"] .agent-live-rail { grid-column: 5; }
+    .map-first-workspace[data-left-dock="agents"][data-collapsed-left="true"] .agent-live-rail,
+    .map-first-workspace[data-left-dock="inspector"][data-collapsed-left="true"] .hook-live-rail,
+    .map-first-workspace[data-right-dock="agents"][data-collapsed-right="true"] .agent-live-rail,
+    .map-first-workspace[data-right-dock="inspector"][data-collapsed-right="true"] .hook-live-rail { visibility: hidden; pointer-events: none; }
+    #live-left-splitter { grid-column: 2; grid-row: 2 / 5; }
+    #live-right-splitter { grid-column: 4; grid-row: 2 / 5; }
+    .command-bottom-splitter {
+      position: relative;
+      z-index: 12;
+      grid-column: 3;
+      grid-row: 3;
+      height: var(--command-gap);
+      cursor: row-resize;
+      touch-action: none;
+      outline: 0;
+      background: #0a1611;
+    }
+    .command-bottom-splitter::after { position: absolute; inset: 3px 0; content: ''; border-radius: 2px; background: #294838; }
+    .command-bottom-splitter:hover::after,
+    .command-bottom-splitter:focus-visible::after,
+    .command-bottom-splitter[data-active="true"]::after { inset: 2px 0; background: #72e2a5; }
+    .mission-trace {
+      grid-column: 3;
+      grid-row: 4;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      gap: 6px;
+      padding: var(--command-panel-padding);
+      border-top: 1px solid #294838;
+      color: #e9f7eb;
+      background: #0d1b15;
+    }
+    .mission-trace > header { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 10px; }
+    .mission-trace h2 { margin: 0; font-size: 13px; letter-spacing: .05em; }
+    .mission-trace output { overflow: hidden; color: #9cb5a5; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+    .mission-trace-events { min-height: 0; overflow: hidden; }
+    .mission-trace .timeline-grid { display: grid; height: 100%; grid-auto-columns: minmax(240px, 1fr); grid-auto-flow: column; gap: 7px; overflow: hidden; }
+    .mission-trace .timeline-panel { min-height: 0; height: 100%; padding: 8px; }
+    .mission-trace .timeline-rows,
+    .mission-trace .timeline-panel > .event-summary { display: none; }
+    .map-first-workspace[data-collapsed-bottom="true"] .mission-trace { visibility: hidden; pointer-events: none; }
+    .map-first-workspace.is-resizing-command-deck,
+    .map-first-workspace.is-resizing-command-deck iframe { user-select: none; pointer-events: none; }
+    @media (max-width: 899px) {
+      .map-first-workspace { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: 44px minmax(320px, 1fr) 164px; }
+      .command-deck-controls,
+      .command-bottom-splitter,
+      .mission-trace { display: none; }
+      .top-status-bar { grid-column: 1 / -1; }
+      .map-first-workspace .world.map-stage { grid-column: 1 / -1; grid-row: 2; }
+      .agent-live-rail,
+      .hook-live-rail { visibility: visible !important; grid-row: 3; pointer-events: auto !important; }
+      .agent-live-rail,
+      .map-first-workspace[data-left-dock="inspector"] .agent-live-rail { grid-column: 1; }
+      .hook-live-rail,
+      .map-first-workspace[data-left-dock="inspector"] .hook-live-rail { grid-column: 2; }
+    }
   </style>
 </head>
 <body data-locale="en-US" data-mobile-mode="off" data-sidebar-open="true">
   <div class="app">
     <main class="map-first-workspace">
-    <section class="world map-stage" id="world" aria-label="Agent village">
+    <section class="world map-stage command-deck-region" id="world" data-command-region="center" aria-label="Agent village">
       <iframe
         class="pixelworld-frame"
         id="pixelworld-frame"
@@ -2746,7 +2842,7 @@
       </div>
     </section>
 
-    <header class="top-status-bar" id="top-status-bar" aria-label="CLI Pixelverse live status">
+    <header class="top-status-bar command-deck-region" id="top-status-bar" data-command-region="top" aria-label="CLI Pixelverse live status">
     <div class="hud live-hud" id="live-status-rail">
       <div class="brand panel">
         <div class="brand-top">
@@ -2781,9 +2877,16 @@
         </div>
       </div>
     </div>
+    <nav class="command-deck-controls" aria-label="Command deck layout controls">
+      <button type="button" id="command-collapse-left" aria-label="Collapse left region" aria-expanded="true" title="Collapse left region">◧</button>
+      <button type="button" id="command-collapse-bottom" aria-label="Collapse mission trace" aria-expanded="true" title="Collapse mission trace">▱</button>
+      <button type="button" id="command-collapse-right" aria-label="Collapse right region" aria-expanded="true" title="Collapse right region">◨</button>
+      <button type="button" id="command-swap-sides" aria-label="Swap side docks" title="Swap side docks">⇄</button>
+      <button type="button" id="command-reset-layout" aria-label="Reset command deck layout" title="Reset command deck layout">↺</button>
+    </nav>
     </header>
 
-    <aside class="agent-live-rail" id="agent-live-rail" aria-label="Live agent heartbeats">
+    <aside class="agent-live-rail command-deck-region" id="agent-live-rail" data-command-region="left" aria-label="Agent force rail">
       <header><strong id="agent-live-title">Live agents</strong><output id="agent-live-page">1 / 1</output></header>
       <div class="agent-live-list" id="agent-live-list"></div>
       <footer class="rail-pagination">
@@ -2796,7 +2899,7 @@
 
     <div class="live-rail-splitter" id="live-right-splitter" role="separator" aria-label="Resize Hook rail" aria-orientation="vertical" tabindex="0"></div>
 
-    <aside class="hook-live-rail" id="hook-live-rail" aria-label="Current Hook status">
+    <aside class="hook-live-rail command-deck-region" id="hook-live-rail" data-command-region="right" aria-label="Intelligence inspector">
       <div class="hook-live-kicker" id="hook-live-semantic">REST</div>
       <strong id="hook-live-building">Rest Cabin</strong>
       <p id="hook-live-activity"></p>
@@ -2825,6 +2928,16 @@
       </div>
     </details>
     </aside>
+
+    <div class="command-bottom-splitter" id="command-bottom-splitter" role="separator" aria-label="Resize mission trace" aria-orientation="horizontal" tabindex="0"></div>
+
+    <section class="mission-trace command-deck-region" id="mission-trace" data-command-region="bottom" aria-labelledby="mission-trace-title">
+      <header>
+        <h2 id="mission-trace-title">Mission trace</h2>
+        <output id="event-summary" aria-live="polite"></output>
+      </header>
+      <div class="mission-trace-events" id="events"></div>
+    </section>
 
     <div class="visually-hidden" id="dashboard-card-live" role="status" aria-live="polite" aria-atomic="true"></div>
 

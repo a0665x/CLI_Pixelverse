@@ -412,7 +412,7 @@ def test_live_monitoring_uses_fixed_no_scroll_rails_around_the_village():
     assert {"live-left-splitter", "live-right-splitter"} <= parser.ids
     assert parser.elements_by_id["live-left-splitter"]["attributes"].get("role") == "separator"
     assert parser.elements_by_id["live-right-splitter"]["attributes"].get("role") == "separator"
-    assert "createLiveRailLayoutController" in Path("public/app.mjs").read_text(encoding="utf-8")
+    assert "createCommandDeckLayoutController" in Path("public/app.mjs").read_text(encoding="utf-8")
 
 
 def test_fast_ui_ticker_reprojects_live_heartbeat_and_hook_waveforms():
@@ -421,3 +421,37 @@ def test_fast_ui_ticker_reprojects_live_heartbeat_and_hook_waveforms():
 
     assert ticker
     assert "renderLiveMonitoring(liveSnapshot, nowMs);" in ticker.group(1)
+
+
+def test_command_deck_exposes_five_bounded_regions_and_direct_layout_controls():
+    html = Path("public/index.html").read_text(encoding="utf-8")
+    parser = DashboardParser()
+    parser.feed(html)
+
+    regions = {
+        element["attributes"].get("data-command-region"): element
+        for element in parser.elements
+        if element["attributes"].get("data-command-region")
+    }
+    assert set(regions) == {"top", "left", "center", "right", "bottom"}
+    assert regions["center"]["id"] == "world"
+    assert regions["bottom"]["id"] == "mission-trace"
+
+    for handle_id, orientation in (
+        ("live-left-splitter", "vertical"),
+        ("live-right-splitter", "vertical"),
+        ("command-bottom-splitter", "horizontal"),
+    ):
+        handle = parser.elements_by_id[handle_id]
+        assert handle["attributes"].get("role") == "separator"
+        assert handle["attributes"].get("aria-orientation") == orientation
+        assert handle["attributes"].get("tabindex") == "0"
+
+    assert {
+        "command-collapse-left", "command-collapse-right", "command-collapse-bottom",
+        "command-swap-sides", "command-reset-layout",
+    } <= parser.ids
+    assert 'data-command-region="center"' in html
+    assert ".command-deck-region { position: relative;" in html
+    assert ".command-deck-region { position: fixed;" not in html
+    assert ".command-deck-region { position: absolute;" not in html

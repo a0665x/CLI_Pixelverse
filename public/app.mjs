@@ -113,7 +113,7 @@ import {
   writeDashboardDisclosure,
 } from './dashboard_disclosure.mjs';
 import { createLiveEcgController } from './live_ecg_controller.mjs';
-import { createLiveRailLayoutController } from './live_rail_layout.mjs';
+import { createCommandDeckLayoutController } from './command_deck_layout.mjs';
 
 const ROOM_ACTIVITY_TARGETS = {
   think_lab: {
@@ -176,6 +176,12 @@ const dom = {
   cameraStage: document.getElementById('camera-stage'),
   cancelFurnitureButton: document.getElementById('cancel-furniture-btn'),
   currentAgentState: document.getElementById('current-agent-state'),
+  commandBottomSplitter: document.getElementById('command-bottom-splitter'),
+  commandCollapseBottom: document.getElementById('command-collapse-bottom'),
+  commandCollapseLeft: document.getElementById('command-collapse-left'),
+  commandCollapseRight: document.getElementById('command-collapse-right'),
+  commandResetLayout: document.getElementById('command-reset-layout'),
+  commandSwapSides: document.getElementById('command-swap-sides'),
   dashboardCard: document.getElementById('dashboard-card'),
   dashboardCardBody: document.getElementById('dashboard-card-body'),
   dashboardCardItems: document.getElementById('dashboard-card-items'),
@@ -239,6 +245,7 @@ const dom = {
   subagentCount: document.getElementById('subagent-count'),
   timelineResizer: document.getElementById('timeline-resizer'),
   timelineRefreshLabel: document.getElementById('timeline-refresh-label'),
+  topStatusBar: document.getElementById('top-status-bar'),
   refreshSlowerButton: document.getElementById('refresh-slower-btn'),
   refreshFasterButton: document.getElementById('refresh-faster-btn'),
   refreshRateOutput: document.getElementById('refresh-rate-output'),
@@ -293,11 +300,42 @@ const cutawayFocusHandoff = createCutawayFocusHandoff({
   cancel: (handle) => window.cancelAnimationFrame(handle),
 });
 const liveEcgController = createLiveEcgController({ root: dom.agentLiveList });
-const liveRailLayoutController = createLiveRailLayoutController({
+const commandDeckLayoutController = createCommandDeckLayoutController({
   workspace: dom.workspace,
   leftHandle: dom.liveLeftSplitter,
   rightHandle: dom.liveRightSplitter,
+  bottomHandle: dom.commandBottomSplitter,
   storage: dashboardStorage,
+  viewport: () => ({
+    width: window.innerWidth,
+    height: window.innerHeight,
+    topHeight: dom.topStatusBar?.getBoundingClientRect?.().height || 44,
+  }),
+  onResize: renderCommandDeckControls,
+});
+function renderCommandDeckControls() {
+  const collapsed = commandDeckLayoutController.getLayout().collapsed;
+  [
+    [dom.commandCollapseLeft, 'left'],
+    [dom.commandCollapseRight, 'right'],
+    [dom.commandCollapseBottom, 'bottom'],
+  ].forEach(([button, region]) => button?.setAttribute('aria-expanded', String(!collapsed[region])));
+}
+[
+  [dom.commandCollapseLeft, 'left'],
+  [dom.commandCollapseRight, 'right'],
+  [dom.commandCollapseBottom, 'bottom'],
+].forEach(([button, region]) => button?.addEventListener('click', () => {
+  commandDeckLayoutController.collapse(region);
+  renderCommandDeckControls();
+}));
+dom.commandSwapSides?.addEventListener('click', () => {
+  commandDeckLayoutController.swapSides();
+  renderCommandDeckControls();
+});
+dom.commandResetLayout?.addEventListener('click', () => {
+  commandDeckLayoutController.reset();
+  renderCommandDeckControls();
 });
 const resetCutawayFocusHandoff = () => {
   cancelDashboardFocusRestore?.();
@@ -360,7 +398,7 @@ attachPageLifecycleCleanup({ pageTarget: window, cleanup: () => {
   detachPixelworldBridge();
   resetCutawayFocusHandoff();
   liveEcgController.stop();
-  liveRailLayoutController.destroy();
+  commandDeckLayoutController.destroy();
 } });
 window.addEventListener('resize', () => {
   syncCutawayStatusRail();
@@ -2888,7 +2926,7 @@ async function initializeApp() {
   setupCameraPan();
   setupFurnitureEditor();
   liveEcgController.start();
-  liveRailLayoutController.start();
+  commandDeckLayoutController.start();
   startLiveUiTicker();
   restartTimelineTimer();
   connectRealtime();
