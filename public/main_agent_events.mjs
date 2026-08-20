@@ -69,13 +69,11 @@ export function deriveAgentEventVisual(agent = {}, locale = 'zh-TW') {
   };
 }
 
-const shortLabel = (value, limit = 16) => String(value || '').length > limit ? `${String(value).slice(0, limit - 1)}…` : String(value || '');
-
 export function agentEventChipPresentation(agent = {}, locale = 'zh-TW') {
   const visual = deriveAgentEventVisual(agent, locale);
   return {
     visual,
-    textContent: `${visual.icon} ${shortLabel(visual.label)}`,
+    textContent: `${visual.icon} ${visual.label}`,
     title: visual.detail || visual.label || '',
     className: `event-chip ${visual.tone || 'idle'}`,
     visible: Boolean(visual.label),

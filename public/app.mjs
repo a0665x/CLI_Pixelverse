@@ -65,6 +65,7 @@ import {
 import { getAgentPose, INTERACTION_OBJECT_ICONS, selectInteractionTarget } from './agent_pose.mjs';
 import { buildAgentDialog, buildAgentSpeech } from './agent_dialog.mjs';
 import { createCommandDeckLocaleController } from './command_deck_locale_controller.mjs';
+import { agentPayloadPresentation, currentAgentStatePresentation, escapeHtml, timelinePayloadPresentation } from './command_deck_payload_presenters.mjs';
 import { clampCameraOffset, centeredCamera, clampZoom, nextDraggedOffset, nextZoomState } from './ui_state.mjs';
 import { CORRIDOR_RECTS, GLOBAL_MAP, HOUSE_DOORS, loadGlobalMap, roomMapCopy, ROOM_LAYOUTS, ROOM_STATE_GROUPS } from './house_layout.mjs';
 import { hookStateRoutes } from './hook_state_map.mjs';
@@ -470,8 +471,6 @@ let lastFurnitureCollisionAt = 0;
 const forcedOpenDoorRooms = new Set();
 const proximityOpenDoorRooms = new Set();
 const DOOR_OPEN_DISTANCE = 5.6;
-
-const short = (text = '', max = 42) => text && text.length > max ? `${text.slice(0, max - 1)}…` : (text || '');
 
 function clampNumber(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -982,13 +981,10 @@ function updateCurrentAgentState(snapshot = {}) {
   }
   const room = getRoomCopy(mainAgent.room_key, currentLocale);
   const roomName = room.name || mainAgent.room_label || copy.unknownRoom;
-  const task = agentTaskText(mainAgent);
-  updateLiveRegionText(dom.currentAgentState, [
-    displayAgentName(mainAgent),
-    stateText(mainAgent.state),
-    roomName,
-    task ? short(task, 52) : '',
-  ].filter(Boolean).join(' · '));
+  const presentation = currentAgentStatePresentation({
+    agent: mainAgent, name: displayAgentName(mainAgent), state: stateText(mainAgent.state), room: roomName,
+  });
+  updateLiveRegionText(dom.currentAgentState, presentation.text);
 }
 
 function updateRefreshController() {
@@ -1543,7 +1539,7 @@ function renderInspector(agent) {
   }
   const actions = (agent.recent_actions || []).slice(0, 5).map((item) => {
     const details = formatTimelineItem(item);
-    return `<div class="timeline-item"><strong>${details.label}</strong><br>${details.message}</div>`;
+    return `<div class="timeline-item"><strong>${escapeHtml(details.label)}</strong><br>${escapeHtml(details.message)}</div>`;
   }).join('') || `<div class="empty">${copy.noActions}</div>`;
 
   const room = getRoomCopy(agent.room_key, currentLocale);
@@ -1555,18 +1551,18 @@ function renderInspector(agent) {
     <div class="inspector-card">
       <div>
         <div class="subtitle">${roleLabel(agent.role)}</div>
-        <div class="strong">${displayAgentName(agent)}</div>
+        <div class="strong">${escapeHtml(displayAgentName(agent))}</div>
       </div>
       <div class="pill-row">
-        <span class="pill">${agent.room_icon || '📍'} ${roomName}</span>
+        <span class="pill">${escapeHtml(agent.room_icon || '📍')} ${escapeHtml(roomName)}</span>
         <span class="pill">${stateText(agent.state)}</span>
-        ${toolPill ? `<span class="pill">${agent.tool_icon || '✨'} ${toolPill}</span>` : ''}
+        ${toolPill ? `<span class="pill">${escapeHtml(agent.tool_icon || '✨')} ${escapeHtml(toolPill)}</span>` : ''}
         ${agent.session_id ? `<span class="pill">${copy.sessionLabel(agent.session_id)}</span>` : ''}
       </div>
       <div class="stat-grid">
-        <div class="stat">${copy.currentTask}<br><span class="strong">${currentTask}</span></div>
+        <div class="stat">${copy.currentTask}<br><span class="strong">${escapeHtml(currentTask)}</span></div>
         <div class="stat">${copy.lastUpdate}<br><span class="strong">${ageText(agent.age_seconds || 0)}</span></div>
-        <div class="stat">${copy.roomMeaning}<br><span class="strong">${activityHintText(agent)}</span></div>
+        <div class="stat">${copy.roomMeaning}<br><span class="strong">${escapeHtml(activityHintText(agent))}</span></div>
         <div class="stat">${copy.eventCount}<br><span class="strong">${agent.event_count ?? (agent.recent_actions || []).length}</span></div>
       </div>
     </div>
@@ -1623,8 +1619,8 @@ function openAgentDialog(agent) {
   dom.dialogBody.textContent = detail.body;
   dom.dialogRows.innerHTML = detail.rows.map((row) => `
     <div class="dialog-row">
-      <span class="muted">${row.label}</span>
-      <strong>${row.value}</strong>
+      <span class="muted">${escapeHtml(row.label)}</span>
+      <strong>${escapeHtml(row.value)}</strong>
     </div>
   `).join('');
   dom.dialogBackdrop.classList.add('show');
@@ -1700,7 +1696,7 @@ function decorateAgent(view) {
   const agent = view.data;
   const room = getRoomCopy(agent.room_key, currentLocale);
   const roomName = room.name || agent.room_label || strings().unknownRoom;
-  const displayTask = short(agentTaskText(agent) || strings().idleFallback, 28);
+  const displayTask = agentPayloadPresentation(agent, strings().idleFallback).task;
   const speechEl = view.el.querySelector('.agent-speech');
   const beamEl = view.el.querySelector('.beam');
   const objectChipEl = view.el.querySelector('.object-chip');
@@ -1751,7 +1747,7 @@ function decorateAgent(view) {
   nameText.textContent = `${displayAgentName(agent)} · ${agent.instance_label || agent.agent}`;
   roomEl.textContent = `${agent.room_icon || '📍'} ${roomName}`;
   metaEl.textContent = agent.role === 'main_agent'
-    ? short(interactionCopy(interaction) || eventVisual.detail || displayTask, 32)
+    ? (interactionCopy(interaction) || eventVisual.detail || displayTask)
     : displayTask;
   dotEl.className = `state-dot ${agent.state || 'idle'}`;
   speechEl.textContent = bubble.summary;
@@ -2196,7 +2192,7 @@ function renderTimelineSvg(panel) {
     const y = Number((((row.index + 0.5) / panel.rows.length) * 98).toFixed(2));
     return `<line x1="0" y1="${y}" x2="100" y2="${y}" stroke="rgba(171,192,223,0.16)" stroke-width="0.6" />`;
   }).join('');
-  const dots = panel.points.map((point) => `<circle cx="${point.xPct}" cy="${Number((point.yPct * 0.98).toFixed(2))}" r="2.8" fill="${point.color}"><title>${point.title} | ${point.summary}</title></circle>`).join('');
+  const dots = panel.points.map((point) => `<circle cx="${point.xPct}" cy="${Number((point.yPct * 0.98).toFixed(2))}" r="2.8" fill="${point.color}"><title>${escapeHtml(point.title)} | ${escapeHtml(point.summary)}</title></circle>`).join('');
   return `<svg viewBox="0 0 100 98" preserveAspectRatio="none">${gridLines}${dots}</svg>`;
 }
 
@@ -2218,13 +2214,15 @@ function renderTimelinePanels(snapshot, { nowMs = snapshot?.server_time_ms || Da
     dom.events.innerHTML = `<div class="event-card"><div class="empty">${copy.waitingEvents}</div></div>`;
     return;
   }
-  dom.events.innerHTML = `<div class="timeline-grid">${panels.map((panel) => `
+  dom.events.innerHTML = `<div class="timeline-grid">${panels.map((panel) => {
+    const payload = timelinePayloadPresentation(panel, copy.noEvents);
+    return `
     <article class="timeline-panel">
-      <div class="event-top"><span>${panel.role === 'subagent' ? '🧬' : panel.role === 'branch_session' ? '🗂️' : '🤖'} ${panel.name}</span><span class="timeline-live-indicator ${panel.heartbeatTone}">${panel.connectionLabel}</span></div>
+      <div class="event-top"><span>${panel.role === 'subagent' ? '🧬' : panel.role === 'branch_session' ? '🗂️' : '🤖'} ${escapeHtml(panel.name)}</span><span class="timeline-live-indicator ${panel.heartbeatTone}">${escapeHtml(panel.connectionLabel)}</span></div>
       <div class="timeline-live-state" aria-live="polite">
-        <span class="timeline-state-pill">${panel.stateLabel}</span>
-        <span>⌂ ${short(panel.roomLabel, 28)}</span>
-        <span>› ${short(panel.taskLabel, 42)}</span>
+        <span class="timeline-state-pill">${escapeHtml(panel.stateLabel)}</span>
+        <span>⌂ ${escapeHtml(panel.roomLabel)}</span>
+        <span>› ${payload.taskHtml}</span>
         <span>${ageText(panel.ageSeconds)}</span>
       </div>
       <div class="timeline-heartbeat ${panel.heartbeatTone}">
@@ -2234,12 +2232,13 @@ function renderTimelinePanels(snapshot, { nowMs = snapshot?.server_time_ms || Da
       </div>
       <div class="timeline-meta"><span>${copy.latestEvent}: ${panel.latestCategory}</span><span>${copy.blockedFor}: ${ageText(panel.ageSeconds)}</span></div>
       <div class="timeline-rows">
-        <div class="timeline-row-labels" style="grid-template-rows: repeat(${panel.rows.length}, 1fr)">${panel.rows.map((row) => `<span>${row.label}</span>`).join('')}</div>
+        <div class="timeline-row-labels" style="grid-template-rows: repeat(${panel.rows.length}, 1fr)">${panel.rows.map((row) => `<span>${escapeHtml(row.label)}</span>`).join('')}</div>
         <div>${renderTimelineSvg(panel)}</div>
       </div>
-      <div class="event-summary">${short(panel.latestSummary || copy.noEvents, 120)}</div>
+      <div class="event-summary">${payload.summaryHtml}</div>
     </article>
-  `).join('')}</div>`;
+  `;
+  }).join('')}</div>`;
 }
 
 async function deleteOfflineAgent(agentId) {

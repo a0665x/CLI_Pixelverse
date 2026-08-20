@@ -246,3 +246,27 @@ test('production app wires every retained-state rerender through the locale cont
     'resolveSelection: resolveCurrentCommandSelection', 'renderInspector',
   ]) assert.ok(configuration.includes(callback), `production locale controller is missing ${callback}`);
 });
+
+test('active formatters keep full DOM strings and delegate visual truncation to CSS', async () => {
+  for (const path of ['../public/app.mjs', '../public/ui_strings.mjs', '../public/agent_dialog.mjs', '../public/main_agent_events.mjs', '../public/command_deck_payload_presenters.mjs']) {
+    const source = await readFile(new URL(path, import.meta.url), 'utf8');
+    assert.doesNotMatch(source, /slice\(0,[^\n]+…/, `${path} still slices active DOM copy`);
+  }
+  const html = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
+  assert.match(html, /\.event-chip\s*\{[\s\S]*?text-overflow:\s*ellipsis/);
+  assert.match(html, /\.agent-speech\.show\s*\{[\s\S]*?line-clamp:\s*3/);
+});
+
+test('production DOM payload presenters preserve markup-like task and summary bytes', async () => {
+  const presenters = await import('../public/command_deck_payload_presenters.mjs');
+  const task = `<task>&"'${'TASK'.repeat(30)}END`;
+  const summary = `<preview>&"'${'PREVIEW'.repeat(30)}END`;
+  const agent = { task };
+  assert.equal(presenters.currentAgentStatePresentation({ agent, name: 'Henry', state: 'Working', room: 'Workshop' }).task, task);
+  assert.equal(presenters.agentPayloadPresentation(agent).task, task);
+  const timeline = presenters.timelinePayloadPresentation({ taskLabel: task, latestSummary: summary });
+  assert.equal(timeline.task, task);
+  assert.equal(timeline.summary, summary);
+  assert.equal(timeline.taskHtml.includes('<task>'), false);
+  assert.equal(timeline.summaryHtml.includes('<preview>'), false);
+});

@@ -112,8 +112,11 @@ test('Japanese and Korean dynamic dashboard events never fall through to English
   assert.equal(koreanRows.every(({ title, summary }) => /[가-힣]/.test(`${title}${summary}`)), true);
   assert.match(japanese, /[ぁ-んァ-ン一-龯]/);
   assert.match(korean, /[가-힣]/);
-  assert.doesNotMatch(japanese, /\b(?:Main|Started|Finished|Returned|tool|task|State|Status|Gateway|Planning|Waiting|Read File)\b/i);
-  assert.doesNotMatch(korean, /\b(?:Main|Started|Finished|Returned|tool|task|State|Status|Gateway|Planning|Waiting|Read File)\b/i);
+  for (const rendered of [japanese, korean]) {
+    for (const raw of ['read_file', 'Planning', 'Tool step: patch', 'Status: waiting']) assert.match(rendered, new RegExp(raw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    const productCopyOnly = ['read_file', 'Planning', 'Tool step: patch', 'Status: waiting'].reduce((value, raw) => value.replaceAll(raw, ''), rendered);
+    assert.doesNotMatch(productCopyOnly, /\b(?:Main|Started|Finished|Returned|tool|task|State|Status|Gateway|Waiting|Read File)\b/i);
+  }
 });
 
 test('catalog parity helper reports nested omissions precisely', () => {
@@ -147,4 +150,25 @@ test('active interaction, activity, timeline, furniture, and pose copy has four-
     assert.match(activity, /RAW_TASK/);
     assert.match(timeline.message, /RAW_PREVIEW/);
   });
+});
+
+test('active formatters preserve complete long task, preview, and message fallback payloads', () => {
+  const task = `read_file::${'TASK-LONG-'.repeat(14)}END-TASK`;
+  const preview = `PREVIEW-LONG-${'preview-'.repeat(16)}END-PREVIEW`;
+  const message = `MESSAGE-ONLY-${'message-'.repeat(16)}END-MESSAGE`;
+  for (const locale of ['en-US', 'zh-TW', 'ja-JP', 'ko-KR']) {
+    assert.ok(uiStrings.ambientText(locale, { state: 'working' }, task).includes(task));
+    const started = uiStrings.timelineItemForLocale(locale, { event_name: 'main.tool.started', tool_name: 'read_file', preview });
+    const completed = uiStrings.timelineItemForLocale(locale, { event_name: 'main.tool.completed', tool_name: 'read_file', message });
+    const both = uiStrings.timelineItemForLocale(locale, { event_name: 'main.tool.started', tool_name: 'read_file', preview, message });
+    assert.ok(started.message.includes(preview));
+    assert.ok(completed.message.includes(message));
+    assert.ok(both.message.includes(preview));
+    assert.equal(both.message.includes(message), false);
+    assert.doesNotMatch(`${started.message}${completed.message}`, /…/);
+    assert.ok(uiStrings.eventSummaryForLocale({ kind: 'main.tool.started', payload: { action: { tool_name: 'read_file', message } } }, locale).includes(message));
+    assert.ok(uiStrings.eventSummaryForLocale({ kind: 'main.tool.completed', payload: { action: { tool_name: 'read_file', message } } }, locale).includes(message));
+    assert.ok(uiStrings.eventSummaryForLocale({ kind: 'main.tool.batch', payload: { action: { tool_names: ['read_file'], preview } } }, locale).includes(preview));
+    assert.ok(uiStrings.eventSummaryForLocale({ kind: 'heartbeat', payload: { state: 'working', task } }, locale).includes(task));
+  }
 });

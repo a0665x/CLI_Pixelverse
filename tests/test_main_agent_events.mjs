@@ -91,3 +91,21 @@ test('event visuals preserve raw preview/message tokens and localize only explic
     assert.equal(combined.visual.icon, '▶');
   }
 });
+
+test('event-chip presenter preserves complete long preview and message-only payloads', () => {
+  const preview = `LONG_EVENT_PREVIEW_${'preview-block-'.repeat(12)}END_PREVIEW`;
+  const message = `LONG_EVENT_MESSAGE_${'message-block-'.repeat(12)}END_MESSAGE`;
+  const toolName = `custom_tool_${'identifier-block-'.repeat(8)}END_TOOL`;
+  for (const locale of ['en-US', 'zh-TW', 'ja-JP', 'ko-KR']) {
+    const started = agentEventChipPresentation({ role: 'main_agent', state: 'working', recent_actions: [{ event_name: 'main.tool.started', tool_name: 'read_file', preview }] }, locale);
+    const completed = agentEventChipPresentation({ role: 'main_agent', state: 'working', recent_actions: [{ event_name: 'main.tool.completed', tool_name: 'read_file', message }] }, locale);
+    const both = agentEventChipPresentation({ role: 'main_agent', state: 'working', recent_actions: [{ event_name: 'main.tool.started', tool_name: 'read_file', preview, message }] }, locale);
+    assert.ok(started.title.includes(preview));
+    assert.ok(completed.title.includes(message));
+    assert.ok(both.title.includes(preview));
+    assert.equal(both.title.includes(message), false);
+    const longLabel = agentEventChipPresentation({ role: 'main_agent', state: 'working', recent_actions: [{ event_name: 'main.tool.started', tool_name: toolName }] }, locale);
+    assert.ok(longLabel.textContent.includes(toolName));
+    assert.doesNotMatch(`${started.textContent}${started.title}${completed.textContent}${completed.title}${longLabel.textContent}`, /…/);
+  }
+});

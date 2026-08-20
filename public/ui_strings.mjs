@@ -180,11 +180,6 @@ export function uiText(locale, key, params = {}) {
   return value == null ? key : String(value).replace(/\{(\w+)\}/g, (_, name) => String(params[name] ?? ''));
 }
 
-const shortLocaleValue = (value, limit = 84) => {
-  const text = String(value || '');
-  return text.length > limit ? `${text.slice(0, Math.max(0, limit - 1))}…` : text;
-};
-
 // Tasks are external runtime payloads. Never reinterpret their bytes as a
 // product-owned tool identifier; only explicit tool_name/tool_label fields are
 // eligible for catalog translation.
@@ -230,7 +225,7 @@ export function ambientText(locale, agent = {}, taskValue = agent.task || '') {
     : agent.state === 'thinking' ? 'thinking'
       : agent.state === 'working' ? 'working'
         : agent.state === 'offline' ? 'offline' : 'standby';
-  return uiText(locale, `commandDeck.ambient.${state}`, { task: shortLocaleValue(taskValue, 28) });
+  return uiText(locale, `commandDeck.ambient.${state}`, { task: String(taskValue || '') });
 }
 
 export function activityHintForLocale(locale, agent = {}, roomName = '', taskValue = agent.task || '') {
@@ -250,18 +245,18 @@ export function activityHintForLocale(locale, agent = {}, roomName = '', taskVal
 export function timelineItemForLocale(locale, item = {}, { toolLabel = '', toolRouteLabel = '' } = {}) {
   const eventName = item.event_name || '';
   const tool = toolLabel || item.tool_name || uiText(locale, 'commandDeck.timelineDetail.labels.tool');
-  const preview = shortLocaleValue(item.preview || item.message || '', 84);
+  const preview = String(item.preview || item.message || '');
   const label = (key) => uiText(locale, `commandDeck.timelineDetail.labels.${key}`);
   const message = (key, params = {}) => uiText(locale, `commandDeck.timelineDetail.messages.${key}`, params);
   if (eventName === 'main.reasoning') return { label: label('reasoning'), message: message('reasoning', { value: preview || label('reasoning') }) };
-  if (eventName === 'main.tool.started') return { label: label('toolStart'), message: message('started', { tool, preview: shortLocaleValue(item.preview || '', 56) }) };
-  if (eventName === 'main.tool.completed') return { label: label('toolDone'), message: message('finished', { tool, preview: shortLocaleValue(item.preview || '', 56) }) };
+  if (eventName === 'main.tool.started') return { label: label('toolStart'), message: message('started', { tool, preview }) };
+  if (eventName === 'main.tool.completed') return { label: label('toolDone'), message: message('finished', { tool, preview }) };
   if (eventName === 'main.tool.batch') return { label: label('toolRoute'), message: message('route', { value: toolRouteLabel || preview || label('toolRoute') }) };
   if (eventName === 'main.task.completed') return { label: label('complete'), message: preview ? message('completed', { value: preview }) : message('returned') };
   if (item.type === 'tool') return { label: label('tool'), message: message('toolStep', { value: toolLabel || preview || label('tool') }) };
   if (item.type === 'thought') return { label: label('thought'), message: message('thought', { value: preview || label('thought') }) };
   if (item.type === 'status') return { label: label('status'), message: message('status', { value: preview || label('status') }) };
-  return { label: label('action'), message: message('fallback', { value: shortLocaleValue(item.message || item.to || label('action'), 84) }) };
+  return { label: label('action'), message: message('fallback', { value: String(item.message || item.to || label('action')) }) };
 }
 
 export function furnitureCoordinateText(locale, {
@@ -1165,10 +1160,7 @@ const EVENT_TOOL_NAMES = {
   },
 };
 
-const shortEventText = (value, limit) => {
-  const text = String(value || '').trim();
-  return text.length <= limit ? text : `${text.slice(0, Math.max(0, limit - 1))}…`;
-};
+const rawEventText = (value) => String(value ?? '');
 
 export function eventTitleForLocale(item = {}, locale = 'en-US') {
   const normalized = normalizeLocale(locale);
@@ -1194,39 +1186,33 @@ export function eventSummaryForLocale(item = {}, locale = 'en-US') {
   const tool = localizeEventTool(action.tool_name) || copy.tool;
   const preview = action.preview || action.message || '';
   const separator = normalized === 'en-US' ? ' | ' : '｜';
-  if (item.kind === 'main.task.started') return shortEventText(preview || copy.taskStarted, 54);
-  if (item.kind === 'main.reasoning') return shortEventText(preview || copy.reasoning, 54);
+  if (item.kind === 'main.task.started') return rawEventText(preview || copy.taskStarted);
+  if (item.kind === 'main.reasoning') return rawEventText(preview || copy.reasoning);
   if (item.kind === 'main.tool.started') {
-    return `${copy.started} ${tool}${preview ? `${separator}${shortEventText(preview, 36)}` : ''}`;
+    return `${copy.started} ${tool}${preview ? `${separator}${rawEventText(preview)}` : ''}`;
   }
   if (item.kind === 'main.tool.completed') {
-    return `${copy.finished} ${tool}${preview ? `${separator}${shortEventText(preview, 36)}` : ''}`;
+    return `${copy.finished} ${tool}${preview ? `${separator}${rawEventText(preview)}` : ''}`;
   }
   if (item.kind === 'main.tool.batch') {
-    return localizeEventTool((action.tool_names || []).join(', '))
-      || shortEventText(preview || copy.route, 54);
+    const route = localizeEventTool((action.tool_names || []).join(', '));
+    return [route, rawEventText(preview)].filter(Boolean).join(separator) || copy.route;
   }
-  if (item.kind === 'main.task.completed') return shortEventText(preview || copy.taskCompleted, 54);
+  if (item.kind === 'main.task.completed') return rawEventText(preview || copy.taskCompleted);
   if (item.kind === 'heartbeat') {
     const state = strings.states?.[payload.state || 'idle'] || payload.state || strings.idleFallback;
-    const task = localizeEventTool(payload.task || '') || strings.idleFallback;
+    const task = rawEventText(payload.task || strings.idleFallback);
     if (normalized === 'ja-JP') return `状態：${state}｜${task}`;
     if (normalized === 'ko-KR') return `상태: ${state}｜${task}`;
     if (normalized === 'zh-TW') return `狀態：${state}｜${task}`;
     return `State: ${state} | ${task}`;
   }
   if (item.kind === 'action') {
-    const raw = String(action.message || '').split(/[：:]/).pop().trim();
-    if (action.type === 'tool') return `${copy.toolStep}：${localizeEventTool(raw) || shortEventText(raw || copy.tool, 54)}`;
-    if (action.type === 'thought') {
-      const thought = /^(?:planning|reasoning)$/i.test(raw) ? copy.reasoning : raw;
-      return `${copy.thinking}：${shortEventText(thought || copy.reasoning, 54)}`;
-    }
-    if (action.type === 'status') {
-      const stateKey = /^waiting$/i.test(raw) ? 'awaiting_input' : raw;
-      return `${copy.status}：${shortEventText(strings.states?.[stateKey] || raw || copy.actionUpdate, 54)}`;
-    }
-    return shortEventText(raw || copy.actionUpdate, 54);
+    const raw = rawEventText(action.message || '');
+    if (action.type === 'tool') return `${copy.toolStep}：${raw || localizeEventTool(action.tool_name) || copy.tool}`;
+    if (action.type === 'thought') return `${copy.thinking}：${raw || copy.reasoning}`;
+    if (action.type === 'status') return `${copy.status}：${raw || copy.actionUpdate}`;
+    return rawEventText(raw || copy.actionUpdate);
   }
   if (item.kind === 'hermes.status') {
     const state = normalized === 'ja-JP' && payload.gateway_state === 'connected' ? '接続済み'
@@ -1237,16 +1223,16 @@ export function eventSummaryForLocale(item = {}, locale = 'en-US') {
   if (item.kind === 'hermes.subagent') {
     const state = strings.states?.[payload.status === 'running' ? 'working' : payload.status || 'idle']
       || payload.status || strings.idleFallback;
-    return `${shortEventText(payload.goal || payload.agent || copy.subagent, 42)}｜${localizeEventTool(payload.current_tool) || copy.noTool}｜${state}`;
+    return `${rawEventText(payload.goal || payload.agent || copy.subagent)}｜${localizeEventTool(payload.current_tool) || copy.noTool}｜${state}`;
   }
   if (item.kind === 'hermes.subagent.event') {
-    const detail = shortEventText(payload.text || '', 46);
-    return `${shortEventText(payload.goal || payload.agent || copy.subagent, 32)}｜${copy.tool}：${localizeEventTool(payload.tool_name) || copy.tool}${detail ? `｜${detail}` : ''}`;
+    const detail = rawEventText(payload.text || '');
+    return `${rawEventText(payload.goal || payload.agent || copy.subagent)}｜${copy.tool}：${localizeEventTool(payload.tool_name) || copy.tool}${detail ? `｜${detail}` : ''}`;
   }
   if (item.kind === 'hermes.session') {
-    return `${shortEventText(payload.title || payload.session_id || copy.session, 42)}｜${payload.active ? copy.active : copy.recent}`;
+    return `${rawEventText(payload.title || payload.session_id || copy.session)}｜${payload.active ? copy.active : copy.recent}`;
   }
-  if (item.kind === 'webhook.registered') return shortEventText(payload.url || copy.registered, 54);
-  if (item.kind === 'webhook.removed') return shortEventText(payload.agent || copy.removed, 54);
+  if (item.kind === 'webhook.registered') return rawEventText(payload.url || copy.registered);
+  if (item.kind === 'webhook.removed') return rawEventText(payload.agent || copy.removed);
   return item.summary || copy.actionUpdate;
 }

@@ -8,10 +8,6 @@ import {
   uiText,
 } from './ui_strings.mjs';
 
-function short(text = '', max = 72) {
-  return text && text.length > max ? `${text.slice(0, max - 1)}…` : (text || '');
-}
-
 function latestAction(agent = {}) {
   return (agent.recent_actions || [])[0] || {};
 }
@@ -21,23 +17,23 @@ function taskLabel(agent = {}, locale = 'zh-TW') {
 }
 
 function eventPreview(action = {}) {
-  return short(action.preview || action.message || '', 84);
+  return String(action.preview || action.message || '');
 }
 
 export function buildAgentSpeech(agent = {}, locale = 'zh-TW') {
   const copy = getLocaleStrings(locale);
   const action = latestAction(agent);
-  const task = short(taskLabel(agent, locale), 30);
+  const task = taskLabel(agent, locale);
   const preview = eventPreview(action);
   if (agent.speech) {
-    return { summary: short(agent.speech, 52), detail: agent.speech, clickable: true };
+    return { summary: String(agent.speech), detail: agent.speech, clickable: true };
   }
   const summary = agent.role === 'main_agent' || task
     ? ambientText(locale, agent, task)
     : '';
   const clickable = ['planning', 'thinking', 'working'].includes(agent.state);
   return {
-    summary: short(summary, 52),
+    summary,
     detail: preview || agent.activity_hint || task || summary || copy.idleFallback,
     clickable,
   };

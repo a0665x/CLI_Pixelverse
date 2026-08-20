@@ -7,7 +7,7 @@
   <div id="situation" aria-live="polite"></div><div id="agent-rail"></div><div id="hook-rail"></div>
   <div id="help"></div><div id="live" aria-live="polite"></div><div id="selection"></div>
   <div id="card"></div><div id="tooltip"></div><div id="event-chip"></div><div id="speech"></div><div id="dialog"></div>
-  <div id="trace"></div><div id="editor"></div><div id="coordinate"></div><div id="inspector"></div>
+  <div id="trace"></div><div id="timeline-payload"></div><div id="editor"></div><div id="coordinate"></div><div id="inspector"></div>
   <div id="door"></div><iframe id="pixelworld" title="Pixelworld"></iframe><pre id="result" data-status="running"></pre>
   <script type="module">
     import { createCommandDeckLocaleController } from '/public/command_deck_locale_controller.mjs';
@@ -15,12 +15,16 @@
     import { agentTaskText, agentToolText, agentTooltipText, furnitureCoordinateText, timelineItemForLocale, uiText } from '/public/ui_strings.mjs';
     import { buildAgentDialog, buildAgentSpeech } from '/public/agent_dialog.mjs';
     import { agentEventChipPresentation } from '/public/main_agent_events.mjs';
+    import { agentPayloadPresentation, currentAgentStatePresentation, timelinePayloadPresentation } from '/public/command_deck_payload_presenters.mjs';
 
     const result = document.querySelector('#result');
     const locales = ['en-US', 'zh-TW', 'ja-JP', 'ko-KR'];
-    const agent = { name: 'Henry', role: 'main_agent', state: 'working', room_key: 'code_workbench', task: 'read_file', tool_label: 'read_file', activity_hint: '' };
+    const longTask = `<task>&"'read_file::${'BROWSER_LONG_TASK_'.repeat(12)}END_TASK`;
+    const longPreview = `<preview>&"'BROWSER_LONG_PREVIEW_${'preview-segment-'.repeat(12)}END_PREVIEW`;
+    const messageOnly = `<message>&"'BROWSER_MESSAGE_ONLY_${'message-segment-'.repeat(12)}END_MESSAGE`;
+    const agent = { name: 'Henry', role: 'main_agent', state: 'working', room_key: 'code_workbench', task: longTask, tool_label: 'read_file', activity_hint: '' };
     const snapshot = { agents: [agent], hooks: [{ name: 'Hook' }] };
-    const trace = { lanes: [{ event_name: 'main.tool.started', tool_name: 'read_file', preview: 'RAW_PREVIEW_7b42' }] };
+    const trace = { lanes: [{ event_name: 'main.tool.started', tool_name: 'read_file', preview: longPreview }] };
     const selection = { kind: 'agent', id: 'henry' };
     const frame = document.querySelector('#pixelworld');
     const receivedLocales = [];
@@ -45,13 +49,13 @@
       node('door').setAttribute('aria-label', node('door').title);
     };
     const renderSnapshot = () => {
-      const raw = agentTaskText(agent);
-      node('situation').textContent = `${uiText(locale, 'commandDeck.inspector.currentTask')}: ${raw}`;
+      const raw = agentPayloadPresentation(agent).task;
+      node('situation').textContent = currentAgentStatePresentation({ agent, name: 'Henry', state: uiText(locale, 'commandDeck.eventChip.states.working'), room: 'Workshop' }).text;
       node('selection').textContent = uiText(locale, 'commandDeck.inspector.selectAgent');
       node('selection').setAttribute('aria-label', node('selection').textContent);
       node('card').textContent = `${uiText(locale, 'commandDeck.rails.agentsTitle')}: ${raw}`;
       node('tooltip').textContent = agentTooltipText(agent, locale);
-      const eventChip = agentEventChipPresentation({ ...agent, pixel_state: 'reading_files', recent_actions: [{ event_name: 'main.tool.started', tool_name: 'read_file', preview: 'read_file' }] }, locale);
+      const eventChip = agentEventChipPresentation({ ...agent, pixel_state: 'reading_files', recent_actions: [{ event_name: 'main.tool.completed', tool_name: 'read_file', message: messageOnly }] }, locale);
       node('event-chip').textContent = eventChip.textContent;
       node('event-chip').title = eventChip.title;
       node('event-chip').className = eventChip.className;
@@ -61,6 +65,8 @@
     const renderMissionTrace = () => {
       const item = timelineItemForLocale(locale, trace.lanes[0], { toolLabel: agentToolText({ tool_name: 'read_file' }, locale) });
       node('trace').textContent = `${item.label}: ${item.message}`;
+      const payload = timelinePayloadPresentation({ taskLabel: longTask, latestSummary: `${item.label}: ${item.message}` });
+      node('timeline-payload').innerHTML = `<span>${payload.taskHtml}</span><span>${payload.summaryHtml}</span>`;
     };
     const renderLiveMonitoring = () => {
       node('agent-rail').textContent = `${uiText(locale, 'commandDeck.rails.agentsTitle')}: ${agentTaskText(agent)}`;
@@ -86,7 +92,7 @@
         node('locale-select').value = next;
         node('locale-select').dispatchEvent(new Event('change', { bubbles: true }));
         await wait(() => receivedLocales.includes(next));
-        rendered[next] = Object.fromEntries(['situation','agent-rail','hook-rail','help','live','selection','card','tooltip','event-chip','speech','dialog','trace','editor','coordinate','inspector','door'].map((id) => [id, { text: node(id).textContent, title: node(id).title, aria: node(id).getAttribute('aria-label') }]));
+        rendered[next] = Object.fromEntries(['situation','agent-rail','hook-rail','help','live','selection','card','tooltip','event-chip','speech','dialog','trace','timeline-payload','editor','coordinate','inspector','door'].map((id) => [id, { text: node(id).textContent, title: node(id).title, aria: node(id).getAttribute('aria-label') }]));
       }
       const surfaces = Object.keys(rendered['en-US']);
       for (const surface of surfaces) {
@@ -94,10 +100,12 @@
       }
       for (const next of locales) {
         for (const path of ['situation','agent-rail','live','card','tooltip','speech','dialog','inspector']) {
-          if (!rendered[next][path].text.includes('read_file')) throw new Error(`${path} changed raw task for ${next}`);
+          if (!rendered[next][path].text.includes(longTask)) throw new Error(`${path} sliced or changed raw task for ${next}`);
         }
-        if (!rendered[next].trace.text.includes('RAW_PREVIEW_7b42')) throw new Error(`trace changed preview for ${next}`);
-        if (!rendered[next]['event-chip'].title.includes('read_file')) throw new Error(`event chip changed raw preview for ${next}`);
+        if (!rendered[next].trace.text.includes(longPreview)) throw new Error(`trace sliced or changed preview for ${next}`);
+        if (!rendered[next]['timeline-payload'].text.includes(longTask) || !rendered[next]['timeline-payload'].text.includes(longPreview)) throw new Error(`timeline DOM corrupted raw payload for ${next}`);
+        if (!rendered[next]['event-chip'].title.includes(messageOnly)) throw new Error(`event chip sliced or changed message fallback for ${next}`);
+        if (JSON.stringify(rendered[next]).includes('…')) throw new Error(`JavaScript ellipsis leaked into rendered DOM for ${next}`);
       }
       if (document.body.dataset.pixelworldCutaway !== 'open' || receivedLocales.length < 4) throw new Error('open cutaway locale route not observed');
       result.dataset.status = 'pass'; result.textContent = JSON.stringify({ rendered, receivedLocales });

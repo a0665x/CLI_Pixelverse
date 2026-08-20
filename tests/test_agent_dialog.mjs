@@ -76,3 +76,19 @@ test('recognized task tokens stay byte-for-byte raw while actual tool fields loc
     assert.match(agentTooltipText(agent, locale), /^read_file(?: · |$)/);
   }
 });
+
+test('long task, preview, and message-only payloads are never sliced in speech or dialog DOM copy', () => {
+  const task = `read_file::${'LONG_TASK_PAYLOAD_'.repeat(12)}END_TASK`;
+  const preview = `LONG_PREVIEW_PAYLOAD_${'preview-segment-'.repeat(10)}END_PREVIEW`;
+  const message = `LONG_MESSAGE_ONLY_${'message-segment-'.repeat(10)}END_MESSAGE`;
+  for (const locale of ['en-US', 'zh-TW', 'ja-JP', 'ko-KR']) {
+    const withPreview = { role: 'main_agent', state: 'working', task, room_key: 'code_workbench', recent_actions: [{ tool_name: 'read_file', preview }] };
+    assert.ok(buildAgentSpeech(withPreview, locale).summary.includes(task));
+    const previewDialog = buildAgentDialog(withPreview, locale);
+    assert.ok(previewDialog.body.includes(preview));
+    assert.equal(previewDialog.rows.find(({ value }) => value === task)?.value, task);
+    const messageDialog = buildAgentDialog({ ...withPreview, recent_actions: [{ tool_name: 'read_file', message }] }, locale);
+    assert.ok(messageDialog.body.includes(message));
+    assert.doesNotMatch(`${buildAgentSpeech(withPreview, locale).summary}${previewDialog.body}${messageDialog.body}`, /…/);
+  }
+});

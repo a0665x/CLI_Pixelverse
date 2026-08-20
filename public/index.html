@@ -1037,7 +1037,14 @@
       pointer-events: none;
       z-index: 5;
     }
-    .agent-speech.show { display: block; }
+    .agent-speech.show {
+      display: -webkit-box;
+      overflow: hidden;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 3;
+      line-clamp: 3;
+      overflow-wrap: anywhere;
+    }
     .agent.overlay-left .agent-speech { right: calc(100% - 14px); text-align: right; }
     .agent.overlay-right .agent-speech { left: calc(100% - 14px); text-align: left; }
     .agent:hover .agent-speech.clickable,
@@ -1163,6 +1170,8 @@
       transform: translateX(-50%);
       font-size: 8px;
       white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
       opacity: 0;
       transition: opacity .18s ease, transform .18s ease;
       pointer-events: none;
