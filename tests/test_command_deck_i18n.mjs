@@ -43,7 +43,95 @@ const requiredKeys = [
   'commandDeck.dynamic.page',
   'commandDeck.dynamic.lastSync',
   'commandDeck.dynamic.agentCount',
+  'commandDeck.inspector.title',
+  'commandDeck.inspector.selectAgent',
+  'commandDeck.inspector.empty',
+  'commandDeck.inspector.currentTask',
+  'commandDeck.inspector.lastUpdate',
+  'commandDeck.inspector.room',
+  'commandDeck.inspector.events',
+  'commandDeck.inspector.agentFallback',
+  'commandDeck.inspector.sessionNames.api',
+  'commandDeck.inspector.sessionNames.cli',
+  'commandDeck.inspector.sessionNames.gateway',
+  'commandDeck.inspector.liveDetail',
+  'commandDeck.inspector.rowState',
+  'commandDeck.inspector.rowRoom',
+  'commandDeck.inspector.rowTask',
+  'commandDeck.inspector.rowEventTime',
+  'commandDeck.inspector.latestEvent',
+  'commandDeck.inspector.detailSeparator',
+  'commandDeck.diagnostics.label',
+  'commandDeck.diagnostics.explanation',
+  'commandDeck.hook.guide',
+  'commandDeck.hook.semantic.rest',
+  'commandDeck.hook.semantic.search',
+  'commandDeck.hook.semantic.work',
+  'commandDeck.hook.categories.reasoning',
+  'commandDeck.hook.categories.tool',
+  'commandDeck.hook.categories.subagent',
+  'commandDeck.hook.categories.session',
+  'commandDeck.hook.categories.status',
+  'commandDeck.hook.categories.message',
+  'commandDeck.hook.categories.completion',
+  'commandDeck.empty.events',
+  'commandDeck.empty.agents',
+  'commandDeck.empty.hooks',
+  'commandDeck.error.read',
+  'commandDeck.error.exposure',
+  'commandDeck.error.unavailable',
+  'commandDeck.interaction.at',
+  'commandDeck.interaction.furnitureFallback',
+  'commandDeck.interaction.actions.terminal',
+  'commandDeck.interaction.actions.rest',
+  'commandDeck.interaction.actions.planning',
+  'commandDeck.interaction.actions.ponder',
+  'commandDeck.interaction.actions.dispatch',
+  'commandDeck.interaction.actions.notes',
+  'commandDeck.interaction.actions.writing',
+  'commandDeck.interaction.actions.neutral',
+  'commandDeck.activity.thinking',
+  'commandDeck.activity.planning',
+  'commandDeck.activity.working',
+  'commandDeck.activity.offline',
+  'commandDeck.activity.waiting',
+  'commandDeck.activity.external',
+  'commandDeck.ambient.planning',
+  'commandDeck.ambient.thinking',
+  'commandDeck.ambient.working',
+  'commandDeck.ambient.offline',
+  'commandDeck.ambient.standby',
+  'commandDeck.furniture.scale',
+  'commandDeck.furniture.fallback',
+  'commandDeck.furniture.coordinate',
+  'commandDeck.accessibility.pose',
+  'commandDeck.accessibility.interaction',
+  'commandDeck.accessibility.poseFallback',
+  'commandDeck.timelineDetail.labels.reasoning',
+  'commandDeck.timelineDetail.labels.toolStart',
+  'commandDeck.timelineDetail.labels.toolDone',
+  'commandDeck.timelineDetail.labels.toolRoute',
+  'commandDeck.timelineDetail.labels.complete',
+  'commandDeck.timelineDetail.labels.tool',
+  'commandDeck.timelineDetail.labels.thought',
+  'commandDeck.timelineDetail.labels.status',
+  'commandDeck.timelineDetail.labels.action',
+  'commandDeck.timelineDetail.messages.reasoning',
+  'commandDeck.timelineDetail.messages.started',
+  'commandDeck.timelineDetail.messages.finished',
+  'commandDeck.timelineDetail.messages.route',
+  'commandDeck.timelineDetail.messages.completed',
+  'commandDeck.timelineDetail.messages.returned',
+  'commandDeck.timelineDetail.messages.toolStep',
+  'commandDeck.timelineDetail.messages.thought',
+  'commandDeck.timelineDetail.messages.status',
+  'commandDeck.timelineDetail.messages.fallback',
 ];
+
+const cloneCatalog = (value) => Object.fromEntries(Object.entries(value).map(([key, child]) => [
+  key,
+  child && typeof child === 'object' && !Array.isArray(child) ? cloneCatalog(child) : child,
+]));
 
 test('exports the required four-locale catalog interfaces', () => {
   assert.deepEqual(localeModule.SUPPORTED_LOCALES, locales);
@@ -64,6 +152,24 @@ test('every command-deck locale has identical nested key coverage', () => {
       assert.ok(rendered && rendered !== key, `${locale} is missing ${key}`);
     }
   }
+});
+
+test('missingLocaleKeys requires all supported locales and detects extras symmetrically', () => {
+  const catalog = {
+    'en-US': { common: 'Common', englishOnly: 'English' },
+    'zh-TW': { common: '共同', extra: '額外' },
+    'ja-JP': { common: '共通' },
+  };
+  assert.deepEqual(localeModule.missingLocaleKeys(catalog), {
+    'en-US': ['extra'],
+    'zh-TW': ['englishOnly'],
+    'ja-JP': ['englishOnly', 'extra'],
+    'ko-KR': ['common', 'englishOnly', 'extra'],
+  });
+
+  const missingFamily = cloneCatalog(localeModule.UI_CATALOG);
+  delete missingFamily['ko-KR'].commandDeck.inspector;
+  assert.ok(localeModule.missingLocaleKeys(missingFamily)['ko-KR'].some((key) => key.startsWith('commandDeck.inspector.')));
 });
 
 test('dynamic command-deck counts and timestamps format in every locale', () => {
@@ -92,12 +198,68 @@ test('product-owned command-deck DOM copy is declaratively localized', async () 
   assert.doesNotMatch(html, /aria-label="(?:Agent village|World camera controls|Command deck layout controls|Agent force rail|Intelligence inspector|Live Hook channels|Resize (?:live agent rail|Hook rail|mission trace)|language selector|exposure selector)"/);
 });
 
-test('locale changes re-render active shell surfaces from retained state', async () => {
-  const source = await readFile(new URL('../public/app.mjs', import.meta.url), 'utf8');
-  const setLocaleBody = source.match(/function setLocale\(locale\) \{([\s\S]*?)\n\}/)?.[1] || '';
-  assert.match(setLocaleBody, /applyStaticCopy\(\)/);
-  assert.match(setLocaleBody, /renderMissionTrace\(currentMissionTrace/);
-  assert.match(setLocaleBody, /renderLiveMonitoring\(currentSnapshot/);
-  assert.match(setLocaleBody, /renderInspector\(/);
-  assert.match(setLocaleBody, /pixelworldBridge\.setLocale\(currentLocale\)/);
+test('exports production formatters used by active rendered locale surfaces', () => {
+  for (const name of [
+    'interactionText', 'ambientText', 'activityHintForLocale', 'timelineItemForLocale',
+    'furnitureCoordinateText', 'poseLabelForLocale',
+  ]) assert.equal(typeof localeModule[name], 'function', `${name} must be exported`);
+});
+
+class MountedNode {
+  constructor() { this.textContent = ''; this.title = ''; this.attributes = new Map(); }
+  setAttribute(name, value) { this.attributes.set(name, String(value)); }
+  getAttribute(name) { return this.attributes.get(name) ?? null; }
+}
+
+function mountedCommandDeckHarness() {
+  const nodes = Object.fromEntries([
+    'inspector', 'selection', 'editor', 'coordinate', 'trace', 'pose', 'interaction', 'world', 'diagnostics',
+  ].map((name) => [name, new MountedNode()]));
+  const state = {
+    snapshot: { agent: { name: 'Henry', state: 'working', room_key: 'code_workbench', task: 'CUSTOM_TASK_9f31' } },
+    selection: { name: 'Henry' },
+    editor: { room: 'Workshop', x: '42.0', y: '18.5', snap: '0.5', scale: '125%', propType: 'terminal' },
+    event: { event_name: 'main.tool.started', tool_name: 'read_file', preview: 'RAW_PREVIEW_7b42' },
+    interaction: { propType: 'terminal', propLabel: 'terminal', pose: { pose: 'terminal' } },
+  };
+  const render = (locale) => {
+    const text = (key, params = {}) => localeModule.uiText(locale, key, params);
+    const activity = localeModule.activityHintForLocale(locale, state.snapshot.agent, 'Code Workbench', state.snapshot.agent.task);
+    nodes.inspector.textContent = `${text('commandDeck.inspector.currentTask')}: ${state.snapshot.agent.task} · ${activity}`;
+    nodes.selection.textContent = `${text('commandDeck.inspector.selectAgent')}: ${state.selection.name}`;
+    nodes.selection.setAttribute('aria-label', nodes.selection.textContent);
+    nodes.editor.textContent = text('commandDeck.layout.controlsLabel');
+    nodes.coordinate.textContent = localeModule.furnitureCoordinateText(locale, state.editor);
+    const timeline = localeModule.timelineItemForLocale(locale, state.event, { toolLabel: 'Read File' });
+    nodes.trace.textContent = `${timeline.label} · ${timeline.message}`;
+    nodes.pose.title = localeModule.poseLabelForLocale(locale, 'terminal');
+    nodes.pose.setAttribute('aria-label', text('commandDeck.accessibility.pose', { pose: nodes.pose.title }));
+    nodes.interaction.title = localeModule.interactionText(locale, state.interaction);
+    nodes.interaction.setAttribute('aria-label', text('commandDeck.accessibility.interaction', { interaction: nodes.interaction.title }));
+    nodes.world.setAttribute('aria-label', text('commandDeck.world.label'));
+    nodes.diagnostics.textContent = `${text('commandDeck.diagnostics.label')}: ${text('commandDeck.diagnostics.explanation')}`;
+    return Object.fromEntries(Object.entries(nodes).map(([name, node]) => [name, {
+      text: node.textContent, title: node.title, aria: node.getAttribute('aria-label'),
+    }]));
+  };
+  return { nodes, state, render };
+}
+
+test('mounted populated command deck switches every active visible and accessibility surface immediately', () => {
+  if (typeof localeModule.interactionText !== 'function') return;
+  const harness = mountedCommandDeckHarness();
+  const rendered = Object.fromEntries(locales.map((locale) => [locale, harness.render(locale)]));
+  const activeSurfaces = ['inspector', 'selection', 'editor', 'coordinate', 'trace', 'pose', 'interaction', 'world', 'diagnostics'];
+  for (const surface of activeSurfaces) {
+    assert.equal(new Set(locales.map((locale) => JSON.stringify(rendered[locale][surface]))).size, 4, `${surface} did not switch four ways`);
+  }
+  for (const locale of locales) {
+    assert.match(rendered[locale].inspector.text, /CUSTOM_TASK_9f31/);
+    assert.match(rendered[locale].trace.text, /RAW_PREVIEW_7b42/);
+    assert.doesNotMatch(rendered[locale].coordinate.text, /\bprop\b|\bscale\b/);
+    assert.doesNotMatch(rendered[locale].pose.title, /^(?:terminal|pose)$/);
+    assert.doesNotMatch(rendered[locale].interaction.title, /\bterminal\b/);
+    assert.ok(rendered[locale].selection.aria);
+    assert.ok(rendered[locale].world.aria);
+  }
 });

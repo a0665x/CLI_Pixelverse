@@ -9,17 +9,66 @@ export const LOCALE_LABELS = {
 
 const commandDeckCopy = ({
   topBar, rails, inspector, layout, timeline, diagnostics, hook, empty, error,
-  settings, camera, world, dynamic,
+  settings, camera, world, dynamic, ...activeSurfaces
 }) => ({ commandDeck: {
   topBar, rails, inspector, layout, timeline, diagnostics, hook, empty, error,
-  settings, camera, world, dynamic,
+  settings, camera, world, dynamic, ...activeSurfaces,
 } });
+
+const EN_ACTIVE_SURFACES = {
+  interaction: { at: ({ action, label }) => `${action} at ${label}`, furnitureFallback: 'Furniture', actions: { rest: 'Resting', planning: 'Planning', ponder: 'Thinking', terminal: 'Working', dispatch: 'Dispatching', notes: 'Reviewing', writing: 'Writing', neutral: 'Interacting' } },
+  activity: { thinking: ({ room }) => `Reasoning quietly inside ${room}`, planning: ({ room }) => `Planning steps inside ${room}`, working: ({ task, room }) => `Using ${task} inside ${room}`, offline: () => 'No fresh heartbeat from the main runtime', waiting: ({ room }) => `Waiting in ${room} for the next task`, external: ({ value }) => `Activity: ${value}` },
+  ambient: { planning: ({ task }) => task ? `Plan: ${task}` : 'Planning route…', thinking: ({ task }) => task ? `Think: ${task}` : 'Reasoning quietly', working: ({ task }) => task ? `Doing: ${task}` : 'Running tools', offline: () => 'Signal lost', standby: () => 'Standing by' },
+  furniture: { scale: ({ scale }) => `Scale ${scale}`, fallback: 'Furniture', coordinate: ({ label, room, x, y, snap, scale }) => `${label} · ${room} · x ${x}%, y ${y}% · Grid ${snap}% · Scale ${scale}` },
+  accessibility: { pose: ({ pose }) => `${pose} pose`, interaction: ({ interaction }) => `${interaction} interaction`, poseFallback: 'Active' },
+  timelineDetail: {
+    labels: { reasoning: 'Reasoning', toolStart: 'Tool start', toolDone: 'Tool done', toolRoute: 'Tool route', complete: 'Complete', tool: 'Tool', thought: 'Thought', status: 'Status', action: 'Action' },
+    messages: { reasoning: ({ value }) => `Reasoning: ${value}`, started: ({ tool, preview }) => `Started ${tool}${preview ? ` | ${preview}` : ''}`, finished: ({ tool, preview }) => `Finished ${tool}${preview ? ` | ${preview}` : ''}`, route: ({ value }) => `Tool route: ${value}`, completed: ({ value }) => `Completed: ${value}`, returned: 'Returned to standby', toolStep: ({ value }) => `Tool step: ${value}`, thought: ({ value }) => `Thinking: ${value}`, status: ({ value }) => `Status: ${value}`, fallback: ({ value }) => `Action: ${value}` },
+  },
+};
+
+const ZH_ACTIVE_SURFACES = {
+  interaction: { at: ({ action, label }) => `${action}：${label}`, furnitureFallback: '家具', actions: { rest: '休息', planning: '規劃', ponder: '思考', terminal: '操作', dispatch: '派遣', notes: '查閱', writing: '撰寫', neutral: '互動' } },
+  activity: { thinking: ({ room }) => `在${room}安靜推理`, planning: ({ room }) => `在${room}規劃步驟`, working: ({ task, room }) => `在${room}執行 ${task}`, offline: () => '主執行環境沒有新的心跳', waiting: ({ room }) => `在${room}等待下一項任務`, external: ({ value }) => `活動：${value}` },
+  ambient: { planning: ({ task }) => task ? `規劃：${task}` : '正在拆解需求', thinking: ({ task }) => task ? `思考：${task}` : '正在整理推理', working: ({ task }) => task ? `執行：${task}` : '工具運作中', offline: () => '訊號中斷', standby: () => '待命中' },
+  furniture: { scale: ({ scale }) => `縮放 ${scale}`, fallback: '家具', coordinate: ({ label, room, x, y, snap, scale }) => `${label} · ${room} · x ${x}%、y ${y}% · 網格 ${snap}% · 縮放 ${scale}` },
+  accessibility: { pose: ({ pose }) => `${pose}姿勢`, interaction: ({ interaction }) => `互動：${interaction}`, poseFallback: '活動中' },
+  timelineDetail: {
+    labels: { reasoning: '規劃', toolStart: '工具啟動', toolDone: '工具完成', toolRoute: '工具序列', complete: '完成', tool: '工具', thought: '思考', status: '狀態', action: '動作' },
+    messages: { reasoning: ({ value }) => `主代理正在規劃：${value}`, started: ({ tool, preview }) => `開始使用 ${tool}${preview ? `｜${preview}` : ''}`, finished: ({ tool, preview }) => `完成 ${tool}${preview ? `｜${preview}` : ''}`, route: ({ value }) => `目前工具：${value}`, completed: ({ value }) => `已完成：${value}`, returned: '回到待命站', toolStep: ({ value }) => `工具步驟：${value}`, thought: ({ value }) => `思考中：${value}`, status: ({ value }) => `狀態：${value}`, fallback: ({ value }) => `動作：${value}` },
+  },
+};
+
+const JA_ACTIVE_SURFACES = {
+  interaction: { at: ({ action, label }) => `${label}で${action}`, furnitureFallback: '家具', actions: { rest: '休憩', planning: '計画', ponder: '思考', terminal: '作業', dispatch: '派遣', notes: '確認', writing: '執筆', neutral: '操作' } },
+  activity: { thinking: ({ room }) => `${room}で静かに推論中`, planning: ({ room }) => `${room}で手順を計画中`, working: ({ task, room }) => `${room}で ${task} を実行中`, offline: () => 'メイン実行環境から新しいハートビートがありません', waiting: ({ room }) => `${room}で次のタスクを待機中`, external: ({ value }) => `活動：${value}` },
+  ambient: { planning: ({ task }) => task ? `計画：${task}` : '要件を整理中…', thinking: ({ task }) => task ? `思考：${task}` : '静かに推論中', working: ({ task }) => task ? `実行：${task}` : 'ツールを実行中', offline: () => '通信が途切れました', standby: () => '待機中' },
+  furniture: { scale: ({ scale }) => `倍率 ${scale}`, fallback: '家具', coordinate: ({ label, room, x, y, snap, scale }) => `${label}・${room}・x ${x}%、y ${y}%・グリッド ${snap}%・倍率 ${scale}` },
+  accessibility: { pose: ({ pose }) => `${pose}の姿勢`, interaction: ({ interaction }) => `操作：${interaction}`, poseFallback: '活動中' },
+  timelineDetail: {
+    labels: { reasoning: '推論', toolStart: 'ツール開始', toolDone: 'ツール完了', toolRoute: 'ツール経路', complete: '完了', tool: 'ツール', thought: '思考', status: '状態', action: '動作' },
+    messages: { reasoning: ({ value }) => `推論：${value}`, started: ({ tool, preview }) => `${tool} を開始${preview ? `｜${preview}` : ''}`, finished: ({ tool, preview }) => `${tool} を完了${preview ? `｜${preview}` : ''}`, route: ({ value }) => `ツール経路：${value}`, completed: ({ value }) => `完了：${value}`, returned: '待機場所へ戻りました', toolStep: ({ value }) => `ツール手順：${value}`, thought: ({ value }) => `思考：${value}`, status: ({ value }) => `状態：${value}`, fallback: ({ value }) => `動作：${value}` },
+  },
+};
+
+const KO_ACTIVE_SURFACES = {
+  interaction: { at: ({ action, label }) => `${label}에서 ${action}`, furnitureFallback: '가구', actions: { rest: '휴식', planning: '계획', ponder: '생각', terminal: '작업', dispatch: '파견', notes: '검토', writing: '작성', neutral: '상호작용' } },
+  activity: { thinking: ({ room }) => `${room}에서 조용히 추론 중`, planning: ({ room }) => `${room}에서 단계를 계획 중`, working: ({ task, room }) => `${room}에서 ${task} 실행 중`, offline: () => '메인 실행 환경에서 새 하트비트가 없습니다', waiting: ({ room }) => `${room}에서 다음 작업 대기 중`, external: ({ value }) => `활동: ${value}` },
+  ambient: { planning: ({ task }) => task ? `계획: ${task}` : '요구사항 정리 중…', thinking: ({ task }) => task ? `생각: ${task}` : '조용히 추론 중', working: ({ task }) => task ? `실행: ${task}` : '도구 실행 중', offline: () => '신호가 끊겼습니다', standby: () => '대기 중' },
+  furniture: { scale: ({ scale }) => `배율 ${scale}`, fallback: '가구', coordinate: ({ label, room, x, y, snap, scale }) => `${label} · ${room} · x ${x}%, y ${y}% · 그리드 ${snap}% · 배율 ${scale}` },
+  accessibility: { pose: ({ pose }) => `${pose} 자세`, interaction: ({ interaction }) => `상호작용: ${interaction}`, poseFallback: '활동 중' },
+  timelineDetail: {
+    labels: { reasoning: '추론', toolStart: '도구 시작', toolDone: '도구 완료', toolRoute: '도구 경로', complete: '완료', tool: '도구', thought: '생각', status: '상태', action: '동작' },
+    messages: { reasoning: ({ value }) => `추론: ${value}`, started: ({ tool, preview }) => `${tool} 시작${preview ? `｜${preview}` : ''}`, finished: ({ tool, preview }) => `${tool} 완료${preview ? `｜${preview}` : ''}`, route: ({ value }) => `도구 경로: ${value}`, completed: ({ value }) => `완료: ${value}`, returned: '대기 위치로 돌아갔습니다', toolStep: ({ value }) => `도구 단계: ${value}`, thought: ({ value }) => `생각: ${value}`, status: ({ value }) => `상태: ${value}`, fallback: ({ value }) => `동작: ${value}` },
+  },
+};
 
 export const UI_CATALOG = {
   'en-US': commandDeckCopy({
+    ...EN_ACTIVE_SURFACES,
     topBar: { label: 'CLI Pixelverse live status', brand: 'CLI_Pixelverse' },
     rails: { agentsLabel: 'Agent force rail', agentsTitle: 'Live agents', previousAgents: 'Previous agents', nextAgents: 'Next agents', inspectorLabel: 'Intelligence inspector', hookChannelsLabel: 'Live Hook channels' },
-    inspector: { title: 'Inspector', selectAgent: 'Select agent', empty: 'Select an agent to inspect current activity.', currentTask: 'Current task', lastUpdate: 'Last update', room: 'Room', events: 'Events' },
+    inspector: { title: 'Inspector', selectAgent: 'Select agent', empty: 'Select an agent to inspect current activity.', currentTask: 'Current task', lastUpdate: 'Last update', room: 'Room', events: 'Events', agentFallback: 'Agent', sessionNames: { api: 'API Session', cli: 'CLI Session', gateway: 'Gateway Session' }, liveDetail: ({ name }) => `${name} live detail`, rowState: 'State', rowRoom: 'Room', rowTask: 'Task', rowEventTime: 'Event time', latestEvent: ({ value }) => `Latest event: ${value}`, detailSeparator: ' • ' },
     layout: { controlsLabel: 'Command deck layout controls', collapseLeft: 'Collapse left region', expandLeft: 'Expand left region', collapseRight: 'Collapse right region', expandRight: 'Expand right region', collapseBottom: 'Collapse mission trace', expandBottom: 'Expand mission trace', swapSides: 'Swap side docks', reset: 'Reset command deck layout', resizeLeft: 'Resize live agent rail', resizeRight: 'Resize Hook rail', resizeBottom: 'Resize mission trace' },
     timeline: { title: 'Mission trace', live: 'Live', paused: 'Paused', resume: 'Resume live', summary: ({ state, count }) => `${state} · ${count} lanes`, eventLabel: ({ category, summary }) => `${category}: ${summary}` },
     diagnostics: { label: 'Diagnostics', explanation: 'Agent state, Hook routing, and connection health.' },
@@ -32,9 +81,10 @@ export const UI_CATALOG = {
     dynamic: { page: ({ page, count }) => `Page ${page} of ${count}`, lastSync: ({ timestamp, seconds }) => `Last sync ${timestamp} · ${seconds}s ago`, agentCount: ({ count }) => `${count} agents` },
   }),
   'zh-TW': commandDeckCopy({
+    ...ZH_ACTIVE_SURFACES,
     topBar: { label: 'CLI Pixelverse 即時狀態', brand: 'CLI_Pixelverse' },
     rails: { agentsLabel: '代理戰力列', agentsTitle: '即時代理', previousAgents: '上一頁代理', nextAgents: '下一頁代理', inspectorLabel: '情報檢視器', hookChannelsLabel: '即時 Hook 頻道' },
-    inspector: { title: '狀態檢視器', selectAgent: '選擇代理', empty: '選擇代理以檢視目前活動。', currentTask: '目前任務', lastUpdate: '最近更新', room: '房間', events: '事件' },
+    inspector: { title: '狀態檢視器', selectAgent: '選擇代理', empty: '選擇代理以檢視目前活動。', currentTask: '目前任務', lastUpdate: '最近更新', room: '房間', events: '事件', agentFallback: '代理', sessionNames: { api: 'API 工作階段', cli: 'CLI 工作階段', gateway: 'Gateway 工作階段' }, liveDetail: ({ name }) => `${name} 即時細節`, rowState: '狀態', rowRoom: '房間', rowTask: '任務', rowEventTime: '事件時間', latestEvent: ({ value }) => `最新事件：${value}`, detailSeparator: '｜' },
     layout: { controlsLabel: '指揮台版面控制', collapseLeft: '收合左側區域', expandLeft: '展開左側區域', collapseRight: '收合右側區域', expandRight: '展開右側區域', collapseBottom: '收合任務軌跡', expandBottom: '展開任務軌跡', swapSides: '交換兩側面板', reset: '重設指揮台版面', resizeLeft: '調整即時代理列寬度', resizeRight: '調整 Hook 列寬度', resizeBottom: '調整任務軌跡高度' },
     timeline: { title: '任務軌跡', live: '即時', paused: '已暫停', resume: '恢復即時', summary: ({ state, count }) => `${state} · ${count} 條軌跡`, eventLabel: ({ category, summary }) => `${category}：${summary}` },
     diagnostics: { label: '診斷', explanation: '代理狀態、Hook 路由與連線健康狀態。' },
@@ -47,9 +97,10 @@ export const UI_CATALOG = {
     dynamic: { page: ({ page, count }) => `第 ${page} 頁，共 ${count} 頁`, lastSync: ({ timestamp, seconds }) => `最近同步 ${timestamp} · ${seconds} 秒前`, agentCount: ({ count }) => `${count} 位代理` },
   }),
   'ja-JP': commandDeckCopy({
+    ...JA_ACTIVE_SURFACES,
     topBar: { label: 'CLI Pixelverse ライブ状態', brand: 'CLI_Pixelverse' },
     rails: { agentsLabel: 'エージェント一覧', agentsTitle: 'ライブエージェント', previousAgents: '前のエージェント', nextAgents: '次のエージェント', inspectorLabel: 'インテリジェンスインスペクター', hookChannelsLabel: 'ライブ Hook チャンネル' },
-    inspector: { title: 'インスペクター', selectAgent: 'エージェントを選択', empty: 'エージェントを選択して現在の活動を確認します。', currentTask: '現在のタスク', lastUpdate: '最終更新', room: '部屋', events: 'イベント' },
+    inspector: { title: 'インスペクター', selectAgent: 'エージェントを選択', empty: 'エージェントを選択して現在の活動を確認します。', currentTask: '現在のタスク', lastUpdate: '最終更新', room: '部屋', events: 'イベント', agentFallback: 'エージェント', sessionNames: { api: 'API セッション', cli: 'CLI セッション', gateway: 'Gateway セッション' }, liveDetail: ({ name }) => `${name} のライブ詳細`, rowState: '状態', rowRoom: '部屋', rowTask: 'タスク', rowEventTime: 'イベント時刻', latestEvent: ({ value }) => `最新イベント：${value}`, detailSeparator: '｜' },
     layout: { controlsLabel: 'コマンドデッキのレイアウト操作', collapseLeft: '左領域を閉じる', expandLeft: '左領域を開く', collapseRight: '右領域を閉じる', expandRight: '右領域を開く', collapseBottom: 'ミッション軌跡を閉じる', expandBottom: 'ミッション軌跡を開く', swapSides: '左右のドックを交換', reset: 'コマンドデッキをリセット', resizeLeft: 'エージェント一覧の幅を変更', resizeRight: 'Hook 一覧の幅を変更', resizeBottom: 'ミッション軌跡の高さを変更' },
     timeline: { title: 'ミッション軌跡', live: 'ライブ', paused: '一時停止', resume: 'ライブに戻る', summary: ({ state, count }) => `${state}・${count} レーン`, eventLabel: ({ category, summary }) => `${category}：${summary}` },
     diagnostics: { label: '診断', explanation: 'エージェント状態、Hook 経路、接続状態を確認します。' },
@@ -62,9 +113,10 @@ export const UI_CATALOG = {
     dynamic: { page: ({ page, count }) => `${page} / ${count} ページ`, lastSync: ({ timestamp, seconds }) => `最終同期 ${timestamp}・${seconds} 秒前`, agentCount: ({ count }) => `${count} エージェント` },
   }),
   'ko-KR': commandDeckCopy({
+    ...KO_ACTIVE_SURFACES,
     topBar: { label: 'CLI Pixelverse 실시간 상태', brand: 'CLI_Pixelverse' },
     rails: { agentsLabel: '에이전트 전력 레일', agentsTitle: '실시간 에이전트', previousAgents: '이전 에이전트', nextAgents: '다음 에이전트', inspectorLabel: '인텔리전스 검사기', hookChannelsLabel: '실시간 Hook 채널' },
-    inspector: { title: '검사기', selectAgent: '에이전트 선택', empty: '에이전트를 선택해 현재 활동을 확인하세요.', currentTask: '현재 작업', lastUpdate: '마지막 업데이트', room: '방', events: '이벤트' },
+    inspector: { title: '검사기', selectAgent: '에이전트 선택', empty: '에이전트를 선택해 현재 활동을 확인하세요.', currentTask: '현재 작업', lastUpdate: '마지막 업데이트', room: '방', events: '이벤트', agentFallback: '에이전트', sessionNames: { api: 'API 세션', cli: 'CLI 세션', gateway: 'Gateway 세션' }, liveDetail: ({ name }) => `${name} 실시간 상세`, rowState: '상태', rowRoom: '방', rowTask: '작업', rowEventTime: '이벤트 시간', latestEvent: ({ value }) => `최신 이벤트: ${value}`, detailSeparator: '｜' },
     layout: { controlsLabel: '명령 데크 레이아웃 제어', collapseLeft: '왼쪽 영역 접기', expandLeft: '왼쪽 영역 펼치기', collapseRight: '오른쪽 영역 접기', expandRight: '오른쪽 영역 펼치기', collapseBottom: '미션 추적 접기', expandBottom: '미션 추적 펼치기', swapSides: '좌우 도크 바꾸기', reset: '명령 데크 레이아웃 초기화', resizeLeft: '실시간 에이전트 레일 크기 조절', resizeRight: 'Hook 레일 크기 조절', resizeBottom: '미션 추적 크기 조절' },
     timeline: { title: '미션 추적', live: '실시간', paused: '일시 중지', resume: '실시간 재개', summary: ({ state, count }) => `${state} · ${count}개 레인`, eventLabel: ({ category, summary }) => `${category}: ${summary}` },
     diagnostics: { label: '진단', explanation: '에이전트 상태, Hook 경로와 연결 상태를 확인합니다.' },
@@ -86,8 +138,10 @@ const nestedLocaleKeys = (value, prefix = '') => Object.entries(value || {}).fla
 }).sort();
 
 export function missingLocaleKeys(catalog, baseline = 'en-US') {
-  const expected = nestedLocaleKeys(catalog?.[baseline]);
-  return Object.fromEntries(Object.entries(catalog || {}).flatMap(([locale, copy]) => {
+  const locales = [baseline, ...SUPPORTED_LOCALES.filter((locale) => locale !== baseline)];
+  const expected = [...new Set(locales.flatMap((locale) => nestedLocaleKeys(catalog?.[locale])))].sort();
+  return Object.fromEntries(locales.flatMap((locale) => {
+    const copy = catalog?.[locale];
     const actual = new Set(nestedLocaleKeys(copy));
     const missing = expected.filter((key) => !actual.has(key));
     return missing.length ? [[locale, missing]] : [];
@@ -100,6 +154,85 @@ export function uiText(locale, key, params = {}) {
   const value = resolve(UI_CATALOG[normalized]) ?? resolve(UI_CATALOG['en-US']);
   if (typeof value === 'function') return value(params);
   return value == null ? key : String(value).replace(/\{(\w+)\}/g, (_, name) => String(params[name] ?? ''));
+}
+
+const shortLocaleValue = (value, limit = 84) => {
+  const text = String(value || '');
+  return text.length > limit ? `${text.slice(0, Math.max(0, limit - 1))}…` : text;
+};
+
+export function furnitureLabelForLocale(locale, value, internalIdentifier = '') {
+  const label = String(value || '').trim();
+  const internal = String(internalIdentifier || '').trim();
+  if (!label || label === internal || /^[a-z][a-z0-9_-]*$/i.test(label)) {
+    return uiText(locale, 'commandDeck.furniture.fallback');
+  }
+  return label;
+}
+
+export function interactionText(locale, target = {}) {
+  if (!target?.propType) return '';
+  const pose = target.pose?.pose || 'neutral';
+  const actionKey = `commandDeck.interaction.actions.${pose}`;
+  const action = uiText(locale, actionKey) === actionKey
+    ? uiText(locale, 'commandDeck.interaction.actions.neutral')
+    : uiText(locale, actionKey);
+  const label = furnitureLabelForLocale(locale, target.propLabel, target.propType);
+  return uiText(locale, 'commandDeck.interaction.at', { action, label });
+}
+
+export function ambientText(locale, agent = {}, taskValue = agent.task || '') {
+  if (agent.speech) return String(agent.speech);
+  const state = agent.state === 'planning' ? 'planning'
+    : agent.state === 'thinking' ? 'thinking'
+      : agent.state === 'working' ? 'working'
+        : agent.state === 'offline' ? 'offline' : 'standby';
+  return uiText(locale, `commandDeck.ambient.${state}`, { task: shortLocaleValue(taskValue, 28) });
+}
+
+export function activityHintForLocale(locale, agent = {}, roomName = '', taskValue = agent.task || '') {
+  if (agent.activity_hint) {
+    return uiText(locale, 'commandDeck.activity.external', { value: String(agent.activity_hint) });
+  }
+  const state = agent.state === 'thinking' ? 'thinking'
+    : agent.state === 'planning' ? 'planning'
+      : agent.state === 'working' ? 'working'
+        : agent.state === 'offline' ? 'offline' : 'waiting';
+  return uiText(locale, `commandDeck.activity.${state}`, {
+    room: roomName,
+    task: String(taskValue || uiText(locale, 'commandDeck.timelineDetail.labels.tool')),
+  });
+}
+
+export function timelineItemForLocale(locale, item = {}, { toolLabel = '', toolRouteLabel = '' } = {}) {
+  const eventName = item.event_name || '';
+  const tool = toolLabel || item.tool_name || uiText(locale, 'commandDeck.timelineDetail.labels.tool');
+  const preview = shortLocaleValue(item.preview || item.message || '', 84);
+  const label = (key) => uiText(locale, `commandDeck.timelineDetail.labels.${key}`);
+  const message = (key, params = {}) => uiText(locale, `commandDeck.timelineDetail.messages.${key}`, params);
+  if (eventName === 'main.reasoning') return { label: label('reasoning'), message: message('reasoning', { value: preview || label('reasoning') }) };
+  if (eventName === 'main.tool.started') return { label: label('toolStart'), message: message('started', { tool, preview: shortLocaleValue(item.preview || '', 56) }) };
+  if (eventName === 'main.tool.completed') return { label: label('toolDone'), message: message('finished', { tool, preview: shortLocaleValue(item.preview || '', 56) }) };
+  if (eventName === 'main.tool.batch') return { label: label('toolRoute'), message: message('route', { value: toolRouteLabel || preview || label('toolRoute') }) };
+  if (eventName === 'main.task.completed') return { label: label('complete'), message: preview ? message('completed', { value: preview }) : message('returned') };
+  if (item.type === 'tool') return { label: label('tool'), message: message('toolStep', { value: toolLabel || preview || label('tool') }) };
+  if (item.type === 'thought') return { label: label('thought'), message: message('thought', { value: preview || label('thought') }) };
+  if (item.type === 'status') return { label: label('status'), message: message('status', { value: preview || label('status') }) };
+  return { label: label('action'), message: message('fallback', { value: shortLocaleValue(item.message || item.to || label('action'), 84) }) };
+}
+
+export function furnitureCoordinateText(locale, {
+  room = '', x = '0.0', y = '0.0', snap = '0.5', scale = '100%', label = '', propType = '',
+} = {}) {
+  return uiText(locale, 'commandDeck.furniture.coordinate', {
+    label: furnitureLabelForLocale(locale, label, propType), room, x, y, snap, scale,
+  });
+}
+
+export function poseLabelForLocale(locale, pose = '') {
+  const key = `commandDeck.interaction.actions.${pose}`;
+  const localized = uiText(locale, key);
+  return localized === key ? uiText(locale, 'commandDeck.accessibility.poseFallback') : localized;
 }
 
 const ROOM_DECOR = {

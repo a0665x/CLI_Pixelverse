@@ -126,3 +126,25 @@ test('catalog parity helper reports nested omissions precisely', () => {
     'ko-KR': { top: { title: '제목', count: ({ count }) => `${count}` } },
   }), { 'zh-TW': ['top.count'] });
 });
+
+test('active interaction, activity, timeline, furniture, and pose copy has four-locale framing', () => {
+  for (const name of [
+    'interactionText', 'ambientText', 'activityHintForLocale', 'timelineItemForLocale',
+    'furnitureCoordinateText', 'poseLabelForLocale',
+  ]) assert.equal(typeof uiStrings[name], 'function');
+  if (typeof uiStrings.interactionText !== 'function') return;
+  const outputs = ['en-US', 'zh-TW', 'ja-JP', 'ko-KR'].map((locale) => ({
+    interaction: uiStrings.interactionText(locale, { propType: 'terminal', pose: { pose: 'terminal' } }),
+    activity: uiStrings.activityHintForLocale(locale, { state: 'working' }, 'Workshop', 'RAW_TASK'),
+    timeline: uiStrings.timelineItemForLocale(locale, { type: 'thought', preview: 'RAW_PREVIEW' }),
+    coordinate: uiStrings.furnitureCoordinateText(locale, { room: 'Workshop', x: '1', y: '2', snap: '0.5', scale: '125%', propType: 'prop' }),
+    pose: uiStrings.poseLabelForLocale(locale, 'terminal'),
+  }));
+  for (const key of ['interaction', 'activity', 'coordinate', 'pose']) {
+    assert.equal(new Set(outputs.map((output) => output[key])).size, 4, key);
+  }
+  outputs.forEach(({ activity, timeline }) => {
+    assert.match(activity, /RAW_TASK/);
+    assert.match(timeline.message, /RAW_PREVIEW/);
+  });
+});

@@ -8,6 +8,10 @@ import {
   KENNEY_PACK,
 } from './kenney_assets.mjs';
 import {
+  activityHintForLocale,
+  ambientText,
+  furnitureCoordinateText,
+  furnitureLabelForLocale,
   getLocaleLabel,
   getLocaleStrings,
   getRoomCopy,
@@ -17,8 +21,11 @@ import {
   LOCALE_LABELS,
   localizeToolSummary,
   normalizeLocale,
+  interactionText,
+  poseLabelForLocale,
   summarizeWorld,
   SUPPORTED_LOCALES,
+  timelineItemForLocale,
   uiText,
 } from './ui_strings.mjs';
 import {
@@ -497,7 +504,7 @@ function selectedPropMeta() {
   const room = getRoomCopy(target.roomKey, currentLocale);
   const roomName = room.name || target.roomKey;
   const coords = `${Number(target.x || 0).toFixed(1)}%, ${Number(target.y || 0).toFixed(1)}%`;
-  return `${target.label || target.propType} · ${roomName} · ${coords} · ${formatScale(target.scale || 1)}`;
+  return `${furnitureLabelForLocale(currentLocale, target.label, target.propType)} · ${roomName} · ${coords} · ${formatScale(target.scale || 1)}`;
 }
 
 function selectedPropCoordinates(target = propDragging || selectedFurnitureProp) {
@@ -512,7 +519,7 @@ function selectedPropGuideLabel(target = propDragging || selectedFurnitureProp) 
   if (!target) return '';
   const copy = strings();
   const coords = selectedPropCoordinates(target);
-  return copy.layoutGuideBadge(target.label || target.propType || 'prop', coords?.x || '0.0', coords?.y || '0.0', Number(furnitureSnapStep || 0.5).toFixed(1));
+  return copy.layoutGuideBadge(furnitureLabelForLocale(currentLocale, target.label, target.propType), coords?.x || '0.0', coords?.y || '0.0', Number(furnitureSnapStep || 0.5).toFixed(1));
 }
 
 function updateFurnitureCoordinateHud() {
@@ -524,12 +531,21 @@ function updateFurnitureCoordinateHud() {
   if (!active) return;
   const room = getRoomCopy(target.roomKey, currentLocale);
   const coords = selectedPropCoordinates(target);
+  const furnitureLabel = furnitureLabelForLocale(currentLocale, target.label, target.propType);
   if (dom.furnitureCoordTitle) {
-    dom.furnitureCoordTitle.textContent = `${copy.layoutCoordTitle} · ${target.label || target.propType || 'prop'}`;
+    dom.furnitureCoordTitle.textContent = `${copy.layoutCoordTitle} · ${furnitureLabel}`;
   }
   if (dom.furnitureCoordBody) {
     const label = document.createElement('span');
-    label.textContent = `${room.name || target.roomKey} · ${copy.layoutCoordChip(coords?.x || '0.0', coords?.y || '0.0')} · ${copy.layoutSnapChip(Number(furnitureSnapStep || 0.5).toFixed(1))} · scale ${formatScale(target.scale || 1)}`;
+    label.textContent = furnitureCoordinateText(currentLocale, {
+      label: furnitureLabel,
+      propType: target.propType,
+      room: room.name || target.roomKey,
+      x: coords?.x || '0.0',
+      y: coords?.y || '0.0',
+      snap: Number(furnitureSnapStep || 0.5).toFixed(1),
+      scale: formatScale(target.scale || 1),
+    });
     const scaleDown = document.createElement('button');
     scaleDown.type = 'button';
     scaleDown.dataset.furnitureScale = '-1';
@@ -1069,65 +1085,27 @@ function activityPoint(agent, patrolIndex = 0) {
 }
 
 function interactionCopy(target) {
-  if (!target?.propType) return '';
-  const label = target.propLabel || target.propType;
-  const action = currentLocale === 'en-US' ? target.actionLabelEn : target.actionLabelZh;
-  return currentLocale === 'en-US' ? `${action} at ${label}` : `${action}：${label}`;
+  return interactionText(currentLocale, target);
 }
 
 function ambientSpeech(agent) {
-  const task = short(localizeTask(agent.task || ''), currentLocale === 'en-US' ? 28 : 18);
-  if (agent.speech) return agent.speech;
-  if (currentLocale === 'en-US') {
-    if (agent.state === 'planning') return task ? `Plan: ${task}` : 'Planning route…';
-    if (agent.state === 'thinking') return task ? `Think: ${task}` : 'Reasoning quietly';
-    if (agent.state === 'working') return task ? `Doing: ${task}` : 'Running tools';
-    if (agent.state === 'offline') return 'Signal lost';
-    return agent.role === 'main_agent' ? 'Standing by' : '';
-  }
-  if (agent.state === 'planning') return task ? `規劃：${task}` : '正在拆解需求';
-  if (agent.state === 'thinking') return task ? `思考：${task}` : '正在整理推理';
-  if (agent.state === 'working') return task ? `執行：${task}` : '工具運作中';
-  if (agent.state === 'offline') return '訊號中斷';
-  return agent.role === 'main_agent' ? '待命中' : '';
+  if (agent.role !== 'main_agent' && !agent.speech && !agent.task) return '';
+  return ambientText(currentLocale, agent, agent.task || '');
 }
 
 function activityHintText(agent) {
-  if (currentLocale === 'zh-TW') {
-    return agent.activity_hint || roomCopy(agent);
-  }
   const room = getRoomCopy(agent.room_key, currentLocale);
   const roomName = room.name || agent.room_label || strings().unknownRoom;
-  if (agent.state === 'thinking') return `Reasoning quietly inside ${roomName}`;
-  if (agent.state === 'planning') return `Planning steps inside ${roomName}`;
-  if (agent.state === 'working') return `Using ${localizeTask(agent.task || '') || 'tools'} inside ${roomName}`;
-  if (agent.state === 'offline') return 'No fresh heartbeat from the main runtime';
-  return `Waiting in ${roomName} for the next task`;
+  return activityHintForLocale(currentLocale, agent, roomName, agent.task || '');
 }
 
 function formatTimelineItem(item = {}) {
-  const eventName = item.event_name || '';
   const toolName = item.tool_name || (item.tool_names || [])[0] || '';
   const toolLabel = localizeTask(toolName) || toolName;
-  if (currentLocale === 'en-US') {
-    if (eventName === 'main.reasoning') return { label: 'reasoning', message: `Reasoning: ${short(item.preview || item.message || 'planning', 84)}` };
-    if (eventName === 'main.tool.started') return { label: 'tool start', message: `Started ${toolLabel}${item.preview ? ` | ${short(item.preview, 56)}` : ''}` };
-    if (eventName === 'main.tool.completed') return { label: 'tool done', message: `Finished ${toolLabel}${item.preview ? ` | ${short(item.preview, 56)}` : ''}` };
-    if (eventName === 'main.tool.batch') return { label: 'tool route', message: `Tool route: ${localizeTask((item.tool_names || []).join(', ')) || short(item.preview || 'batch', 72)}` };
-    if (eventName === 'main.task.completed') return { label: 'complete', message: short(item.preview || item.message || 'Returned to standby', 84) };
-    if (item.type === 'tool') return { label: 'tool', message: `Tool step: ${toolLabel || short(item.message || 'step', 72)}` };
-    if (item.type === 'thought') return { label: 'thought', message: `Thinking: ${short(item.preview || item.message || 'planning', 84)}` };
-    if (item.type === 'status') return { label: 'status', message: `Status: ${short(item.message || 'updated', 84)}` };
-  }
-  if (eventName === 'main.reasoning') return { label: '規劃', message: `主代理正在規劃：${short(item.preview || item.message || '正在整理思路', 84)}` };
-  if (eventName === 'main.tool.started') return { label: '工具啟動', message: `開始使用 ${toolLabel || '工具'}${item.preview ? `｜${short(item.preview, 56)}` : ''}` };
-  if (eventName === 'main.tool.completed') return { label: '工具完成', message: `完成 ${toolLabel || '工具'}${item.preview ? `｜${short(item.preview, 56)}` : ''}` };
-  if (eventName === 'main.tool.batch') return { label: '工具序列', message: `目前工具：${localizeTask((item.tool_names || []).join(', ')) || short(item.preview || '工具步驟', 72)}` };
-  if (eventName === 'main.task.completed') return { label: '完成', message: short(item.preview || item.message || '回到待命站', 84) };
-  if (item.type === 'tool') return { label: '工具', message: `工具步驟：${toolLabel || short(item.message || '步驟', 72)}` };
-  if (item.type === 'thought') return { label: '思考', message: `思考中：${short(item.preview || item.message || '規劃', 84)}` };
-  if (item.type === 'status') return { label: '狀態', message: short(item.message || '已更新', 84) };
-  return { label: item.type || 'action', message: short(item.message || item.to || strings().noActions, 84) };
+  return timelineItemForLocale(currentLocale, item, {
+    toolLabel,
+    toolRouteLabel: localizeTask((item.tool_names || []).join(', ')),
+  });
 }
 
 function applyCameraTransform(active = false) {
@@ -1151,11 +1129,10 @@ function clampCamera(next) {
 }
 
 function displayAgentName(agent) {
-  const name = agent.full_name || agent.name || 'agent';
-  if (currentLocale === 'zh-TW') return name;
-  if (name === 'API 工作階段') return 'API Session';
-  if (name === 'CLI 工作階段') return 'CLI Session';
-  if (name === 'Gateway 工作階段') return 'Gateway Session';
+  const name = agent.full_name || agent.name || commandText('commandDeck.inspector.agentFallback');
+  if (name === 'API 工作階段') return commandText('commandDeck.inspector.sessionNames.api');
+  if (name === 'CLI 工作階段') return commandText('commandDeck.inspector.sessionNames.cli');
+  if (name === 'Gateway 工作階段') return commandText('commandDeck.inspector.sessionNames.gateway');
   return name;
 }
 
@@ -1718,7 +1695,7 @@ function decorateAgent(view) {
   const agent = view.data;
   const room = getRoomCopy(agent.room_key, currentLocale);
   const roomName = room.name || agent.room_label || strings().unknownRoom;
-  const displayTask = short(localizeTask(agent.task) || agent.activity_hint || strings().idleFallback, currentLocale === 'en-US' ? 28 : 24);
+  const displayTask = short(localizeTask(agent.task) || agent.activity_hint || strings().idleFallback, 28);
   const speechEl = view.el.querySelector('.agent-speech');
   const beamEl = view.el.querySelector('.beam');
   const objectChipEl = view.el.querySelector('.object-chip');
@@ -1752,8 +1729,8 @@ function decorateAgent(view) {
   toolChipEl.textContent = agent.tool_icon || eventVisual.icon || '✨';
   toolChipEl.title = localizeTask(agent.task || agent.tool_label || '') || strings().idleFallback;
   poseChipEl.textContent = pose.icon || '✨';
-  poseChipEl.title = pose.pose || 'pose';
-  eventChipEl.textContent = `${eventVisual.icon} ${short(eventVisual.label, currentLocale === 'en-US' ? 16 : 10)}`;
+  poseChipEl.title = poseLabelForLocale(currentLocale, pose.pose);
+  eventChipEl.textContent = `${eventVisual.icon} ${short(eventVisual.label, 16)}`;
   eventChipEl.title = eventVisual.detail || eventVisual.label || '';
   eventChipEl.className = `event-chip ${eventVisual.tone || 'idle'}`;
   eventChipEl.classList.toggle('show', !!eventVisual.label);
@@ -1768,7 +1745,7 @@ function decorateAgent(view) {
   nameText.textContent = `${displayAgentName(agent)} · ${agent.instance_label || agent.agent}`;
   roomEl.textContent = `${agent.room_icon || '📍'} ${roomName}`;
   metaEl.textContent = agent.role === 'main_agent'
-    ? short(interactionCopy(interaction) || eventVisual.detail || displayTask, currentLocale === 'en-US' ? 32 : 26)
+    ? short(interactionCopy(interaction) || eventVisual.detail || displayTask, 32)
     : displayTask;
   dotEl.className = `state-dot ${agent.state || 'idle'}`;
   speechEl.textContent = bubble.summary;
@@ -2013,7 +1990,7 @@ function updateDraggedPropVisual(prop, roomKey, x, y) {
   updateDraggedGuideVisual(roomKey, x, y, { create: true });
   const meta = prop.querySelector('.prop-meta');
   if (meta) {
-    const label = prop.dataset.propLabel || prop.dataset.propType || 'prop';
+    const label = furnitureLabelForLocale(currentLocale, prop.dataset.propLabel, prop.dataset.propType);
     meta.textContent = `${label} · ${formatPercent(x)}%, ${formatPercent(y)}%`;
   }
 }
