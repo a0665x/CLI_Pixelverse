@@ -23,7 +23,7 @@ const buildingIds = [
   'recovery-clinic', 'rest-cabin',
 ] as const;
 
-type VillageCopy = {
+export type VillageCopy = {
   buildings: Record<typeof buildingIds[number], string>;
   actions: Record<AgentAction | 'tool' | 'idle', string>;
   controls: { fit: string; cover: string; zoomIn: string; zoomOut: string; reset: string };
@@ -81,7 +81,7 @@ const actionCopy = (items: Partial<Record<AgentAction, string>>, fallback: strin
   return actions;
 };
 
-const CATALOG: Record<VillageLocale, VillageCopy> = {
+export const VILLAGE_CATALOG: Record<VillageLocale, VillageCopy> = {
   'zh-TW': {
     buildings: { 'arrival-lodge': '啟程小屋', 'thinkers-cottage': '思考屋', 'archive-library': '檔案館', 'network-lab': '網路屋', 'heartbeat-tower': '心跳塔', 'offline-dormitory': '離線宿舍', 'maker-workshop': '編輯工坊', 'tool-smithy': '工具鐵舖', 'awaiting-post': '等候站', 'collaboration-barn': '協作公會', 'recovery-clinic': '修復所', 'rest-cabin': '休息小屋' },
     actions: actionCopy({ arrive: '準備開始', ponder: '思考中', plan: '整理計畫', read: '查閱檔案', type: '修改程式', terminal: '執行工具', signal: '查詢網路', dispatch: '建立分身', respond: '傳送結果', queue: '等待輸入', repair: '修復中', rest: '暫時休息', offline: '目前離線', pulse: '保持連線' }, '工作中'),
@@ -136,7 +136,7 @@ export function normalizeVillageLocale(value: unknown): VillageLocale {
   return VILLAGE_LOCALES.includes(value as VillageLocale) ? value as VillageLocale : 'zh-TW';
 }
 
-export function villageCopy(locale: unknown): VillageCopy { return CATALOG[normalizeVillageLocale(locale)]; }
+export function villageCopy(locale: unknown): VillageCopy { return VILLAGE_CATALOG[normalizeVillageLocale(locale)]; }
 
 type CutawayOperationTemplates = Record<CutawayOperationMessageId, string>;
 const CUTAWAY_OPERATION_COPY: Record<VillageLocale, CutawayOperationTemplates> = {
@@ -249,7 +249,7 @@ const renderCutawayMessage = (
   params?: Exclude<CutawayMessageParamsById[CutawayMessageId], undefined>,
 ): string => {
   const normalized = normalizeVillageLocale(locale);
-  const status = CATALOG[normalized].cutaway.status as Record<string, string>;
+  const status = VILLAGE_CATALOG[normalized].cutaway.status as Record<string, string>;
   if (id in status) return status[id]!;
   const values = params as Partial<{
     count: number; name: string; percent: number; label: string; diagnostic: CutawayPlacementDiagnostic;
@@ -293,7 +293,7 @@ export function furnitureLayerLabel(locale: unknown, layer: FurnitureLayer): str
 }
 
 export function builtInPrefabLabel(locale: unknown, id: BuiltInOfficePrefabId): string {
-  return CATALOG[normalizeVillageLocale(locale)].cutaway.prefabs[id];
+  return VILLAGE_CATALOG[normalizeVillageLocale(locale)].cutaway.prefabs[id];
 }
 
 export function localeMessage(value: unknown): { locale: VillageLocale; sequence: number } | undefined {

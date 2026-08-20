@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest';
 
 describe('interior editor locale catalog', () => {
+  it('keeps editor, context action, and semantic furniture keys in four-locale parity', async () => {
+    const { contextActionCopy, editorChrome, semanticFurnitureCopy } = await import('../src/rendering/interiorLocale');
+    for (const catalog of [editorChrome, contextActionCopy, semanticFurnitureCopy]) {
+      const baseline = Object.keys(catalog['en-US']).sort();
+      for (const locale of ['zh-TW', 'ja-JP', 'ko-KR'] as const) {
+        expect(Object.keys(catalog[locale]).sort()).toEqual(baseline);
+      }
+    }
+  });
+
   it('provides the complete contextual chrome in every supported locale', async () => {
     const { editorChrome } = await import('../src/rendering/interiorLocale');
     expect(editorChrome).toEqual({

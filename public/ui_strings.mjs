@@ -1,4 +1,4 @@
-export const SUPPORTED_LOCALES = ['zh-TW', 'en-US', 'ja-JP', 'ko-KR'];
+export const SUPPORTED_LOCALES = ['en-US', 'zh-TW', 'ja-JP', 'ko-KR'];
 
 export const LOCALE_LABELS = {
   'zh-TW': '繁中',
@@ -6,6 +6,101 @@ export const LOCALE_LABELS = {
   'ja-JP': '日本語',
   'ko-KR': '한국어',
 };
+
+const commandDeckCopy = ({
+  topBar, rails, inspector, layout, timeline, diagnostics, hook, empty, error,
+  settings, camera, world, dynamic,
+}) => ({ commandDeck: {
+  topBar, rails, inspector, layout, timeline, diagnostics, hook, empty, error,
+  settings, camera, world, dynamic,
+} });
+
+export const UI_CATALOG = {
+  'en-US': commandDeckCopy({
+    topBar: { label: 'CLI Pixelverse live status', brand: 'CLI_Pixelverse' },
+    rails: { agentsLabel: 'Agent force rail', agentsTitle: 'Live agents', previousAgents: 'Previous agents', nextAgents: 'Next agents', inspectorLabel: 'Intelligence inspector', hookChannelsLabel: 'Live Hook channels' },
+    inspector: { title: 'Inspector', selectAgent: 'Select agent', empty: 'Select an agent to inspect current activity.', currentTask: 'Current task', lastUpdate: 'Last update', room: 'Room', events: 'Events' },
+    layout: { controlsLabel: 'Command deck layout controls', collapseLeft: 'Collapse left region', expandLeft: 'Expand left region', collapseRight: 'Collapse right region', expandRight: 'Expand right region', collapseBottom: 'Collapse mission trace', expandBottom: 'Expand mission trace', swapSides: 'Swap side docks', reset: 'Reset command deck layout', resizeLeft: 'Resize live agent rail', resizeRight: 'Resize Hook rail', resizeBottom: 'Resize mission trace' },
+    timeline: { title: 'Mission trace', live: 'Live', paused: 'Paused', resume: 'Resume live', summary: ({ state, count }) => `${state} · ${count} lanes`, eventLabel: ({ category, summary }) => `${category}: ${summary}` },
+    diagnostics: { label: 'Diagnostics', explanation: 'Agent state, Hook routing, and connection health.' },
+    hook: { guide: 'Hook guide', semantic: { rest: 'Rest', search: 'Search', work: 'Work' }, categories: { reasoning: 'Reasoning', tool: 'Tool', subagent: 'Subagent', session: 'Session', status: 'Status', message: 'Message', completion: 'Completion' } },
+    empty: { events: 'No events yet', agents: 'No live agents', hooks: 'No active Hooks' },
+    error: { read: 'Read failed', exposure: 'Exposure update failed', unavailable: 'Unavailable' },
+    settings: { label: 'Settings', languageSelector: 'Language selector', exposureSelector: 'Exposure selector', copyUrl: 'Copy URL' },
+    camera: { label: 'World camera controls', zoomIn: 'Zoom in', zoomOut: 'Zoom out', reset: 'Reset zoom' },
+    world: { label: 'Agent village', frameTitle: 'Pixelverse agent village' },
+    dynamic: { page: ({ page, count }) => `Page ${page} of ${count}`, lastSync: ({ timestamp, seconds }) => `Last sync ${timestamp} · ${seconds}s ago`, agentCount: ({ count }) => `${count} agents` },
+  }),
+  'zh-TW': commandDeckCopy({
+    topBar: { label: 'CLI Pixelverse 即時狀態', brand: 'CLI_Pixelverse' },
+    rails: { agentsLabel: '代理戰力列', agentsTitle: '即時代理', previousAgents: '上一頁代理', nextAgents: '下一頁代理', inspectorLabel: '情報檢視器', hookChannelsLabel: '即時 Hook 頻道' },
+    inspector: { title: '狀態檢視器', selectAgent: '選擇代理', empty: '選擇代理以檢視目前活動。', currentTask: '目前任務', lastUpdate: '最近更新', room: '房間', events: '事件' },
+    layout: { controlsLabel: '指揮台版面控制', collapseLeft: '收合左側區域', expandLeft: '展開左側區域', collapseRight: '收合右側區域', expandRight: '展開右側區域', collapseBottom: '收合任務軌跡', expandBottom: '展開任務軌跡', swapSides: '交換兩側面板', reset: '重設指揮台版面', resizeLeft: '調整即時代理列寬度', resizeRight: '調整 Hook 列寬度', resizeBottom: '調整任務軌跡高度' },
+    timeline: { title: '任務軌跡', live: '即時', paused: '已暫停', resume: '恢復即時', summary: ({ state, count }) => `${state} · ${count} 條軌跡`, eventLabel: ({ category, summary }) => `${category}：${summary}` },
+    diagnostics: { label: '診斷', explanation: '代理狀態、Hook 路由與連線健康狀態。' },
+    hook: { guide: 'Hook 指南', semantic: { rest: '休息', search: '搜尋', work: '工作' }, categories: { reasoning: '推理', tool: '工具', subagent: '分身', session: '工作階段', status: '狀態', message: '訊息', completion: '完成' } },
+    empty: { events: '尚無事件', agents: '沒有即時代理', hooks: '沒有啟用的 Hook' },
+    error: { read: '讀取失敗', exposure: '公開網址更新失敗', unavailable: '無法使用' },
+    settings: { label: '設定', languageSelector: '語言選擇器', exposureSelector: '公開方式選擇器', copyUrl: '複製網址' },
+    camera: { label: '世界鏡頭控制', zoomIn: '放大', zoomOut: '縮小', reset: '重設縮放' },
+    world: { label: '代理村莊', frameTitle: 'Pixelverse 代理村莊' },
+    dynamic: { page: ({ page, count }) => `第 ${page} 頁，共 ${count} 頁`, lastSync: ({ timestamp, seconds }) => `最近同步 ${timestamp} · ${seconds} 秒前`, agentCount: ({ count }) => `${count} 位代理` },
+  }),
+  'ja-JP': commandDeckCopy({
+    topBar: { label: 'CLI Pixelverse ライブ状態', brand: 'CLI_Pixelverse' },
+    rails: { agentsLabel: 'エージェント一覧', agentsTitle: 'ライブエージェント', previousAgents: '前のエージェント', nextAgents: '次のエージェント', inspectorLabel: 'インテリジェンスインスペクター', hookChannelsLabel: 'ライブ Hook チャンネル' },
+    inspector: { title: 'インスペクター', selectAgent: 'エージェントを選択', empty: 'エージェントを選択して現在の活動を確認します。', currentTask: '現在のタスク', lastUpdate: '最終更新', room: '部屋', events: 'イベント' },
+    layout: { controlsLabel: 'コマンドデッキのレイアウト操作', collapseLeft: '左領域を閉じる', expandLeft: '左領域を開く', collapseRight: '右領域を閉じる', expandRight: '右領域を開く', collapseBottom: 'ミッション軌跡を閉じる', expandBottom: 'ミッション軌跡を開く', swapSides: '左右のドックを交換', reset: 'コマンドデッキをリセット', resizeLeft: 'エージェント一覧の幅を変更', resizeRight: 'Hook 一覧の幅を変更', resizeBottom: 'ミッション軌跡の高さを変更' },
+    timeline: { title: 'ミッション軌跡', live: 'ライブ', paused: '一時停止', resume: 'ライブに戻る', summary: ({ state, count }) => `${state}・${count} レーン`, eventLabel: ({ category, summary }) => `${category}：${summary}` },
+    diagnostics: { label: '診断', explanation: 'エージェント状態、Hook 経路、接続状態を確認します。' },
+    hook: { guide: 'Hook ガイド', semantic: { rest: '休憩', search: '検索', work: '作業' }, categories: { reasoning: '推論', tool: 'ツール', subagent: 'サブエージェント', session: 'セッション', status: '状態', message: 'メッセージ', completion: '完了' } },
+    empty: { events: 'イベントはまだありません', agents: 'ライブエージェントはいません', hooks: '有効な Hook はありません' },
+    error: { read: '読込失敗', exposure: '公開 URL の更新に失敗しました', unavailable: '利用不可' },
+    settings: { label: '設定', languageSelector: '言語選択', exposureSelector: '公開方法の選択', copyUrl: 'URL をコピー' },
+    camera: { label: 'ワールドカメラ操作', zoomIn: '拡大', zoomOut: '縮小', reset: 'ズームをリセット' },
+    world: { label: 'エージェント村', frameTitle: 'Pixelverse エージェント村' },
+    dynamic: { page: ({ page, count }) => `${page} / ${count} ページ`, lastSync: ({ timestamp, seconds }) => `最終同期 ${timestamp}・${seconds} 秒前`, agentCount: ({ count }) => `${count} エージェント` },
+  }),
+  'ko-KR': commandDeckCopy({
+    topBar: { label: 'CLI Pixelverse 실시간 상태', brand: 'CLI_Pixelverse' },
+    rails: { agentsLabel: '에이전트 전력 레일', agentsTitle: '실시간 에이전트', previousAgents: '이전 에이전트', nextAgents: '다음 에이전트', inspectorLabel: '인텔리전스 검사기', hookChannelsLabel: '실시간 Hook 채널' },
+    inspector: { title: '검사기', selectAgent: '에이전트 선택', empty: '에이전트를 선택해 현재 활동을 확인하세요.', currentTask: '현재 작업', lastUpdate: '마지막 업데이트', room: '방', events: '이벤트' },
+    layout: { controlsLabel: '명령 데크 레이아웃 제어', collapseLeft: '왼쪽 영역 접기', expandLeft: '왼쪽 영역 펼치기', collapseRight: '오른쪽 영역 접기', expandRight: '오른쪽 영역 펼치기', collapseBottom: '미션 추적 접기', expandBottom: '미션 추적 펼치기', swapSides: '좌우 도크 바꾸기', reset: '명령 데크 레이아웃 초기화', resizeLeft: '실시간 에이전트 레일 크기 조절', resizeRight: 'Hook 레일 크기 조절', resizeBottom: '미션 추적 크기 조절' },
+    timeline: { title: '미션 추적', live: '실시간', paused: '일시 중지', resume: '실시간 재개', summary: ({ state, count }) => `${state} · ${count}개 레인`, eventLabel: ({ category, summary }) => `${category}: ${summary}` },
+    diagnostics: { label: '진단', explanation: '에이전트 상태, Hook 경로와 연결 상태를 확인합니다.' },
+    hook: { guide: 'Hook 안내', semantic: { rest: '휴식', search: '검색', work: '작업' }, categories: { reasoning: '추론', tool: '도구', subagent: '서브에이전트', session: '세션', status: '상태', message: '메시지', completion: '완료' } },
+    empty: { events: '아직 이벤트가 없습니다', agents: '실시간 에이전트가 없습니다', hooks: '활성 Hook이 없습니다' },
+    error: { read: '읽기 실패', exposure: '공개 URL 업데이트 실패', unavailable: '사용할 수 없음' },
+    settings: { label: '설정', languageSelector: '언어 선택', exposureSelector: '공개 방식 선택', copyUrl: 'URL 복사' },
+    camera: { label: '월드 카메라 제어', zoomIn: '확대', zoomOut: '축소', reset: '확대/축소 초기화' },
+    world: { label: '에이전트 마을', frameTitle: 'Pixelverse 에이전트 마을' },
+    dynamic: { page: ({ page, count }) => `${page} / ${count}페이지`, lastSync: ({ timestamp, seconds }) => `마지막 동기화 ${timestamp} · ${seconds}초 전`, agentCount: ({ count }) => `${count}명 에이전트` },
+  }),
+};
+
+const nestedLocaleKeys = (value, prefix = '') => Object.entries(value || {}).flatMap(([key, child]) => {
+  const path = prefix ? `${prefix}.${key}` : key;
+  return child && typeof child === 'object' && !Array.isArray(child)
+    ? nestedLocaleKeys(child, path)
+    : [path];
+}).sort();
+
+export function missingLocaleKeys(catalog, baseline = 'en-US') {
+  const expected = nestedLocaleKeys(catalog?.[baseline]);
+  return Object.fromEntries(Object.entries(catalog || {}).flatMap(([locale, copy]) => {
+    const actual = new Set(nestedLocaleKeys(copy));
+    const missing = expected.filter((key) => !actual.has(key));
+    return missing.length ? [[locale, missing]] : [];
+  }));
+}
+
+export function uiText(locale, key, params = {}) {
+  const normalized = SUPPORTED_LOCALES.includes(locale) ? locale : 'en-US';
+  const resolve = (copy) => String(key).split('.').reduce((value, part) => value?.[part], copy);
+  const value = resolve(UI_CATALOG[normalized]) ?? resolve(UI_CATALOG['en-US']);
+  if (typeof value === 'function') return value(params);
+  return value == null ? key : String(value).replace(/\{(\w+)\}/g, (_, name) => String(params[name] ?? ''));
+}
 
 const ROOM_DECOR = {
   think_lab: [
@@ -168,6 +263,8 @@ const ZH_TW = {
   layoutDragSurfaceHint: '可將家具拖曳到其他房間；點空白處可取消選取',
   layoutGridHint: '格線吸附 0.5% · 按住 Shift 改成 1.0%',
   layoutCoordTitle: '即時座標',
+  layoutScaleDown: '縮小家具',
+  layoutScaleUp: '放大家具',
   layoutCoordChip: (x, y) => `x ${x}% · y ${y}%`,
   layoutSnapChip: (snap) => `吸附 ${snap}%`,
   layoutGuideBadge: (label, x, y, snap) => `${label} · x ${x}% · y ${y}% · 吸附 ${snap}%`,
@@ -368,6 +465,8 @@ const EN_US = {
   layoutDragSurfaceHint: 'Drag props across rooms; click empty space to clear selection',
   layoutGridHint: 'Grid snap 0.5% · hold Shift for 1.0%',
   layoutCoordTitle: 'Live Coordinates',
+  layoutScaleDown: 'Scale furniture down',
+  layoutScaleUp: 'Scale furniture up',
   layoutCoordChip: (x, y) => `x ${x}% · y ${y}%`,
   layoutSnapChip: (snap) => `snap ${snap}%`,
   layoutGuideBadge: (label, x, y, snap) => `${label} · x ${x}% · y ${y}% · snap ${snap}%`,
@@ -494,6 +593,10 @@ const JA_JP = {
   roomMeaning: '活動ヒント',
   eventCount: 'イベント数',
   languageLabel: '言語',
+  exposureLabel: '公開方法',
+  copyUrl: 'URL をコピー',
+  copyUrlPrompt: 'この URL をコピー',
+  exposureFailed: '公開 URL の更新に失敗しました',
   mobileMode: 'モバイル',
   desktopMode: 'デスクトップ',
   mobileModeHint: 'スマートフォン向けのサイドバー表示に切り替えます',
@@ -537,6 +640,8 @@ const JA_JP = {
   layoutDragSurfaceHint: '家具は別の部屋にも移動できます。空白をクリックすると選択解除します。',
   layoutGridHint: 'グリッド吸着 0.5% · Shift を押すと 1.0%',
   layoutCoordTitle: 'リアルタイム座標',
+  layoutScaleDown: '家具を縮小',
+  layoutScaleUp: '家具を拡大',
   layoutCoordChip: (x, y) => `x ${x}% · y ${y}%`,
   layoutSnapChip: (snap) => `吸着 ${snap}%`,
   layoutGuideBadge: (label, x, y, snap) => `${label} · x ${x}% · y ${y}% · 吸着 ${snap}%`,
@@ -628,6 +733,10 @@ const KO_KR = {
   roomMeaning: '활동 힌트',
   eventCount: '이벤트 수',
   languageLabel: '언어',
+  exposureLabel: '공개 방식',
+  copyUrl: 'URL 복사',
+  copyUrlPrompt: '이 URL을 복사하세요',
+  exposureFailed: '공개 URL 업데이트 실패',
   mobileMode: '모바일 모드',
   desktopMode: '데스크톱 모드',
   mobileModeHint: '휴대폰용 사이드바 레이아웃으로 전환합니다',
@@ -671,6 +780,8 @@ const KO_KR = {
   layoutDragSurfaceHint: '가구를 다른 방으로 옮길 수 있으며, 빈 공간을 클릭하면 선택이 해제됩니다.',
   layoutGridHint: '그리드 스냅 0.5% · Shift를 누르면 1.0%',
   layoutCoordTitle: '실시간 좌표',
+  layoutScaleDown: '가구 축소',
+  layoutScaleUp: '가구 확대',
   layoutCoordChip: (x, y) => `x ${x}% · y ${y}%`,
   layoutSnapChip: (snap) => `스냅 ${snap}%`,
   layoutGuideBadge: (label, x, y, snap) => `${label} · x ${x}% · y ${y}% · 스냅 ${snap}%`,

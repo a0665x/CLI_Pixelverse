@@ -115,3 +115,14 @@ test('Japanese and Korean dynamic dashboard events never fall through to English
   assert.doesNotMatch(japanese, /\b(?:Main|Started|Finished|Returned|tool|task|State|Status|Gateway|Planning|Waiting|Read File)\b/i);
   assert.doesNotMatch(korean, /\b(?:Main|Started|Finished|Returned|tool|task|State|Status|Gateway|Planning|Waiting|Read File)\b/i);
 });
+
+test('catalog parity helper reports nested omissions precisely', () => {
+  assert.equal(typeof uiStrings.missingLocaleKeys, 'function');
+  if (typeof uiStrings.missingLocaleKeys !== 'function') return;
+  assert.deepEqual(uiStrings.missingLocaleKeys({
+    'en-US': { top: { title: 'Title', count: ({ count }) => `${count}` } },
+    'zh-TW': { top: { title: '標題' } },
+    'ja-JP': { top: { title: 'タイトル', count: ({ count }) => `${count}` } },
+    'ko-KR': { top: { title: '제목', count: ({ count }) => `${count}` } },
+  }), { 'zh-TW': ['top.count'] });
+});

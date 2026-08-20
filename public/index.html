@@ -2820,12 +2820,12 @@
 <body data-locale="en-US" data-mobile-mode="off" data-sidebar-open="true">
   <div class="app">
     <main class="map-first-workspace">
-    <section class="world map-stage command-deck-region" id="world" data-command-region="center" aria-label="Agent village">
+    <section class="world map-stage command-deck-region" id="world" data-command-region="center" data-i18n-aria-label="commandDeck.world.label">
       <iframe
         class="pixelworld-frame"
         id="pixelworld-frame"
         src="/pixelworld/index.html?embed=1"
-        title="Pixelverse agent village"
+        data-i18n-title="commandDeck.world.frameTitle"
         allow="fullscreen"
       ></iframe>
       <div class="camera-stage" id="camera-stage" hidden aria-hidden="true">
@@ -2840,8 +2840,8 @@
             <div class="house-corridor corridor-vertical corridor-e"></div>
             <div class="office-shell">
               <div class="window-strip"><span></span><span></span><span></span><span></span><span></span></div>
-              <div class="wing-marker left" id="core-wing-label">CORE WING</div>
-              <div class="wing-marker right" id="clone-wing-label">CLONE WING</div>
+              <div class="wing-marker left" id="core-wing-label"></div>
+              <div class="wing-marker right" id="clone-wing-label"></div>
               <div class="room-door" data-room="think_lab"></div>
               <div class="room-door" data-room="blueprint_lab"></div>
               <div class="room-door" data-room="file_library"></div>
@@ -2868,14 +2868,14 @@
           </div>
         </div>
       </div>
-      <div class="camera-controls functional-glass" id="camera-controls" aria-label="World camera controls" hidden aria-hidden="true">
-        <button type="button" id="zoom-in-btn" aria-label="Zoom in">+</button>
-        <button type="button" id="zoom-reset-btn" aria-label="Reset zoom">1:1</button>
-        <button type="button" id="zoom-out-btn" aria-label="Zoom out">−</button>
+      <div class="camera-controls functional-glass" id="camera-controls" data-i18n-aria-label="commandDeck.camera.label" hidden aria-hidden="true">
+        <button type="button" id="zoom-in-btn" data-i18n-aria-label="commandDeck.camera.zoomIn">+</button>
+        <button type="button" id="zoom-reset-btn" data-i18n-aria-label="commandDeck.camera.reset">1:1</button>
+        <button type="button" id="zoom-out-btn" data-i18n-aria-label="commandDeck.camera.zoomOut">−</button>
       </div>
     </section>
 
-    <header class="top-status-bar command-deck-region" id="top-status-bar" data-command-region="top" aria-label="CLI Pixelverse live status">
+    <header class="top-status-bar command-deck-region" id="top-status-bar" data-command-region="top" data-i18n-aria-label="commandDeck.topBar.label">
     <div class="hud live-hud" id="live-status-rail">
       <div class="brand panel">
         <div class="brand-top">
@@ -2910,43 +2910,43 @@
         </div>
       </div>
     </div>
-    <nav class="command-deck-controls" aria-label="Command deck layout controls">
-      <button type="button" id="command-collapse-left" aria-label="Collapse left region" aria-expanded="true" title="Collapse left region">◧</button>
-      <button type="button" id="command-collapse-bottom" aria-label="Collapse mission trace" aria-expanded="true" title="Collapse mission trace">▱</button>
-      <button type="button" id="command-collapse-right" aria-label="Collapse right region" aria-expanded="true" title="Collapse right region">◨</button>
-      <button type="button" id="command-swap-sides" aria-label="Swap side docks" title="Swap side docks">⇄</button>
-      <button type="button" id="command-reset-layout" aria-label="Reset command deck layout" title="Reset command deck layout">↺</button>
+    <nav class="command-deck-controls" data-i18n-aria-label="commandDeck.layout.controlsLabel">
+      <button type="button" id="command-collapse-left" data-i18n-aria-label="commandDeck.layout.collapseLeft" data-i18n-title="commandDeck.layout.collapseLeft" aria-expanded="true">◧</button>
+      <button type="button" id="command-collapse-bottom" data-i18n-aria-label="commandDeck.layout.collapseBottom" data-i18n-title="commandDeck.layout.collapseBottom" aria-expanded="true">▱</button>
+      <button type="button" id="command-collapse-right" data-i18n-aria-label="commandDeck.layout.collapseRight" data-i18n-title="commandDeck.layout.collapseRight" aria-expanded="true">◨</button>
+      <button type="button" id="command-swap-sides" data-i18n-aria-label="commandDeck.layout.swapSides" data-i18n-title="commandDeck.layout.swapSides">⇄</button>
+      <button type="button" id="command-reset-layout" data-i18n-aria-label="commandDeck.layout.reset" data-i18n-title="commandDeck.layout.reset">↺</button>
     </nav>
     </header>
 
-    <aside class="agent-live-rail command-deck-region" id="agent-live-rail" data-command-region="left" aria-label="Agent force rail">
-      <header><strong id="agent-live-title">Live agents</strong><output id="agent-live-page">1 / 1</output></header>
+    <aside class="agent-live-rail command-deck-region" id="agent-live-rail" data-command-region="left" data-i18n-aria-label="commandDeck.rails.agentsLabel">
+      <header><strong id="agent-live-title" data-i18n="commandDeck.rails.agentsTitle"></strong><output id="agent-live-page"></output></header>
       <div class="agent-live-list" id="agent-live-list"></div>
       <footer class="rail-pagination">
-        <button type="button" id="agent-live-previous" aria-label="Previous agents">‹</button>
-        <button type="button" id="agent-live-next" aria-label="Next agents">›</button>
+        <button type="button" id="agent-live-previous" data-i18n-aria-label="commandDeck.rails.previousAgents">‹</button>
+        <button type="button" id="agent-live-next" data-i18n-aria-label="commandDeck.rails.nextAgents">›</button>
       </footer>
     </aside>
 
-    <div class="live-rail-splitter" id="live-left-splitter" role="separator" aria-label="Resize live agent rail" aria-orientation="vertical" tabindex="0"></div>
+    <div class="live-rail-splitter" id="live-left-splitter" role="separator" data-i18n-aria-label="commandDeck.layout.resizeLeft" aria-orientation="vertical" tabindex="0"></div>
 
-    <div class="live-rail-splitter" id="live-right-splitter" role="separator" aria-label="Resize Hook rail" aria-orientation="vertical" tabindex="0"></div>
+    <div class="live-rail-splitter" id="live-right-splitter" role="separator" data-i18n-aria-label="commandDeck.layout.resizeRight" aria-orientation="vertical" tabindex="0"></div>
 
-    <aside class="hook-live-rail command-deck-region" id="hook-live-rail" data-command-region="right" aria-label="Intelligence inspector">
-      <div class="hook-live-kicker" id="hook-live-semantic">REST</div>
-      <strong id="hook-live-building">Rest Cabin</strong>
+    <aside class="hook-live-rail command-deck-region" id="hook-live-rail" data-command-region="right" data-i18n-aria-label="commandDeck.rails.inspectorLabel">
+      <div class="hook-live-kicker" id="hook-live-semantic"></div>
+      <strong id="hook-live-building"></strong>
       <p id="hook-live-activity"></p>
       <div class="hook-live-agent" id="hook-live-agent"></div>
-      <div class="hook-live-channels" id="hook-live-channels" aria-label="Live Hook channels"></div>
-    <nav class="workspace-tools" aria-label="Hook guide">
-      <button type="button" class="workspace-tool-button dashboard-card-control dashboard-card-control--help" id="dashboard-help-btn" data-dashboard-card="help" data-tooltip="Help" aria-label="Open Help" aria-expanded="false" aria-controls="dashboard-card"><span class="workspace-tool-icon" aria-hidden="true">?</span><span id="dashboard-help-label">Help</span></button>
+      <div class="hook-live-channels" id="hook-live-channels" data-i18n-aria-label="commandDeck.rails.hookChannelsLabel"></div>
+    <nav class="workspace-tools" data-i18n-aria-label="commandDeck.hook.guide">
+      <button type="button" class="workspace-tool-button dashboard-card-control dashboard-card-control--help" id="dashboard-help-btn" data-dashboard-card="help" aria-expanded="false" aria-controls="dashboard-card"><span class="workspace-tool-icon" aria-hidden="true">?</span><span id="dashboard-help-label"></span></button>
     </nav>
     <details class="hook-settings">
-      <summary aria-label="Settings">⚙</summary>
+      <summary data-i18n-aria-label="commandDeck.settings.label">⚙</summary>
       <div class="hook-settings-body">
         <div class="lang-switch functional-glass">
           <span class="muted" id="language-label"></span>
-          <select id="locale-select" aria-label="language selector"></select>
+          <select id="locale-select" data-i18n-aria-label="commandDeck.settings.languageSelector"></select>
           <button type="button" id="mobile-mode-btn" aria-pressed="false"></button>
           <button type="button" id="edit-furniture-btn"></button>
           <button type="button" id="save-furniture-btn" hidden></button>
@@ -2954,20 +2954,20 @@
         </div>
         <div class="exposure-switch functional-glass">
           <span class="muted" id="exposure-label"></span>
-          <select id="exposure-select" aria-label="exposure selector"></select>
-          <button type="button" id="copy-exposure-btn" title="Copy URL" aria-label="Copy URL">📋</button>
+          <select id="exposure-select" data-i18n-aria-label="commandDeck.settings.exposureSelector"></select>
+          <button type="button" id="copy-exposure-btn" data-i18n-title="commandDeck.settings.copyUrl" data-i18n-aria-label="commandDeck.settings.copyUrl">📋</button>
           <span class="exposure-url" id="exposure-url"></span>
         </div>
       </div>
     </details>
     </aside>
 
-    <div class="command-bottom-splitter" id="command-bottom-splitter" role="separator" aria-label="Resize mission trace" aria-orientation="horizontal" tabindex="0"></div>
+    <div class="command-bottom-splitter" id="command-bottom-splitter" role="separator" data-i18n-aria-label="commandDeck.layout.resizeBottom" aria-orientation="horizontal" tabindex="0"></div>
 
     <section class="mission-trace command-deck-region" id="mission-trace" data-command-region="bottom" aria-labelledby="mission-trace-title">
       <header>
-        <h2 id="mission-trace-title">Mission trace</h2>
-        <div><output id="event-summary" aria-live="polite"></output><button type="button" class="mission-trace-live" id="mission-trace-live" hidden>Resume live</button></div>
+        <h2 id="mission-trace-title" data-i18n="commandDeck.timeline.title"></h2>
+        <div><output id="event-summary" aria-live="polite"></output><button type="button" class="mission-trace-live" id="mission-trace-live" data-i18n="commandDeck.timeline.resume" hidden></button></div>
       </header>
       <div class="mission-trace-events" id="events"></div>
     </section>

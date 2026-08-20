@@ -6,10 +6,24 @@ import {
   localeMessage,
   normalizeVillageLocale,
   statusFailureMessage,
+  VILLAGE_CATALOG,
   villageCopy,
 } from '../src/i18n/villageLocale';
 
 describe('village locale catalog', () => {
+  const nestedKeys = (value: unknown, prefix = ''): string[] => Object.entries(value as Record<string, unknown>)
+    .flatMap(([key, child]) => {
+      const path = prefix ? `${prefix}.${key}` : key;
+      return child && typeof child === 'object' ? nestedKeys(child, path) : [path];
+    }).sort();
+
+  it('keeps every visible village and cutaway key in exact four-locale parity', () => {
+    const baseline = nestedKeys(VILLAGE_CATALOG['en-US']);
+    for (const locale of ['zh-TW', 'ja-JP', 'ko-KR'] as const) {
+      expect(nestedKeys(VILLAGE_CATALOG[locale])).toEqual(baseline);
+    }
+  });
+
   it('validates supported locale messages and falls back safely', () => {
     expect(normalizeVillageLocale('en-US')).toBe('en-US');
     expect(normalizeVillageLocale('xx')).toBe('zh-TW');

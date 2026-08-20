@@ -19,6 +19,7 @@ import {
   normalizeLocale,
   summarizeWorld,
   SUPPORTED_LOCALES,
+  uiText,
 } from './ui_strings.mjs';
 import {
   buildStreamUrl,
@@ -164,6 +165,8 @@ const ROOM_ACTIVITY_TARGETS = {
 const ROLE_CHIPS = {
   'zh-TW': { main_agent: '主', subagent: '分', branch_session: '支' },
   'en-US': { main_agent: 'M', subagent: 'S', branch_session: 'B' },
+  'ja-JP': { main_agent: '主', subagent: '副', branch_session: '分' },
+  'ko-KR': { main_agent: '주', subagent: '부', branch_session: '분' },
 };
 
 const dom = {
@@ -324,13 +327,13 @@ const commandDeckLayoutController = createCommandDeckLayoutController({
 function renderCommandDeckControls() {
   const collapsed = commandDeckLayoutController.getLayout().collapsed;
   [
-    [dom.commandCollapseLeft, 'left', 'left region'],
-    [dom.commandCollapseRight, 'right', 'right region'],
-    [dom.commandCollapseBottom, 'bottom', 'mission trace'],
-  ].forEach(([button, region, name]) => {
+    [dom.commandCollapseLeft, 'left', 'Left'],
+    [dom.commandCollapseRight, 'right', 'Right'],
+    [dom.commandCollapseBottom, 'bottom', 'Bottom'],
+  ].forEach(([button, region, keySuffix]) => {
     if (!button) return;
-    const action = collapsed[region] ? 'Expand' : 'Collapse';
-    const label = `${action} ${name}`;
+    const action = collapsed[region] ? 'expand' : 'collapse';
+    const label = uiText(currentLocale, `commandDeck.layout.${action}${keySuffix}`);
     button.setAttribute('aria-expanded', String(!collapsed[region]));
     button.setAttribute('aria-label', label);
     button.title = label;
@@ -467,6 +470,10 @@ function strings() {
   return getLocaleStrings(currentLocale);
 }
 
+function commandText(key, params = {}) {
+  return uiText(currentLocale, key, params);
+}
+
 function populateLocaleSelect() {
   if (!dom.languageSelect) return;
   dom.languageSelect.innerHTML = SUPPORTED_LOCALES.map((locale) => {
@@ -526,12 +533,12 @@ function updateFurnitureCoordinateHud() {
     const scaleDown = document.createElement('button');
     scaleDown.type = 'button';
     scaleDown.dataset.furnitureScale = '-1';
-    scaleDown.setAttribute('aria-label', 'Scale furniture down');
+    scaleDown.setAttribute('aria-label', copy.layoutScaleDown);
     scaleDown.textContent = '-';
     const scaleUp = document.createElement('button');
     scaleUp.type = 'button';
     scaleUp.dataset.furnitureScale = '1';
-    scaleUp.setAttribute('aria-label', 'Scale furniture up');
+    scaleUp.setAttribute('aria-label', copy.layoutScaleUp);
     scaleUp.textContent = '+';
     dom.furnitureCoordBody.replaceChildren(label, scaleDown, scaleUp);
   }
@@ -1157,69 +1164,7 @@ function eventTitle(item = {}) {
 }
 
 function eventSummary(item = {}) {
-  if (currentLocale === 'ja-JP' || currentLocale === 'ko-KR') {
-    return eventSummaryForLocale(item, currentLocale);
-  }
-  if (currentLocale === 'zh-TW') {
-    if (item.summary) return item.summary;
-    const payload = item.payload || {};
-    const action = payload.action || {};
-    if (item.kind === 'main.reasoning') return short(action.preview || action.message || '正在整理思路', 54);
-    if (item.kind === 'main.tool.started') return `開始使用 ${localizeTask(action.tool_name || '') || action.tool_name || '工具'}${action.preview ? `｜${short(action.preview, 36)}` : ''}`;
-    if (item.kind === 'main.tool.completed') return `完成 ${localizeTask(action.tool_name || '') || action.tool_name || '工具'}${action.preview ? `｜${short(action.preview, 36)}` : ''}`;
-    if (item.kind === 'main.tool.batch') return localizeTask((action.tool_names || []).join(', ')) || short(action.preview || '工具步驟', 54);
-    if (item.kind === 'main.task.completed') return short(action.preview || action.message || '任務已完成，回到待命站', 54);
-    return '';
-  }
-  const payload = item.payload || {};
-  if (item.kind === 'heartbeat') return `State: ${stateText(payload.state || 'idle')} | ${localizeTask(payload.task || '') || 'Idle'}`;
-  if (item.kind === 'main.reasoning') {
-    const action = payload.action || {};
-    return `Reasoning: ${short(action.preview || action.message || 'planning', 54)}`;
-  }
-  if (item.kind === 'main.tool.started') {
-    const action = payload.action || {};
-    return `Started ${localizeTask(action.tool_name || '') || action.tool_name || 'tool'}${action.preview ? ` | ${short(action.preview, 32)}` : ''}`;
-  }
-  if (item.kind === 'main.tool.completed') {
-    const action = payload.action || {};
-    return `Finished ${localizeTask(action.tool_name || '') || action.tool_name || 'tool'}${action.preview ? ` | ${short(action.preview, 32)}` : ''}`;
-  }
-  if (item.kind === 'main.tool.batch') {
-    const action = payload.action || {};
-    return `Tool route: ${localizeTask((action.tool_names || []).join(', ')) || short(action.preview || 'batch', 46)}`;
-  }
-  if (item.kind === 'main.task.completed') {
-    const action = payload.action || {};
-    return short(action.preview || action.message || 'Returned to standby', 54);
-  }
-  if (item.kind === 'action') {
-    const action = payload.action || {};
-    if (action.type === 'tool') {
-      const raw = (action.message || '').split('：').pop().trim();
-      return `Tool step: ${localizeTask(raw) || short(action.message || 'Tool step', 54)}`;
-    }
-    if (action.type === 'thought') {
-      const raw = (action.message || '').split('：').pop().trim();
-      return `Thinking: ${short(raw || action.message || 'Planning', 54)}`;
-    }
-    if (action.type === 'status') return `Status: ${short(action.message || 'Updated', 54)}`;
-    return short(action.message || 'Action update', 54);
-  }
-  if (item.kind === 'hermes.status') return `Gateway: ${payload.gateway_state || 'unknown'} | active sessions: ${payload.active_sessions || 0}`;
-  if (item.kind === 'hermes.subagent') {
-    const status = stateText(payload.status === 'running' ? 'working' : payload.status || 'idle');
-    return `${short(payload.goal || payload.agent || 'Subagent', 42)} | ${localizeTask(payload.current_tool || '') || payload.current_tool || 'No tool'} | ${status}`;
-  }
-  if (item.kind === 'hermes.subagent.event') {
-    const tool = localizeTask(payload.tool_name || '') || payload.tool_name || 'step';
-    const detail = short(payload.text || '', 46);
-    return `${short(payload.goal || payload.agent || 'Subagent', 32)} | tool: ${tool}${detail ? ` | ${detail}` : ''}`;
-  }
-  if (item.kind === 'hermes.session') return `${short(payload.title || payload.session_id || 'session', 42)} | ${payload.active ? 'active' : 'recent'}`;
-  if (item.kind === 'webhook.registered') return short(payload.url || 'registered', 54);
-  if (item.kind === 'webhook.removed') return short(payload.agent || 'removed', 54);
-  return item.summary || '';
+  return eventSummaryForLocale(item, currentLocale);
 }
 
 function setText(id, value) {
@@ -1231,6 +1176,15 @@ function applyStaticCopy() {
   const copy = strings();
   document.documentElement.lang = currentLocale === 'zh-TW' ? 'zh-Hant' : currentLocale === 'ja-JP' ? 'ja' : currentLocale === 'ko-KR' ? 'ko' : 'en';
   dom.body.dataset.locale = currentLocale;
+  document.querySelectorAll('[data-i18n]').forEach((element) => {
+    element.textContent = commandText(element.dataset.i18n);
+  });
+  document.querySelectorAll('[data-i18n-aria-label]').forEach((element) => {
+    element.setAttribute('aria-label', commandText(element.dataset.i18nAriaLabel));
+  });
+  document.querySelectorAll('[data-i18n-title]').forEach((element) => {
+    element.title = commandText(element.dataset.i18nTitle);
+  });
   setText('brand-title', copy.brandTitle);
   setText('brand-subtitle', copy.brandSubtitle);
   setText('dashboard-guide-title', copy.dashboardGuideTitle);
@@ -1268,6 +1222,7 @@ function applyStaticCopy() {
     dom.dashboardHelpButton.setAttribute('aria-label', copy.dashboardHelp);
     dom.dashboardHelpButton.title = copy.dashboardHelp;
   }
+  renderCommandDeckControls();
   renderHookStateTable();
   populateLocaleSelect();
   updateRefreshController();
@@ -1295,7 +1250,7 @@ function renderExposure() {
     const disabled = option.available ? '' : ' disabled';
     const selected = option.mode === activeMode ? ' selected' : '';
     const label = exposureModeLabel(option.mode);
-    return `<option value="${option.mode}"${disabled}${selected}>${label}${option.available ? '' : ' unavailable'}</option>`;
+    return `<option value="${option.mode}"${disabled}${selected}>${label}${option.available ? '' : ` · ${commandText('commandDeck.error.unavailable')}`}</option>`;
   }).join('');
   dom.exposureUrl.textContent = currentExposure.active_url || '';
   dom.exposureUrl.title = currentExposure.active_url || '';
@@ -2208,15 +2163,20 @@ function reconcileMissionLane(entry, lane) {
     }
     node.setAttribute('cy', String((item.categoryIndex + 0.5) * 10));
     node.setAttribute('fill', missionCategoryColor(item.category));
-    node.setAttribute('aria-label', `${item.category}: ${item.summary || item.category}`);
-    node.querySelector('title').textContent = item.summary || item.category;
+    const category = commandText(`commandDeck.hook.categories.${item.category}`);
+    node.setAttribute('aria-label', commandText('commandDeck.timeline.eventLabel', {
+      category,
+      summary: item.summary || category,
+    }));
+    node.querySelector('title').textContent = item.summary || category;
   });
 }
 
 function renderMissionTrace(trace, { structureChanged = false } = {}) {
   if (!dom.events || !dom.eventSummary) return;
   currentMissionTrace = trace;
-  dom.eventSummary.textContent = `${trace.live ? 'Live' : 'Paused'} · ${trace.lanes.length} lanes`;
+  const traceState = commandText(trace.live ? 'commandDeck.timeline.live' : 'commandDeck.timeline.paused');
+  dom.eventSummary.textContent = commandText('commandDeck.timeline.summary', { state: traceState, count: trace.lanes.length });
   if (dom.missionTraceLive) {
     dom.missionTraceLive.hidden = trace.live;
     dom.missionTraceLive.setAttribute('aria-pressed', String(trace.live));
@@ -2431,7 +2391,7 @@ function renderLiveMonitoring(snapshot = {}, nowMs = Date.now()) {
   const pageSize = window.innerWidth <= 840 ? 2 : 4;
   const page = liveAgentPage(rows, agentLivePageIndex, pageSize);
   agentLivePageIndex = page.page;
-  if (dom.agentLivePage) dom.agentLivePage.textContent = `${page.page + 1} / ${page.pageCount}`;
+  if (dom.agentLivePage) dom.agentLivePage.textContent = commandText('commandDeck.dynamic.page', { page: page.page + 1, count: page.pageCount });
   if (dom.agentLivePrevious) dom.agentLivePrevious.disabled = !page.canPrevious;
   if (dom.agentLiveNext) dom.agentLiveNext.disabled = !page.canNext;
   if (dom.agentLiveList) {
@@ -2466,7 +2426,7 @@ function renderLiveMonitoring(snapshot = {}, nowMs = Date.now()) {
   }
   const hook = hookRailForAgents(snapshot.agents, selectedAgentId);
   const roomCopy = getRoomCopy(hook.roomKey, currentLocale);
-  if (dom.hookLiveSemantic) dom.hookLiveSemantic.textContent = hook.semantic.toUpperCase();
+  if (dom.hookLiveSemantic) dom.hookLiveSemantic.textContent = commandText(`commandDeck.hook.semantic.${hook.semantic}`);
   if (dom.hookLiveBuilding) dom.hookLiveBuilding.textContent = roomCopy.name || hook.building;
   if (dom.hookLiveActivity) dom.hookLiveActivity.textContent = localizeTask(hook.activity) || strings().idleFallback;
   if (dom.hookLiveAgent) dom.hookLiveAgent.textContent = hook.agentId;
@@ -3024,6 +2984,10 @@ function setLocale(locale) {
   applyStaticCopy();
   pixelworldBridge.setLocale(currentLocale);
   if (currentSnapshot) renderSnapshot(currentSnapshot);
+  if (currentMissionTrace) renderMissionTrace(currentMissionTrace, { structureChanged: true });
+  if (currentSnapshot) renderLiveMonitoring(currentSnapshot);
+  const resolved = resolveCurrentCommandSelection(currentCommandSelection);
+  renderInspector(resolved?.agent || null);
 }
 
 dom.languageSelect?.addEventListener('change', (event) => {
