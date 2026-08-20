@@ -90,6 +90,7 @@ export function normalizeCommandDeckLayout(value = {}, viewport = {}) {
 
 function validStoredLayout(value) {
   return value && typeof value === 'object'
+    && value.version === 2
     && positive(value.leftWidth, 0) > 0
     && positive(value.rightWidth, 0) > 0
     && positive(value.bottomHeight, 0) > 0
@@ -178,6 +179,7 @@ export function createCommandDeckLayoutController({
   const initialSize = normalizedViewport(viewport());
   const initialNarrow = initialSize.width < LIMITS.narrowWidth;
   const legacy = initialStored.status === 'missing' ? legacyLayout(storage) : { present: false, layout: null };
+  let migrationPending = initialStored.status === 'missing' && legacy.present;
   const initialValue = initialStored.layout || legacy.layout || defaultLayout();
   let layout = normalizeCommandDeckLayout(
     initialValue,
@@ -230,6 +232,7 @@ export function createCommandDeckLayoutController({
     setHandleState(rightHandle, layout.rightWidth, LIMITS.right.min, bounds.rightMax);
     setHandleState(bottomHandle, layout.bottomHeight, LIMITS.bottom.min, bounds.bottomMax);
     if (persist && !narrow) writeLayout(storage, layout);
+    if (migrationPending && !narrow && writeLayout(storage, layout)) migrationPending = false;
     if (announce) onResize({ ...layout, collapsed: { ...layout.collapsed } });
   };
 
@@ -302,7 +305,6 @@ export function createCommandDeckLayoutController({
       bindHandle(bottomHandle, 'bottom');
       listen(resizeTarget, 'resize', () => apply({ announce: true }));
       apply();
-      if (initialStored.status === 'missing' && legacy.present && !initialNarrow) writeLayout(storage, layout);
     },
     reset() {
       layout = normalizeCommandDeckLayout(defaultLayout(), viewport());

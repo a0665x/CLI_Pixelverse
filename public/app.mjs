@@ -316,10 +316,17 @@ const commandDeckLayoutController = createCommandDeckLayoutController({
 function renderCommandDeckControls() {
   const collapsed = commandDeckLayoutController.getLayout().collapsed;
   [
-    [dom.commandCollapseLeft, 'left'],
-    [dom.commandCollapseRight, 'right'],
-    [dom.commandCollapseBottom, 'bottom'],
-  ].forEach(([button, region]) => button?.setAttribute('aria-expanded', String(!collapsed[region])));
+    [dom.commandCollapseLeft, 'left', 'left region'],
+    [dom.commandCollapseRight, 'right', 'right region'],
+    [dom.commandCollapseBottom, 'bottom', 'mission trace'],
+  ].forEach(([button, region, name]) => {
+    if (!button) return;
+    const action = collapsed[region] ? 'Expand' : 'Collapse';
+    const label = `${action} ${name}`;
+    button.setAttribute('aria-expanded', String(!collapsed[region]));
+    button.setAttribute('aria-label', label);
+    button.title = label;
+  });
 }
 [
   [dom.commandCollapseLeft, 'left'],
@@ -2927,6 +2934,7 @@ async function initializeApp() {
   setupFurnitureEditor();
   liveEcgController.start();
   commandDeckLayoutController.start();
+  renderCommandDeckControls();
   startLiveUiTicker();
   restartTimelineTimer();
   connectRealtime();

@@ -455,3 +455,28 @@ def test_command_deck_exposes_five_bounded_regions_and_direct_layout_controls():
     assert ".command-deck-region { position: relative;" in html
     assert ".command-deck-region { position: fixed;" not in html
     assert ".command-deck-region { position: absolute;" not in html
+
+
+def test_dashboard_card_stays_inside_the_active_inspector_track_when_collapsed_or_swapped():
+    html = Path("public/index.html").read_text(encoding="utf-8")
+
+    card_css = html[html.index("/* Command deck v2 */"):]
+    assert ".map-first-workspace .dashboard-card {" in card_css
+    assert "position: relative !important;" in card_css
+    assert "grid-column: 5;" in card_css
+    assert '.map-first-workspace[data-left-dock="inspector"] .dashboard-card' in card_css
+    assert "grid-column: 1;" in card_css
+    assert '[data-right-dock="inspector"][data-collapsed-right="true"] .dashboard-card' in card_css
+    assert '[data-left-dock="inspector"][data-collapsed-left="true"] .dashboard-card' in card_css
+    assert "display: none !important;" in card_css
+
+
+def test_command_deck_controls_render_persisted_expand_collapse_copy_at_startup():
+    app = Path("public/app.mjs").read_text(encoding="utf-8")
+
+    assert "commandDeckLayoutController.start();\n  renderCommandDeckControls();" in app
+    assert "aria-expanded" in app
+    assert "aria-label" in app
+    assert "button.title" in app
+    assert "Expand" in app
+    assert "Collapse" in app
