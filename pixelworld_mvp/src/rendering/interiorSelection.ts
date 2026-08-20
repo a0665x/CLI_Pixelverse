@@ -26,6 +26,10 @@ import {
   stackDependencies,
   stackRoleForFurniture,
 } from './interiorAutoStack';
+import {
+  canonicalFurnitureBounds,
+  translateFurnitureGeometry,
+} from './canonicalFurnitureGeometry';
 
 export interface SelectionRect extends FurnitureBounds {}
 
@@ -84,15 +88,6 @@ export function expandSelectionClosure(
   }
 }
 
-const translateFurniture = (item: FurnitureDefinition, delta: GridPoint): FurnitureDefinition => ({
-  ...cloneFurniture(item),
-  point: { x: item.point.x + delta.x, y: item.point.y + delta.y },
-  ...(item.interactionPoint ? { interactionPoint: {
-    x: item.interactionPoint.x + delta.x,
-    y: item.interactionPoint.y + delta.y,
-  } } : {}),
-});
-
 const selectionAnchor = (items: readonly FurnitureDefinition[]): GridPoint => ({
   x: (Math.min(...items.map(({ point }) => point.x)) + Math.max(...items.map(({ point }) => point.x))) / 2,
   y: (Math.min(...items.map(({ point }) => point.y)) + Math.max(...items.map(({ point }) => point.y))) / 2,
@@ -118,7 +113,7 @@ const fitSelectionToRoom = (
     || bounds.y + bounds.height <= 0 || bounds.y >= room.height;
   if (impossibleFit || entirelyOutside) return items.map(cloneFurniture);
   const delta = fitBoundsDeltaToRoom(room, bounds);
-  return items.map((item) => translateFurniture(item, delta));
+  return items.map((item) => translateFurnitureGeometry(item, delta));
 };
 
 const selectedMutationIsValid = (
@@ -169,7 +164,7 @@ export function moveSelection(
   if (!first) return layout.map(cloneFurniture);
   const snapped = snapFurniturePoint({ x: first.point.x + delta.x, y: first.point.y + delta.y });
   const applied = { x: snapped.x - first.point.x, y: snapped.y - first.point.y };
-  return layout.map((item) => selected.has(item.id) ? translateFurniture(item, applied) : cloneFurniture(item));
+  return layout.map((item) => selected.has(item.id) ? translateFurnitureGeometry(item, applied) : cloneFurniture(item));
 }
 
 export interface SelectionMutationResult {
@@ -279,7 +274,7 @@ export function rotateSelectionAtomically(
       item,
       (((item.rotation ?? 0) + normalizedDelta) % 360) as FurnitureRotation,
     );
-    const translated = translateFurniture(rotated, { x: point.x - item.point.x, y: point.y - item.point.y });
+    const translated = translateFurnitureGeometry(rotated, { x: point.x - item.point.x, y: point.y - item.point.y });
     return { ...translated, facing: rotatedFacing(item.facing, normalizedDelta) };
   });
 }
@@ -514,7 +509,7 @@ export function duplicateSelection(
   const copiedIdBySourceId = new Map(source.map((item, index) => [item.id, copiedIds[index]!]));
   for (const offset of duplicateOffsets()) {
     const copied = source.map((item, index): FurnitureDefinition => {
-      const translated = translateFurniture(item, offset);
+      const translated = translateFurnitureGeometry(item, offset);
       const copy: FurnitureDefinition = {
         ...translated,
         id: copiedIds[index]!,
@@ -562,26 +557,34 @@ export function createFurniturePrefab(
 ): FurniturePrefab {
   const ordinary = selection.filter(({ supportedActions, requirementId }) => supportedActions.length === 0 && !requirementId);
   if (ordinary.length < 2) throw new Error('A prefab requires at least two ordinary furniture items');
-  const minX = Math.min(...ordinary.map(({ point }) => point.x));
-  const minY = Math.min(...ordinary.map(({ point }) => point.y));
-  const bounds = ordinary.map((item) => transformedAlphaBounds(item));
+  const origin = {
+    x: Math.min(...ordinary.map(({ point }) => point.x)),
+    y: Math.min(...ordinary.map(({ point }) => point.y)),
+  };
+  const bounds = ordinary.map((item) => canonicalFurnitureBounds(item));
   const right = Math.max(...bounds.map((item) => item.x + item.width));
   const bottom = Math.max(...bounds.map((item) => item.y + item.height));
   const left = Math.min(...bounds.map(({ x }) => x));
   const top = Math.min(...bounds.map(({ y }) => y));
   const templateIds = new Map(ordinary.map((item) => [item.id, `template-${item.id}`]));
   return {
+    version: 2,
     id: `prefab-${createdAt}-${ordinary.map(({ assetId }) => assetId ?? 0).join('-')}`,
     name: name.trim() || '未命名組裝件',
     createdAt,
     width: right - left,
     height: bottom - top,
+    origin,
+    memberOffsets: Object.fromEntries(ordinary.map((item) => [templateIds.get(item.id)!, {
+      x: item.point.x - origin.x,
+      y: item.point.y - origin.y,
+    }])),
     items: ordinary.map((item) => {
       const { requirementId: _requirementId, interactionPoint: _interactionPoint, ...template } = cloneFurniture(item);
       return {
         ...template,
         id: templateIds.get(item.id)!,
-        point: snapFurniturePoint({ x: item.point.x - minX, y: item.point.y - minY }),
+        point: { ...item.point },
         supportedActions: [],
         ...(item.supportedByIds ? {
           supportedByIds: item.supportedByIds.flatMap((id) => templateIds.get(id) ?? []),

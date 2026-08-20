@@ -88,7 +88,7 @@ import {
   saveLayoutClipboard,
   upsertPrefab,
 } from './interiorPrefabStore';
-import { officeLayoutIssues, placeOfficePrefab } from './prefabGeometry';
+import { officeLayoutIssues, placeOfficePrefab, prefabMemberLocalOffset } from './prefabGeometry';
 import {
   cloneFurnitureLayout,
   dissolvePrefabInstance,
@@ -263,6 +263,20 @@ export function furnitureRenderScreenGeometry(
 
 export function dragPreviewScreenPoint(roomOrigin: GridPoint, point: GridPoint, cell = BASE_ROOM_CELL): GridPoint {
   return roomScreenPoint(roomOrigin, point, cell);
+}
+
+export function prefabGhostScreenPoint(
+  prefab: OfficePrefabDefinition,
+  item: FurnitureDefinition,
+  screenAnchor: GridPoint,
+  cell = BASE_ROOM_CELL,
+): GridPoint {
+  const local = prefabMemberLocalOffset(prefab, item);
+  const { offset } = furnitureRenderGeometry(item);
+  return {
+    x: screenAnchor.x + (local.x + offset.x) * cell,
+    y: screenAnchor.y + (local.y + offset.y) * cell,
+  };
 }
 
 const OCCLUSION_DEPTH = 3_000;
@@ -1419,10 +1433,10 @@ export class InteriorCutawaySystem {
           const partKey = partCatalog?.key ?? modernOfficeAsset(modernOfficeKindForFurniture(part.kind)).key;
           const partOriginX = partCatalog ? (partCatalog.opaqueBounds.x + partCatalog.opaqueBounds.width / 2) / 32 : 0.5;
           const partOriginY = partCatalog ? (partCatalog.opaqueBounds.y + partCatalog.opaqueBounds.height / 2) / 48 : 0.5;
-          const { offset } = furnitureRenderGeometry(part);
+          const point = prefabGhostScreenPoint(prefab, part, { x, y }, this.roomCell);
           const ghost = this.scene.add.image(
-            x + (part.point.x + offset.x - prefab.anchor.x) * this.roomCell,
-            y + (part.point.y + offset.y - prefab.anchor.y) * this.roomCell,
+            point.x,
+            point.y,
             partKey,
           ).setOrigin(partOriginX, partOriginY)
             .setScale(normalizeFurnitureScale(part.scale) * this.roomCell / BASE_ROOM_CELL)
@@ -1441,11 +1455,8 @@ export class InteriorCutawaySystem {
         if (ghosts.length === 0) ghosts = createGhosts(anchor.screen.x, anchor.screen.y);
         ghosts.forEach((ghost, partIndex) => {
           const part = prefab.items[partIndex]!;
-          const { offset } = furnitureRenderGeometry(part);
-          ghost.setPosition(
-            anchor.screen.x + (part.point.x + offset.x - prefab.anchor.x) * this.roomCell,
-            anchor.screen.y + (part.point.y + offset.y - prefab.anchor.y) * this.roomCell,
-          );
+          const point = prefabGhostScreenPoint(prefab, part, anchor.screen, this.roomCell);
+          ghost.setPosition(point.x, point.y);
         });
       });
       item.on('dragend', (pointer: unknown) => {

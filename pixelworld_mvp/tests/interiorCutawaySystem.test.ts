@@ -34,6 +34,7 @@ import { interiorEditorLayout } from '../src/rendering/interiorEditorLayout';
 import { WORLD_PIXELS } from '../src/game/constants';
 import { authoredPlacement } from '../src/rendering/interiorFurnitureScale';
 import { catalogItem } from '../src/rendering/modernOfficeCatalog';
+import { translateFurnitureGeometry } from '../src/rendering/canonicalFurnitureGeometry';
 
 class FakeObject {
   x = 0;
@@ -2000,11 +2001,17 @@ describe('InteriorCutawaySystem', () => {
     preview!.emit('drag', transformedPointer(pointer), -320, 850);
     const ghosts = fake.objects.filter(({ alpha, destroyed }) => alpha === 0.72 && !destroyed);
     expect(ghosts).toHaveLength(bench.items.length);
-    const firstOffset = bench.items[0]!.visualOffset ?? { x: 0, y: 0 };
-    expect(ghosts[0]).toMatchObject({
-      x: pointer.x + (bench.items[0]!.point.x + firstOffset.x - bench.anchor.x) * internal.roomCell,
-      y: pointer.y + (bench.items[0]!.point.y + firstOffset.y - bench.anchor.y) * internal.roomCell,
+    const firstPreview = translateFurnitureGeometry(bench.items[0]!, {
+      x: anchor.x - bench.anchor.x,
+      y: anchor.y - bench.anchor.y,
     });
+    const expectedGhost = furnitureRenderScreenPoint(
+      internal.roomOrigin,
+      firstPreview,
+      internal.roomCell,
+    );
+    expect(ghosts[0]!.x).toBeCloseTo(expectedGhost.x);
+    expect(ghosts[0]!.y).toBeCloseTo(expectedGhost.y);
 
     preview!.emit('dragend', transformedPointer({ x: pointer.x + 200, y: pointer.y + 200 }), 7, 9);
     expect(room.furniture).toHaveLength(bench.items.length);
@@ -3118,10 +3125,13 @@ describe('InteriorCutawaySystem', () => {
       expect(prompt).not.toHaveBeenCalled();
       expect(storage.setItem).toHaveBeenCalledTimes(1);
       const prefabPayload = JSON.parse(values.get('pixelworld:interior-prefabs:v1') ?? 'null');
-      expect(prefabPayload).toMatchObject({ version: 1 });
+      expect(prefabPayload).toMatchObject({ version: 2 });
       expect(prefabPayload.prefabs).toHaveLength(1);
-      expect(prefabPayload.prefabs[0]).toMatchObject({ name: 'Group 01', width: expect.any(Number), height: expect.any(Number) });
-      expect(prefabPayload.prefabs[0].items).toHaveLength(2);
+      expect(prefabPayload.prefabs[0]).toMatchObject({
+        version: 2, name: 'Group 01', width: expect.any(Number), height: expect.any(Number),
+        origin: { x: expect.any(Number), y: expect.any(Number) },
+      });
+      expect(prefabPayload.prefabs[0].members).toHaveLength(2);
       expect(values.has('pixelworld:interior-layout:rest-cabin')).toBe(false);
 
       capture.handlers().save();

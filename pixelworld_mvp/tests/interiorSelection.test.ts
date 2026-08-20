@@ -54,8 +54,14 @@ describe('interior marquee selection and prefabs', () => {
     const prefab = createFurniturePrefab('工作桌組', [desk, monitor, hook], 1_000);
     expect(prefab.items).toHaveLength(2);
     expect(prefab.items.every(({ supportedActions, requirementId }) => supportedActions.length === 0 && requirementId === undefined)).toBe(true);
-    expect(Math.min(...prefab.items.map(({ point }) => point.x))).toBe(0);
-    expect(Math.min(...prefab.items.map(({ point }) => point.y))).toBe(0);
+    expect(prefab).toMatchObject({
+      version: 2,
+      origin: { x: 3, y: 4 },
+      memberOffsets: {
+        'template-desk': { x: 0, y: 0 },
+        'template-monitor': { x: 0.5, y: 0.25 },
+      },
+    });
   });
 
   it('moves a selected arrangement without changing relative spacing', () => {

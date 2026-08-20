@@ -9,10 +9,19 @@ import type {
 import { BUILT_IN_OFFICE_PREFABS } from './builtInOfficePrefabs';
 import { modernOfficeCompositePrefabs } from './modernOfficeCompositeCatalog';
 import { catalogItem } from './modernOfficeCatalog';
-import { diagnoseFinePlacement, resolvedFurnitureAsset, snapFurniturePoint } from './interiorPlacement';
+import {
+  diagnoseFinePlacement,
+  furnitureCollidesWithLayout,
+  resolvedFurnitureAsset,
+  snapFurniturePoint,
+} from './interiorPlacement';
 import { cloneOfficePrefab } from './prefabGeometry';
 import type { StorageReadStatus } from './interiorLayoutEditor';
 import { isCompatibleStackSupport, stackRoleForFurniture } from './interiorAutoStack';
+import {
+  canonicalFurnitureBounds,
+  translateFurnitureGeometry,
+} from './canonicalFurnitureGeometry';
 
 interface StorageLike {
   getItem(key: string): string | null;
@@ -52,10 +61,45 @@ const cloneFurniture = (item: FurnitureDefinition): FurnitureDefinition => ({
   ...(item.supportedByIds ? { supportedByIds: [...item.supportedByIds] } : {}),
 });
 const cloneLayout = (layout: readonly FurnitureDefinition[]): FurnitureDefinition[] => layout.map(cloneFurniture);
+const finitePoint = (value: unknown): value is GridPoint => Boolean(
+  value && typeof value === 'object'
+  && 'x' in value && Number.isFinite(value.x)
+  && 'y' in value && Number.isFinite(value.y),
+);
 const isFinitePoint = (item: FurnitureDefinition): boolean => Number.isFinite(item.point?.x) && Number.isFinite(item.point?.y);
+const FACING_VALUES = ['left', 'right', 'up', 'down'] as const;
+const FURNITURE_KIND_VALUES = [
+  'sofa', 'chair', 'television', 'bed', 'bookcase', 'computer', 'map-table',
+  'planning-board', 'reading-desk', 'workbench', 'tool-wall', 'repair-table',
+  'dispatch-pod', 'radio-console', 'response-desk', 'meeting-table', 'decor',
+  'office-chair', 'display', 'desk', 'cabinet', 'plant', 'beverage-station', 'printer',
+] as const;
+const ICON_VALUES = [
+  'rest', 'offline', 'think', 'plan', 'read', 'web', 'edit',
+  'tool', 'repair', 'clone', 'respond', 'generic',
+] as const;
+const SCALE_VALUES = [0.75, 1, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 2.75, 3] as const;
+const ROTATION_VALUES = [0, 90, 180, 270] as const;
+const LAYER_VALUES = ['floor', 'furniture', 'surface', 'wall'] as const;
+const SEMANTIC_VALUES = ['rest', 'search', 'work'] as const;
 const isValidTemplate = (item: FurnitureDefinition): boolean => (
-  typeof item.id === 'string' && isFinitePoint(item) && Array.isArray(item.supportedActions) &&
-  item.supportedActions.length === 0 && !item.requirementId && (item.assetId === undefined || catalogItem(item.assetId) !== undefined) &&
+  typeof item.id === 'string' && item.id.length > 0
+  && FURNITURE_KIND_VALUES.includes(item.kind) && isFinitePoint(item) && Array.isArray(item.supportedActions) &&
+  item.supportedActions.length === 0 && item.requirementId === undefined
+  && (item.assetId === undefined || catalogItem(item.assetId) !== undefined) &&
+  FACING_VALUES.includes(item.facing) && ICON_VALUES.includes(item.icon) &&
+  (item.scale === undefined || SCALE_VALUES.includes(item.scale)) &&
+  (item.rotation === undefined || ROTATION_VALUES.includes(item.rotation)) &&
+  (item.layer === undefined || LAYER_VALUES.includes(item.layer)) &&
+  (item.semantic === undefined || SEMANTIC_VALUES.includes(item.semantic)) &&
+  (item.footprint === undefined || (
+    Number.isFinite(item.footprint.width) && item.footprint.width > 0
+    && Number.isFinite(item.footprint.height) && item.footprint.height > 0
+  )) &&
+  (item.visualOffset === undefined || finitePoint(item.visualOffset)) &&
+  (item.interactionPoint === undefined || finitePoint(item.interactionPoint)) &&
+  (item.blocksNavigation === undefined || typeof item.blocksNavigation === 'boolean') &&
+  (item.zIndex === undefined || Number.isFinite(item.zIndex)) &&
   (item.supportedByIds === undefined || (
     Array.isArray(item.supportedByIds) && item.supportedByIds.every((id) => typeof id === 'string' && id.length > 0)
   ))
@@ -63,6 +107,10 @@ const isValidTemplate = (item: FurnitureDefinition): boolean => (
 
 const clonePrefab = (prefab: FurniturePrefab): FurniturePrefab => ({
   ...prefab,
+  ...(prefab.origin ? { origin: { ...prefab.origin } } : {}),
+  ...(prefab.memberOffsets ? { memberOffsets: Object.fromEntries(
+    Object.entries(prefab.memberOffsets).map(([id, point]) => [id, { ...point }]),
+  ) } : {}),
   items: cloneLayout(prefab.items),
 });
 
@@ -80,7 +128,7 @@ const asUserOfficePrefab = (prefab: FurniturePrefab): OfficePrefabDefinition => 
   immutable: false,
   category: 'support',
   hookActions: [],
-  anchor: { x: 0, y: 0 },
+  anchor: { ...(prefab.origin ?? { x: 0, y: 0 }) },
   interactionAnchors: [],
 });
 
@@ -89,35 +137,152 @@ export function isBuiltInPrefab(prefab: FurniturePrefab): prefab is OfficePrefab
     && 'immutable' in prefab && prefab.immutable === true;
 }
 
+export interface StorageReadResult<T> { storageRead: StorageReadStatus; value: T }
+
+interface PersistedPrefabMemberV2 {
+  offset: GridPoint;
+  item: FurnitureDefinition;
+}
+
+interface PersistedPrefabV2 {
+  version: 2;
+  id: string;
+  name: string;
+  createdAt: number;
+  width: number;
+  height: number;
+  origin: GridPoint;
+  members: PersistedPrefabMemberV2[];
+}
+
+interface PersistedPrefabStoreV2 { version: 2; prefabs: PersistedPrefabV2[] }
+
+const canonicalizedPrefab = (prefab: FurniturePrefab): FurniturePrefab => {
+  const origin = { ...(prefab.origin ?? { x: 0, y: 0 }) };
+  const items = cloneLayout(prefab.items);
+  const memberOffsets = Object.fromEntries(items.map((item) => [
+    item.id,
+    { ...(prefab.memberOffsets?.[item.id] ?? {
+      x: item.point.x - origin.x,
+      y: item.point.y - origin.y,
+    }) },
+  ]));
+  return { ...clonePrefab(prefab), version: 2, origin, memberOffsets, items };
+};
+
+const validPrefabHeader = (prefab: Partial<FurniturePrefab>): boolean => Boolean(
+  typeof prefab.id === 'string' && prefab.id.length > 0
+  && typeof prefab.name === 'string' && prefab.name.length > 0
+  && Number.isFinite(prefab.createdAt)
+  && Number.isFinite(prefab.width) && prefab.width! > 0
+  && Number.isFinite(prefab.height) && prefab.height! > 0,
+);
+
+const near = (left: number, right: number): boolean => Math.abs(left - right) <= 1e-9;
+
+const validCanonicalPrefab = (prefab: FurniturePrefab): boolean => {
+  if (!validPrefabHeader(prefab) || !finitePoint(prefab.origin)
+    || !prefab.memberOffsets || prefab.items.length < 2 || !prefab.items.every(isValidTemplate)) return false;
+  const ids = new Set(prefab.items.map(({ id }) => id));
+  if (ids.size !== prefab.items.length || Object.keys(prefab.memberOffsets).length !== ids.size) return false;
+  return prefab.items.every((item) => {
+    const offset = prefab.memberOffsets?.[item.id];
+    return finitePoint(offset)
+      && near(item.point.x, prefab.origin!.x + offset.x)
+      && near(item.point.y, prefab.origin!.y + offset.y)
+      && (item.supportedByIds ?? []).every((id) => ids.has(id));
+  });
+};
+
+const parsePrefabPayload = (raw: string): FurniturePrefab[] | undefined => {
+  try {
+    const parsed = JSON.parse(raw) as { version?: unknown; prefabs?: unknown };
+    if (!Array.isArray(parsed.prefabs)) return undefined;
+    if (parsed.version === 1) {
+      const legacy = parsed.prefabs as FurniturePrefab[];
+      if (new Set(legacy.map(({ id }) => id)).size !== legacy.length) return undefined;
+      if (!legacy.every((prefab) => validPrefabHeader(prefab)
+        && Array.isArray(prefab.items) && prefab.items.length >= 2 && prefab.items.every(isValidTemplate))) return undefined;
+      const migrated = legacy.map((prefab) => canonicalizedPrefab(prefab));
+      return migrated.every(validCanonicalPrefab) ? migrated : undefined;
+    }
+    if (parsed.version !== 2) return undefined;
+    const persisted = parsed.prefabs as PersistedPrefabV2[];
+    if (new Set(persisted.map(({ id }) => id)).size !== persisted.length) return undefined;
+    if (!persisted.every((prefab) => {
+      if (!prefab || prefab.version !== 2 || !validPrefabHeader(prefab) || !finitePoint(prefab.origin)
+        || !Array.isArray(prefab.members) || prefab.members.length < 2) return false;
+      const memberIds = new Set<string>();
+      return prefab.members.every((member) => {
+        if (!member || !finitePoint(member.offset) || !isValidTemplate(member.item)
+          || memberIds.has(member.item.id)) return false;
+        memberIds.add(member.item.id);
+        return near(member.item.point.x, prefab.origin.x + member.offset.x)
+          && near(member.item.point.y, prefab.origin.y + member.offset.y);
+      });
+    })) return undefined;
+    const migrated = persisted.map((prefab): FurniturePrefab => ({
+      version: 2,
+      id: prefab.id,
+      name: prefab.name,
+      createdAt: prefab.createdAt,
+      width: prefab.width,
+      height: prefab.height,
+      origin: { ...prefab.origin },
+      memberOffsets: Object.fromEntries(prefab.members.map(({ item, offset }) => [item.id, { ...offset }])),
+      items: prefab.members.map(({ item }) => cloneFurniture(item)),
+    }));
+    return migrated.every(validCanonicalPrefab) ? migrated : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+const persistedPrefab = (prefab: FurniturePrefab): PersistedPrefabV2 => {
+  const canonical = canonicalizedPrefab(prefab);
+  return {
+    version: 2,
+    id: canonical.id,
+    name: canonical.name,
+    createdAt: canonical.createdAt,
+    width: canonical.width,
+    height: canonical.height,
+    origin: { ...canonical.origin! },
+    members: canonical.items.map((item) => ({
+      offset: { ...canonical.memberOffsets![item.id]! },
+      item: cloneFurniture(item),
+    })),
+  };
+};
+
 export function savePrefabs(
   prefabs: readonly FurniturePrefab[],
   storage: StorageLike | undefined = browserStorage(),
 ): void {
   if (typeof window !== 'undefined' && !storage) throw new Error('Prefab storage unavailable');
-  const userPrefabs = prefabs.filter((prefab) => !isBuiltInPrefab(prefab)).map(clonePrefab);
-  storage?.setItem(PREFAB_KEY, JSON.stringify({ version: 1, prefabs: userPrefabs }));
+  if (!storage) return;
+  const existing = readStorage(storage, PREFAB_KEY);
+  if (existing.storageRead === 'failed') throw new Error('Prefab storage unavailable');
+  if (existing.value !== null && parsePrefabPayload(existing.value) === undefined) {
+    throw new Error('Refusing to overwrite malformed prefab storage');
+  }
+  const userPrefabs = prefabs.filter((prefab) => !isBuiltInPrefab(prefab)).map(canonicalizedPrefab);
+  if (!userPrefabs.every(validCanonicalPrefab)) {
+    throw new Error('Invalid prefab data');
+  }
+  const payload: PersistedPrefabStoreV2 = { version: 2, prefabs: userPrefabs.map(persistedPrefab) };
+  const serialized = JSON.stringify(payload);
+  if (parsePrefabPayload(serialized) === undefined) throw new Error('Invalid prefab data');
+  storage.setItem(PREFAB_KEY, serialized);
 }
-
-export interface StorageReadResult<T> { storageRead: StorageReadStatus; value: T }
 
 export function readPrefabs(storage?: StorageLike): StorageReadResult<FurniturePrefab[]> {
   const read = readStorage(storage, PREFAB_KEY);
   if (read.storageRead === 'failed' || !read.value) return { storageRead: read.storageRead, value: [] };
-  try {
-    const parsed = JSON.parse(read.value) as { version?: unknown; prefabs?: unknown };
-    if (parsed.version !== 1 || !Array.isArray(parsed.prefabs)) return { storageRead: 'failed', value: [] };
-    const valid = parsed.prefabs.every((value): value is FurniturePrefab => {
-      const prefab = value as FurniturePrefab;
-      return Boolean(prefab && typeof prefab.id === 'string' && typeof prefab.name === 'string' &&
-        Number.isFinite(prefab.createdAt) && Number.isFinite(prefab.width) && Number.isFinite(prefab.height) &&
-        Array.isArray(prefab.items) && prefab.items.length >= 2 && prefab.items.every(isValidTemplate));
-    });
-    return valid
-      ? { storageRead: 'success', value: (parsed.prefabs as FurniturePrefab[]).map(clonePrefab) }
-      : { storageRead: 'failed', value: [] };
-  } catch {
-    return { storageRead: 'failed', value: [] };
-  }
+  const parsed = parsePrefabPayload(read.value);
+  return parsed
+    ? { storageRead: 'success', value: parsed.map(clonePrefab) }
+    : { storageRead: 'failed', value: [] };
 }
 
 export function loadPrefabs(storage?: StorageLike): FurniturePrefab[] {
@@ -158,10 +323,15 @@ export function createUserGroupPrefab(
   createdAt: number = Date.now(),
 ): FurniturePrefab {
   if (selection.length < 2) throw new Error('A reusable group needs at least two furniture items');
-  const minX = Math.min(...selection.map(({ point }) => point.x));
-  const minY = Math.min(...selection.map(({ point }) => point.y));
-  const maxX = Math.max(...selection.map(({ point, footprint }) => point.x + (footprint?.width ?? 1)));
-  const maxY = Math.max(...selection.map(({ point, footprint }) => point.y + (footprint?.height ?? 1)));
+  const origin = {
+    x: Math.min(...selection.map(({ point }) => point.x)),
+    y: Math.min(...selection.map(({ point }) => point.y)),
+  };
+  const bounds = selection.map((item) => canonicalFurnitureBounds(item));
+  const left = Math.min(...bounds.map(({ x }) => x));
+  const top = Math.min(...bounds.map(({ y }) => y));
+  const right = Math.max(...bounds.map(({ x, width }) => x + width));
+  const bottom = Math.max(...bounds.map(({ y, height }) => y + height));
   const idMap = new Map(selection.map(({ id }, index) => [id, `group-item-${index + 1}`]));
   const items = selection.map((source, index): FurnitureDefinition => {
     const { prefabInstanceId: _prefabInstanceId, supportedByIds, ...item } = cloneFurniture(source);
@@ -171,7 +341,7 @@ export function createUserGroupPrefab(
     return {
       ...item,
       id: `group-item-${index + 1}`,
-      point: { x: source.point.x - minX, y: source.point.y - minY },
+      point: { ...source.point },
       ...(remappedSupports?.length ? { supportedByIds: remappedSupports } : {}),
     };
   });
@@ -179,11 +349,17 @@ export function createUserGroupPrefab(
   const usedIds = new Set(existing.map(({ id }) => id));
   while (usedIds.has(`user-group-${createdAt}-${sequence}`)) sequence += 1;
   return {
+    version: 2,
     id: `user-group-${createdAt}-${sequence}`,
     name: nextUserGroupName(existing),
     createdAt,
-    width: maxX - minX,
-    height: maxY - minY,
+    width: right - left,
+    height: bottom - top,
+    origin,
+    memberOffsets: Object.fromEntries(items.map((member) => [member.id, {
+      x: member.point.x - origin.x,
+      y: member.point.y - origin.y,
+    }])),
     items,
   };
 }
@@ -265,6 +441,7 @@ const validateAll = (
   if (byId.size !== combined.length) return false;
   for (const item of additions) {
     if (!resolvedFurnitureAsset(item) || diagnoseFinePlacement(room, item, [], item.id) !== 'valid') return false;
+    if (furnitureCollidesWithLayout(item, fixed)) return false;
     if (item.supportedByIds?.some((id) => (
       stackRoleForFurniture(item) !== 'surface' || !isCompatibleStackSupport(byId.get(id))
     ))) return false;
@@ -315,10 +492,14 @@ const remapAdditions = (
   for (const item of items) {
     const supportedByIds = item.supportedByIds?.map((id) => ids.get(id) ?? id);
     if (supportedByIds?.some((id) => !destinationIds.has(id))) return undefined;
+    const point = pointFor(item);
+    const translated = translateFurnitureGeometry(item, {
+      x: point.x - item.point.x,
+      y: point.y - item.point.y,
+    });
     additions.push({
-      ...cloneFurniture(item),
+      ...translated,
       id: ids.get(item.id)!,
-      point: snapFurniturePoint(pointFor(item)),
       supportedActions: [],
       ...(supportedByIds ? { supportedByIds } : {}),
       ...(item.prefabInstanceId ? { prefabInstanceId: instanceIds.get(item.prefabInstanceId)! } : {}),
@@ -430,9 +611,10 @@ export function placePrefab(
   now: number = Date.now(),
 ): LayoutMutationResult {
   const snapped = snapFurniturePoint(anchor);
+  const canonical = canonicalizedPrefab(prefab);
   const additions = remapAdditions(prefab.items, layout, `prefab-item-${now}`, (item) => ({
-    x: snapped.x + item.point.x,
-    y: snapped.y + item.point.y,
+    x: snapped.x + canonical.memberOffsets![item.id]!.x,
+    y: snapped.y + canonical.memberOffsets![item.id]!.y,
   }));
   if (!additions || !validateAll(room, layout, additions)) return { accepted: false, layout: cloneLayout(layout) };
   return { accepted: true, layout: [...cloneLayout(layout), ...additions] };

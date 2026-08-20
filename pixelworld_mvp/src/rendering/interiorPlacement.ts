@@ -10,9 +10,13 @@ import type {
 import {
   catalogFurnitureRole,
   catalogFurnitureSemantic,
-  catalogItem,
   type ModernOfficeCatalogItem,
 } from './modernOfficeCatalog';
+import {
+  canonicalFurnitureAsset,
+  canonicalFurnitureBounds,
+  canonicalFurnitureGeometry,
+} from './canonicalFurnitureGeometry';
 
 export const EDITOR_CELL = 5.5;
 export type PlacementDiagnostic = 'valid' | 'outside-room' | 'blocks-door' | 'overlap' | 'invalid-asset';
@@ -30,14 +34,6 @@ export interface PlacementCandidate {
   fineCells: GridPoint[];
   bounds: FurnitureBounds;
 }
-
-const DEFAULT_ASSET_ID: Partial<Record<FurnitureDefinition['kind'], number>> = {
-  sofa: 200, bed: 200, chair: 101, 'office-chair': 101, television: 129, display: 129,
-  computer: 225, 'dispatch-pod': 225, 'radio-console': 225, bookcase: 176,
-  'planning-board': 171, 'map-table': 207, 'meeting-table': 4, 'reading-desk': 193,
-  workbench: 193, 'repair-table': 193, 'response-desk': 193, desk: 193,
-  'tool-wall': 175, cabinet: 175, decor: 98, plant: 98, 'beverage-station': 173, printer: 177,
-};
 
 const normalizeScale = (value: unknown): number => (
   typeof value === 'number' && value >= 0.75 && value <= 3 && value * 4 === Math.round(value * 4) ? value : 1
@@ -86,7 +82,7 @@ export function snapFurniturePoint(point: GridPoint): GridPoint {
 }
 
 export const resolvedFurnitureAsset = (item: Pick<FurnitureDefinition, 'kind' | 'assetId'>): ModernOfficeCatalogItem | undefined =>
-  catalogItem(item.assetId ?? DEFAULT_ASSET_ID[item.kind] ?? -1);
+  canonicalFurnitureAsset(item);
 
 type GeometryFurniture = Pick<
   FurnitureDefinition,
@@ -97,19 +93,15 @@ export function furnitureRenderGeometry(
   item: GeometryFurniture,
   asset: ModernOfficeCatalogItem | undefined = resolvedFurnitureAsset(item),
 ): FurnitureRenderGeometry {
-  const scale = normalizeScale(item.scale);
-  const fallback = baseFurnitureFootprint(item);
-  const sourceWidth = asset?.opaqueBounds.width ?? fallback.width * 22;
-  const sourceHeight = asset?.opaqueBounds.height ?? fallback.height * 22;
-  const rotation = normalizeRotation(item.rotation);
-  const width = (rotation % 180 === 0 ? sourceWidth : sourceHeight) * scale / 22;
-  const height = (rotation % 180 === 0 ? sourceHeight : sourceWidth) * scale / 22;
+  const canonicalItem = item as FurnitureDefinition;
+  const sourceOverride = asset ? { width: asset.opaqueBounds.width, height: asset.opaqueBounds.height } : undefined;
+  const geometry = canonicalFurnitureGeometry(canonicalItem, sourceOverride);
+  const bounds = canonicalFurnitureBounds(canonicalItem, sourceOverride);
   const offset = {
-    x: (item.visualOffset?.x ?? 0) * scale,
-    y: (item.visualOffset?.y ?? 0) * scale,
+    x: (item.visualOffset?.x ?? 0) * geometry.scale,
+    y: (item.visualOffset?.y ?? 0) * geometry.scale,
   };
-  const center = { x: item.point.x + 0.5 + offset.x, y: item.point.y + 0.5 + offset.y };
-  const bounds = { x: center.x - width / 2, y: center.y - height / 2, width, height };
+  const center = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
   return { center, offset, bounds, baselineY: bounds.y + bounds.height };
 }
 
@@ -215,6 +207,24 @@ export function navigationCells(
     for (const x of xs) unique.set(`${x},${y}`, { x, y });
   }
   return [...unique.values()].sort((a, b) => a.y - b.y || a.x - b.x);
+}
+
+const boundsIntersect = (left: FurnitureBounds, right: FurnitureBounds): boolean => (
+  left.x < right.x + right.width && left.x + left.width > right.x
+  && left.y < right.y + right.height && left.y + left.height > right.y
+);
+
+/** Destination collision uses the same canonical opaque bounds as rendering and containment. */
+export function furnitureCollidesWithLayout(
+  candidate: FurnitureDefinition,
+  layout: readonly FurnitureDefinition[],
+): boolean {
+  if (!furnitureBlocksNavigation(candidate)) return false;
+  const bounds = transformedAlphaBounds(candidate);
+  return layout.some((existing) => (
+    furnitureBlocksNavigation(existing)
+    && boundsIntersect(bounds, transformedAlphaBounds(existing))
+  ));
 }
 
 const gridKey = ({ x, y }: GridPoint): string => `${x},${y}`;

@@ -8,7 +8,9 @@ import type {
 } from '../world/types';
 import {
   furnitureBlocksNavigation,
+  furnitureCollidesWithLayout,
   fineFootprintCells,
+  furnitureWithRotation,
   navigationBlockedCellKeys,
   navigationCells,
   rotateGridPoint,
@@ -16,8 +18,11 @@ import {
   transformedAlphaBounds,
   type FurnitureBounds,
 } from './interiorPlacement';
-import { furnitureFootprint } from '../world/interiorDefinitions';
 import { isCompatibleStackSupport, stackRoleForFurniture } from './interiorAutoStack';
+import {
+  canonicalFurnitureGeometry,
+  translateFurnitureGeometry,
+} from './canonicalFurnitureGeometry';
 
 export type PrefabPlacementDiagnostic =
   | 'outside-room'
@@ -50,6 +55,10 @@ const cloneFurnitureLayout = (layout: readonly FurnitureDefinition[]): Furniture
 export function cloneOfficePrefab(prefab: OfficePrefabDefinition): OfficePrefabDefinition {
   return {
     ...prefab,
+    ...(prefab.origin ? { origin: clonePoint(prefab.origin) } : {}),
+    ...(prefab.memberOffsets ? { memberOffsets: Object.fromEntries(
+      Object.entries(prefab.memberOffsets).map(([id, point]) => [id, clonePoint(point)]),
+    ) } : {}),
     anchor: clonePoint(prefab.anchor),
     hookActions: [...prefab.hookActions],
     interactionAnchors: prefab.interactionAnchors.map(({ point, actions }) => ({ point: clonePoint(point), actions: [...actions] })),
@@ -82,16 +91,22 @@ const rotateItemRotation = (rotation: FurnitureRotation | undefined, by: Furnitu
 
 export function rotatePrefab(prefab: OfficePrefabDefinition, rotation: FurnitureRotation): OfficePrefabDefinition {
   const cloned = cloneOfficePrefab(prefab);
+  const items = cloned.items.map((item) => {
+    const point = rotateRelativePoint(item.point, cloned.anchor, rotation);
+    const rotated = furnitureWithRotation(item, rotateItemRotation(item.rotation, rotation));
+    return {
+      ...translateFurnitureGeometry(rotated, { x: point.x - item.point.x, y: point.y - item.point.y }),
+      facing: rotateFacing(item.facing, rotation),
+    };
+  });
   return {
     ...cloned,
     ...(rotation % 180 === 0 ? {} : { width: cloned.height, height: cloned.width }),
-    items: cloned.items.map((item) => ({
-      ...item,
-      point: rotateRelativePoint(item.point, cloned.anchor, rotation),
-      facing: rotateFacing(item.facing, rotation),
-      rotation: rotateItemRotation(item.rotation, rotation),
-      ...(item.visualOffset ? { visualOffset: rotateGridPoint(item.visualOffset, rotation) } : {}),
-    })),
+    items,
+    ...(cloned.memberOffsets ? { memberOffsets: Object.fromEntries(items.map((item) => [item.id, {
+      x: item.point.x - cloned.anchor.x,
+      y: item.point.y - cloned.anchor.y,
+    }])) } : {}),
     interactionAnchors: cloned.interactionAnchors.map(({ point, actions }) => ({
       point: rotateRelativePoint(point, cloned.anchor, rotation),
       actions: [...actions],
@@ -107,21 +122,38 @@ const transformPoint = (point: GridPoint, prefabAnchor: GridPoint, placementAnch
   y: placementAnchor.y + point.y - prefabAnchor.y,
 });
 
+export function prefabMemberLocalOffset(
+  prefab: Pick<OfficePrefabDefinition, 'anchor' | 'memberOffsets'>,
+  item: FurnitureDefinition,
+): GridPoint {
+  return { ...(prefab.memberOffsets?.[item.id] ?? {
+    x: item.point.x - prefab.anchor.x,
+    y: item.point.y - prefab.anchor.y,
+  }) };
+}
+
 const transformPrefabItems = (
   prefab: OfficePrefabDefinition,
   anchor: GridPoint,
   prefabInstanceId: string,
 ): FurnitureDefinition[] => {
   const placedIds = new Map(prefab.items.map((item, index) => [item.id, `${prefabInstanceId}-${index}`]));
-  return prefab.items.map((item, index) => ({
-    ...cloneFurniture(item),
-    id: `${prefabInstanceId}-${index}`,
-    point: transformPoint(item.point, prefab.anchor, anchor),
-    prefabInstanceId,
-    ...(item.supportedByIds ? {
-      supportedByIds: item.supportedByIds.map((id) => placedIds.get(id) ?? id),
-    } : {}),
-  }));
+  return prefab.items.map((item, index) => {
+    const offset = prefabMemberLocalOffset(prefab, item);
+    const target = { x: anchor.x + offset.x, y: anchor.y + offset.y };
+    const translated = translateFurnitureGeometry(item, {
+      x: target.x - item.point.x,
+      y: target.y - item.point.y,
+    });
+    return {
+      ...translated,
+      id: `${prefabInstanceId}-${index}`,
+      prefabInstanceId,
+      ...(item.supportedByIds ? {
+        supportedByIds: item.supportedByIds.map((id) => placedIds.get(id) ?? id),
+      } : {}),
+    };
+  });
 };
 
 const transformedInteractionAnchors = (prefab: OfficePrefabDefinition, anchor: GridPoint) =>
@@ -229,6 +261,7 @@ const validatePlacedItems = (
     if (bounds.x < door.x + 1 && bounds.x + bounds.width > door.x && bounds.y < door.y + 1 && bounds.y + bounds.height > door.y) {
       appendDiagnostic(diagnostics, 'blocks-door');
     }
+    if (furnitureCollidesWithLayout(item, layout)) appendDiagnostic(diagnostics, 'overlap');
     if (item.supportedByIds?.some((id) => (
       stackRoleForFurniture(item) !== 'surface' || !isCompatibleStackSupport(roomFurniture.get(id))
     ))) {
@@ -265,7 +298,7 @@ const validatePlacedItems = (
 export const interiorInteractionPoint = (interior: InteriorDefinition, furniture: FurnitureDefinition): GridPoint => {
   if (furniture.interactionPoint) return { ...furniture.interactionPoint };
   if (furniture.kind === 'chair' || furniture.kind === 'sofa' || furniture.kind === 'bed') return { ...furniture.point };
-  const size = furnitureFootprint(furniture.kind);
+  const size = canonicalFurnitureGeometry(furniture);
   const offsets: Record<FurnitureDefinition['facing'], GridPoint[]> = {
     up: [{ x: 0, y: 1 }, { x: -1, y: 0 }, { x: 1, y: 0 }, { x: 0, y: -1 }],
     down: [{ x: 0, y: -1 }, { x: -1, y: 0 }, { x: 1, y: 0 }, { x: 0, y: 1 }],

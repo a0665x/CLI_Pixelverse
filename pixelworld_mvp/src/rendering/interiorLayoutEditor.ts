@@ -26,6 +26,7 @@ import {
   transformedAlphaBounds,
   type PlacementDiagnostic,
 } from './interiorPlacement';
+import { translateFurnitureGeometry } from './canonicalFurnitureGeometry';
 import {
   isCompatibleStackSupport,
   resolveAutomaticSupport,
@@ -109,14 +110,7 @@ export function moveFurniture(
     const requestedDelta = { x: snapped.x - current.point.x, y: snapped.y - current.point.y };
     const translated = cloneLayout(layout).map((item) => {
       if (!dependencyIds.has(item.id)) return item;
-      return {
-        ...item,
-        point: { x: item.point.x + requestedDelta.x, y: item.point.y + requestedDelta.y },
-        ...(item.interactionPoint ? { interactionPoint: {
-          x: item.interactionPoint.x + requestedDelta.x,
-          y: item.interactionPoint.y + requestedDelta.y,
-        } } : {}),
-      };
+      return translateFurnitureGeometry(item, requestedDelta);
     });
     const dependencyBounds = translated.filter(({ id }) => dependencyIds.has(id))
       .map((item) => transformedAlphaBounds(item));
@@ -131,14 +125,7 @@ export function moveFurniture(
     const fitDelta = fitBoundsDeltaToRoom(room, bounds);
     const moved = translated.map((item) => {
       if (!dependencyIds.has(item.id)) return item;
-      return {
-        ...item,
-        point: { x: item.point.x + fitDelta.x, y: item.point.y + fitDelta.y },
-        ...(item.interactionPoint ? { interactionPoint: {
-          x: item.interactionPoint.x + fitDelta.x,
-          y: item.interactionPoint.y + fitDelta.y,
-        } } : {}),
-      };
+      return translateFurnitureGeometry(item, fitDelta);
     });
     return moved.filter(({ id }) => dependencyIds.has(id))
       .every((item) => diagnoseFinePlacement(room, item, moved, item.id) === 'valid')

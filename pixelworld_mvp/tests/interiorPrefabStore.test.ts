@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { FurnitureDefinition, FurniturePrefab, InteriorDefinition } from '../src/world/types';
 import { INTERIOR_DEFINITIONS } from '../src/world/interiorDefinitions';
+import { transformedAlphaBounds } from '../src/rendering/interiorPlacement';
 import {
   availablePrefabs,
   copyDecorativeLayout,
@@ -39,14 +40,168 @@ const storage = () => {
 };
 
 describe('interior prefab and room clipboard store', () => {
+  it('stores a canonical v2 group origin and member-local offsets', () => {
+    const selected = [
+      { ...item('room-desk', 4, 3), kind: 'desk' as const, assetId: 193, scale: 1.5 as const, rotation: 90 as const },
+      { ...item('room-display', 6.5, 3.25), kind: 'display' as const, assetId: 129, scale: 0.75 as const, rotation: 270 as const },
+    ];
+    const memory = storage();
+    const prefab = createUserGroupPrefab(selected, [], 100);
+
+    expect(prefab).toMatchObject({
+      version: 2,
+      origin: { x: 4, y: 3 },
+      memberOffsets: {
+        'group-item-1': { x: 0, y: 0 },
+        'group-item-2': { x: 2.5, y: 0.25 },
+      },
+    });
+    savePrefabs([prefab], memory);
+    const persisted = JSON.parse(memory.getItem('pixelworld:interior-prefabs:v1')!);
+    expect(persisted).toMatchObject({
+      version: 2,
+      prefabs: [{
+        version: 2,
+        origin: { x: 4, y: 3 },
+        members: [
+          { offset: { x: 0, y: 0 } },
+          { offset: { x: 2.5, y: 0.25 } },
+        ],
+      }],
+    });
+    expect(persisted.prefabs[0]).not.toHaveProperty('items');
+  });
+
+  it('reloads and places a saved group in the Starting Cabin and a differently sized house without scaling', () => {
+    const source = [
+      { ...item('source-a', 4, 2), scale: 1.25 as const, rotation: 90 as const, visualOffset: { x: -0.25, y: 0.125 } },
+      { ...item('source-b', 6, 2.5), scale: 0.75 as const, rotation: 270 as const },
+    ];
+    const memory = storage();
+    savePrefabs([createUserGroupPrefab(source, [], 101)], memory);
+    const reloaded = loadPrefabs(memory)[0]!;
+    const cabin = { ...INTERIOR_DEFINITIONS['rest-cabin'], furniture: [] };
+    const workHouse = { ...INTERIOR_DEFINITIONS['maker-workshop'], furniture: [] };
+    expect([cabin.width, cabin.height]).not.toEqual([workHouse.width, workHouse.height]);
+
+    const inCabin = placePrefab(cabin, [], reloaded, { x: 2, y: 2 }, 201);
+    const inWorkHouse = placePrefab(workHouse, [], reloaded, { x: 8, y: 5 }, 202);
+    expect(inCabin.accepted).toBe(true);
+    expect(inWorkHouse.accepted).toBe(true);
+    const cabinMembers = inCabin.layout;
+    const workMembers = inWorkHouse.layout;
+    expect({
+      x: cabinMembers[1]!.point.x - cabinMembers[0]!.point.x,
+      y: cabinMembers[1]!.point.y - cabinMembers[0]!.point.y,
+    }).toEqual({
+      x: workMembers[1]!.point.x - workMembers[0]!.point.x,
+      y: workMembers[1]!.point.y - workMembers[0]!.point.y,
+    });
+    cabinMembers.forEach((member, index) => {
+      const other = workMembers[index]!;
+      const firstBounds = transformedAlphaBounds(member);
+      const secondBounds = transformedAlphaBounds(other);
+      expect(secondBounds.width).toBeCloseTo(firstBounds.width);
+      expect(secondBounds.height).toBeCloseTo(firstBounds.height);
+      expect(other.scale).toBe(member.scale);
+      expect(other.rotation).toBe(member.rotation);
+      expect(other.visualOffset).toEqual(member.visualOffset);
+    });
+  });
+
+  it('applies one translation to fractional member offsets without snapping members independently', () => {
+    const source = [item('fraction-a', 3.1, 2.2), item('fraction-b', 4.47, 3.03)];
+    const prefab = createUserGroupPrefab(source, [], 103);
+
+    const placed = placePrefab(
+      { ...INTERIOR_DEFINITIONS['maker-workshop'], furniture: [] },
+      [],
+      prefab,
+      { x: 5.12, y: 4.13 },
+      203,
+    );
+
+    expect(placed.accepted).toBe(true);
+    expect(placed.layout[1]!.point.x - placed.layout[0]!.point.x).toBeCloseTo(1.37);
+    expect(placed.layout[1]!.point.y - placed.layout[0]!.point.y).toBeCloseTo(0.83);
+  });
+
+  it('migrates a valid v1 group in memory without rewriting storage', () => {
+    const memory = storage();
+    const legacy = JSON.stringify({
+      version: 1,
+      prefabs: [{ id: 'legacy', name: 'Legacy', createdAt: 1, width: 2, height: 1, items: [item('a', 0, 0), item('b', 2, 0)] }],
+    });
+    memory.setItem('pixelworld:interior-prefabs:v1', legacy);
+
+    expect(loadPrefabs(memory)[0]).toMatchObject({
+      id: 'legacy', version: 2, origin: { x: 0, y: 0 },
+      memberOffsets: { a: { x: 0, y: 0 }, b: { x: 2, y: 0 } },
+    });
+    expect(memory.getItem('pixelworld:interior-prefabs:v1')).toBe(legacy);
+  });
+
+  it('never overwrites a malformed prefab store and emits origin-independent data', () => {
+    const malformed = storage();
+    const raw = '{"version":1,"prefabs":[{"id":"broken"}]}';
+    malformed.setItem('pixelworld:interior-prefabs:v1', raw);
+    const prefab = createUserGroupPrefab([item('a', 2, 2), item('b', 4, 2)], [], 102);
+
+    expect(() => savePrefabs([prefab], malformed)).toThrow();
+    expect(malformed.getItem('pixelworld:interior-prefabs:v1')).toBe(raw);
+
+    const first = storage();
+    const second = storage();
+    savePrefabs([prefab], first);
+    savePrefabs([prefab], second);
+    expect(first.getItem('pixelworld:interior-prefabs:v1')).toBe(second.getItem('pixelworld:interior-prefabs:v1'));
+    expect(first.getItem('pixelworld:interior-prefabs:v1')).not.toMatch(/https?:|localhost|docker/i);
+  });
+
+  it('rejects malformed v2 identities and enum values without overwriting storage', () => {
+    const member = (id: string, x: number) => ({ offset: { x, y: 0 }, item: item(id, x, 0) });
+    const prefab = (id: string) => ({
+      version: 2, id, name: 'Valid', createdAt: 1, width: 2, height: 1,
+      origin: { x: 0, y: 0 }, members: [member('a', 0), member('b', 1)],
+    });
+    const malformedPayloads = [
+      { version: 2, prefabs: [{ ...prefab('empty-member'), members: [member('', 0), member('b', 1)] }] },
+      { version: 2, prefabs: [{ ...prefab('bad-kind'), members: [
+        member('a', 0), { ...member('b', 1), item: { ...member('b', 1).item, kind: 'spaceship' } },
+      ] }] },
+      { version: 2, prefabs: [{ ...prefab('bad-icon'), members: [
+        member('a', 0), { ...member('b', 1), item: { ...member('b', 1).item, icon: 'sparkles' } },
+      ] }] },
+      { version: 2, prefabs: [{ ...prefab('bad-semantic'), members: [
+        member('a', 0), { ...member('b', 1), item: { ...member('b', 1).item, semantic: 'unknown' } },
+      ] }] },
+      { version: 2, prefabs: [prefab('duplicate'), prefab('duplicate')] },
+    ];
+    const replacement = createUserGroupPrefab([item('x', 2, 2), item('y', 4, 2)], [], 104);
+
+    for (const payload of malformedPayloads) {
+      const memory = storage();
+      const raw = JSON.stringify(payload);
+      memory.setItem('pixelworld:interior-prefabs:v1', raw);
+      expect(readPrefabs(memory).storageRead).toBe('failed');
+      expect(() => savePrefabs([replacement], memory)).toThrow();
+      expect(memory.getItem('pixelworld:interior-prefabs:v1')).toBe(raw);
+    }
+  });
+
   it('normalizes a selected group into a durable template with local support references', () => {
     const desk = item('room-desk', 4, 5);
     const monitor = { ...item('room-monitor', 4, 5), layer: 'surface' as const, supportedByIds: ['room-desk'] };
     const prefab = createUserGroupPrefab([desk, monitor], [], 100);
-    expect(prefab).toMatchObject({ id: 'user-group-100-1', name: 'Group 01', createdAt: 100, width: 1, height: 1 });
+    expect(prefab).toMatchObject({
+      id: 'user-group-100-1', name: 'Group 01', createdAt: 100,
+      version: 2, origin: { x: 4, y: 5 },
+    });
+    expect(prefab.width).toBeCloseTo(16 / 22);
+    expect(prefab.height).toBeCloseTo(28 / 22);
     expect(prefab.items.map(({ id, point, supportedByIds }) => ({ id, point, supportedByIds }))).toEqual([
-      { id: 'group-item-1', point: { x: 0, y: 0 }, supportedByIds: undefined },
-      { id: 'group-item-2', point: { x: 0, y: 0 }, supportedByIds: ['group-item-1'] },
+      { id: 'group-item-1', point: { x: 4, y: 5 }, supportedByIds: undefined },
+      { id: 'group-item-2', point: { x: 4, y: 5 }, supportedByIds: ['group-item-1'] },
     ]);
   });
 
@@ -61,7 +216,12 @@ describe('interior prefab and room clipboard store', () => {
     const memory = storage();
     const prefab: FurniturePrefab = { id: 'prefab-1', name: 'Desk kit', createdAt: 1, width: 2, height: 2, items: [item('a', 0, 0), item('b', 1, 1)] };
     savePrefabs([prefab], memory);
-    expect(loadPrefabs(memory)).toEqual([prefab]);
+    expect(loadPrefabs(memory)).toEqual([{
+      ...prefab,
+      version: 2,
+      origin: { x: 0, y: 0 },
+      memberOffsets: { a: { x: 0, y: 0 }, b: { x: 1, y: 1 } },
+    }]);
     expect(memory.memory.has('pixelworld:interior-prefabs:v1')).toBe(true);
   });
 
@@ -315,6 +475,19 @@ describe('interior prefab and room clipboard store', () => {
     expect(result.accepted).toBe(true);
     expect(result.layout.map(({ point }) => point)).toEqual([{ x: 4, y: 3.75 }, { x: 5.5, y: 4 }]);
     expect(new Set(result.layout.map(({ id }) => id)).size).toBe(2);
+  });
+
+  it('rejects a prefab whose blocking member collides with destination furniture', () => {
+    const existing = item('existing-blocker', 4, 4, ['terminal']);
+    const prefab: FurniturePrefab = {
+      id: 'blocking-kit', name: 'Blocking kit', createdAt: 1, width: 2, height: 1,
+      items: [item('blocking-member', 0, 0, ['terminal']), item('decor-member', 2, 0)],
+    };
+
+    expect(placePrefab(room, [existing], prefab, { x: 4, y: 4 }, 55)).toEqual({
+      accepted: false,
+      layout: [existing],
+    });
   });
 
   it('atomically remaps a prefab desk/surface support relationship to fresh ids', () => {

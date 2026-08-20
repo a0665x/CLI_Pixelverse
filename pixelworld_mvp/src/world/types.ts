@@ -86,11 +86,15 @@ export interface FurnitureDefinition {
   supportedByIds?: string[];
 }
 export interface FurniturePrefab {
+  /** User-created groups use v2 canonical origin/member offsets. Omitted only by built-ins and legacy callers. */
+  version?: 2;
   id: string;
   name: string;
   createdAt: number;
   width: number;
   height: number;
+  origin?: GridPoint;
+  memberOffsets?: Record<string, GridPoint>;
   items: FurnitureDefinition[];
 }
 export interface OfficePrefabDefinition extends FurniturePrefab {

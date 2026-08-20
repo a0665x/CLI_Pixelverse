@@ -142,6 +142,21 @@ describe('office prefab geometry', () => {
     expect(placedLamp?.supportedByIds).toEqual([placedDesk?.id]);
   });
 
+  it('rejects an office prefab whose blocking member collides with destination furniture', () => {
+    const collisionPrefab: OfficePrefabDefinition = {
+      ...samplePrefab,
+      id: 'collision-prefab',
+      hookActions: [],
+      interactionAnchors: [],
+      items: [blocker('new-blocker', 0, 0)],
+    };
+
+    expect(placeOfficePrefab(room, [blocker('existing-blocker', 2, 2)], collisionPrefab, { x: 2, y: 2 }, 55)).toMatchObject({
+      accepted: false,
+      diagnostics: ['overlap'],
+    });
+  });
+
   it('requires a two-cell entrance/main aisle but permits one-cell branches to Hook anchors', () => {
     const oneCellChoke = [2, 3, 4].flatMap((y) => [blocker(`left-${y}`, 2, y), blocker(`right-${y}`, 4, y)]);
     const twoCellAisle = [2, 3, 4].map((y) => blocker(`far-left-${y}`, 1, y));
