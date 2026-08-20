@@ -86,3 +86,21 @@ Runtime result: exit `0`, targeting `http://127.0.0.1:4568/hook`. The command wr
 ## Remaining concern
 
 Only the optional concurrent-run nonce Minor from independent review remains; the required single-run live acceptance is verified.
+
+## Async relay review follow-up
+
+An external reviewer identified that bridge `/hook` acknowledges queue admission before its worker necessarily writes the final main-agent transition to `/api/world`. The prior flow posted `agent:end` and captured immediately, so it could reject a valid but delayed run.
+
+Execution-level RED used a copied `run.sh`, a delayed fake relay, the real trajectory renderer, and real artifact validation. The relay returned success immediately but withheld the fresh `henry-main clone_bay -> standby_dock` event for the first two world snapshots; the command failed before polling existed. A second never-delivered fixture proved the missing bounded-timeout diagnostic.
+
+GREEN adds condition-based polling for the exact post-baseline main return evidence, including source/destination rooms, positive recorded coordinate displacement, and event freshness. It remains bounded by `PIXELVERSE_TEST_HOOK_EVIDENCE_TIMEOUT`, reports the exact awaited route on timeout, and reports snapshot transport errors separately. The delayed and timeout execution tests both pass without relying on source-string-only or fixed-sleep assertions.
+
+Verification after the async fix:
+
+```text
+python3 -m pytest -q tests/test_hermes_integration.py tests/test_fastapi_service.py tests/test_command_deck_hook_smoke.py tests/test_codex_pixelverse_hook.py
+....................................................                     [100%]
+52 passed in 6.25s
+```
+
+`bash -n run.sh` and `git diff --check` also passed. Independent internal re-review verdict: spec compliance **PASS**, code quality **APPROVE**, Critical 0, Important 0. Reviewer Minor: timeout/interval environment overrides are not validated against non-finite or non-positive values; documented defaults remain bounded. The earlier concurrent fixed-ID Minor also remains nonblocking.

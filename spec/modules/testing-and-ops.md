@@ -201,6 +201,8 @@ local offline agent 可在 timeline 手動刪除；server 會拒絕刪除仍在�
 
 `test-hook` 是 hard acceptance gate：bridge/API event 無法送達、預期 agent 缺失、room sequence 不符、runtime event id 缺失、座標沒有正向位移，或 route 只有單點時都會以 non-zero 結束。執行前會記錄目前最大 server event id，只有本次執行之後產生的 evidence 才能通過，舊 snapshot 不可 false-pass；direct/container curl 也都有 connect/overall timeout，避免 transport stall 無限等待。`clone_bay` 必須同時驗證主代理與 `synthetic-subagent-1`，不能以文字或 room label 變更替代 movement evidence。
 
+Bridge `/hook` 的 HTTP 200 只代表 event 已進入非同步 relay queue，不代表 `/api/world` 已套用完成。送出 final `agent:end` 後，`test-hook` 會在 bounded deadline 內輪詢 `/api/world`，直到看到本次 baseline event id 之後、`henry-main` 從 scenario target room 回到 `standby_dock` 的正向座標位移 evidence，才進入 snapshot renderer acceptance。可用 `PIXELVERSE_TEST_HOOK_EVIDENCE_TIMEOUT` / `PIXELVERSE_TEST_HOOK_EVIDENCE_INTERVAL` 調整 deadline 與 poll interval；timeout 或 snapshot transport error 都必須 non-zero 且顯示等待的 exact route。
+
 `test-hook`、status 與其他 runtime commands 會同時從 `.pixelverse-service/compose.env` 載入已儲存的 `PIXELVERSE_PORT` 與 `PIXELVERSE_BRIDGE_PORT`；shell 顯式環境變數仍優先。這可確保重新開 shell 後的 smoke command 連到實際 compose host ports，而不是退回 5660/4567 defaults。
 
 ## 9. 驗證標準

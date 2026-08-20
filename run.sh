@@ -1356,6 +1356,64 @@ capture_world_snapshot() {
     curl -fsS --connect-timeout "$connect_timeout" --max-time "$max_time" "$snapshot_url" > "$output"
 }
 
+world_snapshot_has_route_evidence() {
+  local agent_id="$1"
+  local from_room="$2"
+  local to_room="$3"
+  local minimum_event_id="$4"
+  python3 -c '
+import json, math, sys
+
+snapshot_path, agent_id, from_room, to_room, minimum_event_id = sys.argv[1:]
+with open(snapshot_path, encoding="utf-8") as handle:
+    snapshot = json.load(handle)
+
+def matches(event):
+    payload = event.get("payload") or {}
+    if payload.get("agent") != agent_id:
+        return False
+    evidence = payload.get("route_evidence") or (payload.get("action") or {}).get("route_evidence") or {}
+    start = evidence.get("from_position") or {}
+    end = evidence.get("to_position") or {}
+    displacement = math.dist((start.get("x", 0), start.get("y", 0)), (end.get("x", 0), end.get("y", 0)))
+    return (
+        int(evidence.get("event_id") or 0) >= int(minimum_event_id)
+        and evidence.get("from_room") == from_room
+        and evidence.get("to_room") == to_room
+        and evidence.get("position_changed") is True
+        and displacement > 0
+    )
+
+raise SystemExit(0 if any(matches(event) for event in snapshot.get("events", [])) else 1)
+' "$ROOT/tmp/latest_world_snapshot.json" "$agent_id" "$from_room" "$to_room" "$minimum_event_id"
+}
+
+wait_for_route_evidence() {
+  local agent_id="$1"
+  local from_room="$2"
+  local to_room="$3"
+  local minimum_event_id="$4"
+  local timeout_seconds="${PIXELVERSE_TEST_HOOK_EVIDENCE_TIMEOUT:-15}"
+  local interval_seconds="${PIXELVERSE_TEST_HOOK_EVIDENCE_INTERVAL:-0.25}"
+  local deadline
+  deadline="$(python3 -c 'import sys, time; print(time.monotonic() + float(sys.argv[1]))' "$timeout_seconds")"
+
+  while true; do
+    if ! capture_world_snapshot; then
+      echo "Transport error while waiting for current main-agent route evidence: ${from_room} -> ${to_room}" >&2
+      return 1
+    fi
+    if world_snapshot_has_route_evidence "$agent_id" "$from_room" "$to_room" "$minimum_event_id"; then
+      return 0
+    fi
+    if ! python3 -c 'import sys, time; raise SystemExit(0 if time.monotonic() < float(sys.argv[1]) else 1)' "$deadline"; then
+      echo "Timed out waiting for current main-agent route evidence: ${from_room} -> ${to_room}" >&2
+      return 1
+    fi
+    sleep "$interval_seconds"
+  done
+}
+
 post_json() {
   local url="$1"
   local payload="$2"
@@ -1471,7 +1529,9 @@ test_hook() {
     echo "Unable to deliver synthetic hook completion event." >&2
     return 1
   fi
-  capture_world_snapshot
+  if ! wait_for_route_evidence "henry-main" "$target_room" "standby_dock" "$minimum_event_id"; then
+    return 1
+  fi
   render_latest_trajectory "$target_room"
   echo "Hook movement evidence accepted: ${target_room} route and coordinate checks passed."
   echo "Synthetic hook sequence sent. Check UI or /api/world events."
