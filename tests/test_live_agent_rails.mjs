@@ -10,6 +10,7 @@ import {
   normalizeVisibleAgents,
   resolvedAgentActivity,
 } from '../public/live_agent_rails.mjs';
+import { buildCommandDeckModel } from '../public/command_deck_model.mjs';
 
 const agents = [
   { agent: 'sub-b', role: 'subagent', state: 'offline', pixel_state: 'sleeping', room_key: 'rest-cabin', task: '' },
@@ -24,6 +25,18 @@ test('live agent rail retains working, idle, and offline agents in stable identi
   assert.match(rows[0].path, /^M /);
   assert.equal(rows[2].tone, 'offline');
   assert.match(rows[2].path, /L 176,16$/);
+});
+
+test('live agent rail consumes authoritative model agents without re-inferring activity', () => {
+  const model = buildCommandDeckModel({ agents: [{
+    agent: 'main', role: 'main_agent', state: 'working', pixel_state: 'idle',
+    room_key: 'standby_dock', task: 'CLI session running',
+  }] });
+  const [row] = buildLiveAgentRail(model.agents, { states: {}, rooms: {} }, 100);
+  assert.equal(row.id, 'main');
+  assert.equal(row.hook, model.agents[0].hookSemantic);
+  assert.equal(row.tone, model.agents[0].tone);
+  assert.equal(row.room, model.agents[0].targetRoom);
 });
 
 test('agent rail pagination is deterministic and clamps when agents disappear', () => {

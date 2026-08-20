@@ -1,4 +1,11 @@
 import { buildHeartbeatPath } from './agent_timeline_graphs.mjs';
+import {
+  normalizeAgentForWorld,
+  normalizeVisibleAgents,
+  resolvedAgentActivity,
+} from './command_deck_model.mjs';
+
+export { normalizeAgentForWorld, normalizeVisibleAgents, resolvedAgentActivity };
 
 const byIdentity = (first = {}, second = {}) => {
   const firstMain = first.role === 'main_agent' ? 0 : 1;
@@ -6,88 +13,18 @@ const byIdentity = (first = {}, second = {}) => {
   return firstMain - secondMain || String(first.agent || first.id || '').localeCompare(String(second.agent || second.id || ''));
 };
 
-const heartbeatState = (agent = {}) => {
-  const state = String(agent.state || '').toLowerCase();
-  const pixelState = String(agent.pixel_state || '').toLowerCase();
-  if (agent.state === 'offline' || agent.is_stale) return { tone: 'offline', state: 'offline', load: 0 };
-  if (['thinking', 'planning', 'reading_files', 'browsing'].includes(pixelState)) {
-    return { tone: 'search', state: 'thinking', load: .62 };
-  }
-  if (['tool_call', 'invoking_skill', 'executing', 'responding', 'self_healing', 'editing_files', 'shell_command', 'external_tool', 'collaborating'].includes(pixelState)) {
-    return { tone: 'work', state: 'working', load: .94 };
-  }
-  if (['thinking', 'planning'].includes(state)) {
-    return { tone: 'search', state: 'thinking', load: .62 };
-  }
-  if (['working', 'executing', 'responding'].includes(state)) {
-    return { tone: 'work', state: 'working', load: .94 };
-  }
-  if (['idle', 'sleeping'].includes(pixelState) || ['idle', 'resting', 'waiting'].includes(state)) {
-    return { tone: 'rest', state: 'idle', load: .18 };
-  }
-  return { tone: 'work', state: agent.state || 'working', load: .94 };
-};
-
 const displayName = (agent = {}) => agent.full_name || agent.name || agent.agent || 'Agent';
-
-const sourceIdentity = (agent = {}) => String(agent.source || agent.agent_kind || '');
-
-export function normalizeVisibleAgents(snapshot = {}) {
-  const agents = Array.isArray(snapshot.agents) ? snapshot.agents : [];
-  const attachedSources = new Set(agents
-    .filter((agent) => !agent.source_placeholder
-      && !agent.is_stale
-      && agent.state !== 'offline'
-      && (agent.connection_status === 'attached' || agent.process_id || agent.state === 'working'))
-    .map(sourceIdentity)
-    .filter(Boolean));
-  return agents.filter((agent) => !(
-    agent.source_placeholder
-    && (agent.is_stale || agent.connection_status === 'awaiting_attach')
-    && attachedSources.has(sourceIdentity(agent))
-  ));
-}
-
-export function resolvedAgentActivity(agent = {}) {
-  const heartbeat = heartbeatState(agent);
-  const semantic = heartbeat.tone === 'search' ? 'search' : heartbeat.tone === 'work' ? 'work' : 'rest';
-  const restRooms = new Set(['standby_dock', 'offline_corner', 'rest-cabin']);
-  let roomKey = agent.room_key || '';
-  if (semantic === 'work' && restRooms.has(roomKey)) roomKey = 'response_studio';
-  if (semantic === 'search' && restRooms.has(roomKey)) roomKey = 'think_lab';
-  if (!roomKey) roomKey = semantic === 'work' ? 'response_studio' : semantic === 'search' ? 'think_lab' : 'standby_dock';
-  return { state: heartbeat.state, tone: heartbeat.tone, load: heartbeat.load, semantic, roomKey };
-}
-
-export function normalizeAgentForWorld(agent = {}) {
-  const activity = resolvedAgentActivity(agent);
-  const currentPixelState = String(agent.pixel_state || '').toLowerCase();
-  const compatibleStates = {
-    work: new Set(['tool_call', 'invoking_skill', 'executing', 'responding', 'self_healing', 'editing_files', 'shell_command']),
-    search: new Set(['thinking', 'planning', 'reading_files', 'browsing']),
-    rest: new Set(['idle', 'sleeping', 'offline']),
-  };
-  const pixelState = activity.state === 'offline'
-    ? 'offline'
-    : compatibleStates[activity.semantic].has(currentPixelState)
-      ? currentPixelState
-      : activity.semantic === 'search'
-        ? 'thinking'
-        : activity.semantic === 'work'
-          ? 'responding'
-          : 'idle';
-  return { ...agent, state: activity.state, pixel_state: pixelState, room_key: activity.roomKey };
-}
 
 export function buildLiveAgentRail(snapshot = {}, locale = {}, nowMs = Date.now()) {
   const rooms = locale.rooms || {};
   const states = locale.states || {};
-  return normalizeVisibleAgents(snapshot).sort(byIdentity).map((agent) => {
+  const source = Array.isArray(snapshot) ? snapshot : normalizeVisibleAgents(snapshot);
+  return [...source].sort(byIdentity).map((agent) => {
     const heartbeat = resolvedAgentActivity(agent);
     return {
-      id: agent.agent,
+      id: agent.id || agent.agent,
       name: displayName(agent),
-      state: agent.state || 'idle',
+      state: heartbeat.state || agent.state || 'idle',
       stateLabel: states[agent.state] || agent.state || 'idle',
       room: rooms[heartbeat.roomKey]?.name || agent.room_label || heartbeat.roomKey || '',
       hook: heartbeat.semantic,
@@ -115,20 +52,6 @@ export function liveAgentPage(agents = [], page = 0, pageSize = 4) {
     canNext: resolved + 1 < pageCount,
   };
 }
-
-const semanticFor = (agent = {}) => {
-  const state = String(agent.state || '').toLowerCase();
-  const pixelState = String(agent.pixel_state || '').toLowerCase();
-  const task = String(agent.task || '').toLowerCase();
-  if (state === 'offline' || agent.is_stale) return 'rest';
-  if (/(think|plan|search|read|ponder|web)/.test(`${pixelState} ${state} ${task}`)
-    && !['working', 'executing', 'responding'].includes(state)) return 'search';
-  if (['working', 'executing', 'responding'].includes(state)
-    || /(tool|edit|repair|dispatch|respond|execute)/.test(`${pixelState} ${task}`)) return 'work';
-  if (/(idle|sleep|rest|waiting|blocked)/.test(`${pixelState} ${state}`)) return 'rest';
-  if (/(think|plan|search|read|ponder|web)/.test(`${pixelState} ${state} ${task}`)) return 'search';
-  return 'work';
-};
 
 const BUILDING_BY_SEMANTIC = {
   rest: 'Rest Cabin',
