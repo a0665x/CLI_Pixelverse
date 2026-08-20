@@ -9,6 +9,9 @@ import {
 } from './kenney_assets.mjs';
 import {
   activityHintForLocale,
+  agentTaskText,
+  agentToolText,
+  agentTooltipText,
   ambientText,
   furnitureCoordinateText,
   furnitureLabelForLocale,
@@ -61,6 +64,7 @@ import {
 } from './world_motion.mjs';
 import { getAgentPose, INTERACTION_OBJECT_ICONS, selectInteractionTarget } from './agent_pose.mjs';
 import { buildAgentDialog, buildAgentSpeech } from './agent_dialog.mjs';
+import { createCommandDeckLocaleController } from './command_deck_locale_controller.mjs';
 import { clampCameraOffset, centeredCamera, clampZoom, nextDraggedOffset, nextZoomState } from './ui_state.mjs';
 import { CORRIDOR_RECTS, GLOBAL_MAP, HOUSE_DOORS, loadGlobalMap, roomMapCopy, ROOM_LAYOUTS, ROOM_STATE_GROUPS } from './house_layout.mjs';
 import { hookStateRoutes } from './hook_state_map.mjs';
@@ -753,7 +757,7 @@ function dashboardEventCard(item = {}) {
 function dashboardAgentCard(agent = {}) {
   const room = getRoomCopy(agent.room_key, currentLocale);
   const roomName = room.name || agent.room_label || strings().unknownRoom;
-  const detail = localizeTask(agent.task || agent.activity_hint || '') || strings().idleFallback;
+  const detail = agentTaskText(agent) || strings().idleFallback;
   return dashboardCardItemMarkup({
     title: displayAgentName(agent),
     meta: `${roleLabel(agent.role)} · ${stateText(agent.state)} · ${roomName}`,
@@ -978,7 +982,7 @@ function updateCurrentAgentState(snapshot = {}) {
   }
   const room = getRoomCopy(mainAgent.room_key, currentLocale);
   const roomName = room.name || mainAgent.room_label || copy.unknownRoom;
-  const task = localizeTask(mainAgent.task || mainAgent.activity_hint || '');
+  const task = agentTaskText(mainAgent);
   updateLiveRegionText(dom.currentAgentState, [
     displayAgentName(mainAgent),
     stateText(mainAgent.state),
@@ -1399,7 +1403,7 @@ function renderDistricts() {
       door.dataset.side = config.side || 'bottom';
     }
     door.style.backgroundImage = `url("${getAppleDogDoorSprite() || getKenneyDoorSprite()}")`;
-    door.title = `${KENNEY_PACK.name} / AppleDog door tile`;
+    door.title = commandText('commandDeck.accessibility.appleDogDoor');
   });
 }
 
@@ -1544,7 +1548,8 @@ function renderInspector(agent) {
 
   const room = getRoomCopy(agent.room_key, currentLocale);
   const roomName = room.name || agent.room_label || copy.unknownRoom;
-  const currentTask = localizeTask(agent.task) || agent.activity_hint || copy.idleFallback;
+  const currentTask = agentTaskText(agent) || copy.idleFallback;
+  const toolPill = agentToolText(agent, currentLocale) || agentTaskText(agent);
   dom.inspectorBody.className = '';
   dom.inspectorBody.innerHTML = `
     <div class="inspector-card">
@@ -1555,7 +1560,7 @@ function renderInspector(agent) {
       <div class="pill-row">
         <span class="pill">${agent.room_icon || '📍'} ${roomName}</span>
         <span class="pill">${stateText(agent.state)}</span>
-        ${agent.tool_label || agent.task ? `<span class="pill">${agent.tool_icon || '✨'} ${localizeTask(agent.task || agent.tool_label)}</span>` : ''}
+        ${toolPill ? `<span class="pill">${agent.tool_icon || '✨'} ${toolPill}</span>` : ''}
         ${agent.session_id ? `<span class="pill">${copy.sessionLabel(agent.session_id)}</span>` : ''}
       </div>
       <div class="stat-grid">
@@ -1695,7 +1700,7 @@ function decorateAgent(view) {
   const agent = view.data;
   const room = getRoomCopy(agent.room_key, currentLocale);
   const roomName = room.name || agent.room_label || strings().unknownRoom;
-  const displayTask = short(localizeTask(agent.task) || agent.activity_hint || strings().idleFallback, 28);
+  const displayTask = short(agentTaskText(agent) || strings().idleFallback, 28);
   const speechEl = view.el.querySelector('.agent-speech');
   const beamEl = view.el.querySelector('.beam');
   const objectChipEl = view.el.querySelector('.object-chip');
@@ -1727,7 +1732,7 @@ function decorateAgent(view) {
   objectChipEl.classList.toggle('show', !!interaction?.propType && !view.isMoving);
   roleChipEl.textContent = roleChip(agent.role);
   toolChipEl.textContent = agent.tool_icon || eventVisual.icon || '✨';
-  toolChipEl.title = localizeTask(agent.task || agent.tool_label || '') || strings().idleFallback;
+  toolChipEl.title = agentTooltipText(agent, currentLocale) || strings().idleFallback;
   poseChipEl.textContent = pose.icon || '✨';
   poseChipEl.title = poseLabelForLocale(currentLocale, pose.pose);
   eventChipEl.textContent = `${eventVisual.icon} ${short(eventVisual.label, 16)}`;
@@ -2405,7 +2410,7 @@ function renderLiveMonitoring(snapshot = {}, nowMs = Date.now()) {
   const roomCopy = getRoomCopy(hook.roomKey, currentLocale);
   if (dom.hookLiveSemantic) dom.hookLiveSemantic.textContent = commandText(`commandDeck.hook.semantic.${hook.semantic}`);
   if (dom.hookLiveBuilding) dom.hookLiveBuilding.textContent = roomCopy.name || hook.building;
-  if (dom.hookLiveActivity) dom.hookLiveActivity.textContent = localizeTask(hook.activity) || strings().idleFallback;
+  if (dom.hookLiveActivity) dom.hookLiveActivity.textContent = String(hook.activity || strings().idleFallback);
   if (dom.hookLiveAgent) dom.hookLiveAgent.textContent = hook.agentId;
   if (dom.hookLiveChannels) {
     const channels = hookChannelsForAgents(snapshot.agents, currentLocale, selectedAgentId, nowMs);
@@ -2423,7 +2428,7 @@ function renderLiveMonitoring(snapshot = {}, nowMs = Date.now()) {
       const count = document.createElement('output'); count.textContent = String(channel.count);
       header.append(label, count);
       const activity = document.createElement('p');
-      activity.textContent = localizeTask(channel.activity) || strings().idleFallback;
+      activity.textContent = String(channel.activity || strings().idleFallback);
       const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
       svg.setAttribute('class', 'hook-live-ecg');
       svg.setAttribute('viewBox', '0 0 176 32');
@@ -2955,21 +2960,22 @@ function setupCameraPan() {
   });
 }
 
-function setLocale(locale) {
-  currentLocale = normalizeLocale(locale);
-  localStorage.setItem('pixelverse:locale', currentLocale);
-  applyStaticCopy();
-  pixelworldBridge.setLocale(currentLocale);
-  if (currentSnapshot) renderSnapshot(currentSnapshot);
-  if (currentMissionTrace) renderMissionTrace(currentMissionTrace, { structureChanged: true });
-  if (currentSnapshot) renderLiveMonitoring(currentSnapshot);
-  const resolved = resolveCurrentCommandSelection(currentCommandSelection);
-  renderInspector(resolved?.agent || null);
-}
-
-dom.languageSelect?.addEventListener('change', (event) => {
-  setLocale(event.target.value);
+const localeController = createCommandDeckLocaleController({
+  initialLocale: currentLocale,
+  localeSelect: dom.languageSelect,
+  bridge: pixelworldBridge,
+  getSnapshot: () => currentSnapshot,
+  getMissionTrace: () => currentMissionTrace,
+  getSelection: () => currentCommandSelection,
+  onLocale: (locale) => { currentLocale = locale; },
+  applyStaticCopy,
+  renderSnapshot,
+  renderMissionTrace,
+  renderLiveMonitoring,
+  resolveSelection: resolveCurrentCommandSelection,
+  renderInspector,
 });
+localeController.attach();
 
 dom.exposureSelect?.addEventListener('change', (event) => {
   setExposureMode(event.target.value);

@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"></head><body>
+  <select id="locale-select" aria-label="language selector">
+    <option value="en-US">English</option><option value="zh-TW">繁中</option>
+    <option value="ja-JP">日本語</option><option value="ko-KR">한국어</option>
+  </select>
+  <div id="situation" aria-live="polite"></div><div id="agent-rail"></div><div id="hook-rail"></div>
+  <div id="help"></div><div id="live" aria-live="polite"></div><div id="selection"></div>
+  <div id="card"></div><div id="tooltip"></div><div id="speech"></div><div id="dialog"></div>
+  <div id="trace"></div><div id="editor"></div><div id="coordinate"></div><div id="inspector"></div>
+  <div id="door"></div><iframe id="pixelworld" title="Pixelworld"></iframe><pre id="result" data-status="running"></pre>
+  <script type="module">
+    import { createCommandDeckLocaleController } from '/public/command_deck_locale_controller.mjs';
+    import { attachPixelworldBridge, createPixelworldBridge } from '/public/pixelworld_embed.mjs';
+    import { agentTaskText, agentToolText, agentTooltipText, furnitureCoordinateText, timelineItemForLocale, uiText } from '/public/ui_strings.mjs';
+    import { buildAgentDialog, buildAgentSpeech } from '/public/agent_dialog.mjs';
+
+    const result = document.querySelector('#result');
+    const locales = ['en-US', 'zh-TW', 'ja-JP', 'ko-KR'];
+    const agent = { name: 'Henry', role: 'main_agent', state: 'working', room_key: 'code_workbench', task: 'read_file', tool_label: 'read_file', activity_hint: '' };
+    const snapshot = { agents: [agent], hooks: [{ name: 'Hook' }] };
+    const trace = { lanes: [{ event_name: 'main.tool.started', tool_name: 'read_file', preview: 'RAW_PREVIEW_7b42' }] };
+    const selection = { kind: 'agent', id: 'henry' };
+    const frame = document.querySelector('#pixelworld');
+    const receivedLocales = [];
+    const bridge = createPixelworldBridge({
+      frame, origin: location.origin,
+      onCutawayStateChange(open) { document.body.dataset.pixelworldCutaway = open ? 'open' : 'closed'; },
+    });
+    attachPixelworldBridge({ frame, messageTarget: window, bridge, origin: location.origin });
+    window.addEventListener('message', (event) => {
+      if (event.origin === location.origin && event.data?.type === 'fixture.locale.received') receivedLocales.push(event.data.locale);
+    });
+    frame.src = '/tests/fixtures/pixelworld_locale_receiver.html';
+
+    let locale = 'en-US';
+    const node = (id) => document.querySelector(`#${id}`);
+    const renderStatic = () => {
+      document.documentElement.lang = locale;
+      node('help').textContent = uiText(locale, 'commandDeck.hook.guide');
+      node('editor').textContent = uiText(locale, 'commandDeck.layout.controlsLabel');
+      node('coordinate').textContent = furnitureCoordinateText(locale, { room: 'Workshop', x: '42.0', y: '18.5', snap: '0.5', scale: '125%', propType: 'terminal' });
+      node('door').title = uiText(locale, 'commandDeck.accessibility.appleDogDoor');
+      node('door').setAttribute('aria-label', node('door').title);
+    };
+    const renderSnapshot = () => {
+      const raw = agentTaskText(agent);
+      node('situation').textContent = `${uiText(locale, 'commandDeck.inspector.currentTask')}: ${raw}`;
+      node('selection').textContent = uiText(locale, 'commandDeck.inspector.selectAgent');
+      node('selection').setAttribute('aria-label', node('selection').textContent);
+      node('card').textContent = `${uiText(locale, 'commandDeck.rails.agentsTitle')}: ${raw}`;
+      node('tooltip').textContent = agentTooltipText(agent, locale);
+      node('speech').textContent = buildAgentSpeech(agent, locale).summary;
+      node('dialog').textContent = buildAgentDialog(agent, locale).rows.map(({ label, value }) => `${label}:${value}`).join('|');
+    };
+    const renderMissionTrace = () => {
+      const item = timelineItemForLocale(locale, trace.lanes[0], { toolLabel: agentToolText({ tool_name: 'read_file' }, locale) });
+      node('trace').textContent = `${item.label}: ${item.message}`;
+    };
+    const renderLiveMonitoring = () => {
+      node('agent-rail').textContent = `${uiText(locale, 'commandDeck.rails.agentsTitle')}: ${agentTaskText(agent)}`;
+      node('hook-rail').textContent = `${uiText(locale, 'commandDeck.rails.hookChannelsLabel')}: Hook`;
+      node('live').textContent = `${uiText(locale, 'commandDeck.timeline.live')}: ${agentTaskText(agent)}`;
+    };
+    const renderInspector = (selected) => { node('inspector').textContent = `${uiText(locale, 'commandDeck.inspector.title')}: ${agentTaskText(selected)}`; };
+    const controller = createCommandDeckLocaleController({
+      initialLocale: locale, localeSelect: node('locale-select'), bridge,
+      getSnapshot: () => snapshot, getMissionTrace: () => trace, getSelection: () => selection,
+      onLocale: (value) => { locale = value; }, applyStaticCopy: renderStatic, renderSnapshot,
+      renderMissionTrace, renderLiveMonitoring, resolveSelection: () => ({ agent }), renderInspector,
+    });
+    controller.attach();
+
+    const wait = (predicate, timeout = 2000) => new Promise((resolve, reject) => {
+      const started = performance.now(); const tick = () => predicate() ? resolve() : performance.now() - started > timeout ? reject(new Error('timeout')) : setTimeout(tick, 10); tick();
+    });
+    try {
+      await wait(() => document.body.dataset.pixelworldCutaway === 'open');
+      const rendered = {};
+      for (const next of locales) {
+        node('locale-select').value = next;
+        node('locale-select').dispatchEvent(new Event('change', { bubbles: true }));
+        await wait(() => receivedLocales.includes(next));
+        rendered[next] = Object.fromEntries(['situation','agent-rail','hook-rail','help','live','selection','card','tooltip','speech','dialog','trace','editor','coordinate','inspector','door'].map((id) => [id, { text: node(id).textContent, title: node(id).title, aria: node(id).getAttribute('aria-label') }]));
+      }
+      const surfaces = Object.keys(rendered['en-US']);
+      for (const surface of surfaces) {
+        if (new Set(locales.map((key) => JSON.stringify(rendered[key][surface]))).size !== 4) throw new Error(`${surface} did not rerender four ways`);
+      }
+      for (const next of locales) {
+        for (const path of ['situation','agent-rail','live','card','tooltip','speech','dialog','inspector']) {
+          if (!rendered[next][path].text.includes('read_file')) throw new Error(`${path} changed raw task for ${next}`);
+        }
+        if (!rendered[next].trace.text.includes('RAW_PREVIEW_7b42')) throw new Error(`trace changed preview for ${next}`);
+      }
+      if (document.body.dataset.pixelworldCutaway !== 'open' || receivedLocales.length < 4) throw new Error('open cutaway locale route not observed');
+      result.dataset.status = 'pass'; result.textContent = JSON.stringify({ rendered, receivedLocales });
+    } catch (error) { result.dataset.status = 'fail'; result.textContent = error.stack; }
+  </script>
+</body></html>

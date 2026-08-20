@@ -107,6 +107,7 @@ const requiredKeys = [
   'commandDeck.accessibility.pose',
   'commandDeck.accessibility.interaction',
   'commandDeck.accessibility.poseFallback',
+  'commandDeck.accessibility.appleDogDoor',
   'commandDeck.timelineDetail.labels.reasoning',
   'commandDeck.timelineDetail.labels.toolStart',
   'commandDeck.timelineDetail.labels.toolDone',
@@ -205,61 +206,19 @@ test('exports production formatters used by active rendered locale surfaces', ()
   ]) assert.equal(typeof localeModule[name], 'function', `${name} must be exported`);
 });
 
-class MountedNode {
-  constructor() { this.textContent = ''; this.title = ''; this.attributes = new Map(); }
-  setAttribute(name, value) { this.attributes.set(name, String(value)); }
-  getAttribute(name) { return this.attributes.get(name) ?? null; }
-}
+test('AppleDog door accessibility title is catalog-owned in all locales', async () => {
+  const app = await readFile(new URL('../public/app.mjs', import.meta.url), 'utf8');
+  assert.doesNotMatch(app, /AppleDog door tile/);
+  assert.match(app, /commandDeck\.accessibility\.appleDogDoor/);
+  assert.equal(new Set(locales.map((locale) => localeModule.uiText(locale, 'commandDeck.accessibility.appleDogDoor'))).size, 4);
+});
 
-function mountedCommandDeckHarness() {
-  const nodes = Object.fromEntries([
-    'inspector', 'selection', 'editor', 'coordinate', 'trace', 'pose', 'interaction', 'world', 'diagnostics',
-  ].map((name) => [name, new MountedNode()]));
-  const state = {
-    snapshot: { agent: { name: 'Henry', state: 'working', room_key: 'code_workbench', task: 'CUSTOM_TASK_9f31' } },
-    selection: { name: 'Henry' },
-    editor: { room: 'Workshop', x: '42.0', y: '18.5', snap: '0.5', scale: '125%', propType: 'terminal' },
-    event: { event_name: 'main.tool.started', tool_name: 'read_file', preview: 'RAW_PREVIEW_7b42' },
-    interaction: { propType: 'terminal', propLabel: 'terminal', pose: { pose: 'terminal' } },
-  };
-  const render = (locale) => {
-    const text = (key, params = {}) => localeModule.uiText(locale, key, params);
-    const activity = localeModule.activityHintForLocale(locale, state.snapshot.agent, 'Code Workbench', state.snapshot.agent.task);
-    nodes.inspector.textContent = `${text('commandDeck.inspector.currentTask')}: ${state.snapshot.agent.task} · ${activity}`;
-    nodes.selection.textContent = `${text('commandDeck.inspector.selectAgent')}: ${state.selection.name}`;
-    nodes.selection.setAttribute('aria-label', nodes.selection.textContent);
-    nodes.editor.textContent = text('commandDeck.layout.controlsLabel');
-    nodes.coordinate.textContent = localeModule.furnitureCoordinateText(locale, state.editor);
-    const timeline = localeModule.timelineItemForLocale(locale, state.event, { toolLabel: 'Read File' });
-    nodes.trace.textContent = `${timeline.label} · ${timeline.message}`;
-    nodes.pose.title = localeModule.poseLabelForLocale(locale, 'terminal');
-    nodes.pose.setAttribute('aria-label', text('commandDeck.accessibility.pose', { pose: nodes.pose.title }));
-    nodes.interaction.title = localeModule.interactionText(locale, state.interaction);
-    nodes.interaction.setAttribute('aria-label', text('commandDeck.accessibility.interaction', { interaction: nodes.interaction.title }));
-    nodes.world.setAttribute('aria-label', text('commandDeck.world.label'));
-    nodes.diagnostics.textContent = `${text('commandDeck.diagnostics.label')}: ${text('commandDeck.diagnostics.explanation')}`;
-    return Object.fromEntries(Object.entries(nodes).map(([name, node]) => [name, {
-      text: node.textContent, title: node.title, aria: node.getAttribute('aria-label'),
-    }]));
-  };
-  return { nodes, state, render };
-}
-
-test('mounted populated command deck switches every active visible and accessibility surface immediately', () => {
-  if (typeof localeModule.interactionText !== 'function') return;
-  const harness = mountedCommandDeckHarness();
-  const rendered = Object.fromEntries(locales.map((locale) => [locale, harness.render(locale)]));
-  const activeSurfaces = ['inspector', 'selection', 'editor', 'coordinate', 'trace', 'pose', 'interaction', 'world', 'diagnostics'];
-  for (const surface of activeSurfaces) {
-    assert.equal(new Set(locales.map((locale) => JSON.stringify(rendered[locale][surface]))).size, 4, `${surface} did not switch four ways`);
-  }
-  for (const locale of locales) {
-    assert.match(rendered[locale].inspector.text, /CUSTOM_TASK_9f31/);
-    assert.match(rendered[locale].trace.text, /RAW_PREVIEW_7b42/);
-    assert.doesNotMatch(rendered[locale].coordinate.text, /\bprop\b|\bscale\b/);
-    assert.doesNotMatch(rendered[locale].pose.title, /^(?:terminal|pose)$/);
-    assert.doesNotMatch(rendered[locale].interaction.title, /\bterminal\b/);
-    assert.ok(rendered[locale].selection.aria);
-    assert.ok(rendered[locale].world.aria);
-  }
+test('production app wires every retained-state rerender through the locale controller', async () => {
+  const app = await readFile(new URL('../public/app.mjs', import.meta.url), 'utf8');
+  const configuration = app.match(/const localeController = createCommandDeckLocaleController\(\{([\s\S]*?)\n\}\);\nlocaleController\.attach\(\);/)?.[1];
+  assert.ok(configuration, 'production locale controller configuration is missing');
+  for (const callback of [
+    'applyStaticCopy', 'renderSnapshot', 'renderMissionTrace', 'renderLiveMonitoring',
+    'resolveSelection: resolveCurrentCommandSelection', 'renderInspector',
+  ]) assert.ok(configuration.includes(callback), `production locale controller is missing ${callback}`);
 });

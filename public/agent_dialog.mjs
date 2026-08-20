@@ -1,5 +1,6 @@
 import {
   ambientText,
+  agentTaskText,
   getLocaleStrings,
   getRoomCopy,
   localizeToolSummary,
@@ -16,7 +17,7 @@ function latestAction(agent = {}) {
 }
 
 function taskLabel(agent = {}, locale = 'zh-TW') {
-  return localizeToolSummary(agent.task || agent.tool_label || '', locale) || agent.task || agent.tool_label || '';
+  return agentTaskText(agent) || localizeToolSummary(agent.tool_label || '', locale) || agent.tool_label || '';
 }
 
 function eventPreview(action = {}) {

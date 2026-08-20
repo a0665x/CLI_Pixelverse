@@ -20,7 +20,7 @@ const EN_ACTIVE_SURFACES = {
   activity: { thinking: ({ room }) => `Reasoning quietly inside ${room}`, planning: ({ room }) => `Planning steps inside ${room}`, working: ({ task, room }) => `Using ${task} inside ${room}`, offline: () => 'No fresh heartbeat from the main runtime', waiting: ({ room }) => `Waiting in ${room} for the next task`, external: ({ value }) => `Activity: ${value}` },
   ambient: { planning: ({ task }) => task ? `Plan: ${task}` : 'Planning route…', thinking: ({ task }) => task ? `Think: ${task}` : 'Reasoning quietly', working: ({ task }) => task ? `Doing: ${task}` : 'Running tools', offline: () => 'Signal lost', standby: () => 'Standing by' },
   furniture: { scale: ({ scale }) => `Scale ${scale}`, fallback: 'Furniture', coordinate: ({ label, room, x, y, snap, scale }) => `${label} · ${room} · x ${x}%, y ${y}% · Grid ${snap}% · Scale ${scale}` },
-  accessibility: { pose: ({ pose }) => `${pose} pose`, interaction: ({ interaction }) => `${interaction} interaction`, poseFallback: 'Active' },
+  accessibility: { pose: ({ pose }) => `${pose} pose`, interaction: ({ interaction }) => `${interaction} interaction`, poseFallback: 'Active', appleDogDoor: 'AppleDog room door' },
   timelineDetail: {
     labels: { reasoning: 'Reasoning', toolStart: 'Tool start', toolDone: 'Tool done', toolRoute: 'Tool route', complete: 'Complete', tool: 'Tool', thought: 'Thought', status: 'Status', action: 'Action' },
     messages: { reasoning: ({ value }) => `Reasoning: ${value}`, started: ({ tool, preview }) => `Started ${tool}${preview ? ` | ${preview}` : ''}`, finished: ({ tool, preview }) => `Finished ${tool}${preview ? ` | ${preview}` : ''}`, route: ({ value }) => `Tool route: ${value}`, completed: ({ value }) => `Completed: ${value}`, returned: 'Returned to standby', toolStep: ({ value }) => `Tool step: ${value}`, thought: ({ value }) => `Thinking: ${value}`, status: ({ value }) => `Status: ${value}`, fallback: ({ value }) => `Action: ${value}` },
@@ -32,7 +32,7 @@ const ZH_ACTIVE_SURFACES = {
   activity: { thinking: ({ room }) => `在${room}安靜推理`, planning: ({ room }) => `在${room}規劃步驟`, working: ({ task, room }) => `在${room}執行 ${task}`, offline: () => '主執行環境沒有新的心跳', waiting: ({ room }) => `在${room}等待下一項任務`, external: ({ value }) => `活動：${value}` },
   ambient: { planning: ({ task }) => task ? `規劃：${task}` : '正在拆解需求', thinking: ({ task }) => task ? `思考：${task}` : '正在整理推理', working: ({ task }) => task ? `執行：${task}` : '工具運作中', offline: () => '訊號中斷', standby: () => '待命中' },
   furniture: { scale: ({ scale }) => `縮放 ${scale}`, fallback: '家具', coordinate: ({ label, room, x, y, snap, scale }) => `${label} · ${room} · x ${x}%、y ${y}% · 網格 ${snap}% · 縮放 ${scale}` },
-  accessibility: { pose: ({ pose }) => `${pose}姿勢`, interaction: ({ interaction }) => `互動：${interaction}`, poseFallback: '活動中' },
+  accessibility: { pose: ({ pose }) => `${pose}姿勢`, interaction: ({ interaction }) => `互動：${interaction}`, poseFallback: '活動中', appleDogDoor: 'AppleDog 房間門' },
   timelineDetail: {
     labels: { reasoning: '規劃', toolStart: '工具啟動', toolDone: '工具完成', toolRoute: '工具序列', complete: '完成', tool: '工具', thought: '思考', status: '狀態', action: '動作' },
     messages: { reasoning: ({ value }) => `主代理正在規劃：${value}`, started: ({ tool, preview }) => `開始使用 ${tool}${preview ? `｜${preview}` : ''}`, finished: ({ tool, preview }) => `完成 ${tool}${preview ? `｜${preview}` : ''}`, route: ({ value }) => `目前工具：${value}`, completed: ({ value }) => `已完成：${value}`, returned: '回到待命站', toolStep: ({ value }) => `工具步驟：${value}`, thought: ({ value }) => `思考中：${value}`, status: ({ value }) => `狀態：${value}`, fallback: ({ value }) => `動作：${value}` },
@@ -44,7 +44,7 @@ const JA_ACTIVE_SURFACES = {
   activity: { thinking: ({ room }) => `${room}で静かに推論中`, planning: ({ room }) => `${room}で手順を計画中`, working: ({ task, room }) => `${room}で ${task} を実行中`, offline: () => 'メイン実行環境から新しいハートビートがありません', waiting: ({ room }) => `${room}で次のタスクを待機中`, external: ({ value }) => `活動：${value}` },
   ambient: { planning: ({ task }) => task ? `計画：${task}` : '要件を整理中…', thinking: ({ task }) => task ? `思考：${task}` : '静かに推論中', working: ({ task }) => task ? `実行：${task}` : 'ツールを実行中', offline: () => '通信が途切れました', standby: () => '待機中' },
   furniture: { scale: ({ scale }) => `倍率 ${scale}`, fallback: '家具', coordinate: ({ label, room, x, y, snap, scale }) => `${label}・${room}・x ${x}%、y ${y}%・グリッド ${snap}%・倍率 ${scale}` },
-  accessibility: { pose: ({ pose }) => `${pose}の姿勢`, interaction: ({ interaction }) => `操作：${interaction}`, poseFallback: '活動中' },
+  accessibility: { pose: ({ pose }) => `${pose}の姿勢`, interaction: ({ interaction }) => `操作：${interaction}`, poseFallback: '活動中', appleDogDoor: 'AppleDog の部屋ドア' },
   timelineDetail: {
     labels: { reasoning: '推論', toolStart: 'ツール開始', toolDone: 'ツール完了', toolRoute: 'ツール経路', complete: '完了', tool: 'ツール', thought: '思考', status: '状態', action: '動作' },
     messages: { reasoning: ({ value }) => `推論：${value}`, started: ({ tool, preview }) => `${tool} を開始${preview ? `｜${preview}` : ''}`, finished: ({ tool, preview }) => `${tool} を完了${preview ? `｜${preview}` : ''}`, route: ({ value }) => `ツール経路：${value}`, completed: ({ value }) => `完了：${value}`, returned: '待機場所へ戻りました', toolStep: ({ value }) => `ツール手順：${value}`, thought: ({ value }) => `思考：${value}`, status: ({ value }) => `状態：${value}`, fallback: ({ value }) => `動作：${value}` },
@@ -56,7 +56,7 @@ const KO_ACTIVE_SURFACES = {
   activity: { thinking: ({ room }) => `${room}에서 조용히 추론 중`, planning: ({ room }) => `${room}에서 단계를 계획 중`, working: ({ task, room }) => `${room}에서 ${task} 실행 중`, offline: () => '메인 실행 환경에서 새 하트비트가 없습니다', waiting: ({ room }) => `${room}에서 다음 작업 대기 중`, external: ({ value }) => `활동: ${value}` },
   ambient: { planning: ({ task }) => task ? `계획: ${task}` : '요구사항 정리 중…', thinking: ({ task }) => task ? `생각: ${task}` : '조용히 추론 중', working: ({ task }) => task ? `실행: ${task}` : '도구 실행 중', offline: () => '신호가 끊겼습니다', standby: () => '대기 중' },
   furniture: { scale: ({ scale }) => `배율 ${scale}`, fallback: '가구', coordinate: ({ label, room, x, y, snap, scale }) => `${label} · ${room} · x ${x}%, y ${y}% · 그리드 ${snap}% · 배율 ${scale}` },
-  accessibility: { pose: ({ pose }) => `${pose} 자세`, interaction: ({ interaction }) => `상호작용: ${interaction}`, poseFallback: '활동 중' },
+  accessibility: { pose: ({ pose }) => `${pose} 자세`, interaction: ({ interaction }) => `상호작용: ${interaction}`, poseFallback: '활동 중', appleDogDoor: 'AppleDog 방 문' },
   timelineDetail: {
     labels: { reasoning: '추론', toolStart: '도구 시작', toolDone: '도구 완료', toolRoute: '도구 경로', complete: '완료', tool: '도구', thought: '생각', status: '상태', action: '동작' },
     messages: { reasoning: ({ value }) => `추론: ${value}`, started: ({ tool, preview }) => `${tool} 시작${preview ? `｜${preview}` : ''}`, finished: ({ tool, preview }) => `${tool} 완료${preview ? `｜${preview}` : ''}`, route: ({ value }) => `도구 경로: ${value}`, completed: ({ value }) => `완료: ${value}`, returned: '대기 위치로 돌아갔습니다', toolStep: ({ value }) => `도구 단계: ${value}`, thought: ({ value }) => `생각: ${value}`, status: ({ value }) => `상태: ${value}`, fallback: ({ value }) => `동작: ${value}` },
@@ -160,6 +160,25 @@ const shortLocaleValue = (value, limit = 84) => {
   const text = String(value || '');
   return text.length > limit ? `${text.slice(0, Math.max(0, limit - 1))}…` : text;
 };
+
+// Tasks are external runtime payloads. Never reinterpret their bytes as a
+// product-owned tool identifier; only explicit tool_name/tool_label fields are
+// eligible for catalog translation.
+export function agentTaskText(agent = {}) {
+  if (agent.task !== undefined && agent.task !== null && agent.task !== '') return String(agent.task);
+  return String(agent.activity_hint || '');
+}
+
+export function agentToolText(agent = {}, locale = 'en-US') {
+  const value = agent.tool_name || agent.tool_label || '';
+  return localizeToolSummary(value, locale) || String(value || '');
+}
+
+export function agentTooltipText(agent = {}, locale = 'en-US') {
+  const task = agentTaskText(agent);
+  const tool = agentToolText(agent, locale);
+  return [task, tool && tool !== task ? tool : ''].filter(Boolean).join(' · ');
+}
 
 export function furnitureLabelForLocale(locale, value, internalIdentifier = '') {
   const label = String(value || '').trim();
@@ -701,6 +720,11 @@ const EN_US = {
 
 const JA_JP = {
   ...EN_US,
+  tools: {
+    ...EN_US.tools,
+    search_files: 'ファイルを検索', read_file: 'ファイルを読み取る', Read: 'ファイルを読み取る', Grep: '内容を検索', Glob: 'パスを検索', LS: 'ファイル一覧',
+    write_file: 'ファイルに書き込む', Write: 'ファイルに書き込む', Edit: 'ファイルを編集', MultiEdit: '一括編集', apply_patch: 'パッチを適用', patch: 'ファイルを変更',
+  },
   brandSubtitle: 'CLI のタスク、ツール、サブエージェント、セッション、ハートビートをピクセル世界で可視化します。',
   inspectorTitle: 'インスペクター',
   inspectorAgentSelect: 'エージェントを選択',
@@ -841,6 +865,11 @@ const JA_JP = {
 
 const KO_KR = {
   ...EN_US,
+  tools: {
+    ...EN_US.tools,
+    search_files: '파일 검색', read_file: '파일 읽기', Read: '파일 읽기', Grep: '내용 검색', Glob: '경로 검색', LS: '파일 목록',
+    write_file: '파일 쓰기', Write: '파일 쓰기', Edit: '파일 편집', MultiEdit: '일괄 편집', apply_patch: '패치 적용', patch: '파일 수정',
+  },
   brandSubtitle: 'CLI 작업, 도구, 서브에이전트, 세션, 하트비트를 픽셀 월드로 시각화합니다.',
   inspectorTitle: '인스펙터',
   inspectorAgentSelect: '에이전트 선택',

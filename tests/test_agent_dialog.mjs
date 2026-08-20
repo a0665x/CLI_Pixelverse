@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { buildAgentDialog, buildAgentSpeech } from '../public/agent_dialog.mjs';
+import { agentTooltipText } from '../public/ui_strings.mjs';
 
 test('buildAgentSpeech favors active task summaries over idle fallback', () => {
   const speech = buildAgentSpeech({
@@ -60,4 +61,18 @@ test('active speech and inspector dialog framing switches across all four locale
   assert.match(rendered['ko-KR'].dialog.rows.map(({ label }) => label).join(' '), /[가-힣]/);
   assert.doesNotMatch(JSON.stringify(rendered['ja-JP']), /(?:規劃|執行|狀態|房間|任務|事件時間|最新事件)|\b(?:Plan|Doing|State|Room|Task|Latest event)\b/);
   assert.doesNotMatch(JSON.stringify(rendered['ko-KR']), /(?:規劃|執行|狀態|房間|任務|事件時間|最新事件)|\b(?:Plan|Doing|State|Room|Task|Latest event)\b/);
+});
+
+test('recognized task tokens stay byte-for-byte raw while actual tool fields localize', () => {
+  for (const locale of ['en-US', 'zh-TW', 'ja-JP', 'ko-KR']) {
+    const agent = {
+      name: 'Henry', role: 'main_agent', state: 'working', task: 'read_file',
+      tool_label: 'write_file', room_key: 'code_workbench', recent_actions: [],
+    };
+    const speech = buildAgentSpeech(agent, locale);
+    const dialog = buildAgentDialog(agent, locale);
+    assert.match(speech.summary, /read_file/);
+    assert.equal(dialog.rows.find(({ label }) => /Task|任務|タスク|작업/.test(label))?.value, 'read_file');
+    assert.match(agentTooltipText(agent, locale), /^read_file(?: · |$)/);
+  }
 });
