@@ -1,4 +1,4 @@
-import { furnitureFootprint } from '../world/interiorDefinitions';
+import { furnitureFootprint } from '../world/furnitureGeometryData';
 import type {
   FurnitureDefinition,
   FurnitureFootprint,
@@ -16,6 +16,7 @@ import {
   canonicalFurnitureAsset,
   canonicalFurnitureBounds,
   canonicalFurnitureGeometry,
+  translateFurnitureGeometry,
 } from './canonicalFurnitureGeometry';
 
 export const EDITOR_CELL = 5.5;
@@ -321,17 +322,11 @@ export function resolvePlacementCandidate(
     ? snappedPoint
     : fitFurniturePointToRoom(room, furniture, snappedPoint);
   const delta = { x: point.x - furniture.point.x, y: point.y - furniture.point.y };
-  const resolved = {
+  const normalized = {
     ...furniture,
-    point,
     rotation: normalizeRotation(furniture.rotation),
-    ...(furniture.interactionPoint ? {
-      interactionPoint: {
-        x: furniture.interactionPoint.x + delta.x,
-        y: furniture.interactionPoint.y + delta.y,
-      },
-    } : {}),
   };
+  const resolved = translateFurnitureGeometry(normalized, delta);
   return {
     furniture: resolved,
     diagnostic: diagnoseFinePlacement(room, resolved, layout, ignoreId),

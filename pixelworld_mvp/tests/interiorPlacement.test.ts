@@ -14,6 +14,7 @@ import {
   transformedAlphaBounds,
 } from '../src/rendering/interiorPlacement';
 import { catalogItem } from '../src/rendering/modernOfficeCatalog';
+import { translateFurnitureGeometry } from '../src/rendering/canonicalFurnitureGeometry';
 
 const room: InteriorDefinition = {
   id: 'rest-cabin', label: 'Test', width: 14, height: 9, floor: 'wood', wall: 'cream',
@@ -74,6 +75,30 @@ describe('interior fine-grid placement', () => {
 
     expect(candidate.furniture.point).toEqual({ x: 5, y: 3 });
     expect(candidate.furniture.interactionPoint).toEqual({ x: 5, y: 5 });
+  });
+
+  it('uses the canonical translation path without sharing mutable geometry', () => {
+    const source: FurnitureDefinition = {
+      ...sofa,
+      id: 'canonical-candidate',
+      point: { x: 2, y: 2 },
+      supportedActions: ['terminal'],
+      footprint: { width: 2, height: 1 },
+      visualOffset: { x: -0.25, y: 0.125 },
+      interactionPoint: { x: 3, y: 4 },
+    };
+    const candidate = resolvePlacementCandidate(room, [], source, { x: 5, y: 3 });
+    const expected = translateFurnitureGeometry({ ...source, rotation: 0 }, { x: 3, y: 1 });
+
+    expect(candidate.furniture).toEqual(expected);
+    expect(candidate.furniture.point).toEqual({ x: 5, y: 3 });
+    expect(candidate.furniture.interactionPoint).toEqual({ x: 6, y: 5 });
+    candidate.furniture.supportedActions.push('read');
+    candidate.furniture.footprint!.width = 99;
+    candidate.furniture.visualOffset!.x = 99;
+    expect(source.supportedActions).toEqual(['terminal']);
+    expect(source.footprint).toEqual({ width: 2, height: 1 });
+    expect(source.visualOffset).toEqual({ x: -0.25, y: 0.125 });
   });
 
   it('resolves authored and explicit catalog furniture to the same alpha asset', () => {

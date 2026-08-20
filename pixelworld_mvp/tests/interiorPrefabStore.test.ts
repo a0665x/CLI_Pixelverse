@@ -3,12 +3,19 @@ import type { FurnitureDefinition, FurniturePrefab, InteriorDefinition } from '.
 import { INTERIOR_DEFINITIONS } from '../src/world/interiorDefinitions';
 import { transformedAlphaBounds } from '../src/rendering/interiorPlacement';
 import {
+  furnitureRenderScreenPoint,
+  prefabGhostScreenPoint,
+} from '../src/rendering/InteriorCutawaySystem';
+import { geometryInvariant } from '../src/rendering/canonicalFurnitureGeometry';
+import { placeOfficePrefab } from '../src/rendering/prefabGeometry';
+import {
   availablePrefabs,
   copyDecorativeLayout,
   isBuiltInPrefab,
   loadLayoutClipboard,
   readLayoutClipboard,
   loadPrefabs,
+  readAvailablePrefabs,
   readPrefabs,
   pasteDecorativeLayout,
   placePrefab,
@@ -206,11 +213,18 @@ describe('interior prefab and room clipboard store', () => {
   });
 
   it('deletes only the reusable group record and leaves placed room instances intact', () => {
-    const placed = [item('placed-a', 2, 2), item('placed-b', 3, 2)];
-    const original = structuredClone(placed);
-    const prefab = createUserGroupPrefab(placed, [], 100);
-    expect(deletePrefab([prefab], prefab.id)).toEqual([]);
-    expect(placed).toEqual(original);
+    const memory = storage();
+    const prefab = createUserGroupPrefab([item('template-a', 2, 2), item('template-b', 3, 2)], [], 100);
+    savePrefabs([prefab], memory);
+    const reloaded = readAvailablePrefabs(memory).value.find(({ id }) => id === prefab.id)!;
+    const placed = placeOfficePrefab(room, [], reloaded, { x: 5, y: 3 }, 200);
+    expect(placed.accepted).toBe(true);
+    const placedBeforeDeletion = structuredClone(placed.layout);
+
+    savePrefabs(deletePrefab([reloaded], reloaded.id), memory);
+
+    expect(readAvailablePrefabs(memory).value.some(({ id }) => id === prefab.id)).toBe(false);
+    expect(placed.layout).toEqual(placedBeforeDeletion);
   });
   it('persists prefabs independently from room layouts', () => {
     const memory = storage();
@@ -247,6 +261,38 @@ describe('interior prefab and room clipboard store', () => {
     const persisted = JSON.parse(memory.getItem('pixelworld:interior-prefabs:v1')!) as { prefabs: FurniturePrefab[] };
     expect(persisted.prefabs).toHaveLength(1);
     expect(persisted.prefabs[0]?.id).toBe('user-desk-kit');
+  });
+
+  it('reloads a user group through the office runtime with canonical placement and ghost geometry', () => {
+    const memory = storage();
+    const source = [
+      { ...item('source-a', 3.25, 2.5), scale: 1.25 as const, rotation: 90 as const, visualOffset: { x: -0.25, y: 0.125 } },
+      { ...item('source-b', 5.12, 3.33), scale: 0.75 as const, rotation: 270 as const },
+    ];
+    const saved = createUserGroupPrefab(source, [], 110);
+    savePrefabs([saved], memory);
+    const reloaded = readAvailablePrefabs(memory).value.find(({ id }) => id === saved.id)!;
+    const destination = { ...INTERIOR_DEFINITIONS['maker-workshop'], furniture: [] };
+    const anchor = { x: 8, y: 5 };
+    const placed = placeOfficePrefab(destination, [], reloaded, anchor, 210);
+
+    expect(placed.accepted).toBe(true);
+    const cell = 17;
+    const screenAnchor = { x: 420, y: 260 };
+    const roomOrigin = {
+      x: screenAnchor.x - (anchor.x + 0.5) * cell,
+      y: screenAnchor.y - (anchor.y + 0.5) * cell,
+    };
+    reloaded.items.forEach((template, index) => {
+      const member = placed.layout[index]!;
+      expect(geometryInvariant(template, member)).toBe(true);
+      const ghost = prefabGhostScreenPoint(reloaded, template, screenAnchor, cell);
+      const rendered = furnitureRenderScreenPoint(roomOrigin, member, cell);
+      expect(ghost.x).toBeCloseTo(rendered.x);
+      expect(ghost.y).toBeCloseTo(rendered.y);
+    });
+    expect(placed.layout[1]!.point.x - placed.layout[0]!.point.x).toBeCloseTo(1.87);
+    expect(placed.layout[1]!.point.y - placed.layout[0]!.point.y).toBeCloseTo(0.83);
   });
 
   it('deep-freezes returned built-in clones while keeping user assemblies mutable', () => {
