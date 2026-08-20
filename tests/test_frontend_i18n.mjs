@@ -172,3 +172,28 @@ test('active formatters preserve complete long task, preview, and message fallba
     assert.ok(uiStrings.eventSummaryForLocale({ kind: 'heartbeat', payload: { state: 'working', task } }, locale).includes(task));
   }
 });
+
+test('task-start, tool-batch, and generic-tool timeline paths preserve preview/message exactly once', () => {
+  const payloads = {
+    preview: `<preview>&"'${'PREVIEW-BLOCK-'.repeat(12)}END-PREVIEW`,
+    message: `<message>&"'${'MESSAGE-BLOCK-'.repeat(12)}END-MESSAGE`,
+  };
+  for (const locale of ['en-US', 'zh-TW', 'ja-JP', 'ko-KR']) {
+    const localizedTool = uiStrings.localizeToolSummary('read_file', locale);
+    for (const [field, raw] of Object.entries(payloads)) {
+      const cases = [
+        { rendered: uiStrings.timelineItemForLocale(locale, { event_name: 'main.task.started', [field]: raw }), expectsTool: false },
+        { rendered: uiStrings.timelineItemForLocale(locale, { event_name: 'main.tool.batch', tool_names: ['read_file'], [field]: raw }, { toolRouteLabel: localizedTool }), expectsTool: true },
+        { rendered: uiStrings.timelineItemForLocale(locale, { type: 'tool', tool_name: 'read_file', [field]: raw }, { toolLabel: localizedTool }), expectsTool: true },
+      ];
+      for (const { rendered, expectsTool } of cases) {
+        assert.equal(rendered.message.split(raw).length - 1, 1, `${locale} ${field}: ${rendered.message}`);
+        assert.doesNotMatch(rendered.message, /…/);
+        if (expectsTool) {
+          assert.equal(rendered.message.split(localizedTool).length - 1, 1, `${locale} ${field}: ${rendered.message}`);
+          assert.ok(rendered.message.indexOf(localizedTool) < rendered.message.indexOf(raw), `${locale} ${field}: ${rendered.message}`);
+        }
+      }
+    }
+  }
+});

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 
 import * as localeModule from '../public/ui_strings.mjs';
 
@@ -133,6 +134,7 @@ const requiredKeys = [
   'commandDeck.eventChip.details.toolRoute',
   'commandDeck.eventChip.details.completed',
   'commandDeck.timelineDetail.labels.reasoning',
+  'commandDeck.timelineDetail.labels.taskStart',
   'commandDeck.timelineDetail.labels.toolStart',
   'commandDeck.timelineDetail.labels.toolDone',
   'commandDeck.timelineDetail.labels.toolRoute',
@@ -142,6 +144,7 @@ const requiredKeys = [
   'commandDeck.timelineDetail.labels.status',
   'commandDeck.timelineDetail.labels.action',
   'commandDeck.timelineDetail.messages.reasoning',
+  'commandDeck.timelineDetail.messages.taskStarted',
   'commandDeck.timelineDetail.messages.started',
   'commandDeck.timelineDetail.messages.finished',
   'commandDeck.timelineDetail.messages.route',
@@ -221,6 +224,34 @@ test('product-owned command-deck DOM copy is declaratively localized', async () 
   ];
   requiredBindings.forEach((binding) => assert.ok(html.includes(binding), `missing ${binding}`));
   assert.doesNotMatch(html, /aria-label="(?:Agent village|World camera controls|Command deck layout controls|Agent force rail|Intelligence inspector|Live Hook channels|Resize (?:live agent rail|Hook rail|mission trace)|language selector|exposure selector)"/);
+});
+
+test('the active app and locale fixture share the production timeline presenter', async () => {
+  const presenterUrl = new URL('../public/timeline_item_presenter.mjs', import.meta.url);
+  if (!existsSync(presenterUrl)) {
+    assert.fail('production timeline presenter is missing');
+    return;
+  }
+  const { formatTimelineItemForLocale } = await import(presenterUrl);
+  const app = await readFile(new URL('../public/app.mjs', import.meta.url), 'utf8');
+  const fixture = await readFile(new URL('./fixtures/command_deck_locale_harness.html', import.meta.url), 'utf8');
+  assert.match(app, /return formatTimelineItemForLocale\(currentLocale, item\);/);
+  assert.match(app, /const actions = \(agent\.recent_actions \|\| \[\]\)[\s\S]*?const details = formatTimelineItem\(item\);[\s\S]*?escapeHtml\(details\.message\)/);
+  assert.match(fixture, /formatTimelineItemForLocale\(locale, item\)/);
+
+  const raw = `<adapter>&"'${'RAW-'.repeat(20)}END`;
+  for (const locale of locales) {
+    const localizedTool = localeModule.localizeToolSummary('read_file', locale);
+    for (const item of [
+      { event_name: 'main.tool.batch', tool_names: ['read_file'], message: raw },
+      { type: 'tool', tool_name: 'read_file', preview: raw },
+    ]) {
+      const rendered = formatTimelineItemForLocale(locale, item).message;
+      assert.equal(rendered.split(localizedTool).length - 1, 1, `${locale}: ${rendered}`);
+      assert.equal(rendered.split(raw).length - 1, 1, `${locale}: ${rendered}`);
+      assert.ok(rendered.indexOf(localizedTool) < rendered.indexOf(raw), `${locale}: ${rendered}`);
+    }
+  }
 });
 
 test('exports production formatters used by active rendered locale surfaces', () => {

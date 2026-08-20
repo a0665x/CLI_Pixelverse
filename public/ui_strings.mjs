@@ -28,8 +28,8 @@ const EN_ACTIVE_SURFACES = {
     details: { taskStarted: ({ value }) => value ? `Task: ${value}` : 'Task accepted', reasoning: 'Planning the next step', started: ({ value }) => value ? `Started: ${value}` : 'Tool execution started', finished: ({ value }) => value ? `Finished: ${value}` : 'Tool finished', toolRoute: 'Tool sequence updated', completed: ({ value }) => value || 'Task completed, back to standby' },
   },
   timelineDetail: {
-    labels: { reasoning: 'Reasoning', toolStart: 'Tool start', toolDone: 'Tool done', toolRoute: 'Tool route', complete: 'Complete', tool: 'Tool', thought: 'Thought', status: 'Status', action: 'Action' },
-    messages: { reasoning: ({ value }) => `Reasoning: ${value}`, started: ({ tool, preview }) => `Started ${tool}${preview ? ` | ${preview}` : ''}`, finished: ({ tool, preview }) => `Finished ${tool}${preview ? ` | ${preview}` : ''}`, route: ({ value }) => `Tool route: ${value}`, completed: ({ value }) => `Completed: ${value}`, returned: 'Returned to standby', toolStep: ({ value }) => `Tool step: ${value}`, thought: ({ value }) => `Thinking: ${value}`, status: ({ value }) => `Status: ${value}`, fallback: ({ value }) => `Action: ${value}` },
+    labels: { taskStart: 'Task start', reasoning: 'Reasoning', toolStart: 'Tool start', toolDone: 'Tool done', toolRoute: 'Tool route', complete: 'Complete', tool: 'Tool', thought: 'Thought', status: 'Status', action: 'Action' },
+    messages: { taskStarted: ({ value }) => `Task started: ${value}`, reasoning: ({ value }) => `Reasoning: ${value}`, started: ({ tool, preview }) => `Started ${tool}${preview ? ` | ${preview}` : ''}`, finished: ({ tool, preview }) => `Finished ${tool}${preview ? ` | ${preview}` : ''}`, route: ({ value }) => `Tool route: ${value}`, completed: ({ value }) => `Completed: ${value}`, returned: 'Returned to standby', toolStep: ({ value }) => `Tool step: ${value}`, thought: ({ value }) => `Thinking: ${value}`, status: ({ value }) => `Status: ${value}`, fallback: ({ value }) => `Action: ${value}` },
   },
 };
 
@@ -46,8 +46,8 @@ const ZH_ACTIVE_SURFACES = {
     details: { taskStarted: ({ value }) => value ? `任務：${value}` : '已接受任務', reasoning: '正在整理藍圖與策略', started: ({ value }) => value ? `開始：${value}` : '開始執行工具', finished: ({ value }) => value ? `完成：${value}` : '工具已完成', toolRoute: '切換工具序列', completed: ({ value }) => value || '任務完成，回到客廳待命區' },
   },
   timelineDetail: {
-    labels: { reasoning: '規劃', toolStart: '工具啟動', toolDone: '工具完成', toolRoute: '工具序列', complete: '完成', tool: '工具', thought: '思考', status: '狀態', action: '動作' },
-    messages: { reasoning: ({ value }) => `主代理正在規劃：${value}`, started: ({ tool, preview }) => `開始使用 ${tool}${preview ? `｜${preview}` : ''}`, finished: ({ tool, preview }) => `完成 ${tool}${preview ? `｜${preview}` : ''}`, route: ({ value }) => `目前工具：${value}`, completed: ({ value }) => `已完成：${value}`, returned: '回到待命站', toolStep: ({ value }) => `工具步驟：${value}`, thought: ({ value }) => `思考中：${value}`, status: ({ value }) => `狀態：${value}`, fallback: ({ value }) => `動作：${value}` },
+    labels: { taskStart: '任務開始', reasoning: '規劃', toolStart: '工具啟動', toolDone: '工具完成', toolRoute: '工具序列', complete: '完成', tool: '工具', thought: '思考', status: '狀態', action: '動作' },
+    messages: { taskStarted: ({ value }) => `任務開始：${value}`, reasoning: ({ value }) => `主代理正在規劃：${value}`, started: ({ tool, preview }) => `開始使用 ${tool}${preview ? `｜${preview}` : ''}`, finished: ({ tool, preview }) => `完成 ${tool}${preview ? `｜${preview}` : ''}`, route: ({ value }) => `目前工具：${value}`, completed: ({ value }) => `已完成：${value}`, returned: '回到待命站', toolStep: ({ value }) => `工具步驟：${value}`, thought: ({ value }) => `思考中：${value}`, status: ({ value }) => `狀態：${value}`, fallback: ({ value }) => `動作：${value}` },
   },
 };
 
@@ -64,8 +64,8 @@ const JA_ACTIVE_SURFACES = {
     details: { taskStarted: ({ value }) => value ? `タスク：${value}` : 'タスクを受け付けました', reasoning: '次の手順を計画中', started: ({ value }) => value ? `開始：${value}` : 'ツール実行を開始', finished: ({ value }) => value ? `完了：${value}` : 'ツールが完了しました', toolRoute: 'ツール経路を更新', completed: ({ value }) => value || 'タスク完了、待機場所へ戻りました' },
   },
   timelineDetail: {
-    labels: { reasoning: '推論', toolStart: 'ツール開始', toolDone: 'ツール完了', toolRoute: 'ツール経路', complete: '完了', tool: 'ツール', thought: '思考', status: '状態', action: '動作' },
-    messages: { reasoning: ({ value }) => `推論：${value}`, started: ({ tool, preview }) => `${tool} を開始${preview ? `｜${preview}` : ''}`, finished: ({ tool, preview }) => `${tool} を完了${preview ? `｜${preview}` : ''}`, route: ({ value }) => `ツール経路：${value}`, completed: ({ value }) => `完了：${value}`, returned: '待機場所へ戻りました', toolStep: ({ value }) => `ツール手順：${value}`, thought: ({ value }) => `思考：${value}`, status: ({ value }) => `状態：${value}`, fallback: ({ value }) => `動作：${value}` },
+    labels: { taskStart: 'タスク開始', reasoning: '推論', toolStart: 'ツール開始', toolDone: 'ツール完了', toolRoute: 'ツール経路', complete: '完了', tool: 'ツール', thought: '思考', status: '状態', action: '動作' },
+    messages: { taskStarted: ({ value }) => `タスク開始：${value}`, reasoning: ({ value }) => `推論：${value}`, started: ({ tool, preview }) => `${tool} を開始${preview ? `｜${preview}` : ''}`, finished: ({ tool, preview }) => `${tool} を完了${preview ? `｜${preview}` : ''}`, route: ({ value }) => `ツール経路：${value}`, completed: ({ value }) => `完了：${value}`, returned: '待機場所へ戻りました', toolStep: ({ value }) => `ツール手順：${value}`, thought: ({ value }) => `思考：${value}`, status: ({ value }) => `状態：${value}`, fallback: ({ value }) => `動作：${value}` },
   },
 };
 
@@ -82,8 +82,8 @@ const KO_ACTIVE_SURFACES = {
     details: { taskStarted: ({ value }) => value ? `작업: ${value}` : '작업 접수', reasoning: '다음 단계를 계획 중', started: ({ value }) => value ? `시작: ${value}` : '도구 실행 시작', finished: ({ value }) => value ? `완료: ${value}` : '도구 완료', toolRoute: '도구 경로 업데이트', completed: ({ value }) => value || '작업 완료, 대기 위치로 복귀' },
   },
   timelineDetail: {
-    labels: { reasoning: '추론', toolStart: '도구 시작', toolDone: '도구 완료', toolRoute: '도구 경로', complete: '완료', tool: '도구', thought: '생각', status: '상태', action: '동작' },
-    messages: { reasoning: ({ value }) => `추론: ${value}`, started: ({ tool, preview }) => `${tool} 시작${preview ? `｜${preview}` : ''}`, finished: ({ tool, preview }) => `${tool} 완료${preview ? `｜${preview}` : ''}`, route: ({ value }) => `도구 경로: ${value}`, completed: ({ value }) => `완료: ${value}`, returned: '대기 위치로 돌아갔습니다', toolStep: ({ value }) => `도구 단계: ${value}`, thought: ({ value }) => `생각: ${value}`, status: ({ value }) => `상태: ${value}`, fallback: ({ value }) => `동작: ${value}` },
+    labels: { taskStart: '작업 시작', reasoning: '추론', toolStart: '도구 시작', toolDone: '도구 완료', toolRoute: '도구 경로', complete: '완료', tool: '도구', thought: '생각', status: '상태', action: '동작' },
+    messages: { taskStarted: ({ value }) => `작업 시작: ${value}`, reasoning: ({ value }) => `추론: ${value}`, started: ({ tool, preview }) => `${tool} 시작${preview ? `｜${preview}` : ''}`, finished: ({ tool, preview }) => `${tool} 완료${preview ? `｜${preview}` : ''}`, route: ({ value }) => `도구 경로: ${value}`, completed: ({ value }) => `완료: ${value}`, returned: '대기 위치로 돌아갔습니다', toolStep: ({ value }) => `도구 단계: ${value}`, thought: ({ value }) => `생각: ${value}`, status: ({ value }) => `상태: ${value}`, fallback: ({ value }) => `동작: ${value}` },
   },
 };
 
@@ -248,12 +248,15 @@ export function timelineItemForLocale(locale, item = {}, { toolLabel = '', toolR
   const preview = String(item.preview || item.message || '');
   const label = (key) => uiText(locale, `commandDeck.timelineDetail.labels.${key}`);
   const message = (key, params = {}) => uiText(locale, `commandDeck.timelineDetail.messages.${key}`, params);
+  const separator = uiText(locale, 'commandDeck.inspector.detailSeparator');
+  const combine = (...values) => values.filter(Boolean).join(separator);
+  if (eventName === 'main.task.started') return { label: label('taskStart'), message: message('taskStarted', { value: preview || label('taskStart') }) };
   if (eventName === 'main.reasoning') return { label: label('reasoning'), message: message('reasoning', { value: preview || label('reasoning') }) };
   if (eventName === 'main.tool.started') return { label: label('toolStart'), message: message('started', { tool, preview }) };
   if (eventName === 'main.tool.completed') return { label: label('toolDone'), message: message('finished', { tool, preview }) };
-  if (eventName === 'main.tool.batch') return { label: label('toolRoute'), message: message('route', { value: toolRouteLabel || preview || label('toolRoute') }) };
+  if (eventName === 'main.tool.batch') return { label: label('toolRoute'), message: message('route', { value: combine(toolRouteLabel, preview) || label('toolRoute') }) };
   if (eventName === 'main.task.completed') return { label: label('complete'), message: preview ? message('completed', { value: preview }) : message('returned') };
-  if (item.type === 'tool') return { label: label('tool'), message: message('toolStep', { value: toolLabel || preview || label('tool') }) };
+  if (item.type === 'tool') return { label: label('tool'), message: message('toolStep', { value: combine(toolLabel, preview) || label('tool') }) };
   if (item.type === 'thought') return { label: label('thought'), message: message('thought', { value: preview || label('thought') }) };
   if (item.type === 'status') return { label: label('status'), message: message('status', { value: preview || label('status') }) };
   return { label: label('action'), message: message('fallback', { value: String(item.message || item.to || label('action')) }) };

@@ -12,19 +12,25 @@
   <script type="module">
     import { createCommandDeckLocaleController } from '/public/command_deck_locale_controller.mjs';
     import { attachPixelworldBridge, createPixelworldBridge } from '/public/pixelworld_embed.mjs';
-    import { agentTaskText, agentToolText, agentTooltipText, furnitureCoordinateText, timelineItemForLocale, uiText } from '/public/ui_strings.mjs';
+    import { agentTaskText, agentTooltipText, furnitureCoordinateText, localizeToolSummary, uiText } from '/public/ui_strings.mjs';
     import { buildAgentDialog, buildAgentSpeech } from '/public/agent_dialog.mjs';
     import { agentEventChipPresentation } from '/public/main_agent_events.mjs';
     import { agentPayloadPresentation, currentAgentStatePresentation, timelinePayloadPresentation } from '/public/command_deck_payload_presenters.mjs';
+    import { formatTimelineItemForLocale } from '/public/timeline_item_presenter.mjs';
 
     const result = document.querySelector('#result');
     const locales = ['en-US', 'zh-TW', 'ja-JP', 'ko-KR'];
     const longTask = `<task>&"'read_file::${'BROWSER_LONG_TASK_'.repeat(12)}END_TASK`;
     const longPreview = `<preview>&"'BROWSER_LONG_PREVIEW_${'preview-segment-'.repeat(12)}END_PREVIEW`;
     const messageOnly = `<message>&"'BROWSER_MESSAGE_ONLY_${'message-segment-'.repeat(12)}END_MESSAGE`;
+    const genericPreview = `<generic>&"'BROWSER_GENERIC_PREVIEW_${'generic-segment-'.repeat(12)}END_GENERIC`;
     const agent = { name: 'Henry', role: 'main_agent', state: 'working', room_key: 'code_workbench', task: longTask, tool_label: 'read_file', activity_hint: '' };
     const snapshot = { agents: [agent], hooks: [{ name: 'Hook' }] };
-    const trace = { lanes: [{ event_name: 'main.tool.started', tool_name: 'read_file', preview: longPreview }] };
+    const trace = { lanes: [
+      { event_name: 'main.task.started', preview: longPreview },
+      { event_name: 'main.tool.batch', tool_names: ['read_file'], message: messageOnly },
+      { type: 'tool', tool_name: 'read_file', preview: genericPreview },
+    ] };
     const selection = { kind: 'agent', id: 'henry' };
     const frame = document.querySelector('#pixelworld');
     const receivedLocales = [];
@@ -63,9 +69,9 @@
       node('dialog').textContent = buildAgentDialog(agent, locale).rows.map(({ label, value }) => `${label}:${value}`).join('|');
     };
     const renderMissionTrace = () => {
-      const item = timelineItemForLocale(locale, trace.lanes[0], { toolLabel: agentToolText({ tool_name: 'read_file' }, locale) });
-      node('trace').textContent = `${item.label}: ${item.message}`;
-      const payload = timelinePayloadPresentation({ taskLabel: longTask, latestSummary: `${item.label}: ${item.message}` });
+      const items = trace.lanes.map((item) => formatTimelineItemForLocale(locale, item));
+      node('trace').textContent = items.map((item) => `${item.label}: ${item.message}`).join('\n');
+      const payload = timelinePayloadPresentation({ taskLabel: longTask, latestSummary: node('trace').textContent });
       node('timeline-payload').innerHTML = `<span>${payload.taskHtml}</span><span>${payload.summaryHtml}</span>`;
     };
     const renderLiveMonitoring = () => {
@@ -102,7 +108,16 @@
         for (const path of ['situation','agent-rail','live','card','tooltip','speech','dialog','inspector']) {
           if (!rendered[next][path].text.includes(longTask)) throw new Error(`${path} sliced or changed raw task for ${next}`);
         }
-        if (!rendered[next].trace.text.includes(longPreview)) throw new Error(`trace sliced or changed preview for ${next}`);
+        for (const raw of [longPreview, messageOnly, genericPreview]) {
+          if (rendered[next].trace.text.split(raw).length - 1 !== 1) throw new Error(`trace changed or duplicated raw payload for ${next}`);
+        }
+        const localizedTool = localizeToolSummary('read_file', next);
+        const traceRows = rendered[next].trace.text.split('\n');
+        for (const [rowIndex, raw] of [[1, messageOnly], [2, genericPreview]]) {
+          const row = traceRows[rowIndex];
+          if (row.split(localizedTool).length - 1 !== 1) throw new Error(`trace row ${rowIndex} omitted or duplicated localized tool for ${next}`);
+          if (row.indexOf(localizedTool) >= row.indexOf(raw)) throw new Error(`trace row ${rowIndex} ordered raw payload before localized tool for ${next}`);
+        }
         if (!rendered[next]['timeline-payload'].text.includes(longTask) || !rendered[next]['timeline-payload'].text.includes(longPreview)) throw new Error(`timeline DOM corrupted raw payload for ${next}`);
         if (!rendered[next]['event-chip'].title.includes(messageOnly)) throw new Error(`event chip sliced or changed message fallback for ${next}`);
         if (JSON.stringify(rendered[next]).includes('…')) throw new Error(`JavaScript ellipsis leaked into rendered DOM for ${next}`);

@@ -28,7 +28,6 @@ import {
   poseLabelForLocale,
   summarizeWorld,
   SUPPORTED_LOCALES,
-  timelineItemForLocale,
   uiText,
 } from './ui_strings.mjs';
 import {
@@ -70,6 +69,7 @@ import { clampCameraOffset, centeredCamera, clampZoom, nextDraggedOffset, nextZo
 import { CORRIDOR_RECTS, GLOBAL_MAP, HOUSE_DOORS, loadGlobalMap, roomMapCopy, ROOM_LAYOUTS, ROOM_STATE_GROUPS } from './house_layout.mjs';
 import { hookStateRoutes } from './hook_state_map.mjs';
 import { agentEventChipPresentation } from './main_agent_events.mjs';
+import { formatTimelineItemForLocale } from './timeline_item_presenter.mjs';
 import { getAppleDogDoorSprite, getAppleDogPropSprite, getAppleDogRoomTheme } from './appledog_assets.mjs';
 import { shouldUseHighClarityProp } from './office_life_assets.mjs';
 import {
@@ -1100,12 +1100,7 @@ function activityHintText(agent) {
 }
 
 function formatTimelineItem(item = {}) {
-  const toolName = item.tool_name || (item.tool_names || [])[0] || '';
-  const toolLabel = localizeTask(toolName) || toolName;
-  return timelineItemForLocale(currentLocale, item, {
-    toolLabel,
-    toolRouteLabel: localizeTask((item.tool_names || []).join(', ')),
-  });
+  return formatTimelineItemForLocale(currentLocale, item);
 }
 
 function applyCameraTransform(active = false) {
