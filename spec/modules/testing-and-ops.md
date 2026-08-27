@@ -3,6 +3,7 @@
 ## 1. 測試分層
 ### Python
 - `tests/test_hermes_integration.py`
+- `tests/test_command_deck_browser_smoke.py`
 - 偏向後端整合與資料語意
 
 ### Node / MJS
@@ -25,6 +26,7 @@
 - asset / layout / pose helpers 是否可預測
 - i18n 與 event summary 是否維持人話化
 - offline agent 是否保留 timeline、顯示 heartbeat，且只能由 explicit delete API 清除
+- command-deck browser artifact 是否明確覆蓋三種 viewport 的 village-first hierarchy、pixel portrait roster、card/village selection、busy/offline ECG、reduced motion、四語純產品文案與 external payload 標記、主/分身位移、Starting Cabin occupant、家具/group invariance 與零 console/page error
 
 ## 2.1 路徑 / 穿牆回歸
 - 改 `world_motion.mjs`、`house_layout.mjs`、`room_furniture.mjs`、`global_map/*.yaml` 或門 / 走廊 / 家具 footprint 時，至少跑：
@@ -59,6 +61,7 @@
 - `./run.sh install-hermes-hook`：安裝 Hermes gateway hook
 - `./run.sh test-hook`：送 synthetic lifecycle，刷新 tmp debug artifacts
 - `./run.sh smoke-furniture-drag`：用真實 Chromium 重跑家具跨 room 拖曳 / 裁切 browser smoke，輸出 `tmp/furniture_drag_browser_smoke.json/png`
+- `python3 scripts/command_deck_browser_smoke.py --base-url http://127.0.0.1:5661`：跑完整 production command-deck acceptance，通過後才更新 README 兩張 repository-owned PNG
 - `README.md`：保留手動 curl 範例與 quick start
 
 ### UI exposure
@@ -141,6 +144,31 @@ PIXELVERSE_TEST_HOOK_DELAY=5 PIXELVERSE_TEST_HOOK_TARGET=clone_bay ./run.sh test
 預設 delay 是 3 秒。若 UI 還沒走完就回 idle，可以加大 `PIXELVERSE_TEST_HOOK_DELAY`。
 
 ## 6. Browser smoke tests
+### Command deck、Hook、Starting Cabin 與 canonical furniture
+先以實際 compose port 啟動/驗證 service，再跑固定 clone-bay scenario 與 production browser：
+
+```bash
+PIXELVERSE_AGENT_KIND=codex PIXELVERSE_EXPOSURE_MODE=localhost ./run.sh down_up
+PIXELVERSE_TEST_HOOK_DELAY=5 PIXELVERSE_TEST_HOOK_TARGET=clone_bay ./run.sh test-hook
+python3 scripts/command_deck_browser_smoke.py --base-url http://127.0.0.1:5661
+```
+
+若 `.pixelverse-service/compose.env` 記錄的 `PIXELVERSE_PORT` 不是 `5661`，最後一行必須改成該實際 port。Smoke 使用 system Chromium/CDP，等待 top-level/iframe fonts、canvas 與 world status layer ready 後才注入固定 main/subagent scenario。它驗證：
+
+- 1440×900、1024×768、800×450 narrow 的實際 DOM bounds；roster 與 village 同時可見、零 overlap，且 village 面積較大
+- 第一層每個 agent 有 pixel portrait card，卡片點擊與 village iframe 使用同一 agent selection
+- busy 與 offline ECG signal、`prefers-reduced-motion` 靜態語意，以及 name/task 的 external-copy markers
+- `en-US`、`zh-TW`、`ja-JP`、`ko-KR` 各自同步更新 shell、roster、village 與 accessible copy，不混用產品語言
+- main `clone_bay -> standby_dock`、subagent `clone_bay -> tool_forge` 的 rendered transform 正向位移，不接受只有文字/room label 的 false-pass
+- Starting Cabin (`rest-cabin`) 已打開、main agent occupant label 與 representative furniture 同時存在
+- explicit Save、reload、v2 group store，以及透過 catalog 把同一 group 從 14×9 compact `rest-cabin` 放入 18×12 work-office `maker-workshop` 後 width/height、aspect ratio、rotation、member spacing 不變
+- browser console error 與 page exception 都是空陣列
+
+機器可讀輸出固定為 `tmp/command_deck_browser_smoke.json`。只有所有 assertion 通過，candidate PNG 才會 atomic promote 為：
+
+- `docs/assets/command-deck-village.png`
+- `docs/assets/starting-cabin-agent.png`
+
 ### 家具跨房間拖曳 / 裁切
 ```bash
 ./run.sh smoke-furniture-drag
