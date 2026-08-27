@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createLiveEcgController } from '../public/live_ecg_controller.mjs';
 
-function fixture({ reduced = false } = {}) {
+function fixture({ reduced = false, pathFor = (row, nowMs) => `${row.state}:${nowMs}` } = {}) {
   const paths = new Map();
   const nodes = [];
   const root = { querySelectorAll: () => nodes };
@@ -14,15 +14,16 @@ function fixture({ reduced = false } = {}) {
     const node = { dataset: { agentEcg: id }, querySelector: () => path };
     nodes.push(node); paths.set(id, path);
   };
-  const controller = createLiveEcgController({
+  const options = {
     root,
     now: () => clock,
     requestFrame: (callback) => { frames.push(callback); return frames.length; },
     cancelFrame: (handle) => cancelled.push(handle),
     reducedMotion: () => reduced,
-    pathFor: (row, nowMs) => `${row.state}:${nowMs}`,
-  });
-  return { controller, frames, paths, cancelled, add, setClock: (value) => { clock = value; } };
+  };
+  if (pathFor) options.pathFor = pathFor;
+  const controller = createLiveEcgController(options);
+  return { controller, frames, paths, nodes, cancelled, add, setClock: (value) => { clock = value; } };
 }
 
 test('active ECG updates between unchanged backend snapshots', () => {
@@ -57,4 +58,28 @@ test('reduced motion paints once without scheduling a continuous loop', () => {
   view.controller.start();
   assert.equal(view.paths.get('idle').value, 'idle:1000');
   assert.equal(view.frames.length, 0);
+});
+
+test('controller skips hidden roster ECG nodes and forwards semantic signal', () => {
+  const view = fixture();
+  view.add('main');
+  const node = view.nodes[0];
+  node.hidden = true;
+  node.getClientRects = () => [];
+  view.controller.sync([{
+    id: 'main', state: 'working', signal: { kind: 'busy', rate: 1, amplitude: 1 },
+  }]);
+  view.controller.start();
+
+  assert.equal(view.paths.get('main').value, '');
+});
+
+test('default path builder consumes the canonical semantic signal', () => {
+  const view = fixture({ pathFor: null });
+  view.add('main');
+  const signal = { kind: 'busy', rate: 1, amplitude: 1 };
+
+  view.controller.sync([{ id: 'main', state: 'idle', signal }]);
+
+  assert.notEqual(view.paths.get('main').value, 'M 0,16 L 176,16');
 });

@@ -4,8 +4,11 @@ const FRAME_INTERVAL_MS = 1000 / 30;
 
 const defaultPathFor = (row, nowMs) => buildHeartbeatPath({
   state: row.state,
-  heartbeatTone: row.tone,
-  heartbeatLoad: row.load,
+  signalKind: row.signal?.kind || row.signalKind,
+  heartbeatTone: row.signal?.tone || row.tone,
+  heartbeatLoad: row.signal?.load ?? row.load,
+  heartbeatRate: row.signal?.rate ?? row.rate,
+  heartbeatAmplitude: row.signal?.amplitude ?? row.amplitude,
 }, nowMs, 160, 176);
 
 export function createLiveEcgController({
@@ -24,6 +27,7 @@ export function createLiveEcgController({
   const paint = () => {
     const time = now();
     root?.querySelectorAll?.('[data-agent-ecg]').forEach((node) => {
+      if (node.hidden || node.getClientRects?.().length === 0) return;
       const row = rows.get(node.dataset.agentEcg);
       const path = row && node.querySelector?.('path');
       if (path) path.setAttribute('d', pathFor(row, time));

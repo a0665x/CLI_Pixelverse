@@ -98,8 +98,11 @@ test('offline agent timelines remain visible and expose manual deletion', () => 
   assert.ok(panels[0].heartbeatLoad > 0);
 });
 
-test('heartbeat path is flat while idle and uses dense high-amplitude ECG spikes while active', () => {
-  assert.equal(buildHeartbeatPath({ state: 'idle', heartbeatLoad: 0 }, 0, 1000, 100), 'M 0,16 L 100,16');
+test('heartbeat path is subtle while idle and uses dense high-amplitude ECG spikes while active', () => {
+  const idle = buildHeartbeatPath({
+    state: 'idle', signalKind: 'idle', heartbeatRate: .18, heartbeatAmplitude: .18,
+  }, 0, 1000, 100);
+  assert.notEqual(idle, 'M 0,16 L 100,16');
 
   const active = { state: 'working', heartbeatTone: 'live', heartbeatLoad: 1 };
   const beatWidth = heartbeatBeatWidthPx(active);
@@ -112,8 +115,30 @@ test('heartbeat path is flat while idle and uses dense high-amplitude ECG spikes
 
 test('heartbeat density uses a fixed pixel beat width independent of timeline width', () => {
   const active = { state: 'working', heartbeatTone: 'live', heartbeatLoad: 1 };
-  assert.equal(heartbeatBeatWidthPx(active), 16);
-  assert.match(buildHeartbeatPath(active, 1_700_000_000_000, 1000, 16), /L 16,/);
+  assert.equal(heartbeatBeatWidthPx(active), 12);
+  assert.match(buildHeartbeatPath(active, 1_700_000_000_000, 1000, 12), /L 12,/);
+});
+
+test('semantic ECG produces distinct idle, busy, blocked, and offline signals', () => {
+  const idle = buildHeartbeatPath({
+    signalKind: 'idle', heartbeatRate: .18, heartbeatAmplitude: .18,
+  }, 1_000, 160, 176);
+  const busy = buildHeartbeatPath({
+    signalKind: 'busy', heartbeatRate: 1, heartbeatAmplitude: 1,
+  }, 1_000, 160, 176);
+  const blocked = buildHeartbeatPath({
+    signalKind: 'blocked', heartbeatRate: .68, heartbeatAmplitude: .72,
+  }, 1_000, 160, 176);
+  const offline = buildHeartbeatPath({
+    signalKind: 'offline', heartbeatRate: 0, heartbeatAmplitude: 0,
+  }, 1_000, 160, 176);
+
+  assert.equal(offline, 'M 0,16 L 176,16');
+  assert.notEqual(idle, offline);
+  assert.notEqual(busy, idle);
+  assert.notEqual(blocked, busy);
+  assert.ok(heartbeatBeatWidthPx({ heartbeatRate: 1 })
+    < heartbeatBeatWidthPx({ heartbeatRate: .62 }));
 });
 
 test('timeline points preserve semantic event identity and drill-down targets', () => {

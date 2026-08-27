@@ -115,35 +115,40 @@ function gaussian(value, center, width) {
 
 export function buildHeartbeatPath(panel = {}, nowMs = Date.now(), refreshMs = 1000, widthPx = 4096) {
   const width = Math.max(1, Number(widthPx) || 4096);
-  const flat = panel.state === 'idle'
-    || panel.state === 'offline'
-    || panel.heartbeatTone === 'waiting'
-    || panel.heartbeatTone === 'stale'
-    || Number(panel.heartbeatLoad) <= 0;
-  if (flat) return `M 0,16 L ${width},16`;
+  const kind = panel.signalKind
+    || (panel.state === 'offline' || panel.heartbeatTone === 'waiting' || panel.heartbeatTone === 'stale'
+      ? 'offline'
+      : panel.state === 'idle' ? 'idle' : 'working');
+  const rateValue = Number(panel.heartbeatRate ?? panel.heartbeatLoad);
+  const rate = Number.isFinite(rateValue) ? rateValue : .58;
+  if (kind === 'offline' || rate <= 0) return `M 0,16 L ${width},16`;
 
-  const load = Math.max(.45, Math.min(1, Number(panel.heartbeatLoad) || .58));
+  const amplitudeValue = Number(panel.heartbeatAmplitude ?? panel.heartbeatLoad);
+  const amplitude = Math.max(.12, Math.min(1, Number.isFinite(amplitudeValue) ? amplitudeValue : .58));
   const beatWidthPx = heartbeatBeatWidthPx(panel);
+  const sampleStep = Math.min(.25, beatWidthPx / 64);
   const phaseOffset = (nowMs / Math.max(90, Number(refreshMs) || 1000)) * .22;
   const points = [];
-  for (let x = 0; x <= width; x += .25) {
+  for (let x = 0; x <= width; x += sampleStep) {
     const phase = ((x / beatWidthPx) + phaseOffset) % 1;
-    const signal = (
+    const blockedGap = kind === 'blocked' && phase > .66;
+    const signal = blockedGap ? 0 : (
       (.1 * gaussian(phase, .14, .045))
       - (.18 * gaussian(phase, .27, .035))
       + (1.12 * gaussian(phase, .31, .028))
       - (.42 * gaussian(phase, .365, .04))
       + (.22 * gaussian(phase, .62, .09))
     );
-    const y = 16 - (signal * load * 14);
+    const y = 16 - (signal * amplitude * 14);
     points.push(`${Number(x.toFixed(2))},${Number(y.toFixed(2))}`);
   }
   return `M ${points.join(' L ')}`;
 }
 
 export function heartbeatBeatWidthPx(panel = {}) {
-  const load = Math.max(.45, Math.min(1, Number(panel.heartbeatLoad) || .58));
-  return 20 - Math.round(load * 4);
+  const value = Number(panel.heartbeatRate ?? panel.heartbeatLoad);
+  const rate = Math.max(0, Math.min(1, Number.isFinite(value) ? value : .58));
+  return Math.round(28 - (rate * 16));
 }
 
 export function buildAgentTimelinePanels(snapshot = {}, localeStrings = {}, options = {}) {
