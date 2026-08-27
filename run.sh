@@ -296,6 +296,44 @@ current_agent_kind() {
   return 1
 }
 
+saved_env_value() {
+  local key="$1"
+  [[ -f "$ENV_FILE" ]] || return 1
+  sed -n "s/^${key}=//p" "$ENV_FILE" | tail -n 1
+}
+
+resolve_agent_kind() {
+  local mode="${1:-interactive}" saved=""
+  if [[ -n "${PIXELVERSE_AGENT_KIND:-}" ]]; then
+    normalize_agent_kind "$PIXELVERSE_AGENT_KIND"
+    return 0
+  fi
+  if [[ "$mode" == "reuse" ]]; then
+    saved="$(saved_env_value PIXELVERSE_AGENT_KIND || true)"
+    if [[ -n "$saved" ]]; then
+      normalize_agent_kind "$saved"
+      return 0
+    fi
+  fi
+  normalize_agent_kind "$(select_agent_kind)"
+}
+
+resolve_exposure_mode() {
+  local mode="${1:-interactive}" saved=""
+  if [[ -n "${PIXELVERSE_EXPOSURE_MODE:-}" ]]; then
+    normalize_exposure_mode "$PIXELVERSE_EXPOSURE_MODE"
+    return 0
+  fi
+  if [[ "$mode" == "reuse" ]]; then
+    saved="$(saved_env_value PIXELVERSE_EXPOSURE_MODE || true)"
+    if [[ -n "$saved" ]]; then
+      normalize_exposure_mode "$saved"
+      return 0
+    fi
+  fi
+  normalize_exposure_mode "$(select_exposure_mode)"
+}
+
 select_adapter_target() {
   local requested="${1:-}"
   if [[ -n "$requested" ]]; then
@@ -742,11 +780,14 @@ prepare_docker_build_metadata() {
 }
 
 start_service() {
+  local mode="${1:-interactive}"
   local agent_kind exposure_mode agent_command
-  echo "Select agent source for Pixelverse. Use arrow keys + Enter, or set PIXELVERSE_AGENT_KIND=codex/gemini-cli/claude-code/antigravity/ollama/hermes/generic." >&2
-  agent_kind="$(normalize_agent_kind "$(select_agent_kind)")"
+  if [[ "$mode" == "interactive" ]]; then
+    echo "Select agent source for Pixelverse. Use arrow keys + Enter, or set PIXELVERSE_AGENT_KIND=codex/gemini-cli/claude-code/antigravity/ollama/hermes/generic." >&2
+  fi
+  agent_kind="$(resolve_agent_kind "$mode")"
   validate_agent_kind "$agent_kind"
-  exposure_mode="$(normalize_exposure_mode "$(select_exposure_mode)")"
+  exposure_mode="$(resolve_exposure_mode "$mode")"
   if [[ "$exposure_mode" != "tailscale" && -z "${PIXELVERSE_TAILSCALE_ENABLE_SET:-}" ]]; then
     PIXELVERSE_TAILSCALE_ENABLE=0
   fi
@@ -1556,16 +1597,20 @@ smoke_furniture_drag() {
   "${cmd[@]}"
 }
 
+if [[ "${PIXELVERSE_SOURCE_ONLY:-0}" == "1" ]]; then
+  return 0 2>/dev/null || exit 0
+fi
+
 case "$COMMAND" in
   start)
-    start_service
+    start_service interactive
     ;;
   stop|down)
     stop_service
     ;;
   restart|down_up)
     stop_service
-    start_service
+    start_service reuse
     ;;
   status)
     status_service
