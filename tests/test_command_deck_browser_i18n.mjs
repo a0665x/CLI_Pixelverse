@@ -2,8 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { createServer } from 'node:http';
-import { readFile, stat } from 'node:fs/promises';
-import { extname, resolve, sep } from 'node:path';
+import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
+import { extname, join, resolve, sep } from 'node:path';
+import { tmpdir } from 'node:os';
 import { promisify } from 'node:util';
 
 const run = promisify(execFile);
@@ -19,15 +20,18 @@ test('real browser locale-select rerenders populated production-controller surfa
     } catch { response.statusCode = 404; response.end('not found'); }
   });
   await new Promise((resolveListen) => server.listen(0, '127.0.0.1', resolveListen));
+  const profile = await mkdtemp(join(tmpdir(), 'pixelverse-locale-chromium-'));
   try {
     const { port } = server.address();
     const { stdout } = await run('chromium', [
       '--headless', '--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage',
+      `--user-data-dir=${profile}`,
       '--virtual-time-budget=5000', '--dump-dom',
       `http://127.0.0.1:${port}/tests/fixtures/command_deck_locale_harness.html`,
     ], { maxBuffer: 8 * 1024 * 1024 });
     assert.match(stdout, /id="result" data-status="pass"/, stdout.match(/<pre id="result"[\s\S]*?<\/pre>/)?.[0]);
   } finally {
     await new Promise((resolveClose) => server.close(resolveClose));
+    await rm(profile, { recursive: true, force: true });
   }
 });

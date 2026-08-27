@@ -217,7 +217,7 @@ test('product-owned command-deck DOM copy is declaratively localized', async () 
     'data-i18n-aria-label="commandDeck.world.label"',
     'data-i18n-title="commandDeck.world.frameTitle"',
     'data-i18n-aria-label="commandDeck.layout.controlsLabel"',
-    'data-i18n="commandDeck.rails.agentsTitle"',
+    'data-i18n="commandDeck.roster.title"',
     'data-i18n="commandDeck.timeline.title"',
     'data-i18n="commandDeck.timeline.resume"',
     'data-i18n-aria-label="commandDeck.settings.languageSelector"',
