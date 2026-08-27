@@ -346,6 +346,9 @@ def test_persistent_three_button_hud_and_motion_safe_tooltips_are_structural_con
     assert help_button["tag"] == "button"
     assert help_button["attributes"].get("aria-controls") == "dashboard-card"
     assert help_button["attributes"].get("data-tooltip")
+    assert help_button["attributes"].get("data-i18n-aria-label") == "commandDeck.hook.help"
+    assert help_button["attributes"].get("data-i18n-tooltip") == "commandDeck.hook.help"
+    assert help_button["attributes"].get("data-i18n-title") == "commandDeck.hook.help"
 
     card_rule = re.search(r"\.dashboard-card\s*\{([^}]*)\}", html, re.S)
     assert card_rule
@@ -389,29 +392,36 @@ def test_dashboard_does_not_link_to_an_uncommitted_map_builder_route():
     assert 'href="/map_builder.html"' not in html
 
 
-def test_live_monitoring_uses_fixed_no_scroll_rails_around_the_village():
+def test_live_monitoring_uses_a_top_portrait_roster_above_the_primary_village():
     html = Path("public/index.html").read_text(encoding="utf-8")
     parser = DashboardParser()
     parser.feed(html)
 
-    assert {"top-status-bar", "agent-live-rail", "hook-live-rail", "pixelworld-frame"} <= parser.ids
-    assert "grid-template-columns: var(--live-left-width) 8px minmax(520px, 1fr) 8px var(--live-right-width)" in html
-    assert "grid-template-rows: 44px minmax(0, 1fr)" in html
+    assert {
+        "top-status-bar", "agent-roster", "agent-live-list", "world", "pixelworld-frame",
+        "needs-attention-count", "active-agent-count", "idle-agent-count", "offline-agent-count",
+    } <= parser.ids
+    assert parser.elements_by_id["agent-roster"]["attributes"].get("data-command-region") == "roster"
+    assert parser.elements_by_id["world"]["attributes"].get("data-command-region") == "center"
+    assert "grid-template-rows: 44px 112px minmax(320px, 1fr)" in html
+    assert ".map-first-workspace .world.map-stage { grid-column: 1; grid-row: 3;" in html
+    assert ".agent-roster { grid-column: 1; grid-row: 2;" in html
     assert "overflow: hidden" in html
     assert "dashboard-events-btn" not in parser.ids
     assert "dashboard-agents-btn" not in parser.ids
     assert "dashboard-help-btn" in parser.ids
     assert "agent-live-list" in parser.ids
-    assert "hook-live-activity" in parser.ids
+    assert "hidden" in parser.elements_by_id["hook-live-rail"]["attributes"]
+    assert "hidden" in parser.elements_by_id["mission-trace"]["attributes"]
+    assert ".hook-live-rail[hidden]," in html
+    assert ".mission-trace[hidden]" in html
     assert "dashboard-help-settings" not in parser.ids
     assert "{ kind: 'settings'" not in Path("public/app.mjs").read_text(encoding="utf-8")
     assert '.dashboard-card[data-card="help"] { --dashboard-card-accent: #72e2a5; }' in html
     assert ".dashboard-card-pagination button { color: #e9f7eb;" in html
     assert ".dashboard-card-pagination button:disabled { color: #6f8177;" in html
     assert 'body.cutaway-status-rail[data-pixelworld-cutaway="open"] .map-first-workspace .map-stage { inset: auto !important; }' in html
-    assert {"live-left-splitter", "live-right-splitter"} <= parser.ids
-    assert parser.elements_by_id["live-left-splitter"]["attributes"].get("role") == "separator"
-    assert parser.elements_by_id["live-right-splitter"]["attributes"].get("role") == "separator"
+    assert "locale-select" in parser.ids
     assert "createCommandDeckLayoutController" in Path("public/app.mjs").read_text(encoding="utf-8")
 
 
@@ -423,7 +433,7 @@ def test_fast_ui_ticker_reprojects_live_heartbeat_and_hook_waveforms():
     assert "renderLiveMonitoring(liveSnapshot, nowMs);" in ticker.group(1)
 
 
-def test_command_deck_exposes_five_bounded_regions_and_direct_layout_controls():
+def test_command_deck_exposes_village_first_regions_and_keeps_legacy_surfaces_hidden():
     html = Path("public/index.html").read_text(encoding="utf-8")
     parser = DashboardParser()
     parser.feed(html)
@@ -433,53 +443,55 @@ def test_command_deck_exposes_five_bounded_regions_and_direct_layout_controls():
         for element in parser.elements
         if element["attributes"].get("data-command-region")
     }
-    assert set(regions) == {"top", "left", "center", "right", "bottom"}
+    assert set(regions) == {"top", "roster", "center"}
     assert regions["center"]["id"] == "world"
-    assert regions["bottom"]["id"] == "mission-trace"
-
-    for handle_id, orientation in (
-        ("live-left-splitter", "vertical"),
-        ("live-right-splitter", "vertical"),
-        ("command-bottom-splitter", "horizontal"),
-    ):
-        handle = parser.elements_by_id[handle_id]
-        assert handle["attributes"].get("role") == "separator"
-        assert handle["attributes"].get("aria-orientation") == orientation
-        assert handle["attributes"].get("tabindex") == "0"
-
-    assert {
-        "command-collapse-left", "command-collapse-right", "command-collapse-bottom",
-        "command-swap-sides", "command-reset-layout",
-    } <= parser.ids
+    assert regions["roster"]["id"] == "agent-roster"
+    assert "hidden" in parser.elements_by_id["agent-live-rail"]["attributes"]
+    assert "hidden" in parser.elements_by_id["hook-live-rail"]["attributes"]
+    assert "hidden" in parser.elements_by_id["mission-trace"]["attributes"]
     assert 'data-command-region="center"' in html
     assert ".command-deck-region { position: relative;" in html
     assert ".command-deck-region { position: fixed;" not in html
     assert ".command-deck-region { position: absolute;" not in html
 
 
-def test_dashboard_card_stays_inside_the_active_inspector_track_when_collapsed_or_swapped():
+def test_dashboard_help_card_overlays_the_village_without_reintroducing_a_side_track():
     html = Path("public/index.html").read_text(encoding="utf-8")
 
     card_css = html[html.index("/* Command deck v2 */"):]
     assert ".map-first-workspace .dashboard-card {" in card_css
-    assert "position: relative !important;" in card_css
-    assert "grid-column: 5;" in card_css
-    assert '.map-first-workspace[data-left-dock="inspector"] .dashboard-card' in card_css
+    assert "position: absolute !important;" in card_css
     assert "grid-column: 1;" in card_css
-    assert '[data-right-dock="inspector"][data-collapsed-right="true"] .dashboard-card' in card_css
-    assert '[data-left-dock="inspector"][data-collapsed-left="true"] .dashboard-card' in card_css
-    assert "display: none !important;" in card_css
+    assert "grid-row: 3;" in card_css
+    assert "justify-self: end;" in card_css
+    assert "max-width: min(360px, calc(100% - 16px));" in card_css
 
 
 def test_command_deck_controls_render_persisted_expand_collapse_copy_at_startup():
     app = Path("public/app.mjs").read_text(encoding="utf-8")
+    strings = Path("public/ui_strings.mjs").read_text(encoding="utf-8")
 
     assert "commandDeckLayoutController.start();\n  renderCommandDeckControls();" in app
     assert "aria-expanded" in app
     assert "aria-label" in app
     assert "button.title" in app
-    assert "Expand" in app
-    assert "Collapse" in app
+    assert "`commandDeck.layout.${action}${keySuffix}`" in app
+    assert "expandLeft: 'Expand left region'" in strings
+    assert "collapseLeft: 'Collapse left region'" in strings
+
+
+def test_background_live_tick_restores_exact_hook_agent_selection_after_rebuilding_rows():
+    app = Path("public/app.mjs").read_text(encoding="utf-8")
+    ticker = app[app.index("function startLiveUiTicker()") : app.index("function roomCopy(")]
+
+    assert "renderLiveMonitoring(liveSnapshot, nowMs);\n    renderAgents(liveSnapshot);\n    restoreCurrentCommandSelectionStyling();" in ticker
+    restore = app[
+        app.index("function restoreCurrentCommandSelectionStyling()") :
+        app.index("function selectCommandDeck(")
+    ]
+    assert "resolveCurrentCommandSelection(currentCommandSelection)" in restore
+    assert "selectedAgentId = resolved.agent?.id || resolved.agent?.agent || selectedAgentId" in restore
+    assert "applyCommandSelectionStyling(resolved);" in restore
 
 
 def test_narrow_help_card_computed_style_ignores_persisted_inspector_collapse(tmp_path):
@@ -530,7 +542,7 @@ def test_narrow_help_card_computed_style_ignores_persisted_inspector_collapse(tm
 
     assert 'data-right-display="grid"' in result.stdout
     assert 'data-left-display="grid"' in result.stdout
-    assert 'data-right-position="relative"' in result.stdout
-    assert 'data-left-position="relative"' in result.stdout
+    assert 'data-right-position="absolute"' in result.stdout
+    assert 'data-left-position="absolute"' in result.stdout
     assert 'data-right-grid-column="2"' in result.stdout
     assert 'data-left-grid-column="2"' in result.stdout

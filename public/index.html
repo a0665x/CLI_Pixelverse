@@ -2824,6 +2824,84 @@
       .map-first-workspace[data-command-deck-mode="narrow"] .dashboard-card { grid-column: 2; grid-row: 3; }
       .map-first-workspace .dashboard-card:not([hidden]) { display: grid !important; }
     }
+
+    /* Village-first phase 1 */
+    .map-first-workspace {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: 44px 112px minmax(320px, 1fr);
+      min-height: 100dvh;
+      overflow: hidden;
+    }
+    .top-status-bar {
+      grid-column: 1;
+      grid-row: 1;
+      overflow: visible;
+    }
+    .map-first-workspace .world.map-stage { grid-column: 1; grid-row: 3; min-width: 0; min-height: 0; }
+    .agent-roster { grid-column: 1; grid-row: 2; display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 6px; padding: 7px 10px; border-bottom: 1px solid #294838; color: #e9f7eb; background: #0d1b15; }
+    .agent-roster-header { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 10px; }
+    .agent-roster-header h2 { margin: 0; font-size: 12px; letter-spacing: .04em; }
+    .agent-roster-counts { display: flex; min-width: 0; gap: 6px; overflow: hidden; font: 800 9px/1 ui-monospace, monospace; }
+    .agent-roster-counts output { padding: 3px 6px; border: 1px solid #294838; border-radius: 999px; overflow: hidden; color: #b9d4c4; text-overflow: ellipsis; white-space: nowrap; }
+    .agent-live-list { display: flex; min-width: 0; gap: 7px; overflow-x: auto; overflow-y: hidden; }
+    .agent-roster-card { display: grid; min-width: 150px; max-width: 190px; grid-template-columns: 38px minmax(0, 1fr); gap: 7px; padding: 6px; border: 1px solid #284938; border-radius: 9px; color: #e9f7eb; background: #12251c; cursor: pointer; }
+    .agent-roster-card:hover,
+    .agent-roster-card:focus-visible { border-color: #72e2a5; outline: none; }
+    .agent-roster-card[data-signal-kind='blocked'] { border-color: #e47272; }
+    .agent-roster-card.selected { border-color: #72e2a5; box-shadow: inset 0 -3px #72e2a5; }
+    .agent-roster-portrait { width: 34px; height: 34px; align-self: center; object-fit: contain; image-rendering: pixelated; }
+    .agent-roster-copy { display: grid; min-width: 0; grid-template-rows: auto auto minmax(0, 1fr) 22px; }
+    .agent-roster-name,
+    .agent-roster-state,
+    .agent-roster-task { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .agent-roster-name { font-size: 11px; }
+    .agent-roster-state { color: #b9d4c4; font-size: 9px; }
+    .agent-roster-task { color: #8ea99a; font-size: 9px; }
+    .agent-roster-ecg { width: 100%; height: 22px; overflow: visible; }
+    .agent-roster-ecg path { fill: none; stroke: #5ce69a; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+    .agent-roster-card[data-signal-kind='thinking'] .agent-roster-ecg path { stroke: #68bdff; }
+    .agent-roster-card[data-signal-kind='blocked'] .agent-roster-ecg path { stroke: #ff7474; }
+    .agent-roster-card[data-signal-kind='degraded'] .agent-roster-ecg path { stroke: #f5c45d; stroke-dasharray: 3 2; }
+    .agent-roster-card[data-signal-kind='offline'] { filter: saturate(.25); }
+    .agent-roster-card[data-signal-kind='offline'] .agent-roster-ecg path { stroke: #89958f; }
+    .agent-live-rail[hidden],
+    .hook-live-rail[hidden],
+    .live-rail-splitter[hidden],
+    .command-bottom-splitter[hidden],
+    .mission-trace[hidden],
+    .command-deck-controls[hidden] { display: none !important; }
+    .top-status-actions { position: relative; z-index: 70; display: flex; align-items: center; gap: 5px; padding-right: 7px; }
+    .top-status-actions .workspace-tools { position: static; inset: auto; display: block; }
+    .top-status-actions .workspace-tool-button,
+    .top-settings > summary { display: grid; width: 32px; height: 32px; place-items: center; padding: 0; border: 1px solid #345844; border-radius: 7px; color: #d8ede0; background: #13291f; cursor: pointer; list-style: none; }
+    .top-status-actions .workspace-tool-button span:last-child { display: none; }
+    .top-settings > summary::-webkit-details-marker { display: none; }
+    .top-settings .hook-settings-body { position: absolute; top: 40px; right: 0; z-index: 90; display: grid; width: min(330px, calc(100vw - 16px)); max-height: calc(100vh - 56px); gap: 6px; overflow: auto; padding: 8px; border: 1px solid #345844; border-radius: 10px; background: #102019; box-shadow: 0 14px 40px rgba(0,0,0,.45); }
+    .map-first-workspace .dashboard-card {
+      position: absolute !important;
+      inset: 8px 8px auto auto !important;
+      z-index: 65;
+      grid-column: 1;
+      grid-row: 3;
+      align-self: start;
+      justify-self: end;
+      width: 340px !important;
+      max-width: min(360px, calc(100% - 16px));
+      max-height: calc(100% - 16px);
+      margin: 0;
+    }
+    .map-first-workspace .dashboard-card:not([hidden]) { display: grid !important; }
+    @media (max-width: 899px) {
+      .map-first-workspace { grid-template-columns: minmax(0, 1fr); grid-template-rows: 44px 96px minmax(280px, 1fr); }
+      .top-status-bar { grid-column: 1; }
+      .map-first-workspace .world.map-stage { grid-column: 1; grid-row: 3; }
+      .agent-roster { grid-column: 1; grid-row: 2; padding: 6px 8px; }
+      .agent-roster-card { min-width: 128px; }
+      .agent-roster-counts output:nth-last-child(-n+2) { display: none; }
+      .map-first-workspace .dashboard-card { grid-column: 1; grid-row: 3; width: min(340px, calc(100% - 16px)) !important; height: auto !important; }
+    }
+    @media (prefers-reduced-motion: reduce) { .agent-roster-ecg { transition: none; } }
   </style>
 </head>
 <body data-locale="en-US" data-mobile-mode="off" data-sidebar-open="true">
@@ -2919,61 +2997,69 @@
         </div>
       </div>
     </div>
-    <nav class="command-deck-controls" data-i18n-aria-label="commandDeck.layout.controlsLabel">
+    <nav class="command-deck-controls" data-i18n-aria-label="commandDeck.layout.controlsLabel" hidden>
       <button type="button" id="command-collapse-left" data-i18n-aria-label="commandDeck.layout.collapseLeft" data-i18n-title="commandDeck.layout.collapseLeft" aria-expanded="true">◧</button>
       <button type="button" id="command-collapse-bottom" data-i18n-aria-label="commandDeck.layout.collapseBottom" data-i18n-title="commandDeck.layout.collapseBottom" aria-expanded="true">▱</button>
       <button type="button" id="command-collapse-right" data-i18n-aria-label="commandDeck.layout.collapseRight" data-i18n-title="commandDeck.layout.collapseRight" aria-expanded="true">◨</button>
       <button type="button" id="command-swap-sides" data-i18n-aria-label="commandDeck.layout.swapSides" data-i18n-title="commandDeck.layout.swapSides">⇄</button>
       <button type="button" id="command-reset-layout" data-i18n-aria-label="commandDeck.layout.reset" data-i18n-title="commandDeck.layout.reset">↺</button>
     </nav>
+    <div class="top-status-actions">
+      <nav class="workspace-tools" data-i18n-aria-label="commandDeck.hook.guide">
+        <button type="button" class="workspace-tool-button dashboard-card-control dashboard-card-control--help" id="dashboard-help-btn" data-dashboard-card="help" aria-expanded="false" aria-controls="dashboard-card" aria-label="Help" data-tooltip="Help" title="Help" data-i18n-aria-label="commandDeck.hook.help" data-i18n-tooltip="commandDeck.hook.help" data-i18n-title="commandDeck.hook.help"><span class="workspace-tool-icon" aria-hidden="true">?</span><span id="dashboard-help-label"></span></button>
+      </nav>
+      <details class="hook-settings top-settings">
+        <summary data-i18n-aria-label="commandDeck.settings.label">⚙</summary>
+        <div class="hook-settings-body">
+          <div class="lang-switch functional-glass">
+            <span class="muted" id="language-label"></span>
+            <select id="locale-select" data-i18n-aria-label="commandDeck.settings.languageSelector"></select>
+            <button type="button" id="mobile-mode-btn" aria-pressed="false"></button>
+            <button type="button" id="edit-furniture-btn"></button>
+            <button type="button" id="save-furniture-btn" hidden></button>
+            <button type="button" id="cancel-furniture-btn" hidden></button>
+          </div>
+          <div class="exposure-switch functional-glass">
+            <span class="muted" id="exposure-label"></span>
+            <select id="exposure-select" data-i18n-aria-label="commandDeck.settings.exposureSelector"></select>
+            <button type="button" id="copy-exposure-btn" data-i18n-title="commandDeck.settings.copyUrl" data-i18n-aria-label="commandDeck.settings.copyUrl">📋</button>
+            <span class="exposure-url" id="exposure-url"></span>
+          </div>
+        </div>
+      </details>
+    </div>
     </header>
 
-    <aside class="agent-live-rail command-deck-region" id="agent-live-rail" data-command-region="left" data-i18n-aria-label="commandDeck.rails.agentsLabel">
-      <header><strong id="agent-live-title" data-i18n="commandDeck.rails.agentsTitle"></strong><output id="agent-live-page"></output></header>
+    <section class="agent-roster command-deck-region" id="agent-roster" data-command-region="roster" data-i18n-aria-label="commandDeck.roster.title">
+      <header class="agent-roster-header">
+        <h2 id="agent-live-title" data-i18n="commandDeck.roster.title"></h2>
+        <div class="agent-roster-counts" aria-live="polite">
+          <output id="needs-attention-count"></output>
+          <output id="active-agent-count"></output>
+          <output id="idle-agent-count"></output>
+          <output id="offline-agent-count"></output>
+        </div>
+      </header>
       <div class="agent-live-list" id="agent-live-list"></div>
-      <footer class="rail-pagination">
-        <button type="button" id="agent-live-previous" data-i18n-aria-label="commandDeck.rails.previousAgents">‹</button>
-        <button type="button" id="agent-live-next" data-i18n-aria-label="commandDeck.rails.nextAgents">›</button>
-      </footer>
-    </aside>
+    </section>
 
-    <div class="live-rail-splitter" id="live-left-splitter" role="separator" data-i18n-aria-label="commandDeck.layout.resizeLeft" aria-orientation="vertical" tabindex="0"></div>
+    <aside class="agent-live-rail command-deck-region" id="agent-live-rail" hidden></aside>
 
-    <div class="live-rail-splitter" id="live-right-splitter" role="separator" data-i18n-aria-label="commandDeck.layout.resizeRight" aria-orientation="vertical" tabindex="0"></div>
+    <div class="live-rail-splitter" id="live-left-splitter" role="separator" data-i18n-aria-label="commandDeck.layout.resizeLeft" aria-orientation="vertical" tabindex="0" hidden></div>
 
-    <aside class="hook-live-rail command-deck-region" id="hook-live-rail" data-command-region="right" data-i18n-aria-label="commandDeck.rails.inspectorLabel">
+    <div class="live-rail-splitter" id="live-right-splitter" role="separator" data-i18n-aria-label="commandDeck.layout.resizeRight" aria-orientation="vertical" tabindex="0" hidden></div>
+
+    <aside class="hook-live-rail command-deck-region" id="hook-live-rail" data-i18n-aria-label="commandDeck.rails.inspectorLabel" hidden>
       <div class="hook-live-kicker" id="hook-live-semantic"></div>
       <strong id="hook-live-building"></strong>
       <p id="hook-live-activity"></p>
       <div class="hook-live-agent" id="hook-live-agent"></div>
       <div class="hook-live-channels" id="hook-live-channels" data-i18n-aria-label="commandDeck.rails.hookChannelsLabel"></div>
-    <nav class="workspace-tools" data-i18n-aria-label="commandDeck.hook.guide">
-      <button type="button" class="workspace-tool-button dashboard-card-control dashboard-card-control--help" id="dashboard-help-btn" data-dashboard-card="help" aria-expanded="false" aria-controls="dashboard-card"><span class="workspace-tool-icon" aria-hidden="true">?</span><span id="dashboard-help-label"></span></button>
-    </nav>
-    <details class="hook-settings">
-      <summary data-i18n-aria-label="commandDeck.settings.label">⚙</summary>
-      <div class="hook-settings-body">
-        <div class="lang-switch functional-glass">
-          <span class="muted" id="language-label"></span>
-          <select id="locale-select" data-i18n-aria-label="commandDeck.settings.languageSelector"></select>
-          <button type="button" id="mobile-mode-btn" aria-pressed="false"></button>
-          <button type="button" id="edit-furniture-btn"></button>
-          <button type="button" id="save-furniture-btn" hidden></button>
-          <button type="button" id="cancel-furniture-btn" hidden></button>
-        </div>
-        <div class="exposure-switch functional-glass">
-          <span class="muted" id="exposure-label"></span>
-          <select id="exposure-select" data-i18n-aria-label="commandDeck.settings.exposureSelector"></select>
-          <button type="button" id="copy-exposure-btn" data-i18n-title="commandDeck.settings.copyUrl" data-i18n-aria-label="commandDeck.settings.copyUrl">📋</button>
-          <span class="exposure-url" id="exposure-url"></span>
-        </div>
-      </div>
-    </details>
     </aside>
 
-    <div class="command-bottom-splitter" id="command-bottom-splitter" role="separator" data-i18n-aria-label="commandDeck.layout.resizeBottom" aria-orientation="horizontal" tabindex="0"></div>
+    <div class="command-bottom-splitter" id="command-bottom-splitter" role="separator" data-i18n-aria-label="commandDeck.layout.resizeBottom" aria-orientation="horizontal" tabindex="0" hidden></div>
 
-    <section class="mission-trace command-deck-region" id="mission-trace" data-command-region="bottom" aria-labelledby="mission-trace-title">
+    <section class="mission-trace command-deck-region" id="mission-trace" aria-labelledby="mission-trace-title" hidden>
       <header>
         <h2 id="mission-trace-title" data-i18n="commandDeck.timeline.title"></h2>
         <div><output id="event-summary" aria-live="polite"></output><button type="button" class="mission-trace-live" id="mission-trace-live" data-i18n="commandDeck.timeline.resume" hidden></button></div>

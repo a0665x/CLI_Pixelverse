@@ -41,3 +41,14 @@ test('nextWalkFrame alternates only while moving', () => {
   assert.equal(nextWalkFrame(1, true), 0);
   assert.equal(nextWalkFrame(1, false), 0);
 });
+
+test('roster portrait input resolves through the same Kenney sprite mapping as village agents', () => {
+  const input = {
+    role: 'subagent', state: 'working', color: '#22d3ee', facing: 'down', frame: 0,
+  };
+  const roster = getKenneyAgentSprite(input);
+  const village = getKenneyAgentSprite(input);
+
+  assert.equal(roster.src, village.src);
+  assert.equal(roster.pixelClass, village.pixelClass);
+});

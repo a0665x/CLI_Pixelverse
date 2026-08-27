@@ -63,6 +63,8 @@ import {
 } from './world_motion.mjs';
 import { getAgentPose, INTERACTION_OBJECT_ICONS, selectInteractionTarget } from './agent_pose.mjs';
 import { buildAgentDialog, buildAgentSpeech } from './agent_dialog.mjs';
+import { buildAgentRoster } from './agent_roster_model.mjs';
+import { createAgentRosterView } from './agent_roster_view.mjs';
 import { createCommandDeckLocaleController } from './command_deck_locale_controller.mjs';
 import { agentPayloadPresentation, currentAgentStatePresentation, escapeHtml, timelinePayloadPresentation } from './command_deck_payload_presenters.mjs';
 import { clampCameraOffset, centeredCamera, clampZoom, nextDraggedOffset, nextZoomState } from './ui_state.mjs';
@@ -94,11 +96,9 @@ import {
 } from './furniture_editing.mjs';
 import { buildAgentTimelinePanels, buildHeartbeatPath, heartbeatBeatWidthPx } from './agent_timeline_graphs.mjs';
 import {
-  buildLiveAgentRail,
   hookChannelsForAgents,
   hookGuideForLocale,
   hookRailForAgents,
-  liveAgentPage,
   normalizeAgentForWorld,
   normalizeVisibleAgents,
 } from './live_agent_rails.mjs';
@@ -184,9 +184,10 @@ const ROLE_CHIPS = {
 const dom = {
   agentsLayer: document.getElementById('agents-layer'),
   agentLiveList: document.getElementById('agent-live-list'),
-  agentLivePage: document.getElementById('agent-live-page'),
-  agentLivePrevious: document.getElementById('agent-live-previous'),
-  agentLiveNext: document.getElementById('agent-live-next'),
+  needsAttentionCount: document.getElementById('needs-attention-count'),
+  activeAgentCount: document.getElementById('active-agent-count'),
+  idleAgentCount: document.getElementById('idle-agent-count'),
+  offlineAgentCount: document.getElementById('offline-agent-count'),
   liveLeftSplitter: document.getElementById('live-left-splitter'),
   liveRightSplitter: document.getElementById('live-right-splitter'),
   brand: document.querySelector('.brand'),
@@ -316,13 +317,20 @@ let lastDashboardInputModality = 'keyboard';
 const dashboardPages = { events: 0, agents: 0, help: 0 };
 let dashboardLastTrigger = null;
 let dashboardLiveSnapshot = null;
-let agentLivePageIndex = 0;
 let cancelDashboardFocusRestore = null;
 const cutawayFocusHandoff = createCutawayFocusHandoff({
   schedule: (callback) => window.requestAnimationFrame(callback),
   cancel: (handle) => window.cancelAnimationFrame(handle),
 });
 const liveEcgController = createLiveEcgController({ root: dom.agentLiveList });
+const agentRosterView = createAgentRosterView({
+  root: dom.agentLiveList,
+  spriteFor: getKenneyAgentSprite,
+  textFor: (key, params = {}) => key === 'select'
+    ? uiText(currentLocale, 'commandDeck.inspector.liveDetail', params)
+    : uiText(currentLocale, `commandDeck.roster.signal.${key}`, params),
+  onSelect: (selection) => selectCommandDeck(selection),
+});
 const commandDeckLayoutController = createCommandDeckLayoutController({
   workspace: dom.workspace,
   leftHandle: dom.liveLeftSplitter,
@@ -1015,6 +1023,7 @@ function startLiveUiTicker() {
     updateCurrentAgentState(liveSnapshot);
     renderLiveMonitoring(liveSnapshot, nowMs);
     renderAgents(liveSnapshot);
+    restoreCurrentCommandSelectionStyling();
   }, Math.max(100, timelineRefreshMs));
 }
 
@@ -1156,6 +1165,9 @@ function applyStaticCopy() {
   });
   document.querySelectorAll('[data-i18n-title]').forEach((element) => {
     element.title = commandText(element.dataset.i18nTitle);
+  });
+  document.querySelectorAll('[data-i18n-tooltip]').forEach((element) => {
+    element.dataset.tooltip = commandText(element.dataset.i18nTooltip);
   });
   setText('brand-title', copy.brandTitle);
   setText('brand-subtitle', copy.brandSubtitle);
@@ -2332,6 +2344,16 @@ function resolveCurrentCommandSelection(selection) {
   return resolved;
 }
 
+function restoreCurrentCommandSelectionStyling() {
+  if (!currentCommandSelection) return false;
+  const resolved = resolveCurrentCommandSelection(currentCommandSelection);
+  if (!resolved) return false;
+  selectedAgentId = resolved.agent?.id || resolved.agent?.agent || selectedAgentId;
+  renderInspector(resolved.agent || null);
+  applyCommandSelectionStyling(resolved);
+  return true;
+}
+
 function selectCommandDeck(selection, { publish = true } = {}) {
   if (!currentCommandDeckModel) return false;
   const normalized = selection && { kind: selection.kind, id: String(selection.id || '') };
@@ -2364,43 +2386,16 @@ function renderEvents(items = []) {
 }
 
 function renderLiveMonitoring(snapshot = {}, nowMs = Date.now()) {
-  const rows = buildLiveAgentRail(snapshot, strings(), nowMs);
-  const pageSize = window.innerWidth <= 840 ? 2 : 4;
-  const page = liveAgentPage(rows, agentLivePageIndex, pageSize);
-  agentLivePageIndex = page.page;
-  if (dom.agentLivePage) dom.agentLivePage.textContent = commandText('commandDeck.dynamic.page', { page: page.page + 1, count: page.pageCount });
-  if (dom.agentLivePrevious) dom.agentLivePrevious.disabled = !page.canPrevious;
-  if (dom.agentLiveNext) dom.agentLiveNext.disabled = !page.canNext;
+  const model = currentCommandDeckModel || buildCommandDeckModel(snapshot, { nowMs });
+  const rows = buildAgentRoster(model, { nowMs });
   if (dom.agentLiveList) {
-    const items = page.items.map((row) => {
-      const article = document.createElement('article');
-      article.className = 'agent-live-row';
-      article.tabIndex = 0;
-      article.setAttribute('role', 'button');
-      article.dataset.selectionKind = 'agent';
-      article.dataset.selectionId = row.id;
-      article.dataset.tone = row.tone;
-      article.setAttribute('aria-label', `${row.name} · ${row.stateLabel} · ${row.room}`);
-      const avatar = document.createElement('div');
-      avatar.className = 'agent-live-avatar';
-      avatar.textContent = row.name.slice(0, 1).toUpperCase();
-      const copy = document.createElement('div');
-      copy.className = 'agent-live-copy';
-      const name = document.createElement('div'); name.className = 'agent-live-name'; name.textContent = row.name;
-      const meta = document.createElement('div'); meta.className = 'agent-live-meta';
-      meta.textContent = `${row.stateLabel} · ${row.room} · ${row.hook}`;
-      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-      svg.setAttribute('class', 'agent-live-ecg'); svg.setAttribute('viewBox', '0 0 176 32');
-      svg.dataset.agentEcg = row.id;
-      svg.setAttribute('role', 'img'); svg.setAttribute('aria-label', `${row.name} ${row.stateLabel}`);
-      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path'); path.setAttribute('d', row.path);
-      svg.append(path); copy.append(name, meta, svg); article.append(avatar, copy);
-      return article;
-    });
-    dom.agentLiveList.replaceChildren(...items);
-    dom.agentLiveList.style.setProperty('--visible-agent-count', String(Math.max(1, page.items.length)));
-    liveEcgController.sync(page.items);
+    agentRosterView.render(rows, { selectedId: selectedAgentId });
+    liveEcgController.sync(rows);
   }
+  if (dom.needsAttentionCount) dom.needsAttentionCount.textContent = uiText(currentLocale, 'commandDeck.roster.needsYou', { count: model.situation.attentionCount });
+  if (dom.activeAgentCount) dom.activeAgentCount.textContent = uiText(currentLocale, 'commandDeck.roster.active', { count: model.situation.activeAgentCount });
+  if (dom.idleAgentCount) dom.idleAgentCount.textContent = uiText(currentLocale, 'commandDeck.roster.idle', { count: model.situation.idleAgentCount });
+  if (dom.offlineAgentCount) dom.offlineAgentCount.textContent = uiText(currentLocale, 'commandDeck.roster.offline', { count: model.situation.offlineAgentCount });
   const hook = hookRailForAgents(snapshot.agents, selectedAgentId);
   const roomCopy = getRoomCopy(hook.roomKey, currentLocale);
   if (dom.hookLiveSemantic) dom.hookLiveSemantic.textContent = commandText(`commandDeck.hook.semantic.${hook.semantic}`);
@@ -2472,14 +2467,7 @@ function renderSnapshot(snapshot) {
   updateCurrentAgentState(dashboardLiveSnapshot);
   renderLiveMonitoring(dashboardLiveSnapshot);
   renderAgents(dashboardLiveSnapshot);
-  if (currentCommandSelection) {
-    const resolved = resolveCurrentCommandSelection(currentCommandSelection);
-    if (resolved) {
-      selectedAgentId = resolved.agent?.id || resolved.agent?.agent || selectedAgentId;
-      renderInspector(resolved.agent || null);
-      applyCommandSelectionStyling(resolved);
-    }
-  }
+  restoreCurrentCommandSelectionStyling();
   if (dashboardDisclosure.activeCard) renderDashboardCardContent();
 }
 
@@ -3019,16 +3007,6 @@ dom.dashboardCardNext?.addEventListener('click', () => {
   renderDashboardCardContent();
 });
 
-dom.agentLivePrevious?.addEventListener('click', () => {
-  agentLivePageIndex -= 1;
-  if (dashboardLiveSnapshot) renderLiveMonitoring(dashboardLiveSnapshot);
-});
-
-dom.agentLiveNext?.addEventListener('click', () => {
-  agentLivePageIndex += 1;
-  if (dashboardLiveSnapshot) renderLiveMonitoring(dashboardLiveSnapshot);
-});
-
 window.addEventListener('resize', () => {
   if (dashboardLiveSnapshot) renderLiveMonitoring(dashboardLiveSnapshot);
 });
@@ -3072,18 +3050,6 @@ dom.events?.addEventListener('keydown', (event) => {
   if (!target) return;
   event.preventDefault();
   selectCommandDeck({ kind: target.dataset.selectionKind, id: target.dataset.selectionId });
-});
-
-dom.agentLiveList?.addEventListener('click', (event) => {
-  const target = event.target.closest('[data-selection-kind="agent"]');
-  if (target) selectCommandDeck({ kind: 'agent', id: target.dataset.selectionId });
-});
-dom.agentLiveList?.addEventListener('keydown', (event) => {
-  if (!['Enter', ' '].includes(event.key)) return;
-  const target = event.target.closest('[data-selection-kind="agent"]');
-  if (!target) return;
-  event.preventDefault();
-  selectCommandDeck({ kind: 'agent', id: target.dataset.selectionId });
 });
 
 dom.hookLiveChannels?.addEventListener('click', (event) => {
