@@ -499,7 +499,13 @@ PIXELVERSE_TEST_HOOK_TARGET=clone_bay ./run.sh test-hook
 ./run.sh --help
 ```
 
-`start`, `restart`, and `down_up` ask you to choose an agent source with arrow keys unless `PIXELVERSE_AGENT_KIND` is set:
+`start` asks you to choose an agent source with arrow keys unless
+`PIXELVERSE_AGENT_KIND` is set. `restart` and `down_up` instead reuse the
+agent source and exposure mode saved by the previous successful start, so the
+normal restart path does not stop at the old selection menus. If no saved
+agent source exists yet, restart safely falls back to the interactive selector.
+
+Explicit environment variables always override the saved restart settings:
 
 ```bash
 PIXELVERSE_AGENT_KIND=codex ./run.sh down_up
@@ -840,11 +846,14 @@ Prepare one pair for the runtime override directory:
 PIXELVERSE_FLOORPLAN=custom ./run.sh prepare-floorplan
 ```
 
-`start`, `restart`, and `down_up` run the same preparation step. In an
-interactive terminal, `run.sh` prompts you to choose from `global_map/*.yaml`
-that also have a matching PNG. In a non-interactive shell, it preserves an
-existing `tmp/global_map/default.yaml/png`; if no runtime override exists, it
-falls back to the built-in `default` pair.
+`start` keeps the interactive floorplan selector for choosing a complete
+`global_map/*.yaml` + `*.png` pair. `restart` and `down_up` preserve an
+existing `tmp/global_map/default.yaml/png` pair without showing the selector.
+Set `PIXELVERSE_FLOORPLAN` when you intentionally want a restart to replace
+the runtime pair. If no complete runtime override exists, restart falls back
+to the built-in `default` pair (or the first complete pair when `default` is
+unavailable). Non-interactive `start` and `prepare-floorplan` retain their
+existing fallback behavior.
 
 `default.yaml` is the source of truth for rooms, corridors, door portals,
 pathfinding, and furniture placement. `default.png` is only the visual

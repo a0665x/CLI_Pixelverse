@@ -81,9 +81,9 @@ usage() {
 Usage: ./run.sh [start|stop|restart|down_up|status|log|logs|doctor|platform|bridge-status|floorplans|prepare-floorplan|map-builder|adapter|install-adapter|install-codex-hook|enable-shell-adapter|install-hermes-hook|hermes-chat|test-hook|smoke-furniture-drag|down]
 
 Commands:
-  start      Select agent source and start Docker Compose service.
+  start      Start Docker Compose and ask for interactive service choices.
   stop       Stop Docker Compose service and legacy local processes.
-  restart    Stop, then start and re-select agent source.
+  restart    Restart with saved agent, exposure, and runtime floorplan settings.
   down_up    Alias for restart.
   status     Show container status and API endpoints.
   log/logs   Follow Docker Compose logs.

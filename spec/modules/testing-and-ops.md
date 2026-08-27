@@ -49,7 +49,7 @@
 - `./run.sh start`：互動選 agent 與 UI exposure mode，並啟動 Docker Compose service
 - `PIXELVERSE_AGENT_KIND=hermes PIXELVERSE_EXPOSURE_MODE=tailscale ./run.sh down_up`：非互動重建並啟動 Hermes mode，並指定 exposure mode
 - `./run.sh stop`：停止 Docker service 與 legacy local processes
-- `./run.sh restart` / `./run.sh down_up`：停止後重啟，會重新 assign agent kind
+- `./run.sh restart` / `./run.sh down_up`：停止後免互動重啟，沿用上次儲存的 agent kind、UI exposure mode 與完整 runtime floorplan；明確提供 `PIXELVERSE_AGENT_KIND`、`PIXELVERSE_EXPOSURE_MODE` 或 `PIXELVERSE_FLOORPLAN` 時會覆寫沿用值，首次沒有儲存 agent kind 時才回退互動選擇
 - `./run.sh status`：列出 container 與 endpoint
 - `./run.sh log` / `./run.sh logs`：追 Docker logs
 - `./run.sh doctor`：檢查 ports、legacy process、Docker、Compose、API health
