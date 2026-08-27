@@ -447,6 +447,7 @@ validate_floorplan_key() {
 }
 
 select_floorplan_key() {
+  local mode="${1:-interactive}"
   local requested="${PIXELVERSE_FLOORPLAN:-}"
   local keys=()
   local key index choice
@@ -470,7 +471,7 @@ select_floorplan_key() {
     return 2
   fi
 
-  if [[ ! -t 0 ]]; then
+  if [[ "$mode" == "reuse" || ! -t 0 ]]; then
     if printf '%s\n' "${keys[@]}" | grep -qx 'default'; then
       printf 'default\n'
     else
@@ -490,16 +491,17 @@ select_floorplan_key() {
 }
 
 prepare_floorplan() {
+  local mode="${1:-interactive}"
   local selected source_yaml source_png output_dir
   output_dir="$(floorplan_output_dir_abs)"
-  if [[ -z "${PIXELVERSE_FLOORPLAN:-}" && ! -t 0 && -f "$output_dir/default.yaml" && -f "$output_dir/default.png" ]]; then
+  if [[ -z "${PIXELVERSE_FLOORPLAN:-}" && ( "$mode" == "reuse" || ! -t 0 ) && -f "$output_dir/default.yaml" && -f "$output_dir/default.png" ]]; then
     PIXELVERSE_GLOBAL_MAP_DIR_HOST="$(floorplan_output_dir_host)"
     export PIXELVERSE_GLOBAL_MAP_DIR_HOST
     echo "Using existing floorplan override: $output_dir/default.yaml + $output_dir/default.png"
     return 0
   fi
 
-  selected="$(select_floorplan_key)"
+  selected="$(select_floorplan_key "$mode")"
   source_yaml="$ROOT/global_map/$selected.yaml"
   source_png="$ROOT/global_map/$selected.png"
   if [[ ! -f "$source_yaml" || ! -f "$source_png" ]]; then
@@ -791,7 +793,7 @@ start_service() {
   if [[ "$exposure_mode" != "tailscale" && -z "${PIXELVERSE_TAILSCALE_ENABLE_SET:-}" ]]; then
     PIXELVERSE_TAILSCALE_ENABLE=0
   fi
-  prepare_floorplan
+  prepare_floorplan "$mode"
   write_env_file "$agent_kind" "$exposure_mode"
   install_agent_adapter "$agent_kind" "$ROOT" optional
   if [[ "$agent_kind" != "generic" && "${PIXELVERSE_AUTO_ENABLE_SHELL_ADAPTER:-1}" != "0" ]]; then

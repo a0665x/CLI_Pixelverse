@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import pty
 import subprocess
 from pathlib import Path
 
@@ -13,6 +14,7 @@ def run_bash(
     *,
     state_dir: Path,
     env: dict[str, str] | None = None,
+    tty_stdin: bool = False,
 ) -> subprocess.CompletedProcess[str]:
     merged = os.environ.copy()
     for key in (
@@ -25,14 +27,24 @@ def run_bash(
     merged["PIXELVERSE_STATE_DIR"] = str(state_dir)
     if env:
         merged.update(env)
-    return subprocess.run(
-        ["bash", "-c", script],
-        cwd=ROOT,
-        env=merged,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
+    master_fd = slave_fd = None
+    try:
+        if tty_stdin:
+            master_fd, slave_fd = pty.openpty()
+        return subprocess.run(
+            ["bash", "-c", script],
+            cwd=ROOT,
+            env=merged,
+            stdin=slave_fd,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+    finally:
+        if slave_fd is not None:
+            os.close(slave_fd)
+        if master_fd is not None:
+            os.close(master_fd)
 
 
 def write_saved_env(
@@ -89,3 +101,54 @@ def test_reuse_without_saved_agent_falls_back_to_selector(tmp_path):
 
     assert result.returncode == 0, result.stderr
     assert result.stdout == "codex\n"
+
+
+def test_reuse_preserves_complete_runtime_floorplan_without_selector(tmp_path):
+    output = tmp_path / "runtime-map"
+    output.mkdir()
+    (output / "default.yaml").write_text(
+        "version: 2\nkey: retained\n",
+        encoding="utf-8",
+    )
+    (output / "default.png").write_bytes(b"retained")
+    result = run_bash(
+        'PIXELVERSE_SOURCE_ONLY=1 source ./run.sh; '
+        'select_floorplan_key(){ echo SELECTOR_CALLED >&2; return 87; }; '
+        'prepare_floorplan reuse',
+        state_dir=tmp_path / "state",
+        env={"PIXELVERSE_GLOBAL_MAP_DIR_HOST": str(output)},
+        tty_stdin=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Using existing floorplan override" in result.stdout
+    assert "SELECTOR_CALLED" not in result.stderr
+    assert (output / "default.yaml").read_text(encoding="utf-8") == (
+        "version: 2\nkey: retained\n"
+    )
+    assert (output / "default.png").read_bytes() == b"retained"
+
+
+def test_reuse_explicit_floorplan_replaces_runtime_pair(tmp_path):
+    output = tmp_path / "runtime-map"
+    output.mkdir()
+    (output / "default.yaml").write_text("old", encoding="utf-8")
+    (output / "default.png").write_bytes(b"old")
+    result = run_bash(
+        'PIXELVERSE_SOURCE_ONLY=1 source ./run.sh; prepare_floorplan reuse',
+        state_dir=tmp_path / "state",
+        env={
+            "PIXELVERSE_GLOBAL_MAP_DIR_HOST": str(output),
+            "PIXELVERSE_FLOORPLAN": "default",
+        },
+        tty_stdin=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Selected floorplan: default" in result.stdout
+    assert (output / "default.yaml").read_bytes() == (
+        ROOT / "global_map/default.yaml"
+    ).read_bytes()
+    assert (output / "default.png").read_bytes() == (
+        ROOT / "global_map/default.png"
+    ).read_bytes()
