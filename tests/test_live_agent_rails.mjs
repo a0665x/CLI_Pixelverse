@@ -155,3 +155,13 @@ test('Hook console always exposes dense Work Search and Rest channels', () => {
   assert.equal(channels[0].active, true);
   assert.equal(channels[0].activity, 'Editing code');
 });
+
+test('legacy live rail exposes the canonical signal object for roster migration', () => {
+  const [row] = buildLiveAgentRail({
+    agents: [{ agent: 'main', role: 'main_agent', state: 'working', pixel_state: 'executing' }],
+  }, { states: {}, rooms: {} }, 100);
+
+  assert.equal(row.signal.kind, 'busy');
+  assert.equal(row.signal.rate, 1);
+  assert.equal(row.portraitInput.role, 'main_agent');
+});

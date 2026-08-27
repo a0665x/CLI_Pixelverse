@@ -1,5 +1,7 @@
 import { buildHeartbeatPath } from './agent_timeline_graphs.mjs';
+import { buildAgentRoster } from './agent_roster_model.mjs';
 import {
+  buildCommandDeckModel,
   compareCommandDeckAgents,
   normalizeAgentForWorld,
   normalizeVisibleAgents,
@@ -8,27 +10,29 @@ import {
 
 export { normalizeAgentForWorld, normalizeVisibleAgents, resolvedAgentActivity };
 
-const displayName = (agent = {}) => agent.full_name || agent.name || agent.agent || 'Agent';
-
 export function buildLiveAgentRail(snapshot = {}, locale = {}, nowMs = Date.now()) {
   const rooms = locale.rooms || {};
   const states = locale.states || {};
-  const source = Array.isArray(snapshot) ? snapshot : normalizeVisibleAgents(snapshot);
-  return [...source].sort(compareCommandDeckAgents).map((agent) => {
-    const heartbeat = resolvedAgentActivity(agent);
+  const source = Array.isArray(snapshot) ? { agents: snapshot } : snapshot;
+  const model = buildCommandDeckModel(source, { nowMs });
+  return buildAgentRoster(model, { nowMs }).map((row) => {
+    const agent = model.selectionIndex.agent[row.id] || {};
+    const signal = row.signal;
     return {
-      id: agent.id || agent.agent,
-      name: displayName(agent),
-      state: heartbeat.state || agent.state || 'idle',
-      stateLabel: states[heartbeat.state] || heartbeat.state || 'idle',
-      room: rooms[heartbeat.roomKey]?.name || agent.room_label || heartbeat.roomKey || '',
-      hook: heartbeat.semantic,
-      tone: heartbeat.tone,
-      load: heartbeat.load,
+      ...row,
+      state: agent.state || row.state || 'idle',
+      stateLabel: states[agent.state] || agent.state || row.state || 'idle',
+      room: rooms[row.roomKey]?.name || agent.room_label || row.roomKey || '',
+      hook: agent.hookSemantic || 'rest',
+      tone: signal.tone,
+      load: signal.load,
       path: buildHeartbeatPath({
-        state: heartbeat.state,
-        heartbeatTone: heartbeat.tone,
-        heartbeatLoad: heartbeat.load,
+        state: agent.state || row.state,
+        signalKind: signal.kind,
+        heartbeatTone: signal.tone,
+        heartbeatLoad: signal.load,
+        heartbeatRate: signal.rate,
+        heartbeatAmplitude: signal.amplitude,
       }, nowMs, 1000, 176),
     };
   });
