@@ -179,3 +179,19 @@ test('specific started and completed envelopes have distinct stable fallback IDs
   assert.notEqual(model.events[0].id, model.events[1].id);
   assert.deepEqual(new Set(model.events.map(({ category }) => category)), new Set(['tool', 'completion']));
 });
+
+test('situation exposes first-layer attention and liveness counts', () => {
+  const model = buildCommandDeckModel({ agents: [
+    { agent: 'main', role: 'main_agent', state: 'working', pixel_state: 'executing' },
+    { agent: 'blocked', role: 'subagent', state: 'blocked', pixel_state: 'awaiting_input' },
+    { agent: 'idle', role: 'subagent', state: 'idle' },
+    { agent: 'offline', role: 'subagent', state: 'offline', is_stale: true },
+  ] });
+
+  assert.deepEqual({
+    attentionCount: model.situation.attentionCount,
+    busyAgentCount: model.situation.busyAgentCount,
+    idleAgentCount: model.situation.idleAgentCount,
+    offlineAgentCount: model.situation.offlineAgentCount,
+  }, { attentionCount: 1, busyAgentCount: 1, idleAgentCount: 1, offlineAgentCount: 1 });
+});

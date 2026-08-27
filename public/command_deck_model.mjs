@@ -1,3 +1,5 @@
+import { resolveAgentSignal } from './agent_roster_model.mjs';
+
 const MAIN_ROLE = 'main_agent';
 
 const REST_ROOMS = new Set(['standby_dock', 'offline_corner', 'rest-cabin']);
@@ -363,10 +365,15 @@ export function buildCommandDeckModel(snapshot = {}, options = {}) {
   const selectionIndex = { agent, building, hook, event };
   const model = { agents, events, selectionIndex, findings: [], situation: {} };
   model.findings = commandDeckFindings(model, options.rendered || options.village || {});
+  const signals = agents.map((agent) => resolveAgentSignal(agent, nowMs));
   model.situation = {
     agentCount: agents.length,
     eventCount: events.length,
     activeAgentCount: agents.filter(({ lifecycle }) => lifecycle === 'active').length,
+    attentionCount: signals.filter(({ needsAttention }) => needsAttention).length,
+    busyAgentCount: signals.filter(({ kind }) => kind === 'busy').length,
+    idleAgentCount: signals.filter(({ kind }) => kind === 'idle').length,
+    offlineAgentCount: signals.filter(({ kind }) => kind === 'offline').length,
     warningCount: model.findings.filter(({ severity }) => severity === 'warning').length,
     criticalCount: model.findings.filter(({ severity }) => severity === 'critical').length,
     highestSeverity: model.findings.some(({ severity }) => severity === 'critical')
