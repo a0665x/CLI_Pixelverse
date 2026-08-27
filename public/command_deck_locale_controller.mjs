@@ -1,4 +1,4 @@
-import { normalizeLocale } from './ui_strings.mjs';
+import { localeCatalogComplete, normalizeLocale } from './ui_strings.mjs';
 
 export function createCommandDeckLocaleController({
   initialLocale = 'en-US',
@@ -15,10 +15,18 @@ export function createCommandDeckLocaleController({
   resolveSelection = () => null,
   renderInspector = () => {},
   onLocale = () => {},
+  isLocaleComplete = localeCatalogComplete,
+  onLocaleRejected = () => {},
 } = {}) {
   let locale = normalizeLocale(initialLocale);
   const setLocale = (nextLocale) => {
-    locale = normalizeLocale(nextLocale);
+    const normalized = normalizeLocale(nextLocale);
+    if (!isLocaleComplete(normalized)) {
+      onLocaleRejected(normalized);
+      if (localeSelect) localeSelect.value = locale;
+      return locale;
+    }
+    locale = normalized;
     onLocale(locale);
     storage?.setItem?.('pixelverse:locale', locale);
     applyStaticCopy();

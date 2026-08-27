@@ -8,10 +8,10 @@ export const LOCALE_LABELS = {
 };
 
 const commandDeckCopy = ({
-  topBar, rails, inspector, layout, timeline, diagnostics, hook, empty, error,
+  topBar, rails, roster, inspector, layout, timeline, diagnostics, hook, empty, error,
   settings, camera, world, dynamic, ...activeSurfaces
 }) => ({ commandDeck: {
-  topBar, rails, inspector, layout, timeline, diagnostics, hook, empty, error,
+  topBar, rails, roster, inspector, layout, timeline, diagnostics, hook, empty, error,
   settings, camera, world, dynamic, ...activeSurfaces,
 } });
 
@@ -92,6 +92,7 @@ export const UI_CATALOG = {
     ...EN_ACTIVE_SURFACES,
     topBar: { label: 'CLI Pixelverse live status', brand: 'CLI_Pixelverse' },
     rails: { agentsLabel: 'Agent force rail', agentsTitle: 'Live agents', previousAgents: 'Previous agents', nextAgents: 'Next agents', inspectorLabel: 'Intelligence inspector', hookChannelsLabel: 'Live Hook channels' },
+    roster: { title: 'Agent roster', needsYou: ({ count }) => `${count} need you`, active: ({ count }) => `${count} active`, idle: ({ count }) => `${count} idle`, offline: ({ count }) => `${count} offline`, signal: { idle: 'Idle signal', thinking: 'Thinking signal', working: 'Working signal', busy: 'Busy signal', blocked: 'Blocked signal', degraded: 'Connection degraded', offline: 'Offline flatline' } },
     inspector: { title: 'Inspector', selectAgent: 'Select agent', empty: 'Select an agent to inspect current activity.', currentTask: 'Current task', lastUpdate: 'Last update', room: 'Room', events: 'Events', agentFallback: 'Agent', sessionNames: { api: 'API Session', cli: 'CLI Session', gateway: 'Gateway Session' }, liveDetail: ({ name }) => `${name} live detail`, rowState: 'State', rowRoom: 'Room', rowTask: 'Task', rowEventTime: 'Event time', latestEvent: ({ value }) => `Latest event: ${value}`, detailSeparator: ' • ' },
     layout: { controlsLabel: 'Command deck layout controls', collapseLeft: 'Collapse left region', expandLeft: 'Expand left region', collapseRight: 'Collapse right region', expandRight: 'Expand right region', collapseBottom: 'Collapse mission trace', expandBottom: 'Expand mission trace', swapSides: 'Swap side docks', reset: 'Reset command deck layout', resizeLeft: 'Resize live agent rail', resizeRight: 'Resize Hook rail', resizeBottom: 'Resize mission trace' },
     timeline: { title: 'Mission trace', live: 'Live', paused: 'Paused', resume: 'Resume live', summary: ({ state, count }) => `${state} · ${count} lanes`, eventLabel: ({ category, summary }) => `${category}: ${summary}` },
@@ -108,6 +109,7 @@ export const UI_CATALOG = {
     ...ZH_ACTIVE_SURFACES,
     topBar: { label: 'CLI Pixelverse 即時狀態', brand: 'CLI_Pixelverse' },
     rails: { agentsLabel: '代理戰力列', agentsTitle: '即時代理', previousAgents: '上一頁代理', nextAgents: '下一頁代理', inspectorLabel: '情報檢視器', hookChannelsLabel: '即時 Hook 頻道' },
+    roster: { title: '代理人物列', needsYou: ({ count }) => `${count} 位需要你介入`, active: ({ count }) => `${count} 位活動中`, idle: ({ count }) => `${count} 位待命`, offline: ({ count }) => `${count} 位離線`, signal: { idle: '待命訊號', thinking: '思考訊號', working: '工作訊號', busy: '忙碌訊號', blocked: '受阻訊號', degraded: '連線品質下降', offline: '離線平線' } },
     inspector: { title: '狀態檢視器', selectAgent: '選擇代理', empty: '選擇代理以檢視目前活動。', currentTask: '目前任務', lastUpdate: '最近更新', room: '房間', events: '事件', agentFallback: '代理', sessionNames: { api: 'API 工作階段', cli: 'CLI 工作階段', gateway: 'Gateway 工作階段' }, liveDetail: ({ name }) => `${name} 即時細節`, rowState: '狀態', rowRoom: '房間', rowTask: '任務', rowEventTime: '事件時間', latestEvent: ({ value }) => `最新事件：${value}`, detailSeparator: '｜' },
     layout: { controlsLabel: '指揮台版面控制', collapseLeft: '收合左側區域', expandLeft: '展開左側區域', collapseRight: '收合右側區域', expandRight: '展開右側區域', collapseBottom: '收合任務軌跡', expandBottom: '展開任務軌跡', swapSides: '交換兩側面板', reset: '重設指揮台版面', resizeLeft: '調整即時代理列寬度', resizeRight: '調整 Hook 列寬度', resizeBottom: '調整任務軌跡高度' },
     timeline: { title: '任務軌跡', live: '即時', paused: '已暫停', resume: '恢復即時', summary: ({ state, count }) => `${state} · ${count} 條軌跡`, eventLabel: ({ category, summary }) => `${category}：${summary}` },
@@ -124,6 +126,7 @@ export const UI_CATALOG = {
     ...JA_ACTIVE_SURFACES,
     topBar: { label: 'CLI Pixelverse ライブ状態', brand: 'CLI_Pixelverse' },
     rails: { agentsLabel: 'エージェント一覧', agentsTitle: 'ライブエージェント', previousAgents: '前のエージェント', nextAgents: '次のエージェント', inspectorLabel: 'インテリジェンスインスペクター', hookChannelsLabel: 'ライブ Hook チャンネル' },
+    roster: { title: 'エージェント一覧', needsYou: ({ count }) => `${count} 人が対応待ち`, active: ({ count }) => `${count} 人が活動中`, idle: ({ count }) => `${count} 人が待機中`, offline: ({ count }) => `${count} 人がオフライン`, signal: { idle: '待機シグナル', thinking: '思考シグナル', working: '作業シグナル', busy: '高負荷シグナル', blocked: 'ブロック中のシグナル', degraded: '接続品質が低下', offline: 'オフラインのフラットライン' } },
     inspector: { title: 'インスペクター', selectAgent: 'エージェントを選択', empty: 'エージェントを選択して現在の活動を確認します。', currentTask: '現在のタスク', lastUpdate: '最終更新', room: '部屋', events: 'イベント', agentFallback: 'エージェント', sessionNames: { api: 'API セッション', cli: 'CLI セッション', gateway: 'Gateway セッション' }, liveDetail: ({ name }) => `${name} のライブ詳細`, rowState: '状態', rowRoom: '部屋', rowTask: 'タスク', rowEventTime: 'イベント時刻', latestEvent: ({ value }) => `最新イベント：${value}`, detailSeparator: '｜' },
     layout: { controlsLabel: 'コマンドデッキのレイアウト操作', collapseLeft: '左領域を閉じる', expandLeft: '左領域を開く', collapseRight: '右領域を閉じる', expandRight: '右領域を開く', collapseBottom: 'ミッション軌跡を閉じる', expandBottom: 'ミッション軌跡を開く', swapSides: '左右のドックを交換', reset: 'コマンドデッキをリセット', resizeLeft: 'エージェント一覧の幅を変更', resizeRight: 'Hook 一覧の幅を変更', resizeBottom: 'ミッション軌跡の高さを変更' },
     timeline: { title: 'ミッション軌跡', live: 'ライブ', paused: '一時停止', resume: 'ライブに戻る', summary: ({ state, count }) => `${state}・${count} レーン`, eventLabel: ({ category, summary }) => `${category}：${summary}` },
@@ -140,6 +143,7 @@ export const UI_CATALOG = {
     ...KO_ACTIVE_SURFACES,
     topBar: { label: 'CLI Pixelverse 실시간 상태', brand: 'CLI_Pixelverse' },
     rails: { agentsLabel: '에이전트 전력 레일', agentsTitle: '실시간 에이전트', previousAgents: '이전 에이전트', nextAgents: '다음 에이전트', inspectorLabel: '인텔리전스 검사기', hookChannelsLabel: '실시간 Hook 채널' },
+    roster: { title: '에이전트 목록', needsYou: ({ count }) => `${count}명 확인 필요`, active: ({ count }) => `${count}명 활동 중`, idle: ({ count }) => `${count}명 대기 중`, offline: ({ count }) => `${count}명 오프라인`, signal: { idle: '대기 신호', thinking: '생각 신호', working: '작업 신호', busy: '높은 부하 신호', blocked: '차단 신호', degraded: '연결 품질 저하', offline: '오프라인 평선' } },
     inspector: { title: '검사기', selectAgent: '에이전트 선택', empty: '에이전트를 선택해 현재 활동을 확인하세요.', currentTask: '현재 작업', lastUpdate: '마지막 업데이트', room: '방', events: '이벤트', agentFallback: '에이전트', sessionNames: { api: 'API 세션', cli: 'CLI 세션', gateway: 'Gateway 세션' }, liveDetail: ({ name }) => `${name} 실시간 상세`, rowState: '상태', rowRoom: '방', rowTask: '작업', rowEventTime: '이벤트 시간', latestEvent: ({ value }) => `최신 이벤트: ${value}`, detailSeparator: '｜' },
     layout: { controlsLabel: '명령 데크 레이아웃 제어', collapseLeft: '왼쪽 영역 접기', expandLeft: '왼쪽 영역 펼치기', collapseRight: '오른쪽 영역 접기', expandRight: '오른쪽 영역 펼치기', collapseBottom: '미션 추적 접기', expandBottom: '미션 추적 펼치기', swapSides: '좌우 도크 바꾸기', reset: '명령 데크 레이아웃 초기화', resizeLeft: '실시간 에이전트 레일 크기 조절', resizeRight: 'Hook 레일 크기 조절', resizeBottom: '미션 추적 크기 조절' },
     timeline: { title: '미션 추적', live: '실시간', paused: '일시 중지', resume: '실시간 재개', summary: ({ state, count }) => `${state} · ${count}개 레인`, eventLabel: ({ category, summary }) => `${category}: ${summary}` },
@@ -172,10 +176,15 @@ export function missingLocaleKeys(catalog, baseline = 'en-US') {
   }));
 }
 
+export function localeCatalogComplete(locale) {
+  const normalized = normalizeLocale(locale);
+  return (missingLocaleKeys(UI_CATALOG)[normalized] || []).length === 0;
+}
+
 export function uiText(locale, key, params = {}) {
-  const normalized = SUPPORTED_LOCALES.includes(locale) ? locale : 'en-US';
+  const normalized = normalizeLocale(locale);
   const resolve = (copy) => String(key).split('.').reduce((value, part) => value?.[part], copy);
-  const value = resolve(UI_CATALOG[normalized]) ?? resolve(UI_CATALOG['en-US']);
+  const value = resolve(UI_CATALOG[normalized]);
   if (typeof value === 'function') return value(params);
   return value == null ? key : String(value).replace(/\{(\w+)\}/g, (_, name) => String(params[name] ?? ''));
 }

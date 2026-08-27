@@ -130,6 +130,27 @@ test('catalog parity helper reports nested omissions precisely', () => {
   }), { 'zh-TW': ['top.count'] });
 });
 
+test('roster copy has exact four-locale parity and no supported-locale English fallback', () => {
+  for (const locale of ['en-US', 'zh-TW', 'ja-JP', 'ko-KR']) {
+    assert.equal(uiStrings.localeCatalogComplete(locale), true);
+    for (const key of [
+      'title', 'needsYou', 'active', 'idle', 'offline',
+      'signal.idle', 'signal.thinking', 'signal.working', 'signal.busy',
+      'signal.blocked', 'signal.degraded', 'signal.offline',
+    ]) {
+      assert.notEqual(
+        uiStrings.uiText(locale, `commandDeck.roster.${key}`, { count: 2 }),
+        `commandDeck.roster.${key}`,
+      );
+    }
+  }
+  assert.equal(
+    uiStrings.uiText('ja-JP', 'commandDeck.roster.missingKey'),
+    'commandDeck.roster.missingKey',
+  );
+  assert.equal(uiStrings.uiText('fr-FR', 'commandDeck.roster.title'), 'Agent roster');
+});
+
 test('active interaction, activity, timeline, furniture, and pose copy has four-locale framing', () => {
   for (const name of [
     'interactionText', 'ambientText', 'activityHintForLocale', 'timelineItemForLocale',
