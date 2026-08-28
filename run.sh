@@ -361,6 +361,14 @@ write_env_file() {
   local agent_kind="$1"
   local exposure_mode="${2:-${PIXELVERSE_EXPOSURE_MODE:-localhost}}"
   local tailscale_public_url="${PIXELVERSE_TAILSCALE_URL:-}"
+  local hermes_repo_host="${PIXELVERSE_HERMES_REPO_HOST:-}"
+  if [[ -z "$hermes_repo_host" && -n "${PIXELVERSE_HERMES_ROOT:-}" ]]; then
+    hermes_repo_host="${PIXELVERSE_HERMES_ROOT%/}/hermes-agent"
+  fi
+  if [[ -z "$hermes_repo_host" ]]; then
+    hermes_repo_host="$STATE_DIR/hermes-agent-placeholder"
+  fi
+  mkdir -p "$hermes_repo_host"
   ensure_platform_env
   if [[ -z "$tailscale_public_url" ]]; then
     tailscale_public_url="$(tailscale_url 2>/dev/null || true)"
@@ -383,7 +391,7 @@ PIXELVERSE_NOTIFY_CMD=${PIXELVERSE_NOTIFY_CMD:-henry-notify}
 PIXELVERSE_HERMES_ENABLE=${PIXELVERSE_HERMES_ENABLE:-auto}
 PIXELVERSE_HERMES_WEB_BASE=${PIXELVERSE_HERMES_WEB_BASE:-http://host.docker.internal:9119}
 PIXELVERSE_HERMES_GATEWAY_HEALTH=${PIXELVERSE_HERMES_GATEWAY_HEALTH:-http://host.docker.internal:8642/health/detailed}
-PIXELVERSE_HERMES_REPO_HOST=${PIXELVERSE_HERMES_REPO_HOST:-/home/a0665x/Desktop/AI_AGX_WS/HermesAgent_OpenWebUI/hermes-agent}
+PIXELVERSE_HERMES_REPO_HOST=$hermes_repo_host
 PIXELVERSE_RUNTIME_DIR_HOST=${PIXELVERSE_RUNTIME_DIR_HOST:-$RUNTIME_DIR}
 PIXELVERSE_OLLAMA_BASE=${PIXELVERSE_OLLAMA_BASE:-http://host.docker.internal:11434}
 PIXELVERSE_TAILSCALE_ENABLE=$PIXELVERSE_TAILSCALE_ENABLE
