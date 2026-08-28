@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { FurnitureDefinition } from '../src/world/types';
 import {
+  interiorNavigationSignature,
   interactionAccess,
   navigationBlockerKind,
 } from '../src/rendering/interiorNavigationPolicy';
@@ -22,6 +23,26 @@ const item = (
 });
 
 describe('interior navigation policy', () => {
+  it('signs canonical geometry and interaction policy independently of furniture order', () => {
+    const desk = {
+      ...item('desk'), id: 'desk-a', interactionPoint: { x: 2, y: 3 }, supportedActions: ['terminal' as const],
+    };
+    const plant = { ...item('plant'), id: 'plant-a', point: { x: 5, y: 5 } };
+    const baseline = interiorNavigationSignature({ id: 'room', width: 8, height: 8, furniture: [desk, plant], overflow: [] });
+
+    expect(interiorNavigationSignature({ id: 'room', width: 8, height: 8, furniture: [plant, desk], overflow: [] }))
+      .toBe(baseline);
+    for (const changed of [
+      { ...desk, point: { x: 3, y: 2 } },
+      { ...desk, rotation: 90 as const },
+      { ...desk, scale: 1.25 as const },
+      { ...desk, interactionPoint: { x: 3, y: 3 } },
+    ]) {
+      expect(interiorNavigationSignature({ id: 'room', width: 8, height: 8, furniture: [changed, plant], overflow: [] }))
+        .not.toBe(baseline);
+    }
+  });
+
   it('blocks every opaque non-floor item despite legacy non-blocking metadata', () => {
     for (const furniture of [
       item('desk'),

@@ -1860,6 +1860,28 @@ describe('InteriorCutawaySystem', () => {
     expect(cutaway.openBuildingId()).toBeUndefined();
   });
 
+  it('invalidates occupant routes whenever furniture navigation geometry changes', () => {
+    const fake = fakeScene();
+    const cutaway = new InteriorCutawaySystem(fake.scene as never, WORLD_DEFINITION, () => ({ width: 1_280, height: 720 }));
+    cutaway.open('rest-cabin');
+    cutaway.update([idleInside]);
+    const internal = cutaway as unknown as {
+      activeInterior: InteriorDefinition;
+      assignmentSignature: string;
+      occupantViews: Map<string, { sprite: FakeObject }>;
+    };
+    const firstSignature = internal.assignmentSignature;
+    const firstSprite = internal.occupantViews.get('main')!.sprite;
+    const movable = internal.activeInterior.furniture.find(({ supportedActions }) => supportedActions.length === 0)!;
+    movable.point = { x: movable.point.x + 0.25, y: movable.point.y };
+
+    cutaway.update([idleInside]);
+
+    expect(internal.assignmentSignature).not.toBe(firstSignature);
+    expect(firstSprite.destroyed).toBe(true);
+    expect(internal.occupantViews.get('main')!.sprite).not.toBe(firstSprite);
+  });
+
   it('keeps distinct agent identities and advances walk frames inside the room', () => {
     const fake = fakeScene();
     const cutaway = new InteriorCutawaySystem(fake.scene as never, WORLD_DEFINITION, () => ({ width: 1_280, height: 720 }));

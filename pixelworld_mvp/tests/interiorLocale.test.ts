@@ -2,13 +2,24 @@ import { describe, expect, it } from 'vitest';
 
 describe('interior editor locale catalog', () => {
   it('keeps editor, context action, and semantic furniture keys in four-locale parity', async () => {
-    const { contextActionCopy, editorChrome, semanticFurnitureCopy } = await import('../src/rendering/interiorLocale');
-    for (const catalog of [editorChrome, contextActionCopy, semanticFurnitureCopy]) {
+    const { contextActionCopy, editorChrome, interiorRuntimeCopy, semanticFurnitureCopy } = await import('../src/rendering/interiorLocale');
+    for (const catalog of [editorChrome, contextActionCopy, interiorRuntimeCopy, semanticFurnitureCopy]) {
       const baseline = Object.keys(catalog['en-US']).sort();
       for (const locale of ['zh-TW', 'ja-JP', 'ko-KR'] as const) {
         expect(Object.keys(catalog[locale]).sort()).toEqual(baseline);
       }
     }
+  });
+
+  it('localizes blocked navigation without mixing interface languages', async () => {
+    const { interiorRuntimeCopy } = await import('../src/rendering/interiorLocale');
+    expect(interiorRuntimeCopy).toEqual({
+      'zh-TW': { pathBlocked: '移動路徑受阻' },
+      'en-US': { pathBlocked: 'Movement path blocked' },
+      'ja-JP': { pathBlocked: '移動経路が塞がれています' },
+      'ko-KR': { pathBlocked: '이동 경로가 막혔습니다' },
+    });
+    expect(JSON.stringify(interiorRuntimeCopy['en-US'])).not.toMatch(/[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]/);
   });
 
   it('provides the complete contextual chrome in every supported locale', async () => {

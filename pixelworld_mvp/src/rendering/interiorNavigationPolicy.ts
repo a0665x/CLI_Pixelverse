@@ -1,4 +1,5 @@
-import type { AgentAction, FurnitureDefinition } from '../world/types';
+import type { AgentAction, FurnitureDefinition, InteriorDefinition } from '../world/types';
+import { canonicalFurnitureBounds } from './canonicalFurnitureGeometry';
 
 export interface NavigationClearance {
   x: number;
@@ -33,4 +34,22 @@ export function interactionAccess(
   if (item.kind === 'bed') return action === 'offline' ? 'sleep' : 'none';
   if (SEATING_KINDS.has(item.kind)) return SEATING_ACTIONS.has(action) ? 'seat' : 'none';
   return item.supportedActions.includes(action) ? 'station' : 'none';
+}
+
+export function interiorNavigationSignature(interior: InteriorDefinition): string {
+  const furniture = [...interior.furniture]
+    .sort((first, second) => first.id.localeCompare(second.id))
+    .map((item) => ({
+      id: item.id,
+      kind: item.kind,
+      blocker: navigationBlockerKind(item),
+      bounds: canonicalFurnitureBounds(item),
+      point: item.point,
+      rotation: item.rotation ?? 0,
+      scale: item.scale ?? 1,
+      interactionPoint: item.interactionPoint ?? null,
+      access: [...item.supportedActions].sort().map((action) => [action, interactionAccess(item, action)]),
+      supportedByIds: [...(item.supportedByIds ?? [])].sort(),
+    }));
+  return JSON.stringify({ width: interior.width, height: interior.height, furniture });
 }
