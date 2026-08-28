@@ -38,6 +38,26 @@ test('main agent sorts first and real subagents remain visible', () => {
   assert.equal(model.agents[1].labelKey, 'commandDeck.agent');
 });
 
+test('canonical agents retain normalized detail identity fields', () => {
+  const [agent] = buildCommandDeckModel({ server_time_ms: 10_000, agents: [{
+    agent: 'codex-cli:42', role: 'main_agent', state: 'working', pixel_state: 'editing_files',
+    room_key: 'code_workbench', tool_name: 'apply_patch', process_id: 42,
+    instance_name: 'terminal-a', last_seen_ms: 9_950,
+  }] }).agents;
+
+  assert.deepEqual({
+    pixelState: agent.pixelState,
+    roomKey: agent.roomKey,
+    toolName: agent.toolName,
+    processId: agent.processId,
+    instanceName: agent.instanceName,
+    lastSeenMs: agent.lastSeenMs,
+  }, {
+    pixelState: 'editing_files', roomKey: 'code_workbench', toolName: 'apply_patch',
+    processId: 42, instanceName: 'terminal-a', lastSeenMs: 9_950,
+  });
+});
+
 test('stale placeholders are suppressed only after a real source replacement attaches', () => {
   const placeholder = {
     agent: 'codex-main', role: 'main_agent', source: 'bridge', source_placeholder: true,
