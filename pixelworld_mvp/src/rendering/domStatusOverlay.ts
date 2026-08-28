@@ -1,6 +1,6 @@
 import { TILE_SIZE, WORLD_PIXELS } from '../game/constants';
 import type { AgentController } from '../agents/AgentController';
-import type { WorldBuilding } from '../world/types';
+import type { GridRect, WorldBuilding } from '../world/types';
 import { type VillageLocale, villageCopy } from '../i18n/villageLocale';
 
 export interface OverlayRect { left: number; top: number; width: number; height: number }
@@ -26,6 +26,7 @@ export class DomStatusOverlay {
   private readonly agents = new Map<string, AgentDomView>();
   private readonly buildings = new Map<string, HTMLDivElement>();
   private readonly buildingLabels = new Map<string, HTMLDivElement>();
+  private readonly buildingHitRegions = new Map<string, GridRect>();
   private locale: VillageLocale = 'zh-TW';
 
   constructor(
@@ -63,6 +64,18 @@ export class DomStatusOverlay {
     this.buildingLabels.forEach((label, id) => {
       label.textContent = copy.buildings[id as keyof typeof copy.buildings] || id;
     });
+  }
+
+  setBuildingHitRegion(buildingId: string, bounds: GridRect): void {
+    this.buildingHitRegions.set(buildingId, { ...bounds });
+    const label = this.buildingLabels.get(buildingId);
+    const rect = this.canvasRect();
+    if (!label || !rect) return;
+    const topLeft = worldPointToOverlay({ x: bounds.x, y: bounds.y }, rect);
+    label.dataset.hitRegionLeft = String(topLeft.x);
+    label.dataset.hitRegionTop = String(topLeft.y);
+    label.dataset.hitRegionWidth = String(bounds.width / WORLD_PIXELS.width * rect.width);
+    label.dataset.hitRegionHeight = String(bounds.height / WORLD_PIXELS.height * rect.height);
   }
 
   setAgentBubble(agentId: string, text: string): void {
@@ -114,6 +127,8 @@ export class DomStatusOverlay {
     const label = this.buildingLabels.get(building.id);
     const rect = this.canvasRect();
     if (!badge || !label || !rect) return;
+    const hitRegion = this.buildingHitRegions.get(building.id);
+    if (hitRegion) this.setBuildingHitRegion(building.id, hitRegion);
     const labelPosition = worldPointToOverlay({
       x: building.labelAnchor.x * TILE_SIZE,
       y: building.labelAnchor.y * TILE_SIZE,

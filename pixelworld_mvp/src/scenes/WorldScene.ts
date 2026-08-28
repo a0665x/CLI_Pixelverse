@@ -93,6 +93,9 @@ export class WorldScene extends Phaser.Scene {
       });
     });
     this.attachStatusOverlay(new StatusOverlaySystem(this, this.worldDefinition.buildings));
+    village.hitRegions.forEach(({ buildingId, bounds }) => {
+      this.statusOverlay?.setBuildingHitRegion(buildingId, bounds);
+    });
     this.agents.all().forEach((agent) => this.statusOverlay?.attachAgent(agent));
     this.depthSystem = new DepthOcclusionSystem(this, this.renderedForegrounds, () => this.agents.all());
     this.debugOverlay = new DebugOverlay(this, this.navigationGrid, this.worldDefinition, () => this.agents.all());

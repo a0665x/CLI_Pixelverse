@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { FurnitureDefinition } from '../src/world/types';
+import type { FurnitureDefinition, InteriorDefinition } from '../src/world/types';
 import {
   interiorNavigationSignature,
   interactionAccess,
@@ -19,7 +19,12 @@ const item = (
   supportedActions: [],
   icon: 'generic',
   layer,
-  blocksNavigation,
+  ...(blocksNavigation === undefined ? {} : { blocksNavigation }),
+});
+
+const interior = (furniture: FurnitureDefinition[]): InteriorDefinition => ({
+  id: 'rest-cabin', label: 'Test room', width: 8, height: 8,
+  floor: 'wood', wall: 'cream', furniture, overflow: [],
 });
 
 describe('interior navigation policy', () => {
@@ -28,9 +33,9 @@ describe('interior navigation policy', () => {
       ...item('desk'), id: 'desk-a', interactionPoint: { x: 2, y: 3 }, supportedActions: ['terminal' as const],
     };
     const plant = { ...item('plant'), id: 'plant-a', point: { x: 5, y: 5 } };
-    const baseline = interiorNavigationSignature({ id: 'room', width: 8, height: 8, furniture: [desk, plant], overflow: [] });
+    const baseline = interiorNavigationSignature(interior([desk, plant]));
 
-    expect(interiorNavigationSignature({ id: 'room', width: 8, height: 8, furniture: [plant, desk], overflow: [] }))
+    expect(interiorNavigationSignature(interior([plant, desk])))
       .toBe(baseline);
     for (const changed of [
       { ...desk, point: { x: 3, y: 2 } },
@@ -38,7 +43,7 @@ describe('interior navigation policy', () => {
       { ...desk, scale: 1.25 as const },
       { ...desk, interactionPoint: { x: 3, y: 3 } },
     ]) {
-      expect(interiorNavigationSignature({ id: 'room', width: 8, height: 8, furniture: [changed, plant], overflow: [] }))
+      expect(interiorNavigationSignature(interior([changed, plant])))
         .not.toBe(baseline);
     }
   });
