@@ -425,6 +425,25 @@ def test_run_help_documents_private_asset_setup() -> None:
     assert "private_assets/modern-office/Modern_Office_Revamped_v1.zip" in result.stdout
 
 
+def test_readme_documents_portable_licensed_asset_quickstart() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+
+    for required in (
+        "https://limezu.itch.io/modernoffice",
+        "mkdir -p private_assets/modern-office",
+        "private_assets/modern-office/Modern_Office_Revamped_v1.zip",
+        "PIXELVERSE_MODERN_OFFICE_ZIP=/absolute/path/to/Modern_Office_Revamped_v1.zip",
+        "./run.sh assets-status",
+        "./run.sh start",
+        "./run.sh restart",
+        "docker compose build",
+        "public registry",
+    ):
+        assert required in readme
+    assert "/home/a0665x" not in readme
+    assert readme.index("https://limezu.itch.io/modernoffice") < readme.index("./run.sh start")
+
+
 def test_git_tracks_no_proprietary_modern_office_assets() -> None:
     tracked = subprocess.run(
         ["git", "ls-files"],

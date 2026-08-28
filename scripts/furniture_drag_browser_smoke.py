@@ -25,6 +25,10 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 TMP = ROOT / "tmp"
 DEFAULT_BASE_URL = "http://127.0.0.1:5660"
+ESSENTIAL_ASSET_PATHS = (
+    "/assets/private/modern-office-v1.2/Modern_Office_Singles_200.png",
+    "/assets/private/modern-office-v1.2/collision-masks.json",
+)
 
 
 @dataclass(frozen=True)
@@ -60,6 +64,7 @@ class SmokeResult:
     prop_pointer_events: str | None
     console_errors: list[str]
     screenshot: str
+    essential_asset_statuses: dict[str, int]
 
 
 def evaluate_result(result: SmokeResult) -> list[str]:
@@ -88,6 +93,10 @@ def evaluate_result(result: SmokeResult) -> list[str]:
         failures.append(f"prop pointer-events is {result.prop_pointer_events!r}, expected 'auto'")
     if result.console_errors:
         failures.append("browser console errors: " + " | ".join(result.console_errors[:5]))
+    for path in ESSENTIAL_ASSET_PATHS:
+        status = result.essential_asset_statuses.get(path)
+        if status != 200:
+            failures.append(f"essential asset {path} returned HTTP {status!r}, expected 200")
     return failures
 
 
@@ -125,13 +134,16 @@ async def run_browser_smoke(plan: DragPlan) -> SmokeResult:
             text = f"{msg.type}: {msg.text}"
             if msg.type != "error":
                 return
-            # Ignore browser asset 404 noise such as favicon; pageerror still catches real JS failures.
-            if "Failed to load resource" in text:
+            if "favicon" in text.lower():
                 return
             console_errors.append(text)
 
         page.on("console", record_console_error)
         page.on("pageerror", lambda err: console_errors.append(f"pageerror: {err}"))
+        essential_asset_statuses: dict[str, int] = {}
+        for path in ESSENTIAL_ASSET_PATHS:
+            response = await page.request.get(f"{plan.base_url.rstrip('/')}{path}", timeout=plan.timeout_ms)
+            essential_asset_statuses[path] = response.status
         # The app keeps an SSE/polling channel open, so waiting for idle network can hang forever.
         # DOMContentLoaded + the first district is the repeatable readiness signal.
         await page.goto(f"{plan.base_url.rstrip('/')}?smoke=furniture-drag-browser", wait_until="domcontentloaded", timeout=plan.timeout_ms)
@@ -222,6 +234,7 @@ async def run_browser_smoke(plan: DragPlan) -> SmokeResult:
         prop_pointer_events=data.get("propPointerEvents"),
         console_errors=console_errors,
         screenshot=str(plan.screenshot),
+        essential_asset_statuses=essential_asset_statuses,
     )
     failures = evaluate_result(result)
     return SmokeResult(**{**asdict(result), "ok": not failures})

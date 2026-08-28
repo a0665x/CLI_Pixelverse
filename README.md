@@ -91,6 +91,57 @@ failure instead of silently skipping it.
 For a fresh clone, this is the shortest reliable setup path. Codex is the
 default because it has the deepest project-hook integration.
 
+### Licensed Modern Office prerequisite
+
+The village uses the paid
+[Modern Office - Revamped - RPG Tileset](https://limezu.itch.io/modernoffice)
+for its furniture. Purchase and download the pack yourself; the license does
+not permit this repository to redistribute it.
+
+From the root of your own clone, create the private input directory:
+
+```bash
+mkdir -p private_assets/modern-office
+```
+
+Place the downloaded ZIP at this exact clone-relative path:
+
+```text
+private_assets/modern-office/Modern_Office_Revamped_v1.zip
+```
+
+If the ZIP already lives elsewhere, leave it there and use a portable absolute
+override instead:
+
+```bash
+PIXELVERSE_MODERN_OFFICE_ZIP=/absolute/path/to/Modern_Office_Revamped_v1.zip ./run.sh start
+```
+
+Otherwise the normal first start is enough:
+
+```bash
+./run.sh start
+```
+
+`start` validates the ZIP, prepares all 339 furniture sprites and their local
+alpha-collision manifest, and builds the complete local image. A missing,
+partial, corrupt, or wrong-version pack stops before Docker Compose instead of
+showing black furniture placeholders. After preparation, inspect the local
+state with:
+
+```bash
+./run.sh assets-status
+```
+
+Later, `./run.sh restart` reuses the saved agent/floorplan choices and rebuilds
+only when source files or prepared-asset metadata changed. Direct
+`docker compose build` is unsupported until `run.sh` has prepared the private
+assets.
+
+The ZIP, extracted PNGs, generated collision manifest, and prepared directory
+are Git-ignored. The locally built image contains the licensed sprites: do not
+commit these files, redistribute them, or push that image to a public registry.
+
 ### Once per Pixelverse clone
 
 ```bash
@@ -100,7 +151,7 @@ export PIXELVERSE_ROOT="$(pwd -P)"
 test -x ./run.sh || chmod +x ./run.sh
 "$PIXELVERSE_ROOT/run.sh" platform
 "$PIXELVERSE_ROOT/run.sh" floorplans
-PIXELVERSE_AGENT_KIND=codex "$PIXELVERSE_ROOT/run.sh" down_up
+PIXELVERSE_AGENT_KIND=codex "$PIXELVERSE_ROOT/run.sh" start
 ```
 
 `PIXELVERSE_ROOT` belongs to the current shell. Set it again after opening a

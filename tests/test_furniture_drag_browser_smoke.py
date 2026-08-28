@@ -57,6 +57,10 @@ def test_browser_smoke_result_requires_cross_room_move_and_visible_overflow():
         prop_pointer_events="auto",
         console_errors=[],
         screenshot="tmp/furniture_drag_browser_smoke.png",
+        essential_asset_statuses={
+            "/assets/private/modern-office-v1.2/Modern_Office_Singles_200.png": 200,
+            "/assets/private/modern-office-v1.2/collision-masks.json": 200,
+        },
     )
 
     failures = smoke.evaluate_result(result)
@@ -84,6 +88,10 @@ def test_browser_smoke_result_fails_when_drop_is_clipped_or_does_not_cross_room(
         prop_pointer_events="auto",
         console_errors=["TypeError: boom"],
         screenshot="",
+        essential_asset_statuses={
+            "/assets/private/modern-office-v1.2/Modern_Office_Singles_200.png": 404,
+            "/assets/private/modern-office-v1.2/collision-masks.json": 200,
+        },
     )
 
     failures = smoke.evaluate_result(result)
@@ -92,6 +100,16 @@ def test_browser_smoke_result_fails_when_drop_is_clipped_or_does_not_cross_room(
     assert any("clipping ancestor" in failure for failure in failures)
     assert any("ghost" in failure for failure in failures)
     assert any("console" in failure for failure in failures)
+    assert any("essential asset" in failure for failure in failures)
+
+
+def test_browser_smoke_declares_the_render_and_collision_assets_as_essential():
+    smoke = load_module()
+
+    assert smoke.ESSENTIAL_ASSET_PATHS == (
+        "/assets/private/modern-office-v1.2/Modern_Office_Singles_200.png",
+        "/assets/private/modern-office-v1.2/collision-masks.json",
+    )
 
 
 def test_run_sh_exposes_furniture_drag_smoke_command():
