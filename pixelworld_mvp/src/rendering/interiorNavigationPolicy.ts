@@ -1,5 +1,6 @@
 import type { AgentAction, FurnitureDefinition, InteriorDefinition } from '../world/types';
 import { canonicalFurnitureBounds } from './canonicalFurnitureGeometry';
+import { furnitureAlphaMaskVersion } from './furnitureAlphaMasks';
 
 export interface NavigationClearance {
   x: number;
@@ -51,5 +52,10 @@ export function interiorNavigationSignature(interior: InteriorDefinition): strin
       access: [...item.supportedActions].sort().map((action) => [action, interactionAccess(item, action)]),
       supportedByIds: [...(item.supportedByIds ?? [])].sort(),
     }));
-  return JSON.stringify({ width: interior.width, height: interior.height, furniture });
+  return JSON.stringify({
+    collisionMaskVersion: furnitureAlphaMaskVersion(),
+    width: interior.width,
+    height: interior.height,
+    furniture,
+  });
 }

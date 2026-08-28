@@ -5,6 +5,7 @@ import {
   ANIMAL_ASSETS,
   HOUSE_ASSETS,
   MODERN_INTERIOR_ASSETS,
+  MODERN_OFFICE_COLLISION_MASKS,
   SERENE_VILLAGE_ASSETS,
   WORLD_ATLAS,
   WORLD_ATLAS_FALLBACK_KEY,
@@ -35,8 +36,14 @@ describe('village asset manifest', () => {
   it('loads the Serene, Modern Interiors, world, and Agent sprite sheets', () => {
     const spritesheet = vi.fn();
     const image = vi.fn();
+    const json = vi.fn();
 
-    preloadVillageAssets({ load: { spritesheet, image } } as never);
+    preloadVillageAssets({ load: { spritesheet, image, json } } as never);
+
+    expect(json).toHaveBeenCalledWith(
+      MODERN_OFFICE_COLLISION_MASKS.key,
+      MODERN_OFFICE_COLLISION_MASKS.path,
+    );
 
     expect([...spritesheet.mock.calls, ...image.mock.calls].map((call) => String(call[1])))
       .not.toEqual(expect.arrayContaining([

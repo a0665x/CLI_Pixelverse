@@ -24,6 +24,11 @@ import {
   navigationBlockerKind,
   type NavigationClearance,
 } from './interiorNavigationPolicy';
+import {
+  furnitureAlphaMask,
+  furnitureAlphaMasksInstalled,
+  transformedFurnitureMaskCells,
+} from './furnitureAlphaMasks';
 
 const ZERO_NAVIGATION_CLEARANCE: Readonly<NavigationClearance> = Object.freeze({ x: 0, y: 0 });
 
@@ -246,6 +251,12 @@ const navigationObstacleCells = (
   clearance: NavigationClearance,
 ): GridPoint[] => {
   if (navigationBlockerKind(item) === 'passable') return [];
+  const asset = resolvedFurnitureAsset(item);
+  if (asset && furnitureAlphaMasksInstalled()) {
+    const mask = furnitureAlphaMask(asset.id);
+    if (!mask) throw new Error(`Furniture collision mask is missing for asset ${asset.id}`);
+    return transformedFurnitureMaskCells(item, mask, clearance);
+  }
   const bounds = transformedAlphaBounds(item);
   const center = furnitureRenderGeometry(item).center;
   const left = Math.ceil(bounds.x - clearance.x - 0.5 + 1e-6);

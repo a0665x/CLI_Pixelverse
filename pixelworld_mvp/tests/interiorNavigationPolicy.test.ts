@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import type { FurnitureDefinition, InteriorDefinition } from '../src/world/types';
 import {
   interiorNavigationSignature,
@@ -6,6 +6,11 @@ import {
   navigationBlockerKind,
 } from '../src/rendering/interiorNavigationPolicy';
 import { navigationBlockedCellKeys } from '../src/rendering/interiorPlacement';
+import {
+  clearFurnitureAlphaMasksForTests,
+  installFurnitureAlphaMasks,
+  parseFurnitureAlphaMaskManifest,
+} from '../src/rendering/furnitureAlphaMasks';
 
 const item = (
   kind: FurnitureDefinition['kind'],
@@ -28,6 +33,8 @@ const interior = (furniture: FurnitureDefinition[]): InteriorDefinition => ({
 });
 
 describe('interior navigation policy', () => {
+  afterEach(() => clearFurnitureAlphaMasksForTests());
+
   it('signs canonical geometry and interaction policy independently of furniture order', () => {
     const desk = {
       ...item('desk'), id: 'desk-a', interactionPoint: { x: 2, y: 3 }, supportedActions: ['terminal' as const],
@@ -46,6 +53,22 @@ describe('interior navigation policy', () => {
       expect(interiorNavigationSignature(interior([changed, plant])))
         .not.toBe(baseline);
     }
+  });
+
+  it('invalidates the navigation signature when installed alpha content changes', () => {
+    const room = interior([item('desk')]);
+    const first = parseFurnitureAlphaMaskManifest({
+      schemaVersion: 1, alphaThreshold: 1,
+      assets: { '1': { width: 2, height: 1, runs: [[0, 0, 1]] } },
+    }, { requiredAssetIds: [1] });
+    installFurnitureAlphaMasks(first);
+    const baseline = interiorNavigationSignature(room);
+    installFurnitureAlphaMasks(parseFurnitureAlphaMaskManifest({
+      schemaVersion: 1, alphaThreshold: 1,
+      assets: { '1': { width: 2, height: 1, runs: [[0, 0, 2]] } },
+    }, { requiredAssetIds: [1] }));
+
+    expect(interiorNavigationSignature(room)).not.toBe(baseline);
   });
 
   it('blocks every opaque non-floor item despite legacy non-blocking metadata', () => {
