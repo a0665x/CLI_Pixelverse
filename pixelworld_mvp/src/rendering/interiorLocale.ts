@@ -1,4 +1,4 @@
-import { normalizeVillageLocale, type VillageLocale } from '../i18n/villageLocale';
+import { normalizeVillageLocale, VILLAGE_LOCALES, type VillageLocale } from '../i18n/villageLocale';
 import type { FurnitureSemantic } from '../world/types';
 
 type EditorChromeCopy = Record<
@@ -62,6 +62,25 @@ const missingSemanticCopy = {
   'ja-JP': '{category}用の家具がありません',
   'ko-KR': '{category} 가구가 없습니다',
 } as const satisfies Record<VillageLocale, string>;
+
+/** Complete static interior locale catalogs consumed by product-copy acceptance tooling. */
+export const VILLAGE_INTERIOR_CATALOGS = Object.fromEntries(
+  VILLAGE_LOCALES.map((locale) => [locale, {
+    editor: editorChrome[locale],
+    contextActions: contextActionCopy[locale],
+    roomCommands: roomCommandCopy[locale],
+    runtime: interiorRuntimeCopy[locale],
+    semantics: semanticFurnitureCopy[locale],
+    missingSemantic: missingSemanticCopy[locale],
+  }]),
+) as Record<VillageLocale, {
+  editor: EditorChromeCopy;
+  contextActions: typeof contextActionCopy[VillageLocale];
+  roomCommands: string;
+  runtime: typeof interiorRuntimeCopy[VillageLocale];
+  semantics: typeof semanticFurnitureCopy[VillageLocale];
+  missingSemantic: string;
+}>;
 
 export const missingSemanticFurnitureCopy = (locale: unknown, semantic: FurnitureSemantic): string => {
   const normalized = normalizeVillageLocale(locale);

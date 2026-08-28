@@ -40,6 +40,8 @@ describe('village locale catalog', () => {
     expect(copy.controls.fit).toBeTruthy();
     expect(copy.controls.cover).toBeTruthy();
     expect(copy.controls.zoomIn).toBeTruthy();
+    expect(Object.values(copy.accessibility)).toHaveLength(4);
+    expect(Object.values(copy.accessibility).every(Boolean)).toBe(true);
     expect(copy.cutaway.categories.workstations).toBeTruthy();
     expect(copy.cutaway.actions.save).toBeTruthy();
     expect(copy.cutaway.actions.undo).toBeTruthy();
@@ -73,6 +75,7 @@ describe('village locale catalog', () => {
   it('does not retain Chinese building text in English mode', () => {
     expect(Object.values(villageCopy('en-US').buildings).join('')).not.toMatch(/[\u3400-\u9fff]/);
     expect(JSON.stringify(villageCopy('en-US').cutaway)).not.toMatch(/[\u3400-\u9fff]/);
+    expect(JSON.stringify(villageCopy('en-US').accessibility)).not.toMatch(/[\u3400-\u9fff]/);
   });
 
   it.each(['en-US', 'ja-JP', 'ko-KR'] as const)('provides localized editor workflow feedback for %s', (locale) => {

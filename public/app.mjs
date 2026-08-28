@@ -1292,6 +1292,7 @@ function renderLiveMonitoring(snapshot = {}, nowMs = Date.now()) {
       const count = document.createElement('output'); count.textContent = String(channel.count);
       header.append(label, count);
       const activity = document.createElement('p');
+      activity.dataset.externalCopy = 'true';
       activity.textContent = String(channel.activity || strings().idleFallback);
       const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
       svg.setAttribute('class', 'hook-live-ecg');
@@ -1300,7 +1301,9 @@ function renderLiveMonitoring(snapshot = {}, nowMs = Date.now()) {
       const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       path.setAttribute('d', channel.path);
       svg.append(path);
-      const agent = document.createElement('span'); agent.textContent = channel.agentId || '—';
+      const agent = document.createElement('span');
+      agent.dataset.externalCopy = 'true';
+      agent.textContent = channel.agentId || '—';
       article.append(header, activity, svg, agent);
       return article;
     }));

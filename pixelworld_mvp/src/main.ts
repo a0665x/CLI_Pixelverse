@@ -17,6 +17,14 @@ let activeLocale: VillageLocale = 'zh-TW';
 let activeWorld: WorldScene | undefined;
 const localeIngress = connectProductionLocaleIngress();
 
+function localizeVillageChrome(): void {
+  const copy = villageCopy(activeLocale).accessibility;
+  document.getElementById?.('game-root')?.setAttribute('aria-label', copy.game);
+  document.getElementById?.('world-status-layer')?.setAttribute('aria-label', copy.liveStatus);
+  document.getElementById?.('cutaway-ui-layer')?.setAttribute('aria-label', copy.interior);
+  document.getElementById?.('test-panel-root')?.setAttribute('aria-label', copy.testPanel);
+}
+
 function mountViewportControls(viewport: VillageViewportController): void {
   const shell = document.querySelector<HTMLElement>('#app-shell');
   const gameRoot = document.querySelector<HTMLElement>('#game-root');
@@ -121,6 +129,7 @@ createGame('game-root', (world: WorldScene) => {
       activeLocale = message.locale;
       activeWorld?.setLocale(activeLocale);
       document.documentElement.lang = activeLocale;
+      localizeVillageChrome();
       window.dispatchEvent(new Event('pixelverse:locale'));
     },
     (selection) => world.focusCommandSelection?.(selection),

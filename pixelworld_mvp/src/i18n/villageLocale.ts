@@ -27,6 +27,7 @@ export type VillageCopy = {
   buildings: Record<typeof buildingIds[number], string>;
   actions: Record<AgentAction | 'tool' | 'idle', string>;
   controls: { fit: string; cover: string; zoomIn: string; zoomOut: string; reset: string };
+  accessibility: { game: string; liveStatus: string; interior: string; testPanel: string };
   cutaway: {
     titles: Record<'rest-cabin' | 'research-library' | 'maker-workshop' | 'collaboration-barn', string>;
     categories: Record<'surfaces' | 'seating-plants' | 'screens-electronics' | 'storage-partitions' | 'workstations' | 'grouped', string>;
@@ -86,6 +87,7 @@ export const VILLAGE_CATALOG: Record<VillageLocale, VillageCopy> = {
     buildings: { 'arrival-lodge': '啟程小屋', 'thinkers-cottage': '思考屋', 'archive-library': '檔案館', 'network-lab': '網路屋', 'heartbeat-tower': '心跳塔', 'offline-dormitory': '離線宿舍', 'maker-workshop': '編輯工坊', 'tool-smithy': '工具鐵舖', 'awaiting-post': '等候站', 'collaboration-barn': '協作公會', 'recovery-clinic': '修復所', 'rest-cabin': '休息小屋' },
     actions: actionCopy({ arrive: '準備開始', ponder: '思考中', plan: '整理計畫', read: '查閱檔案', type: '修改程式', terminal: '執行工具', signal: '查詢網路', dispatch: '建立分身', respond: '傳送結果', queue: '等待輸入', repair: '修復中', rest: '暫時休息', offline: '目前離線', pulse: '保持連線' }, '工作中'),
     controls: { fit: '完整顯示', cover: '滿板顯示', zoomIn: '放大村莊', zoomOut: '縮小村莊', reset: '重設村莊視角' },
+    accessibility: { game: 'Agent 工作村莊', liveStatus: 'Agent 即時高解析狀態', interior: '室內編輯高解析控制介面', testPanel: 'Agent 狀態測試面板' },
     cutaway: cutawayCopy(
       { 'rest-cabin': '休息小屋', 'research-library': '研究圖書館', 'maker-workshop': '製作工坊', 'collaboration-barn': '協作穀倉' },
       { workstations: '工作桌組', grouped: '群組家具', 'seating-plants': '桌椅／植栽', 'storage-partitions': '收納／隔間', 'screens-electronics': '設備', surfaces: '裝飾／表面' },
@@ -98,6 +100,7 @@ export const VILLAGE_CATALOG: Record<VillageLocale, VillageCopy> = {
     buildings: { 'arrival-lodge': 'Arrival Lodge', 'thinkers-cottage': 'Thinker’s Cottage', 'archive-library': 'Archive Library', 'network-lab': 'Web / MCP Lab', 'heartbeat-tower': 'Heartbeat Tower', 'offline-dormitory': 'Offline Dormitory', 'maker-workshop': 'Maker Workshop', 'tool-smithy': 'Tool Smithy', 'awaiting-post': 'Awaiting Post', 'collaboration-barn': 'Agent Guild', 'recovery-clinic': 'Recovery Clinic', 'rest-cabin': 'Rest Cabin' },
     actions: actionCopy({ arrive: 'Getting ready', ponder: 'Thinking', plan: 'Planning', read: 'Reading files', type: 'Editing code', terminal: 'Using tools', signal: 'Browsing sources', dispatch: 'Creating agent', respond: 'Sending result', queue: 'Waiting for input', repair: 'Recovering', rest: 'Taking a break', offline: 'Offline', pulse: 'Connected' }, 'Working'),
     controls: { fit: 'Fit village', cover: 'Fill viewport', zoomIn: 'Zoom in', zoomOut: 'Zoom out', reset: 'Reset village camera' },
+    accessibility: { game: 'Agent work village', liveStatus: 'Agent live high-resolution status', interior: 'High-resolution interior editing controls', testPanel: 'Agent status test panel' },
     cutaway: cutawayCopy(
       { 'rest-cabin': 'Rest Cabin', 'research-library': 'Research Library', 'maker-workshop': 'Maker Workshop', 'collaboration-barn': 'Collaboration Barn' },
       { workstations: 'Workstation Sets', grouped: 'Grouped Furniture', 'seating-plants': 'Tables & Seating', 'storage-partitions': 'Storage & Partitions', 'screens-electronics': 'Equipment', surfaces: 'Decoration' },
@@ -110,6 +113,7 @@ export const VILLAGE_CATALOG: Record<VillageLocale, VillageCopy> = {
     buildings: { 'arrival-lodge': '出発ロッジ', 'thinkers-cottage': '思考の家', 'archive-library': '資料館', 'network-lab': 'Web・MCPラボ', 'heartbeat-tower': 'ハートビート塔', 'offline-dormitory': 'オフライン寮', 'maker-workshop': '編集工房', 'tool-smithy': 'ツール鍛冶場', 'awaiting-post': '待機所', 'collaboration-barn': 'エージェントギルド', 'recovery-clinic': '修復所', 'rest-cabin': '休憩小屋' },
     actions: actionCopy({ arrive: '準備中', ponder: '思考中', plan: '計画中', read: '資料を確認中', type: 'コード編集中', terminal: 'ツール実行中', signal: '情報検索中', dispatch: 'エージェント作成中', respond: '結果送信中', queue: '入力待ち', repair: '修復中', rest: '休憩中', offline: 'オフライン', pulse: '接続中' }, '作業中'),
     controls: { fit: '全体表示', cover: '画面を満たす', zoomIn: '拡大', zoomOut: '縮小', reset: '視点をリセット' },
+    accessibility: { game: 'エージェント作業村', liveStatus: 'エージェントの高解像度ライブ状態', interior: '高解像度の室内編集コントロール', testPanel: 'エージェント状態テストパネル' },
     cutaway: cutawayCopy(
       { 'rest-cabin': '休憩小屋', 'research-library': '研究図書館', 'maker-workshop': '制作工房', 'collaboration-barn': '協働ギルド' },
       { workstations: 'ワークセット', grouped: 'グループ家具', 'seating-plants': 'テーブル・座席', 'storage-partitions': '収納・間仕切り', 'screens-electronics': '機器', surfaces: '装飾' },
@@ -122,6 +126,7 @@ export const VILLAGE_CATALOG: Record<VillageLocale, VillageCopy> = {
     buildings: { 'arrival-lodge': '출발 오두막', 'thinkers-cottage': '사색의 집', 'archive-library': '자료관', 'network-lab': 'Web · MCP 연구소', 'heartbeat-tower': '하트비트 탑', 'offline-dormitory': '오프라인 기숙사', 'maker-workshop': '편집 공방', 'tool-smithy': '도구 대장간', 'awaiting-post': '대기소', 'collaboration-barn': '에이전트 길드', 'recovery-clinic': '복구소', 'rest-cabin': '휴식 오두막' },
     actions: actionCopy({ arrive: '준비 중', ponder: '생각 중', plan: '계획 중', read: '자료 확인 중', type: '코드 편집 중', terminal: '도구 실행 중', signal: '자료 검색 중', dispatch: '에이전트 생성 중', respond: '결과 전송 중', queue: '입력 대기 중', repair: '복구 중', rest: '휴식 중', offline: '오프라인', pulse: '연결됨' }, '작업 중'),
     controls: { fit: '전체 보기', cover: '화면 채우기', zoomIn: '확대', zoomOut: '축소', reset: '시점 초기화' },
+    accessibility: { game: '에이전트 작업 마을', liveStatus: '에이전트 실시간 고해상도 상태', interior: '고해상도 실내 편집 컨트롤', testPanel: '에이전트 상태 테스트 패널' },
     cutaway: cutawayCopy(
       { 'rest-cabin': '휴식 오두막', 'research-library': '연구 도서관', 'maker-workshop': '제작 공방', 'collaboration-barn': '협업 길드' },
       { workstations: '작업대 세트', grouped: '그룹 가구', 'seating-plants': '테이블·좌석', 'storage-partitions': '수납·파티션', 'screens-electronics': '장비', surfaces: '장식' },
@@ -242,6 +247,19 @@ const FURNITURE_LAYER_COPY: Record<VillageLocale, Record<FurnitureLayer, string>
   'ja-JP': { floor: '床レイヤー', furniture: '家具レイヤー', surface: '表面レイヤー', wall: '壁レイヤー' },
   'ko-KR': { floor: '바닥 레이어', furniture: '가구 레이어', surface: '표면 레이어', wall: '벽 레이어' },
 };
+
+/** Complete static locale catalogs consumed by product-copy acceptance tooling. */
+export const VILLAGE_AUXILIARY_CATALOGS = Object.fromEntries(VILLAGE_LOCALES.map((locale) => [locale, {
+  cutawayOperations: CUTAWAY_OPERATION_COPY[locale],
+  placementDiagnostics: PLACEMENT_DIAGNOSTIC_COPY[locale],
+  statusFailures: STATUS_FAILURE_COPY[locale],
+  furnitureLayers: FURNITURE_LAYER_COPY[locale],
+}])) as Record<VillageLocale, {
+  cutawayOperations: CutawayOperationTemplates;
+  placementDiagnostics: Record<CutawayPlacementDiagnostic, string>;
+  statusFailures: Record<StatusFailureReason, string>;
+  furnitureLayers: Record<FurnitureLayer, string>;
+}>;
 
 const renderCutawayMessage = (
   locale: unknown,

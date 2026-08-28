@@ -139,10 +139,10 @@ def passing_artifact() -> dict:
             "roster_activation": {"id": "smoke-main", "opened": True},
             "village_activation": {"id": "smoke-main", "opened": True},
             "viewports": {
-                "desktop-large": {"detailMode": "drawer", "horizontalOverflow": False, "external_copy_nodes": 7, "pass": True},
-                "desktop-compact": {"detailMode": "drawer", "horizontalOverflow": False, "external_copy_nodes": 7, "pass": True},
-                "narrow": {"detailMode": "dialog", "horizontalOverflow": False, "external_copy_nodes": 7, "pass": True},
-                "mobile": {"detailMode": "dialog", "horizontalOverflow": False, "external_copy_nodes": 7, "pass": True},
+                "desktop-large": {"detailMode": "drawer", "horizontalOverflow": False, "external_copy_nodes": 7, "roster_refresh_observed": True, "focus_restored_after_refresh": True, "pass": True},
+                "desktop-compact": {"detailMode": "drawer", "horizontalOverflow": False, "external_copy_nodes": 7, "roster_refresh_observed": True, "focus_restored_after_refresh": True, "pass": True},
+                "narrow": {"detailMode": "dialog", "horizontalOverflow": False, "external_copy_nodes": 7, "roster_refresh_observed": True, "focus_restored_after_refresh": True, "pass": True},
+                "mobile": {"detailMode": "dialog", "horizontalOverflow": False, "external_copy_nodes": 7, "roster_refresh_observed": True, "focus_restored_after_refresh": True, "pass": True},
             },
             "focus_restore": True,
             "layout_resize": {"changed": True, "persisted": True, "reset": True},
@@ -592,13 +592,13 @@ def test_contract_requires_catalog_derived_current_agent_state_without_foreign_c
 def test_contract_rejects_foreign_catalog_copy_hidden_in_product_signatures():
     smoke = load_module()
     artifact = passing_artifact()
-    artifact["locale_coverage"]["checks"]["ja-JP"]["shell_signature"] += " Help"
+    artifact["locale_coverage"]["checks"]["ja-JP"]["shell_signature"] += " Settings"
     artifact["locale_coverage"]["checks"]["ko-KR"]["village_signature"] += " 休憩小屋"
 
     failures = smoke.evaluate_artifact(artifact)
 
     assert any(
-        "ja-JP" in failure and "foreign" in failure and "Help" in failure
+        "ja-JP" in failure and "foreign" in failure and "Settings" in failure
         for failure in failures
     )
     assert any(
@@ -622,6 +622,16 @@ def test_foreign_copy_catalog_excludes_legitimately_shared_phrases():
     assert foreign["한국어 전용"] == "ko-KR"
 
 
+def test_foreign_copy_corpus_comes_from_complete_production_catalog_exports():
+    smoke = load_module()
+
+    foreign = smoke._foreign_product_phrases("ja-JP")
+
+    assert foreign["Settings"] == "en-US"
+    assert foreign["Help"] == "en-US"
+    assert len(foreign) > 100
+
+
 def test_contract_excludes_external_payloads_from_foreign_product_copy_detection():
     smoke = load_module()
     artifact = passing_artifact()
@@ -630,6 +640,35 @@ def test_contract_excludes_external_payloads_from_foreign_product_copy_detection
     ]
 
     assert smoke.evaluate_artifact(artifact) == []
+
+
+def test_product_copy_browser_fixture_strips_nested_external_descendants():
+    smoke = load_module()
+    viewport = smoke.Viewport("fixture", 800, 600, "desktop")
+    with smoke.ChromiumDevTools(viewport, 15) as browser:
+        captured = browser.evaluate(f"""
+          (() => {{
+            document.body.innerHTML = `
+              <section id="roster" data-i18n="commandDeck.roster.title">
+                エージェント一覧
+                <article class="agent-roster-card">
+                  <strong data-external-copy="true">Help</strong>
+                  <span>待機</span>
+                </article>
+              </section>`;
+            const productOwnedText = {smoke.PRODUCT_OWNED_TEXT_JAVASCRIPT};
+            const roster = document.querySelector('#roster');
+            return {{
+              product: productOwnedText(roster),
+              external: roster.querySelector('[data-external-copy="true"]').textContent.trim(),
+            }};
+          }})()
+        """)
+
+    assert "エージェント一覧" in captured["product"]
+    assert "待機" in captured["product"]
+    assert "Help" not in captured["product"]
+    assert captured["external"] == "Help"
 
 
 def test_browser_captures_placeholder_locale_state_before_synthetic_agent_events():
@@ -648,6 +687,21 @@ def test_agent_detail_smoke_closes_a_previously_open_detail_before_focus_restore
 
     assert "close pre-opened Agent detail" in agent_detail
     assert agent_detail.count("document.querySelector('[data-agent-detail-close]').focus(); true") == 2
+    assert "roster refresh after Agent detail close" in agent_detail
+    assert "focus_restored_after_refresh" in agent_detail
+
+
+def test_contract_requires_focus_to_survive_an_observed_roster_refresh():
+    smoke = load_module()
+    artifact = passing_artifact()
+    detail = artifact["agent_detail"]["viewports"]["desktop-large"]
+    detail["roster_refresh_observed"] = False
+    detail["focus_restored_after_refresh"] = False
+
+    failures = smoke.evaluate_artifact(artifact)
+
+    assert any("desktop-large" in failure and "roster refresh" in failure for failure in failures)
+    assert any("desktop-large" in failure and "focus" in failure for failure in failures)
 
 
 def test_contract_rejects_text_only_routes_closed_cabin_and_missing_agents():

@@ -72,6 +72,11 @@ export function createAgentRosterView({
 
   return {
     render(rows = [], { selectedId = '' } = {}) {
+      const activeElement = documentRef.activeElement;
+      const focusedCard = activeElement && root.contains(activeElement)
+        ? activeElement.closest?.('.agent-roster-card')
+        : null;
+      const focusedId = focusedCard?.dataset?.selectionId || '';
       const ordered = rows.map((row) => {
         const node = nodes.get(row.id) || build();
         nodes.set(row.id, node);
@@ -97,6 +102,8 @@ export function createAgentRosterView({
         if (!retained.has(id)) nodes.delete(id);
       }
       root.replaceChildren(...ordered);
+      const restoredCard = focusedId ? nodes.get(focusedId)?.article : null;
+      if (restoredCard) restoredCard.focus({ preventScroll: true });
     },
     destroy() {
       root.replaceChildren();

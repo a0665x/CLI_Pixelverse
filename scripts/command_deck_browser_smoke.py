@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import functools
 import json
 import os
 import re
@@ -56,16 +57,6 @@ EXPECTED_LOCALE_COPY = {
         "current_agent_state": "codex · 대기 · 대기 도크 · 새 CLI 세션을 기다리는 중",
     },
 }
-PRODUCT_COPY_KEYS = (
-    "agents_title",
-    "timeline_title",
-    "language_label",
-    "help",
-    "help_aria",
-    "rest_cabin",
-    "maker_workshop",
-    "current_agent_state",
-)
 PRODUCT_CAPTURE_FIELDS = (
     "shell_text",
     "village_text",
@@ -75,6 +66,12 @@ PRODUCT_CAPTURE_FIELDS = (
     "help_signature",
     "current_agent_state",
 )
+PRODUCT_OWNED_TEXT_JAVASCRIPT = """((node) => {
+  if (!node || node.matches?.('[data-external-copy="true"]')) return '';
+  const clone = node.cloneNode(true);
+  clone.querySelectorAll('[data-external-copy="true"]').forEach((external) => external.remove());
+  return (clone.textContent || '').trim();
+})"""
 
 
 @dataclass(frozen=True)
@@ -109,20 +106,68 @@ def _mapping(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
-def _foreign_product_phrases(
-    locale: str, catalog: dict[str, dict[str, str]] = EXPECTED_LOCALE_COPY
-) -> dict[str, str]:
-    """Return phrases owned by exactly one other locale in the product catalog."""
+def _catalog_leaf_phrases(value: Any) -> list[str]:
+    if isinstance(value, str):
+        phrase = value.strip()
+        return [phrase] if phrase else []
+    if isinstance(value, dict):
+        return [phrase for child in value.values() for phrase in _catalog_leaf_phrases(child)]
+    if isinstance(value, (list, tuple)):
+        return [phrase for child in value for phrase in _catalog_leaf_phrases(child)]
+    return []
+
+
+@functools.lru_cache(maxsize=1)
+def _production_product_catalogs() -> dict[str, Any]:
+    """Execute the production catalog exports instead of mirroring their copy here."""
+    ui_module = (ROOT / "public" / "ui_strings.mjs").as_uri()
+    village_root = ROOT / "pixelworld_mvp"
+    vite_module = (village_root / "node_modules" / "vite" / "dist" / "node" / "index.js").as_uri()
+    source = f"""
+      import {{ UI_CATALOG }} from {json.dumps(ui_module)};
+      import {{ createServer }} from {json.dumps(vite_module)};
+      const server = await createServer({{
+        root: {json.dumps(str(village_root))}, logLevel: 'silent', appType: 'custom',
+        server: {{ middlewareMode: true }},
+      }});
+      const village = await server.ssrLoadModule('/src/i18n/villageLocale.ts');
+      const interior = await server.ssrLoadModule('/src/rendering/interiorLocale.ts');
+      const locales = {json.dumps(list(SUPPORTED_LOCALES))};
+      process.stdout.write(JSON.stringify(Object.fromEntries(locales.map((locale) => [locale, [
+        UI_CATALOG[locale],
+        village.VILLAGE_CATALOG[locale],
+        village.VILLAGE_AUXILIARY_CATALOGS[locale],
+        interior.VILLAGE_INTERIOR_CATALOGS[locale],
+      ]]))));
+      await server.close();
+    """
+    completed = subprocess.run(
+        ["node", "--input-type=module", "-e", source],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    catalogs = json.loads(completed.stdout)
+    if set(catalogs) != set(SUPPORTED_LOCALES):
+        raise RuntimeError("production product-copy catalogs did not export the four supported locales")
+    return catalogs
+
+
+def _foreign_product_phrases(locale: str, catalog: dict[str, Any] | None = None) -> dict[str, str]:
+    """Return complete catalog leaf phrases owned by exactly one other locale."""
+    catalog = catalog or _production_product_catalogs()
     owners: dict[str, set[str]] = {}
     for catalog_locale, copy in catalog.items():
-        for key in PRODUCT_COPY_KEYS:
-            phrase = str(copy.get(key) or "").strip()
-            if phrase:
-                owners.setdefault(phrase, set()).add(catalog_locale)
+        for phrase in _catalog_leaf_phrases(copy):
+            owners.setdefault(phrase, set()).add(catalog_locale)
+    selected_phrases = _catalog_leaf_phrases(catalog.get(locale, {}))
     return {
         phrase: next(iter(phrase_owners))
         for phrase, phrase_owners in owners.items()
-        if locale not in phrase_owners and len(phrase_owners) == 1
+        if locale not in phrase_owners
+        and len(phrase_owners) == 1
+        and not any(phrase in selected for selected in selected_phrases)
     }
 
 
@@ -184,6 +229,10 @@ def evaluate_artifact(artifact: dict[str, Any]) -> list[str]:
             failures.append(f"{name}: Agent detail caused horizontal overflow")
         if int(evidence.get("external_copy_nodes") or 0) <= 0:
             failures.append(f"{name}: Agent detail external copy was not verified")
+        if evidence.get("roster_refresh_observed") is not True:
+            failures.append(f"{name}: roster refresh after Agent detail close was not observed")
+        if evidence.get("focus_restored_after_refresh") is not True:
+            failures.append(f"{name}: Agent detail focus did not survive the roster refresh")
         if evidence.get("pass") is not True:
             failures.append(f"{name}: Agent detail viewport did not pass")
     if agent_detail.get("focus_restore") is not True:
@@ -948,6 +997,20 @@ def agent_detail_evidence(browser: ChromiumDevTools, plan: BrowserSmokePlan, age
         browser.set_viewport(viewport.width, viewport.height)
         browser.evaluate("window.dispatchEvent(new Event('resize')); true")
         browser.wait_until(f"document.querySelector({json.dumps(selector)})", f"{viewport.name} roster detail trigger")
+        browser.evaluate("""
+          (() => {
+            window.__commandDeckSmokeRosterMutations = 0;
+            window.__commandDeckSmokeRosterObserver?.disconnect();
+            const root = document.querySelector('#agent-live-list');
+            window.__commandDeckSmokeRosterObserver = new MutationObserver(() => {
+              window.__commandDeckSmokeRosterMutations += 1;
+            });
+            window.__commandDeckSmokeRosterObserver.observe(root, {
+              childList: true, subtree: true, characterData: true, attributes: true,
+            });
+            return true;
+          })()
+        """)
         browser.evaluate(f"document.querySelector({json.dumps(selector)}).focus(); true")
         click(browser, selector)
         browser.wait_until(
@@ -977,16 +1040,29 @@ def agent_detail_evidence(browser: ChromiumDevTools, plan: BrowserSmokePlan, age
         viewport_evidence[viewport.name] = evidence
         if index == 0:
             roster_activation = {"id": evidence.get("id"), "opened": True}
+        refresh_baseline = int(browser.evaluate("window.__commandDeckSmokeRosterMutations || 0"))
         browser.evaluate("document.querySelector('[data-agent-detail-close]').focus(); true")
         browser.key("Escape")
         browser.wait_until("document.querySelector('#agent-detail')?.hidden", f"{viewport.name} Agent detail Escape close")
-        evidence["focus_restored"] = bool(browser.evaluate(
+        browser.wait_until(
+            f"(window.__commandDeckSmokeRosterMutations || 0) > {refresh_baseline}",
+            f"{viewport.name} roster refresh after Agent detail close",
+            timeout=max(3.0, plan.timeout_seconds),
+        )
+        evidence["roster_refresh_observed"] = True
+        evidence["focus_restored_after_refresh"] = bool(browser.evaluate(
             f"document.activeElement === document.querySelector({json.dumps(selector)})"
         ))
+        evidence["focus_restored"] = evidence["focus_restored_after_refresh"]
+        evidence["pass"] = bool(
+            evidence["pass"]
+            and evidence["roster_refresh_observed"]
+            and evidence["focus_restored_after_refresh"]
+        )
         evidence["active_element"] = browser.evaluate(
             "document.activeElement?.className || document.activeElement?.id || document.activeElement?.tagName || ''"
         )
-        focus_restore = focus_restore and evidence["focus_restored"]
+        focus_restore = focus_restore and evidence["focus_restored_after_refresh"]
         if index == 0:
             before = _mapping(browser.evaluate("JSON.parse(localStorage.getItem('pixelverse:village-first-layout:v1') || '{}')"))
             browser.evaluate("document.querySelector('#village-top-splitter').focus(); true")
@@ -1080,13 +1156,14 @@ def locale_evidence(browser: ChromiumDevTools, locale: str) -> dict[str, Any]:
         f"document.body.dataset.locale === {json.dumps(locale)} && document.querySelector('#pixelworld-frame')?.contentDocument?.documentElement.lang === {json.dumps(locale)}",
         f"{locale} shell and village locale switch",
     )
-    return browser.evaluate("""
+    expression = """
       (() => {
         const child = document.querySelector('#pixelworld-frame')?.contentDocument;
         const mark = (node, attribute) => `${node.id || node.className || node.tagName}:${attribute}`;
+        const productOwnedText = __PRODUCT_OWNED_TEXT_JAVASCRIPT__;
         const missing = [
           ...[...document.querySelectorAll('[data-i18n]')]
-            .filter((node) => !(node.textContent || '').trim()).map((node) => mark(node, 'text')),
+            .filter((node) => !productOwnedText(node)).map((node) => mark(node, 'text')),
           ...[...document.querySelectorAll('[data-i18n-aria-label]')]
             .filter((node) => !(node.getAttribute('aria-label') || '').trim()).map((node) => mark(node, 'aria-label')),
           ...[...document.querySelectorAll('[data-i18n-title]')]
@@ -1121,13 +1198,12 @@ def locale_evidence(browser: ChromiumDevTools, locale: str) -> dict[str, Any]:
         };
         const currentAgentState = document.querySelector('#current-agent-state')?.textContent?.trim() || '';
         const shellSignature = JSON.stringify(shellNodes.map((node) => [
-          node.dataset.i18n || node.dataset.i18nAriaLabel || node.dataset.i18nTitle || node.dataset.i18nTooltip,
-          (node.textContent || '').trim(), node.getAttribute('aria-label') || '', node.title || '', node.dataset.tooltip || '',
+          productOwnedText(node), node.getAttribute('aria-label') || '', node.title || '', node.dataset.tooltip || '',
         ]));
         const villageNodes = [...child.querySelectorAll('[aria-label]')]
           .filter((node) => !isExternalCopy(node));
         const villageSignature = JSON.stringify(villageNodes
-          .map((node) => [node.className, node.getAttribute('aria-label') || '', (node.textContent || '').trim()]));
+          .map((node) => [node.getAttribute('aria-label') || '', productOwnedText(node)]));
         const externalCopy = [
           ...document.querySelectorAll('[data-external-copy="true"]'),
           ...child.querySelectorAll('[data-external-copy="true"]'),
@@ -1143,7 +1219,10 @@ def locale_evidence(browser: ChromiumDevTools, locale: str) -> dict[str, Any]:
           shell_nodes: document.querySelectorAll('[data-i18n], [data-i18n-aria-label]').length,
           village_nodes: child.querySelectorAll('[aria-label]').length };
       })()
-    """)
+    """
+    return browser.evaluate(expression.replace(
+        "__PRODUCT_OWNED_TEXT_JAVASCRIPT__", PRODUCT_OWNED_TEXT_JAVASCRIPT
+    ))
 
 
 def locale_coverage_evidence(

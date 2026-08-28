@@ -4,8 +4,10 @@ import assert from 'node:assert/strict';
 import { agentRosterDescriptor, createAgentRosterView } from '../public/agent_roster_view.mjs';
 
 class FakeNode {
-  constructor(tagName) {
+  constructor(tagName, ownerDocument = null) {
     this.tagName = tagName;
+    this.ownerDocument = ownerDocument;
+    this.parentNode = null;
     this.dataset = {};
     this.attributes = new Map();
     this.children = [];
@@ -27,18 +29,36 @@ class FakeNode {
     };
   }
 
-  append(...children) { this.children.push(...children); }
-  replaceChildren(...children) { this.children = children; }
+  append(...children) {
+    children.forEach((child) => { child.parentNode = this; });
+    this.children.push(...children);
+  }
+  replaceChildren(...children) {
+    if (this.contains(this.ownerDocument?.activeElement)) this.ownerDocument.activeElement = this.ownerDocument.body;
+    this.children.forEach((child) => { child.parentNode = null; });
+    children.forEach((child) => { child.parentNode = this; });
+    this.children = children;
+  }
+  contains(node) { return node === this || this.children.some((child) => child.contains(node)); }
+  closest(selector) {
+    if (selector === '.agent-roster-card' && this.classList.contains('agent-roster-card')) return this;
+    return this.parentNode?.closest(selector) || null;
+  }
+  focus(options) {
+    this.focusCalls = [...(this.focusCalls || []), options];
+    this.ownerDocument.activeElement = this;
+  }
   setAttribute(name, value) { this.attributes.set(name, String(value)); }
   getAttribute(name) { return this.attributes.get(name) ?? null; }
   addEventListener(type, listener) { this.listeners.set(type, listener); }
   dispatch(type, event = {}) { this.listeners.get(type)?.(event); }
 }
 
-const documentRef = {
-  createElement: (tagName) => new FakeNode(tagName),
-  createElementNS: (_namespace, tagName) => new FakeNode(tagName),
-};
+const documentRef = { activeElement: null, body: null };
+documentRef.createElement = (tagName) => new FakeNode(tagName, documentRef);
+documentRef.createElementNS = (_namespace, tagName) => new FakeNode(tagName, documentRef);
+documentRef.body = new FakeNode('body', documentRef);
+documentRef.activeElement = documentRef.body;
 
 const row = {
   id: 'main', name: 'Codex', role: 'main_agent', roomKey: 'tool_forge', externalTask: 'RAW_TASK',
@@ -120,4 +140,28 @@ test('click and keyboard activation pass the exact card trigger', () => {
     { kind: 'agent', id: 'main' }, { kind: 'agent', id: 'main' }, { kind: 'agent', id: 'main' },
   ]);
   assert.ok(activations.every(([, trigger]) => trigger === card));
+});
+
+test('refresh preserves a focused roster card without stealing outside focus', () => {
+  const root = new FakeNode('div', documentRef);
+  const view = createAgentRosterView({
+    root, documentRef, spriteFor: options.spriteFor, textFor: options.textFor,
+  });
+  view.render([row]);
+  const card = root.children[0];
+  card.focus();
+
+  view.render([row]);
+  view.render([{ ...row, externalTask: 'UPDATED_TASK' }]);
+
+  assert.equal(documentRef.activeElement, card);
+  assert.deepEqual(card.focusCalls.slice(-2), [{ preventScroll: true }, { preventScroll: true }]);
+
+  const outside = new FakeNode('button', documentRef);
+  outside.focus();
+  const restoreCount = card.focusCalls.length;
+  view.render([{ ...row, externalTask: 'ANOTHER_UPDATE' }]);
+
+  assert.equal(documentRef.activeElement, outside);
+  assert.equal(card.focusCalls.length, restoreCount);
 });
