@@ -33,7 +33,20 @@ def test_mcp_onboard_installs_selected_adapter_and_checks_status():
     result = server.call_tool("pixelverse_onboard", {"agent_kind": "codex"})
 
     assert server.commands == [("install-adapter", "codex"), ("bridge-status",)]
-    assert "source .pixelverse-service/activate.sh" in result["content"][0]["text"]
+    assert server.activation_command() in result["content"][0]["text"]
+
+
+def test_mcp_onboard_returns_absolute_activation_for_its_clone(tmp_path: Path):
+    root = tmp_path / "another-user" / "CLI_Pixelverse"
+    root.mkdir(parents=True)
+    server = RecordingMCP()
+    server.root = root
+
+    result = server.call_tool("pixelverse_onboard", {"agent_kind": "codex"})
+
+    expected = f'source "{root / ".pixelverse-service" / "activate.sh"}"'
+    assert expected in result["content"][0]["text"]
+    assert result["structuredContent"]["adapter"]["activation"] == expected
 
 
 def test_mcp_rejects_unknown_adapter_target():

@@ -45,6 +45,13 @@ class PixelverseMCP:
     def __init__(self, root: Path = ROOT) -> None:
         self.root = root
 
+    @property
+    def activation_path(self) -> Path:
+        return self.root.resolve() / ".pixelverse-service" / "activate.sh"
+
+    def activation_command(self) -> str:
+        return f'source "{self.activation_path}"'
+
     def run_bridge_command(self, *args: str) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
             [str(self.root / "run.sh"), *args],
@@ -62,7 +69,7 @@ class PixelverseMCP:
         output = (completed.stdout + completed.stderr).strip()
         if completed.returncode:
             raise RuntimeError(output or f"install-adapter failed with exit code {completed.returncode}")
-        return {"target": target, "output": output, "activation": "source .pixelverse-service/activate.sh"}
+        return {"target": target, "output": output, "activation": self.activation_command()}
 
     def bridge_status(self) -> dict[str, Any]:
         completed = self.run_bridge_command("bridge-status")
@@ -115,7 +122,7 @@ class PixelverseMCP:
             message = "\n\n".join(filter(None, [
                 data["output"],
                 status["output"],
-                "Activate native CLI shims in your shell with:\nsource .pixelverse-service/activate.sh",
+                f"Activate native CLI shims in your shell with:\n{self.activation_command()}",
             ]))
             return text_result(message, adapter=data, bridge=status)
         raise ValueError(f"unknown tool: {name}")
