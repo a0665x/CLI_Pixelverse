@@ -28,6 +28,9 @@
 - `./run.sh enable-shell-adapter` 會在 `~/.bashrc` 加入受管理的 activation 行，讓新 Bash 終端直接執行 `codex` 時自動走 repo-local shim。activation 會一併預設 `PIXELVERSE_URL`、`PIXELVERSE_BRIDGE_URL`、`PIXELVERSE_STATE_DIR`，避免每個新 shell 都要手動補環境變數。
 - `install-adapter codex` 會生成 git-ignored `.codex/hooks.json`。它與 `scripts/codex_pixelverse_hook.py` 將 Codex `SessionStart`、`UserPromptSubmit`、`PreToolUse`、`PostToolUse`、`SubagentStart/Stop`、`Stop` 轉成 Pixelverse 事件。Codex 初次載入 repo hook 時，需在 `/hooks` 畫面信任 hook 定義。
 - `install-codex-hook [project-root]` 只把 Codex project hook 安裝到指定 repo / 目前目錄，hook command 使用 CLI_Pixelverse 內的絕對 script path，因此外部 repo 不需要複製 `scripts/codex_pixelverse_hook.py`。
+- 公開 onboarding 以 clone 根目錄推導 `PIXELVERSE_ROOT`，不得依賴特定 username 或 `/home/a0665x/...`。生成的 activation 與 hook command 可以包含當前 clone 的絕對路徑，但共用 README 與範本不可固定該路徑。
+- `install-codex-hook` 必須安全合併合法的既有 `.codex/hooks.json`、保持冪等，且在 malformed JSON 或 Pixelverse command 衝突時停止。任何內容變更先建立備份，再 atomic replace；不得靜默覆寫使用者 hooks。
+- MCP onboarding 回傳的 activation 指引必須使用 MCP server 所在 Pixelverse clone 的絕對 `.pixelverse-service/activate.sh` 路徑，讓使用者在其他 repository 呼叫時仍有效。
 - Codex `SubagentStart` 會同時更新主代理為 `collaborating / clone_bay`，並用 spawned child id 建立 local `role=subagent` 角色；`SubagentStop` 會讓同一 child 回到 `idle / clone_bay` 待命。若 hook payload 沒有明確 child id，adapter 會用 session/model fallback，但同時多個同模型分身可能無法完全區分。
 - Codex hooks 沒有獨立的 skill lifecycle event；目前只有使用者 prompt 顯式含 `$skill` 或 `/skill` 時，可可靠映射為 `invoking_skill`。模型內部靜默讀取 `SKILL.md` 無法從原生 hook 精準辨識。
 - 已經啟動的原生 CLI process 無法 retroactive attach；使用者需先 `source .pixelverse-service/activate.sh`，再啟動新的 CLI session。

@@ -241,3 +241,23 @@ Bridge `/hook` 的 HTTP 200 只代表 event 已進入非同步 relay queue，不
 - 修改 `run.sh` 後至少跑 `bash -n run.sh`
 - 修改 frontend route/layout 後至少跑 `node --test tests/*.mjs`
 - 修改 backend/schema 後至少跑 `python3 -m pytest -q -o faulthandler_timeout=10`
+
+## 10. 下一階段 acceptance gates
+
+### Portable onboarding
+- 在不同 temporary username/clone path 執行 README 流程，並從另一個 repository 安裝 Codex hook。
+- 靜態掃描 README 與公開腳本不得包含 `/home/a0665x`。
+- installer 對既有合法 hooks 採安全合併且冪等；malformed/conflicting hooks 原始 bytes 不變。
+- MCP onboarding 從任意 current working directory 回傳 Pixelverse clone 的絕對 activation path。
+
+### Interior collision and motion
+- 相同幾何距離在 ingress 與不同房間巡邏的耗時一致。
+- 每個 motion sample 的 Agent feet clearance 不與非目標 opaque bounds 相交。
+- chair/office-chair/sofa 只允許指定 seat target；bed 只允許 offline/sleeping target，皆不可作捷徑。
+- 家具 move/rotate/scale、prefab paste、undo/redo 與 reload 後 route 立即重算；無解時停在最後合法點並回報 blocked。
+
+### Responsive Agent detail
+- Browser smoke 覆蓋 1440×900、1024×768、800×450 與 390×844。
+- Roster click/keyboard 與 village character activation 開啟相同 Agent detail；Escape close 後 focus restore。
+- Desktop 三個 splitter persistence/reset 正常，narrow/mobile 使用 dialog 且無 splitter。
+- 每個 viewport 與 en-US/zh-TW/ja-JP/ko-KR 都必須零 region overlap、零水平 overflow、零混語、零 console/page error。

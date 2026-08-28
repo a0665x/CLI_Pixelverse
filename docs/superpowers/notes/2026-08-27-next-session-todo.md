@@ -1,7 +1,7 @@
 # 下一階段 TODO：可攜式接線、Roster 詳情與室內導航
 
 日期：2026-08-27  
-狀態：需求已整理，尚未進入設計／實作  
+狀態：需求與設計已批准，等待依三份 TDD 計畫實作
 基線分支：`main`
 
 ## 使用者目標
@@ -102,15 +102,22 @@
 - [ ] Persistence test：save reload 與 prefab paste 後仍使用相同 blocker geometry。
 - [ ] Browser visual smoke：開啟每種房型，連續觀察 ingress 與來回巡邏，保存 route overlay 與 screenshot；任何人物像素穿入非座位家具即失敗。
 
-## 下次開始前需要確認的三個產品決策
+## 已於 2026-08-28 確認的產品決策
 
-1. 詳情採右側 drawer、浮動 dialog，或 desktop drawer／mobile dialog 的 responsive 組合。建議 responsive 組合。
-2. 「所有邊界可調整」是否包含 top status 高度、Roster 高度與詳情寬度三者。TODO 暫按三者都包含處理。
-3. Offline Agent 是否允許與 bed 重疊。本次文字只允許椅子／沙發，因此暫按不允許處理。
+1. 詳情採 desktop 右側 drawer／mobile dialog 的 responsive 組合。
+2. top status 高度、Roster 高度與詳情寬度三者皆可調整、持久化並可 reset。
+3. Offline／sleeping Agent 可進入 bed 的指定睡眠點；床體仍是 blocker，任何 Agent 都不能穿床通行。
 
-## 非本次關機前工作
+正式設計：`docs/superpowers/plans/2026-08-28-portable-navigation-agent-detail-design.md`
+
+執行計畫：
+
+- `docs/superpowers/plans/2026-08-28-portable-codex-onboarding.md`
+- `docs/superpowers/plans/2026-08-28-interior-collision-motion.md`
+- `docs/superpowers/plans/2026-08-28-responsive-agent-detail-layout.md`
+
+## 設計階段邊界
 
 - 不在本次紀錄階段修改 UI、速度、碰撞或 README 行為。
 - 不把症狀只用提高 `z-index`、放慢單一房間或擴大固定 obstacle rect 暫時遮掩。
-- 正式實作前須為上述三個子題分別完成設計確認與 TDD 計畫。
-
+- 三個子題的設計與 TDD 計畫已完成；功能程式碼尚未實作。
