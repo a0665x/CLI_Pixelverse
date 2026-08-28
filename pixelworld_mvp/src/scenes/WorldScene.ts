@@ -8,7 +8,11 @@ import { WORLD_PIXELS } from '../game/constants';
 import { emitWorldReady } from '../game/worldReady';
 import { NavigationGrid } from '../navigation/navigationGrid';
 import { planAgentTravel } from '../navigation/travelPlanner';
-import { ensureWorldAtlasTexture, preloadVillageAssets } from '../rendering/assetManifest';
+import {
+  ensureWorldAtlasTexture,
+  installVillageCollisionMasks,
+  preloadVillageAssets,
+} from '../rendering/assetManifest';
 import type { RenderedForeground } from '../rendering/buildingForeground';
 import { DepthOcclusionSystem } from '../rendering/DepthOcclusionSystem';
 import { AmbientAnimalSystem } from '../rendering/AmbientAnimalSystem';
@@ -64,6 +68,7 @@ export class WorldScene extends Phaser.Scene {
   preload(): void { preloadVillageAssets(this); }
 
   create(): void {
+    installVillageCollisionMasks(this);
     this.sceneReady = false;
     this.cleanupComplete = false;
     clearRenderedForegrounds(this.renderedForegrounds);
