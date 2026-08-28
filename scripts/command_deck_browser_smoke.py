@@ -35,21 +35,25 @@ EXPECTED_LOCALE_COPY = {
         "document_lang": "en", "agents_title": "Agent roster", "timeline_title": "Mission trace",
         "language_label": "Language", "help": "Help", "help_aria": "Open Panels: Help",
         "rest_cabin": "Rest Cabin", "maker_workshop": "Maker Workshop",
+        "current_agent_state": "codex · Idle · Standby Dock · Waiting for a new CLI session",
     },
     "zh-TW": {
         "document_lang": "zh-Hant", "agents_title": "代理人物列", "timeline_title": "任務軌跡",
         "language_label": "語言", "help": "說明", "help_aria": "開啟側欄: 說明",
         "rest_cabin": "休息小屋", "maker_workshop": "編輯工坊",
+        "current_agent_state": "codex · 待命中 · 待命站 · 等待新的 CLI 工作階段",
     },
     "ja-JP": {
         "document_lang": "ja", "agents_title": "エージェント一覧", "timeline_title": "ミッション軌跡",
         "language_label": "言語", "help": "ヘルプ", "help_aria": "パネル表示: ヘルプ",
         "rest_cabin": "休憩小屋", "maker_workshop": "編集工房",
+        "current_agent_state": "codex · 待機 · 待機ドック · 新しい CLI セッションを待機中",
     },
     "ko-KR": {
         "document_lang": "ko", "agents_title": "에이전트 목록", "timeline_title": "미션 추적",
         "language_label": "언어", "help": "도움말", "help_aria": "패널 열기: 도움말",
         "rest_cabin": "휴식 오두막", "maker_workshop": "편집 공방",
+        "current_agent_state": "codex · 대기 · 대기 도크 · 새 CLI 세션을 기다리는 중",
     },
 }
 
@@ -169,6 +173,8 @@ def evaluate_artifact(artifact: dict[str, Any]) -> list[str]:
         village_copy = _mapping(check.get("village_copy"))
         if any(village_copy.get(key) != expected[key] for key in ("rest_cabin", "maker_workshop")):
             failures.append(f"{locale}: village did not use the selected locale")
+        if check.get("current_agent_state") != expected["current_agent_state"]:
+            failures.append(f"{locale}: current agent state did not use the selected locale")
         if not check.get("copy_signature"):
             failures.append(f"{locale}: localized copy signature was empty")
         if check.get("missing_text") != []:
@@ -1045,6 +1051,7 @@ def locale_evidence(browser: ChromiumDevTools, locale: str) -> dict[str, Any]:
           rest_cabin: child.querySelector('.world-building-label[data-building-id="rest-cabin"]')?.textContent?.trim() || '',
           maker_workshop: child.querySelector('.world-building-label[data-building-id="maker-workshop"]')?.textContent?.trim() || '',
         };
+        const currentAgentState = document.querySelector('#current-agent-state')?.textContent?.trim() || '';
         const shellSignature = JSON.stringify(shellNodes.map((node) => [
           node.dataset.i18n || node.dataset.i18nAriaLabel || node.dataset.i18nTitle || node.dataset.i18nTooltip,
           (node.textContent || '').trim(), node.getAttribute('aria-label') || '', node.title || '', node.dataset.tooltip || '',
@@ -1053,6 +1060,7 @@ def locale_evidence(browser: ChromiumDevTools, locale: str) -> dict[str, Any]:
           .map((node) => [node.className, node.getAttribute('aria-label') || '', (node.textContent || '').trim()]));
         return { shell_text: shell, village_text: village, missing_text: missing,
           help_copy: helpCopy, shell_copy: shellCopy, village_copy: villageCopy,
+          current_agent_state: currentAgentState,
           document_lang: document.documentElement.lang,
           copy_signature: JSON.stringify([shellSignature, villageSignature, helpCopy]),
           shell_signature: shellSignature, village_signature: villageSignature,
@@ -1576,6 +1584,7 @@ def run_smoke(plan: BrowserSmokePlan) -> dict[str, Any]:
                             for key in ("agents_title", "timeline_title", "language_label"))
                     and all(_mapping(check.get("village_copy")).get(key) == expected[key]
                             for key in ("rest_cabin", "maker_workshop"))
+                    and check.get("current_agent_state") == expected["current_agent_state"]
                 )
                 locale_checks[locale] = check
             signature_keys = ("shell_signature", "village_signature", "help_signature")

@@ -49,6 +49,8 @@ class InteriorSmokeResult:
     canvas_width: float
     canvas_height: float
     edit_control_visible: bool
+    edit_mode_visible: bool
+    legacy_map_present: bool
     console_errors: list[str]
     screenshot: str
     essential_asset_statuses: dict[str, int]
@@ -68,6 +70,10 @@ def evaluate_result(result: InteriorSmokeResult) -> list[str]:
         )
     if not result.edit_control_visible:
         failures.append("cutaway furniture edit control is not visible")
+    if not result.edit_mode_visible:
+        failures.append("cutaway furniture edit mode is not visible")
+    if result.legacy_map_present:
+        failures.append("legacy map DOM is still present")
     if result.console_errors:
         failures.append("browser console errors: " + " | ".join(result.console_errors[:5]))
     for path in ESSENTIAL_ASSET_PATHS:
@@ -174,6 +180,10 @@ async def run_browser_smoke(plan: InteriorSmokePlan) -> InteriorSmokeResult:
         )
         title = (await panel.locator("h2").inner_text()).strip()
         edit_control = panel.locator('[data-action="edit"]')
+        await edit_control.click()
+        toolbar = panel.locator(".cutaway-room-toolbar")
+        await toolbar.wait_for(state="visible", timeout=plan.timeout_ms)
+        legacy_map_present = await page.locator("#camera-stage, .district").count() > 0
         canvas_box = await frame.locator("canvas").bounding_box()
         await page.screenshot(path=str(plan.screenshot), full_page=True)
 
@@ -186,6 +196,8 @@ async def run_browser_smoke(plan: InteriorSmokePlan) -> InteriorSmokeResult:
             canvas_width=float(canvas_box["width"] if canvas_box else 0),
             canvas_height=float(canvas_box["height"] if canvas_box else 0),
             edit_control_visible=await edit_control.is_visible(),
+            edit_mode_visible=await toolbar.is_visible(),
+            legacy_map_present=legacy_map_present,
             console_errors=console_errors,
             screenshot=str(plan.screenshot),
             essential_asset_statuses=essential_asset_statuses,

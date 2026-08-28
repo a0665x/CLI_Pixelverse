@@ -88,6 +88,12 @@ def passing_artifact() -> dict:
         "ja-JP": {"rest_cabin": "休憩小屋", "maker_workshop": "編集工房"},
         "ko-KR": {"rest_cabin": "휴식 오두막", "maker_workshop": "편집 공방"},
     }
+    expected_current_agent_state = {
+        "en-US": "codex · Idle · Standby Dock · Waiting for a new CLI session",
+        "zh-TW": "codex · 待命中 · 待命站 · 等待新的 CLI 工作階段",
+        "ja-JP": "codex · 待機 · 待機ドック · 新しい CLI セッションを待機中",
+        "ko-KR": "codex · 대기 · 대기 도크 · 새 CLI 세션을 기다리는 중",
+    }
     locale_checks = {
         locale: {
             "shell_text": f"shell-{locale}",
@@ -99,6 +105,7 @@ def passing_artifact() -> dict:
             },
             "shell_copy": expected_shell[locale],
             "village_copy": expected_village[locale],
+            "current_agent_state": expected_current_agent_state[locale],
             "document_lang": expected_languages[locale],
             "copy_signature": f"copy-{locale}",
             "shell_signature": f"shell-signature-{locale}",
@@ -548,6 +555,27 @@ def test_contract_rejects_wrong_locale_copy_even_when_it_is_nonempty():
     assert any("ja-JP" in failure and "shell" in failure for failure in failures)
     assert any("ko-KR" in failure and "village" in failure for failure in failures)
     assert any("distinct village" in failure for failure in failures)
+
+
+def test_contract_requires_catalog_derived_current_agent_state_without_foreign_copy():
+    smoke = load_module()
+    artifact = passing_artifact()
+
+    english = artifact["locale_coverage"]["checks"]["en-US"]
+    assert english["current_agent_state"] == (
+        "codex · Idle · Standby Dock · Waiting for a new CLI session"
+    )
+    assert not any("\u3400" <= char <= "\u9fff" for char in english["current_agent_state"])
+
+    artifact["locale_coverage"]["checks"]["en-US"]["current_agent_state"] = (
+        "codex · 待命中 · 待命站 · 等待新的 CLI 工作階段"
+    )
+    artifact["locale_coverage"]["checks"]["ja-JP"].pop("current_agent_state")
+
+    failures = smoke.evaluate_artifact(artifact)
+
+    assert any("en-US" in failure and "current agent state" in failure for failure in failures)
+    assert any("ja-JP" in failure and "current agent state" in failure for failure in failures)
 
 
 def test_contract_rejects_text_only_routes_closed_cabin_and_missing_agents():

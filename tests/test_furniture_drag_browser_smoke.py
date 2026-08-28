@@ -40,6 +40,7 @@ def test_browser_smoke_result_requires_visible_cutaway_and_assets():
         ok=True, building_id="maker-workshop", iframe_visible=True,
         cutaway_visible=True, cutaway_title="Maker Workshop",
         canvas_width=1280, canvas_height=720, edit_control_visible=True,
+        edit_mode_visible=True, legacy_map_present=False,
         console_errors=[], screenshot="tmp/furniture_drag_browser_smoke.png",
         essential_asset_statuses={
             "/assets/private/modern-office-v1.2/Modern_Office_Singles_200.png": 200,
@@ -54,7 +55,8 @@ def test_browser_smoke_result_reports_interior_and_asset_failures():
     result = smoke.InteriorSmokeResult(
         ok=False, building_id="maker-workshop", iframe_visible=False,
         cutaway_visible=False, cutaway_title="", canvas_width=0, canvas_height=0,
-        edit_control_visible=False, console_errors=["TypeError: boom"], screenshot="",
+        edit_control_visible=False, edit_mode_visible=False, legacy_map_present=True,
+        console_errors=["TypeError: boom"], screenshot="",
         essential_asset_statuses={
             "/assets/private/modern-office-v1.2/Modern_Office_Singles_200.png": 404,
             "/assets/private/modern-office-v1.2/collision-masks.json": 200,
@@ -66,6 +68,8 @@ def test_browser_smoke_result_reports_interior_and_asset_failures():
     assert any("canvas" in failure for failure in failures)
     assert any("console" in failure for failure in failures)
     assert any("essential asset" in failure for failure in failures)
+    assert any("edit mode" in failure for failure in failures)
+    assert any("legacy map" in failure for failure in failures)
 
 
 def test_browser_smoke_declares_the_render_and_collision_assets_as_essential():
