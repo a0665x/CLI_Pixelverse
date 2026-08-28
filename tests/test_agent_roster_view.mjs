@@ -101,3 +101,23 @@ test('view renders accessible selectable portrait cards and marks runtime tasks 
   view.destroy();
   assert.deepEqual(root.children, []);
 });
+
+test('click and keyboard activation pass the exact card trigger', () => {
+  const root = new FakeNode('div');
+  const activations = [];
+  const view = createAgentRosterView({
+    root, documentRef, spriteFor: options.spriteFor, textFor: options.textFor,
+    onActivate: (selection, trigger) => activations.push([selection, trigger]),
+  });
+  view.render([row]);
+  const card = root.children[0];
+
+  card.dispatch('click');
+  card.dispatch('keydown', { key: 'Enter', preventDefault() {} });
+  card.dispatch('keydown', { key: ' ', preventDefault() {} });
+
+  assert.deepEqual(activations.map(([selection]) => selection), [
+    { kind: 'agent', id: 'main' }, { kind: 'agent', id: 'main' }, { kind: 'agent', id: 'main' },
+  ]);
+  assert.ok(activations.every(([, trigger]) => trigger === card));
+});

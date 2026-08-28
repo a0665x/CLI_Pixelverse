@@ -2865,6 +2865,23 @@
     .agent-roster-card[data-signal-kind='degraded'] .agent-roster-ecg path { stroke: #f5c45d; stroke-dasharray: 3 2; }
     .agent-roster-card[data-signal-kind='offline'] { filter: saturate(.25); }
     .agent-roster-card[data-signal-kind='offline'] .agent-roster-ecg path { stroke: #89958f; }
+    .agent-detail { position: fixed; inset: 0 0 0 auto; z-index: 120; width: min(360px, calc(100vw - 520px)); min-width: 300px; color: #e9f7eb; background: #102019; box-shadow: -14px 0 36px rgba(0,0,0,.42); }
+    .agent-detail[hidden] { display: none; }
+    .agent-detail-panel { display: grid; height: 100%; grid-template-rows: auto auto auto minmax(0, 1fr); gap: 12px; overflow: auto; padding: 16px; }
+    .agent-detail-header { display: grid; grid-template-columns: 56px minmax(0, 1fr) auto; align-items: center; gap: 10px; }
+    .agent-detail-portrait { width: 54px; height: 54px; object-fit: contain; image-rendering: pixelated; }
+    .agent-detail-title { display: grid; min-width: 0; gap: 3px; }
+    .agent-detail-title strong, .agent-detail-title span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .agent-detail-close { align-self: start; border: 1px solid #345844; border-radius: 7px; color: inherit; background: #172d23; cursor: pointer; }
+    .agent-detail-ecg { width: 100%; height: 44px; }
+    .agent-detail-ecg path { fill: none; stroke: #5ce69a; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+    .agent-detail[data-signal-kind='offline'] .agent-detail-ecg path { stroke: #89958f; }
+    .agent-detail[data-signal-kind='blocked'] .agent-detail-ecg path { stroke: #ff7474; }
+    .agent-detail-fields { display: grid; grid-template-columns: minmax(96px, .7fr) minmax(0, 1.3fr); gap: 7px 10px; margin: 0; }
+    .agent-detail-fields dt { color: #8ea99a; font-size: 10px; }
+    .agent-detail-fields dd { min-width: 0; margin: 0; overflow-wrap: anywhere; font-size: 11px; }
+    .agent-detail-events { display: grid; align-content: start; gap: 6px; overflow: auto; }
+    .agent-detail-event { padding: 7px; border: 1px solid #294838; border-radius: 7px; color: #cfe3d5; background: #14281f; font-size: 10px; overflow-wrap: anywhere; }
     .agent-live-rail[hidden],
     .hook-live-rail[hidden],
     .live-rail-splitter[hidden],
@@ -2900,6 +2917,8 @@
       .agent-roster-card { min-width: 128px; }
       .agent-roster-counts output:nth-last-child(-n+2) { display: none; }
       .map-first-workspace .dashboard-card { grid-column: 1; grid-row: 3; width: min(340px, calc(100% - 16px)) !important; height: auto !important; }
+      .agent-detail[data-agent-detail-mode='dialog'] { inset: 0; display: grid; width: auto; min-width: 0; place-items: center; padding: 12px; background: rgba(3,12,8,.72); }
+      .agent-detail[data-agent-detail-mode='dialog'] .agent-detail-panel { width: min(560px, 100%); max-height: min(720px, calc(100dvh - 24px)); height: auto; border: 1px solid #345844; border-radius: 12px; background: #102019; box-shadow: 0 18px 48px rgba(0,0,0,.5); }
     }
     @media (prefers-reduced-motion: reduce) { .agent-roster-ecg { transition: none; } }
   </style>
@@ -3042,6 +3061,34 @@
       </header>
       <div class="agent-live-list" id="agent-live-list"></div>
     </section>
+
+    <aside class="agent-detail" id="agent-detail" aria-hidden="true" hidden>
+      <section class="agent-detail-panel" data-agent-detail-panel role="dialog" aria-modal="true" aria-labelledby="agent-detail-name">
+        <header class="agent-detail-header">
+          <img class="agent-detail-portrait" data-agent-detail-portrait alt="" />
+          <div class="agent-detail-title">
+            <strong id="agent-detail-name" data-agent-detail-name data-external-copy="true"></strong>
+            <span data-agent-detail-role></span>
+            <span data-agent-detail-state></span>
+          </div>
+          <button type="button" class="agent-detail-close" data-agent-detail-close data-i18n-aria-label="agentDetail.close">×</button>
+        </header>
+        <svg class="agent-detail-ecg" data-agent-detail-ecg data-agent-ecg viewBox="0 0 176 32" aria-hidden="true"><path></path></svg>
+        <dl class="agent-detail-fields">
+          <dt data-i18n="agentDetail.currentTask"></dt><dd data-agent-detail-task data-external-copy="true"></dd>
+          <dt data-i18n="agentDetail.room"></dt><dd data-agent-detail-room></dd>
+          <dt data-i18n="agentDetail.tool"></dt><dd data-agent-detail-tool data-external-copy="true"></dd>
+          <dt data-i18n="agentDetail.hook"></dt><dd data-agent-detail-hook data-external-copy="true"></dd>
+          <dt data-i18n="agentDetail.process"></dt><dd data-agent-detail-process data-external-copy="true"></dd>
+          <dt data-i18n="agentDetail.session"></dt><dd data-agent-detail-session data-external-copy="true"></dd>
+          <dt data-i18n="agentDetail.lastSeen"></dt><dd data-agent-detail-last-seen></dd>
+        </dl>
+        <section>
+          <h3 data-i18n="agentDetail.recentEvents"></h3>
+          <div class="agent-detail-events" data-agent-detail-events></div>
+        </section>
+      </section>
+    </aside>
 
     <aside class="agent-live-rail command-deck-region" id="agent-live-rail" hidden></aside>
 

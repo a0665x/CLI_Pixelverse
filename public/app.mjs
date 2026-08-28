@@ -65,6 +65,8 @@ import { getAgentPose, INTERACTION_OBJECT_ICONS, selectInteractionTarget } from 
 import { buildAgentDialog, buildAgentSpeech } from './agent_dialog.mjs';
 import { buildAgentRoster } from './agent_roster_model.mjs';
 import { createAgentRosterView } from './agent_roster_view.mjs';
+import { buildAgentDetail } from './agent_detail_model.mjs';
+import { createAgentDetailView } from './agent_detail_view.mjs';
 import { createCommandDeckLocaleController } from './command_deck_locale_controller.mjs';
 import { agentPayloadPresentation, currentAgentStatePresentation, escapeHtml, timelinePayloadPresentation } from './command_deck_payload_presenters.mjs';
 import { clampCameraOffset, centeredCamera, clampZoom, nextDraggedOffset, nextZoomState } from './ui_state.mjs';
@@ -184,6 +186,7 @@ const ROLE_CHIPS = {
 const dom = {
   agentsLayer: document.getElementById('agents-layer'),
   agentLiveList: document.getElementById('agent-live-list'),
+  agentDetail: document.getElementById('agent-detail'),
   needsAttentionCount: document.getElementById('needs-attention-count'),
   activeAgentCount: document.getElementById('active-agent-count'),
   idleAgentCount: document.getElementById('idle-agent-count'),
@@ -323,13 +326,19 @@ const cutawayFocusHandoff = createCutawayFocusHandoff({
   cancel: (handle) => window.cancelAnimationFrame(handle),
 });
 const liveEcgController = createLiveEcgController({ root: dom.agentLiveList });
+const agentDetailView = createAgentDetailView({
+  root: dom.agentDetail,
+  documentRef: document,
+  spriteFor: getKenneyAgentSprite,
+  textFor: (key, params = {}) => uiText(currentLocale, key, params),
+});
 const agentRosterView = createAgentRosterView({
   root: dom.agentLiveList,
   spriteFor: getKenneyAgentSprite,
   textFor: (key, params = {}) => key === 'select'
     ? uiText(currentLocale, 'commandDeck.inspector.liveDetail', params)
     : uiText(currentLocale, `commandDeck.roster.signal.${key}`, params),
-  onSelect: (selection) => selectCommandDeck(selection),
+  onActivate: (selection, trigger) => activateAgentDetail(selection.id, { trigger }),
 });
 const commandDeckLayoutController = createCommandDeckLayoutController({
   workspace: dom.workspace,
@@ -399,7 +408,9 @@ const syncCutawayStatusRail = () => {
 const pixelworldBridge = createPixelworldBridge({
   frame: dom.pixelworldFrame,
   origin: window.location.origin,
-  onFocus: (selection) => selectCommandDeck(selection, { publish: false }),
+  onFocus: (selection) => selection?.kind === 'agent'
+    ? activateAgentDetail(selection.id, { trigger: dom.pixelworldFrame, publish: false })
+    : selectCommandDeck(selection, { publish: false }),
   onCutawayStateChange: (open) => {
     if (open) {
       cancelDashboardFocusRestore?.();
@@ -1658,19 +1669,17 @@ function createAgentElement(agent) {
   `;
   const openDetail = (event) => {
     event.stopPropagation();
-    const current = agentViews.get(agent.agent)?.data || agent;
-    selectCommandDeck({ kind: 'agent', id: agent.agent });
-    openAgentDialog(current);
+    activateAgentDetail(agent.agent, { trigger: event.currentTarget || el });
   };
   el.querySelector('.agent-speech')?.addEventListener('click', openDetail);
   el.querySelector('.event-chip')?.addEventListener('click', openDetail);
   el.addEventListener('click', () => {
-    selectCommandDeck({ kind: 'agent', id: agent.agent });
+    activateAgentDetail(agent.agent, { trigger: el });
   });
   el.addEventListener('keydown', (event) => {
     if (!['Enter', ' '].includes(event.key)) return;
     event.preventDefault();
-    selectCommandDeck({ kind: 'agent', id: agent.agent });
+    activateAgentDetail(agent.agent, { trigger: el });
   });
   dom.agentsLayer.appendChild(el);
   return el;
@@ -2374,6 +2383,14 @@ function selectCommandDeck(selection, { publish = true } = {}) {
   return true;
 }
 
+function activateAgentDetail(agentId, { trigger = document.activeElement, publish = true } = {}) {
+  if (!selectCommandDeck({ kind: 'agent', id: agentId }, { publish })) return false;
+  const detail = buildAgentDetail(currentCommandDeckModel, agentId, { nowMs: Date.now() });
+  if (!detail) return false;
+  agentDetailView.open(detail, trigger);
+  return true;
+}
+
 function resumeCommandDeckLive() {
   currentCommandSelection = null;
   missionTraceController.resume();
@@ -2391,6 +2408,12 @@ function renderLiveMonitoring(snapshot = {}, nowMs = Date.now()) {
   if (dom.agentLiveList) {
     agentRosterView.render(rows, { selectedId: selectedAgentId });
     liveEcgController.sync(rows);
+  }
+  const openDetail = agentDetailView.current();
+  if (openDetail) {
+    const detail = buildAgentDetail(model, openDetail.id, { nowMs });
+    if (detail) agentDetailView.render(detail);
+    else agentDetailView.close();
   }
   if (dom.needsAttentionCount) dom.needsAttentionCount.textContent = uiText(currentLocale, 'commandDeck.roster.needsYou', { count: model.situation.attentionCount });
   if (dom.activeAgentCount) dom.activeAgentCount.textContent = uiText(currentLocale, 'commandDeck.roster.active', { count: model.situation.activeAgentCount });
