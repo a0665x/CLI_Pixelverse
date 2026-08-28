@@ -646,7 +646,9 @@ function updateCurrentAgentState(snapshot = {}) {
   }
   const room = getRoomCopy(mainAgent.room_key, currentLocale);
   const roomName = room.name || mainAgent.room_label || copy.unknownRoom;
-  const detail = agentConnectionStatusText(currentLocale, mainAgent) || agentTaskText(mainAgent);
+  const detail = agentConnectionStatusText(currentLocale, mainAgent)
+    || agentTaskText(mainAgent)
+    || activityHintForLocale(currentLocale, mainAgent, roomName);
   const presentation = currentAgentStatePresentation({
     name: displayAgentName(mainAgent), state: stateText(mainAgent.state), room: roomName, detail,
   });
@@ -1274,8 +1276,17 @@ function renderLiveMonitoring(snapshot = {}, nowMs = Date.now()) {
   const roomCopy = getRoomCopy(hook.roomKey, currentLocale);
   if (dom.hookLiveSemantic) dom.hookLiveSemantic.textContent = commandText(`commandDeck.hook.semantic.${hook.semantic}`);
   if (dom.hookLiveBuilding) dom.hookLiveBuilding.textContent = roomCopy.name || hook.building;
-  if (dom.hookLiveActivity) dom.hookLiveActivity.textContent = String(hook.activity || strings().idleFallback);
-  if (dom.hookLiveAgent) dom.hookLiveAgent.textContent = hook.agentId;
+  if (dom.hookLiveActivity) {
+    const externalActivity = String(hook.activity || '');
+    dom.hookLiveActivity.textContent = externalActivity || strings().idleFallback;
+    if (externalActivity) dom.hookLiveActivity.dataset.externalCopy = 'true';
+    else delete dom.hookLiveActivity.dataset.externalCopy;
+  }
+  if (dom.hookLiveAgent) {
+    dom.hookLiveAgent.textContent = hook.agentId;
+    if (hook.agentId) dom.hookLiveAgent.dataset.externalCopy = 'true';
+    else delete dom.hookLiveAgent.dataset.externalCopy;
+  }
   if (dom.hookLiveChannels) {
     const channels = hookChannelsForAgents(snapshot.agents, currentLocale, selectedAgentId, nowMs);
     dom.hookLiveChannels.replaceChildren(...channels.map((channel) => {
@@ -1292,8 +1303,8 @@ function renderLiveMonitoring(snapshot = {}, nowMs = Date.now()) {
       const count = document.createElement('output'); count.textContent = String(channel.count);
       header.append(label, count);
       const activity = document.createElement('p');
-      activity.dataset.externalCopy = 'true';
       activity.textContent = String(channel.activity || strings().idleFallback);
+      if (channel.activity) activity.dataset.externalCopy = 'true';
       const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
       svg.setAttribute('class', 'hook-live-ecg');
       svg.setAttribute('viewBox', '0 0 176 32');
@@ -1302,8 +1313,8 @@ function renderLiveMonitoring(snapshot = {}, nowMs = Date.now()) {
       path.setAttribute('d', channel.path);
       svg.append(path);
       const agent = document.createElement('span');
-      agent.dataset.externalCopy = 'true';
       agent.textContent = channel.agentId || '—';
+      if (channel.agentId) agent.dataset.externalCopy = 'true';
       article.append(header, activity, svg, agent);
       return article;
     }));

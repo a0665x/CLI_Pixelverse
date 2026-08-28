@@ -82,7 +82,7 @@ export function hookChannelsForAgents(agents = [], locale = 'en-US', selectedAge
       label: labels[semantic],
       count: occupants.length,
       building: BUILDING_BY_SEMANTIC[semantic],
-      activity: freshest?.task || freshest?.activity_hint || freshest?.state || '',
+      activity: freshest?.task || '',
       agentId: freshest?.agent || '',
       active: selected.semantic === semantic,
       path: buildHeartbeatPath({
@@ -147,7 +147,7 @@ export function hookRailForAgents(agents = [], selectedAgentId = '') {
     agentId: agent.agent || '',
     semantic,
     building: BUILDING_BY_SEMANTIC[semantic],
-    activity: agent.task || agent.activity_hint || agent.state || '',
+    activity: agent.task || '',
     roomKey: resolved.roomKey,
   };
 }

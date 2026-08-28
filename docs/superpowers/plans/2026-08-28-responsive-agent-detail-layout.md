@@ -470,7 +470,7 @@ Run:
 ```bash
 node --test tests/*.mjs
 python3 -m pytest -q tests/test_dashboard_layout.py tests/test_command_deck_browser_smoke.py
-python3 scripts/command_deck_browser_smoke.py --base-url http://127.0.0.1:5661
+python3 scripts/command_deck_browser_smoke.py --base-url http://127.0.0.1:5661 --allow-mutation
 ```
 
 Expected: unit/structural tests pass and browser smoke records zero overlap, zero horizontal overflow, correct mode/focus, and zero console/page errors.

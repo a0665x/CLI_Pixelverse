@@ -902,7 +902,7 @@ curl -fsS http://127.0.0.1:5661/health
 curl -fsS http://127.0.0.1:4568/health
 PIXELVERSE_TEST_IMAGE=cli-pixelverse:local python3 -m pytest -q tests/test_docker_release_integrity.py -k local_release_image
 PIXELVERSE_SMOKE_BASE_URL=http://127.0.0.1:5661 ./run.sh smoke-furniture-drag
-PIXELVERSE_SMOKE_BASE_URL=http://127.0.0.1:5661 python3 scripts/command_deck_browser_smoke.py
+PIXELVERSE_SMOKE_BASE_URL=http://127.0.0.1:5661 PIXELVERSE_SMOKE_ALLOW_MUTATION=1 python3 scripts/command_deck_browser_smoke.py
 ./run.sh test-hook
 ```
 

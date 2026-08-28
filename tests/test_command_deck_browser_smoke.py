@@ -162,6 +162,17 @@ def passing_artifact() -> dict:
             },
             "pass": True,
         },
+        "runtime_provenance": {
+            "phases": {
+                phase: {
+                    "checks": {locale: {"pass": True} for locale in ("en-US", "zh-TW", "ja-JP", "ko-KR")},
+                    "pass": True,
+                }
+                for phase in ("no_task", "external_task")
+            },
+            "unique_activity_signatures": True,
+            "pass": True,
+        },
         "starting_cabin": {
             "building_id": "rest-cabin",
             "opened": True,
@@ -213,11 +224,13 @@ def passing_artifact() -> dict:
 
 def test_browser_smoke_plan_and_artifact_paths_are_deterministic(monkeypatch):
     monkeypatch.delenv("PIXELVERSE_SMOKE_BASE_URL", raising=False)
+    monkeypatch.delenv("PIXELVERSE_SMOKE_ALLOW_MUTATION", raising=False)
     smoke = load_module()
 
     plan = smoke.BrowserSmokePlan()
 
-    assert plan.base_url == "http://127.0.0.1:5661"
+    assert plan.base_url == ""
+    assert plan.allow_mutation is False
     assert [(item.name, item.width, item.height, item.mode) for item in plan.viewports] == [
         ("desktop-large", 1440, 900, "desktop"),
         ("desktop-compact", 1024, 768, "desktop"),
@@ -311,7 +324,7 @@ def test_all_runner_polls_use_explicit_predicate_or_value_wait_apis():
         if node.func.attr == "wait_value"
         and isinstance(node.func.value, ast.Name) and node.func.value.id == "browser"
     ]
-    assert len(runner_value_expressions) == 7
+    assert len(runner_value_expressions) == 6
     assert all(
         "localStorage.getItem" in expression or ".__commandDeckSmokeFocus.find" in expression
         or "world-agent-status" in expression
@@ -632,6 +645,62 @@ def test_foreign_copy_corpus_comes_from_complete_production_catalog_exports():
     assert len(foreign) > 100
 
 
+def test_foreign_copy_corpus_includes_materialized_dynamic_catalog_phrases():
+    smoke = load_module()
+
+    foreign = smoke._foreign_product_phrases("ja-JP")
+
+    assert foreign["Page 2 of 5"] == "en-US"
+
+
+def test_catalog_export_rejects_non_string_village_leaves_instead_of_silently_omitting_them():
+    source = SCRIPT.read_text(encoding="utf-8")
+
+    assert "assertStaticCatalogLeaves" in source
+    assert "Unsupported static catalog leaf" in source
+
+
+def test_mutating_post_fails_closed_before_contact_without_explicit_opt_in(monkeypatch):
+    smoke = load_module()
+    contacted = []
+    monkeypatch.setattr(smoke.urllib.request, "urlopen", lambda *args, **kwargs: contacted.append(args))
+
+    with pytest.raises(smoke.BrowserFailure, match="mutation opt-in"):
+        smoke.post_event("http://127.0.0.1:5661", {"agent": "fixture"}, allow_mutation=False)
+
+    assert contacted == []
+
+
+def test_smoke_requires_explicit_target_and_mutation_opt_in(monkeypatch):
+    smoke = load_module()
+    assert "explicit --base-url" in smoke.mutation_authorization_error(smoke.BrowserSmokePlan())
+    assert "mutation opt-in" in smoke.mutation_authorization_error(
+        smoke.BrowserSmokePlan(base_url="http://127.0.0.1:5662")
+    )
+    assert smoke.mutation_authorization_error(
+        smoke.BrowserSmokePlan(base_url="http://127.0.0.1:5662", allow_mutation=True)
+    ) == ""
+
+
+def test_parser_accepts_explicit_safe_mutation_pair(monkeypatch):
+    monkeypatch.delenv("PIXELVERSE_SMOKE_BASE_URL", raising=False)
+    monkeypatch.delenv("PIXELVERSE_SMOKE_ALLOW_MUTATION", raising=False)
+    smoke = load_module()
+    args = smoke.build_parser().parse_args([
+        "--base-url", "http://127.0.0.1:5662", "--allow-mutation",
+    ])
+    plan = smoke.BrowserSmokePlan(base_url=args.base_url, allow_mutation=args.allow_mutation)
+
+    assert smoke.mutation_authorization_error(plan) == ""
+
+
+def test_active_smoke_has_no_retired_drilldown_or_district_selector():
+    source = SCRIPT.read_text(encoding="utf-8")
+
+    assert "def drilldown_evidence" not in source
+    assert ".district" not in source
+
+
 def test_contract_excludes_external_payloads_from_foreign_product_copy_detection():
     smoke = load_module()
     artifact = passing_artifact()
@@ -702,6 +771,39 @@ def test_contract_requires_focus_to_survive_an_observed_roster_refresh():
 
     assert any("desktop-large" in failure and "roster refresh" in failure for failure in failures)
     assert any("desktop-large" in failure and "focus" in failure for failure in failures)
+
+
+def test_contract_requires_runtime_provenance_matrix_to_pass():
+    smoke = load_module()
+    artifact = passing_artifact()
+    artifact["runtime_provenance"]["phases"]["no_task"]["checks"]["ja-JP"]["pass"] = False
+    artifact["runtime_provenance"]["pass"] = False
+
+    failures = smoke.evaluate_artifact(artifact)
+
+    assert any("runtime provenance" in failure for failure in failures)
+
+
+def test_runner_posts_locale_provenance_heartbeats_only_with_mutation_authorization():
+    source = SCRIPT.read_text(encoding="utf-8")
+
+    assert "def runtime_provenance_evidence(" in source
+    assert '"idle": "provenance-idle"' in source
+    assert '"working": "provenance-working"' in source
+    assert '"offline": "provenance-offline"' in source
+    assert "allow_mutation=plan.allow_mutation" in source
+
+
+def test_hook_external_markers_follow_external_bytes_instead_of_product_fallbacks():
+    html = (ROOT / "public" / "index.html").read_text(encoding="utf-8")
+    app = (ROOT / "public" / "app.mjs").read_text(encoding="utf-8")
+
+    assert '<p id="hook-live-activity"></p>' in html
+    assert '<div class="hook-live-agent" id="hook-live-agent"></div>' in html
+    assert "dom.hookLiveActivity.dataset.externalCopy = 'true'" in app
+    assert "delete dom.hookLiveActivity.dataset.externalCopy" in app
+    assert "if (channel.activity) activity.dataset.externalCopy = 'true'" in app
+    assert "if (channel.agentId) agent.dataset.externalCopy = 'true'" in app
 
 
 def test_contract_rejects_text_only_routes_closed_cabin_and_missing_agents():
@@ -791,4 +893,4 @@ def test_readme_and_tracked_modules_publish_the_verified_browser_acceptance():
     assert "mission_trace.mjs" in integration
     assert "canonicalFurnitureGeometry.ts" in integration
     assert "tmp/command_deck_browser_smoke.json" in testing
-    assert "python3 scripts/command_deck_browser_smoke.py --base-url http://127.0.0.1:5661" in testing
+    assert "python3 scripts/command_deck_browser_smoke.py --base-url http://127.0.0.1:5661 --allow-mutation" in testing

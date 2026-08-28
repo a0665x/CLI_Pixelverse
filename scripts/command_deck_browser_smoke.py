@@ -18,6 +18,7 @@ import re
 import shutil
 import struct
 import subprocess
+import sys
 import tempfile
 import time
 import urllib.error
@@ -29,7 +30,8 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 TMP = ROOT / "tmp"
-DEFAULT_BASE_URL = os.environ.get("PIXELVERSE_SMOKE_BASE_URL", "http://127.0.0.1:5661")
+DEFAULT_BASE_URL = os.environ.get("PIXELVERSE_SMOKE_BASE_URL", "")
+DEFAULT_ALLOW_MUTATION = os.environ.get("PIXELVERSE_SMOKE_ALLOW_MUTATION", "") == "1"
 SUPPORTED_LOCALES = ("en-US", "zh-TW", "ja-JP", "ko-KR")
 EXPECTED_LOCALE_COPY = {
     "en-US": {
@@ -85,6 +87,7 @@ class Viewport:
 @dataclass(frozen=True)
 class BrowserSmokePlan:
     base_url: str = DEFAULT_BASE_URL
+    allow_mutation: bool = DEFAULT_ALLOW_MUTATION
     viewports: tuple[Viewport, ...] = (
         Viewport("desktop-large", 1440, 900, "desktop"),
         Viewport("desktop-compact", 1024, 768, "desktop"),
@@ -124,7 +127,7 @@ def _production_product_catalogs() -> dict[str, Any]:
     village_root = ROOT / "pixelworld_mvp"
     vite_module = (village_root / "node_modules" / "vite" / "dist" / "node" / "index.js").as_uri()
     source = f"""
-      import {{ UI_CATALOG }} from {json.dumps(ui_module)};
+      import {{ materializeUiCatalogForAcceptance, uiCatalogLeafManifest }} from {json.dumps(ui_module)};
       import {{ createServer }} from {json.dumps(vite_module)};
       const server = await createServer({{
         root: {json.dumps(str(village_root))}, logLevel: 'silent', appType: 'custom',
@@ -133,8 +136,24 @@ def _production_product_catalogs() -> dict[str, Any]:
       const village = await server.ssrLoadModule('/src/i18n/villageLocale.ts');
       const interior = await server.ssrLoadModule('/src/rendering/interiorLocale.ts');
       const locales = {json.dumps(list(SUPPORTED_LOCALES))};
+      const assertStaticCatalogLeaves = (value, path = 'catalog') => {{
+        if (typeof value === 'string') return;
+        if (Array.isArray(value)) return value.forEach((child, index) => assertStaticCatalogLeaves(child, `${{path}}[${{index}}]`));
+        if (value && typeof value === 'object') return Object.entries(value)
+          .forEach(([key, child]) => assertStaticCatalogLeaves(child, `${{path}}.${{key}}`));
+        throw new Error(`Unsupported static catalog leaf ${{path}}: ${{typeof value}}`);
+      }};
+      for (const locale of locales) {{
+        const manifest = uiCatalogLeafManifest(locale);
+        if (manifest.omitted.length || manifest.sourcePaths.length !== manifest.materializedPaths.length) {{
+          throw new Error(`UI acceptance corpus omitted catalog leaves for ${{locale}}: ${{manifest.omitted.join(', ')}}`);
+        }}
+        assertStaticCatalogLeaves(village.VILLAGE_CATALOG[locale], `VILLAGE_CATALOG.${{locale}}`);
+        assertStaticCatalogLeaves(village.VILLAGE_AUXILIARY_CATALOGS[locale], `VILLAGE_AUXILIARY_CATALOGS.${{locale}}`);
+        assertStaticCatalogLeaves(interior.VILLAGE_INTERIOR_CATALOGS[locale], `VILLAGE_INTERIOR_CATALOGS.${{locale}}`);
+      }}
       process.stdout.write(JSON.stringify(Object.fromEntries(locales.map((locale) => [locale, [
-        UI_CATALOG[locale],
+        materializeUiCatalogForAcceptance(locale),
         village.VILLAGE_CATALOG[locale],
         village.VILLAGE_AUXILIARY_CATALOGS[locale],
         interior.VILLAGE_INTERIOR_CATALOGS[locale],
@@ -297,6 +316,19 @@ def evaluate_artifact(artifact: dict[str, Any]) -> list[str]:
     if locale_coverage.get("unique_signatures") is not True:
         failures.append("locale coverage did not record distinct localized signatures")
 
+    provenance = _mapping(artifact.get("runtime_provenance"))
+    for phase in ("no_task", "external_task"):
+        phase_evidence = _mapping(_mapping(provenance.get("phases")).get(phase))
+        phase_checks = _mapping(phase_evidence.get("checks"))
+        if any(_mapping(phase_checks.get(locale)).get("pass") is not True for locale in SUPPORTED_LOCALES):
+            failures.append(f"runtime provenance {phase} did not pass in all four locales")
+        if phase_evidence.get("pass") is not True:
+            failures.append(f"runtime provenance {phase} evidence did not pass")
+    if provenance.get("unique_activity_signatures") is not True:
+        failures.append("runtime provenance activity copy was not distinct across all four locales")
+    if provenance.get("pass") is not True:
+        failures.append("runtime provenance evidence did not pass")
+
     overview = _mapping(artifact.get("agent_overview"))
     selection = _mapping(overview.get("selection"))
     if (not selection.get("id") or selection.get("card_selected") is not True
@@ -450,6 +482,9 @@ class ChromiumDevTools:
                     self.process.wait(timeout=5)
                 except subprocess.TimeoutExpired:
                     self.process.kill()
+                    self.process.wait(timeout=5)
+                # Chromium may finish profile writes just after its parent exits.
+                time.sleep(0.1)
             self.profile and self.profile.cleanup()
 
     def _record_event(self, event: dict[str, Any]) -> None:
@@ -605,7 +640,17 @@ def png_dimensions(path: Path) -> tuple[int, int]:
     return struct.unpack(">II", data[16:24])
 
 
-def post_event(base_url: str, payload: dict[str, Any]) -> dict[str, Any]:
+def mutation_authorization_error(plan: BrowserSmokePlan) -> str:
+    if not plan.base_url.strip():
+        return "Refusing mutating smoke without an explicit --base-url or PIXELVERSE_SMOKE_BASE_URL."
+    if not plan.allow_mutation:
+        return "Refusing mutating smoke without mutation opt-in (--allow-mutation or PIXELVERSE_SMOKE_ALLOW_MUTATION=1)."
+    return ""
+
+
+def post_event(base_url: str, payload: dict[str, Any], *, allow_mutation: bool = False) -> dict[str, Any]:
+    if not allow_mutation:
+        raise BrowserFailure("Refusing synthetic POST without explicit mutation opt-in.")
     request = urllib.request.Request(
         f"{base_url.rstrip('/')}/api/event",
         data=json.dumps(payload).encode("utf-8"),
@@ -619,6 +664,25 @@ def post_event(base_url: str, payload: dict[str, Any]) -> dict[str, Any]:
         raise BrowserFailure(f"Could not POST synthetic browser event: {exc}") from exc
     if not result.get("ok"):
         raise BrowserFailure(f"Synthetic browser event was rejected: {result}")
+    return result
+
+
+def post_heartbeat(base_url: str, payload: dict[str, Any], *, allow_mutation: bool = False) -> dict[str, Any]:
+    if not allow_mutation:
+        raise BrowserFailure("Refusing synthetic POST without explicit mutation opt-in.")
+    request = urllib.request.Request(
+        f"{base_url.rstrip('/')}/api/heartbeat",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:
+            result = json.load(response)
+    except urllib.error.URLError as exc:
+        raise BrowserFailure(f"Could not POST synthetic browser heartbeat: {exc}") from exc
+    if not result.get("ok"):
+        raise BrowserFailure(f"Synthetic browser heartbeat was rejected: {result}")
     return result
 
 
@@ -1268,135 +1332,120 @@ def locale_coverage_evidence(
     }
 
 
-def drilldown_evidence(browser: ChromiumDevTools) -> dict[str, Any]:
-    browser.evaluate("""
-      (() => {
-        window.__commandDeckSmokeSelections = [];
-        if (!window.__commandDeckSmokeSelectionProbe) {
-          window.addEventListener('message', (event) => {
-            if (event.origin === location.origin && event.source === document.querySelector('#pixelworld-frame')?.contentWindow
-              && event.data?.type === 'pixelverse.command.focus') {
-              window.__commandDeckSmokeSelections.push(event.data.selection);
+def runtime_provenance_evidence(browser: ChromiumDevTools, plan: BrowserSmokePlan) -> dict[str, Any]:
+    agent_ids = {
+        "idle": "provenance-idle",
+        "working": "provenance-working",
+        "offline": "provenance-offline",
+    }
+    external_tasks = {state: f"RAW_EXTERNAL_TASK::{state}::7f31" for state in agent_ids}
+    phases: dict[str, Any] = {}
+    activity_signatures: dict[str, str] = {}
+
+    for phase, with_task in (("no_task", False), ("external_task", True)):
+        for state, agent_id in agent_ids.items():
+            post_heartbeat(plan.base_url, {
+                "agent": agent_id,
+                "name": f"Provenance {state}",
+                "role": "subagent",
+                "state": state,
+                "task": external_tasks[state] if with_task else None,
+                "source_placeholder": False,
+            }, allow_mutation=plan.allow_mutation)
+        for agent_id in agent_ids.values():
+            browser.wait_until(
+                f"document.querySelector('.agent-roster-card[data-selection-id={json.dumps(agent_id)}]')",
+                f"{phase} provenance roster card {agent_id}",
+            )
+
+        locale_checks: dict[str, Any] = {}
+        for locale in plan.locales:
+            captured = locale_evidence(browser, locale)
+            captured_foreign = _foreign_product_copy_matches(locale, captured)
+            semantic = _mapping(browser.evaluate(f"""
+              (async () => {{
+                const copy = await import('/ui_strings.mjs');
+                const snapshot = await fetch('/api/world', {{ cache: 'no-store' }}).then((response) => response.json());
+                const ids = {json.dumps(agent_ids)};
+                return Object.fromEntries(Object.entries(ids).map(([expectedState, id]) => {{
+                  const agent = (snapshot.agents || []).find((item) => item.agent === id);
+                  const room = copy.getRoomCopy(agent?.room_key, {json.dumps(locale)});
+                  const roomName = room.name || agent?.room_label || agent?.room_key || '';
+                  return [expectedState, {{
+                    id,
+                    state: agent?.state || '',
+                    snapshot_task: agent?.task ?? null,
+                    activity_hint: agent?.activity_hint || '',
+                    activity: copy.activityHintForLocale({json.dumps(locale)}, agent || {{}}, roomName),
+                    state_copy: copy.uiText({json.dumps(locale)}, `agentState.${{agent?.pixel_state || agent?.state || 'idle'}}`),
+                    no_task_copy: copy.uiText({json.dumps(locale)}, 'agentDetail.noTask'),
+                  }}];
+                }}));
+              }})()
+            """))
+            detail: dict[str, Any] = {}
+            for state, agent_id in agent_ids.items():
+                selector = f'.agent-roster-card[data-selection-id="{agent_id}"]'
+                click(browser, selector)
+                browser.wait_until(
+                    f"!document.querySelector('#agent-detail')?.hidden && document.querySelector('#agent-detail')?.dataset.agentId === {json.dumps(agent_id)}",
+                    f"{locale} {phase} Agent detail {agent_id}",
+                )
+                detail[state] = _mapping(browser.evaluate("""
+                  (() => {
+                    const node = document.querySelector('[data-agent-detail-task]');
+                    return { text: node?.textContent || '', external: node?.dataset.externalCopy === 'true' };
+                  })()
+                """))
+                browser.key("Escape")
+                browser.wait_until("document.querySelector('#agent-detail')?.hidden", f"{locale} {phase} Agent detail close")
+
+            derived_product_copy = "\n".join(
+                str(_mapping(semantic.get(state)).get(key) or "")
+                for state in agent_ids
+                for key in ("activity", "state_copy", "no_task_copy")
+            )
+            derived_foreign = _foreign_product_copy_matches(locale, {"shell_text": derived_product_copy})
+            agents_pass = True
+            for state in agent_ids:
+                row = _mapping(semantic.get(state))
+                task_detail = _mapping(detail.get(state))
+                expected_task = external_tasks[state] if with_task else None
+                expected_detail = expected_task if with_task else row.get("no_task_copy")
+                agents_pass = agents_pass and bool(
+                    row.get("state") == state
+                    and row.get("snapshot_task") == expected_task
+                    and row.get("activity_hint") == ""
+                    and row.get("activity")
+                    and external_tasks[state] not in str(row.get("activity") or "")
+                    and task_detail.get("text") == expected_detail
+                    and task_detail.get("external") is with_task
+                )
+            locale_checks[locale] = {
+                "agents": semantic,
+                "detail": detail,
+                "foreign_product_copy": captured_foreign,
+                "derived_foreign_product_copy": derived_foreign,
+                "pass": agents_pass and not captured_foreign and not derived_foreign,
             }
-          });
-          window.__commandDeckSmokeSelectionProbe = true;
+            activity_signatures[f"{phase}:{locale}"] = json.dumps([
+                [_mapping(semantic.get(state)).get("activity"), _mapping(semantic.get(state)).get("state_copy")]
+                for state in agent_ids
+            ], ensure_ascii=False)
+        phases[phase] = {
+            "checks": locale_checks,
+            "pass": all(_mapping(locale_checks.get(locale)).get("pass") is True for locale in plan.locales),
         }
-        const child = document.querySelector('#pixelworld-frame')?.contentWindow;
-        child.__commandDeckSmokeFocus = [];
-        if (!child.__commandDeckSmokeFocusProbe) {
-          child.addEventListener('message', (event) => {
-            if (event.origin === location.origin && event.data?.type === 'pixelverse.command.focus') {
-              child.__commandDeckSmokeFocus.push(event.data.selection);
-            }
-          });
-          child.__commandDeckSmokeFocusProbe = true;
-        }
-        return true;
-      })()
-    """)
 
-    def reset_focus_messages() -> None:
-        browser.evaluate("document.querySelector('#pixelworld-frame').contentWindow.__commandDeckSmokeFocus = []; true")
-
-    def focus_message(kind: str, item_id: str) -> dict[str, Any]:
-        result = browser.wait_value(
-            f"document.querySelector('#pixelworld-frame').contentWindow.__commandDeckSmokeFocus.find((item) => item?.kind === {json.dumps(kind)} && item?.id === {json.dumps(item_id)})",
-            f"village focus message for {kind}:{item_id}",
-        )
-        return _mapping(result)
-
-    def close_cutaway() -> None:
-        if browser.evaluate("document.body.dataset.pixelworldCutaway === 'open'"):
-            click(browser, '.cutaway-dom-panel [data-action="close"]', child=True)
-            browser.wait_until("document.body.dataset.pixelworldCutaway !== 'open'", "cutaway close between drill-down checks")
-
-    browser.wait_until("document.querySelector('.agent-live-row[data-selection-id]')", "agent force-rail entry")
-    agent_id = browser.evaluate("document.querySelector('.agent-live-row[data-selection-id]').dataset.selectionId")
-    if browser.evaluate("document.querySelector('#hook-live-channels [data-selection-kind=\"hook\"].selected')"):
-        raise BrowserFailure("Agent drill-down started with stale Hook selection")
-    reset_focus_messages()
-    click_center(browser, f'.agent-live-row[data-selection-id="{agent_id}"]')
-    agent_source = bool(browser.wait_until(
-        f"document.querySelector('.agent-live-row[data-selection-id={json.dumps(agent_id)}]')?.classList.contains('selected')",
-        "agent force-rail selection",
-    ))
-    agent_inspector = bool(browser.wait_until(
-        "document.querySelector('#hook-live-channels [data-selection-kind=\"hook\"].selected')",
-        "agent-related Hook inspector selection",
-    ))
-    agent_hook_id = browser.evaluate(
-        "document.querySelector('#hook-live-channels [data-selection-kind=\"hook\"].selected')?.dataset.selectionId"
+    unique_activity_signatures = all(
+        len({activity_signatures[f"{phase}:{locale}"] for locale in plan.locales}) == len(plan.locales)
+        for phase in phases
     )
-    agent_focus = focus_message("agent", agent_id)
-    agent_village = agent_focus.get("id") == agent_id and bool(agent_dom_state(browser, agent_id))
-    agent_sync = agent_source and agent_inspector and agent_village
-    close_cutaway()
-
-    browser.wait_until("document.querySelector('#hook-live-channels [data-selection-kind=\"hook\"].selected')", "agent-related Hook drill-down entry")
-    hook_id = browser.evaluate("document.querySelector('#hook-live-channels [data-selection-kind=\"hook\"].selected')?.dataset.selectionId")
-    if hook_id != agent_hook_id:
-        raise BrowserFailure(f"Agent drill-down selected Hook {agent_hook_id!r}, then resolved {hook_id!r}")
-    reset_focus_messages()
-    click_center(browser, f'#hook-live-channels [data-selection-id="{hook_id}"]')
-    hook_source = bool(browser.wait_until(
-        f"document.querySelector('#hook-live-channels [data-selection-id={json.dumps(hook_id)}]')?.classList.contains('selected')",
-        "Hook source selection",
-    ))
-    hook_focus = focus_message("hook", hook_id)
-    hook_agent_id = str(hook_focus.get("agentId") or "")
-    hook_inspector = hook_agent_id == agent_id and bool(browser.wait_until(
-        f"document.querySelector('.agent-live-row[data-selection-kind=\"agent\"][data-selection-id={json.dumps(hook_agent_id)}]')?.classList.contains('selected')",
-        f"Hook-related agent selection {hook_agent_id}",
-    ))
-    hook_village = hook_focus.get("id") == hook_id
-    hook_sync = hook_source and hook_inspector and hook_village
-    close_cutaway()
-
-    timeline_selector = f'.mission-lane-agent[data-selection-id="{agent_id}"]'
-    browser.wait_until(
-        f"document.querySelector({json.dumps(timeline_selector)})?.closest('article')?.querySelector('.mission-event-node[data-selection-id]')",
-        "selected agent timeline event node",
-    )
-    timeline_id = browser.evaluate(
-        f"document.querySelector({json.dumps(timeline_selector)}).closest('article').querySelector('.mission-event-node[data-selection-id]').dataset.selectionId"
-    )
-    reset_focus_messages()
-    click_center(browser, f'.mission-event-node[data-selection-id="{timeline_id}"]')
-    timeline_source = bool(browser.wait_until(
-        f"document.querySelector('.mission-event-node[data-selection-id={json.dumps(timeline_id)}]')?.classList.contains('selected')",
-        "timeline source selection",
-    ))
-    timeline_focus = focus_message("event", timeline_id)
-    timeline_agent_id = str(timeline_focus.get("agentId") or "")
-    timeline_inspector = bool(timeline_agent_id) and bool(browser.wait_until(
-        f"document.querySelector('.agent-live-row[data-selection-kind=\"agent\"][data-selection-id={json.dumps(timeline_agent_id)}]')?.classList.contains('selected')",
-        f"timeline-related agent selection {timeline_agent_id}",
-    ))
-    timeline_village = timeline_focus.get("id") == timeline_id
-    timeline_sync = timeline_source and timeline_inspector and timeline_village
-    close_cutaway()
-
-    browser.evaluate("window.__commandDeckSmokeSelections = []; true")
-    click_world_building(browser, "rest-cabin")
-    building_source = bool(browser.wait_until(
-        "window.__commandDeckSmokeSelections.some((item) => item?.kind === 'building' && item?.id === 'standby_dock')",
-        "village-originated Starting Cabin selection message",
-    ))
-    building_inspector = bool(browser.wait_until(
-        "document.querySelector('.district[data-room=\"standby_dock\"]')?.classList.contains('command-selected')",
-        "command-deck building selection styling",
-    ))
-    building_village = bool(browser.evaluate(
-        "Boolean(document.body.dataset.pixelworldCutaway === 'open' && document.querySelector('#pixelworld-frame')?.contentDocument?.querySelector('.cutaway-dom-panel'))"
-    ))
-    building_sync = building_source and building_inspector and building_village
-    close_cutaway()
+    locale_evidence(browser, "en-US")
     return {
-        "agent": {"id": agent_id, "hook_id": agent_hook_id, "resolved_hook_agent_id": hook_agent_id, "source_activated": agent_source, "inspector_synced": agent_inspector and hook_agent_id == agent_id, "village_synced": agent_village, "synchronized": agent_sync and hook_agent_id == agent_id},
-        "building": {"id": "standby_dock", "source_activated": building_source, "inspector_synced": building_inspector, "village_synced": building_village, "synchronized": building_sync},
-        "hook": {"id": hook_id, "source_activated": hook_source, "inspector_synced": hook_inspector, "village_synced": hook_village, "synchronized": hook_sync},
-        "timeline": {"id": timeline_id, "source_activated": timeline_source, "inspector_synced": timeline_inspector, "village_synced": timeline_village, "synchronized": timeline_sync},
-        "pass": agent_sync and hook_agent_id == agent_id and building_sync and hook_sync and timeline_sync,
+        "phases": phases,
+        "unique_activity_signatures": unique_activity_signatures,
+        "pass": unique_activity_signatures and all(_mapping(value).get("pass") is True for value in phases.values()),
     }
 
 
@@ -1694,6 +1743,9 @@ def write_artifact(path: Path, artifact: dict[str, Any]) -> None:
 
 
 def run_smoke(plan: BrowserSmokePlan) -> dict[str, Any]:
+    authorization_error = mutation_authorization_error(plan)
+    if authorization_error:
+        raise BrowserFailure(authorization_error)
     TMP.mkdir(parents=True, exist_ok=True)
     temporary_village = TMP / "command-deck-village.candidate.png"
     temporary_cabin = TMP / "starting-cabin-agent.candidate.png"
@@ -1705,6 +1757,7 @@ def run_smoke(plan: BrowserSmokePlan) -> dict[str, Any]:
         "locale_coverage": {},
         "agent_overview": {},
         "agent_detail": {},
+        "runtime_provenance": {},
         "hook_routes": {},
         "starting_cabin": {},
         "furniture_invariants": {},
@@ -1725,10 +1778,11 @@ def run_smoke(plan: BrowserSmokePlan) -> dict[str, Any]:
             browser.reload()
             wait_world(browser)
             artifact["locale_coverage"] = locale_coverage_evidence(browser, plan)
+            artifact["runtime_provenance"] = runtime_provenance_evidence(browser, plan)
 
-            post_event(plan.base_url, synthetic_event(plan.main_agent, "main_agent", "start", "working", "clone_bay", "Main agent enters Clone Bay"))
-            post_event(plan.base_url, synthetic_event(plan.subagent, "subagent", "start", "working", "clone_bay", "Subagent starts in Clone Bay"))
-            post_event(plan.base_url, synthetic_event(plan.offline_agent, "subagent", "status", "offline", "standby_dock", "Offline fixture"))
+            post_event(plan.base_url, synthetic_event(plan.main_agent, "main_agent", "start", "working", "clone_bay", "Main agent enters Clone Bay"), allow_mutation=plan.allow_mutation)
+            post_event(plan.base_url, synthetic_event(plan.subagent, "subagent", "start", "working", "clone_bay", "Subagent starts in Clone Bay"), allow_mutation=plan.allow_mutation)
+            post_event(plan.base_url, synthetic_event(plan.offline_agent, "subagent", "status", "offline", "standby_dock", "Offline fixture"), allow_mutation=plan.allow_mutation)
             wait_agent(browser, plan.main_agent)
             wait_agent(browser, plan.subagent)
             browser.wait_until(
@@ -1738,8 +1792,8 @@ def run_smoke(plan: BrowserSmokePlan) -> dict[str, Any]:
             initial_main = agent_dom_state(browser, plan.main_agent)
             initial_sub = agent_dom_state(browser, plan.subagent)
 
-            post_event(plan.base_url, synthetic_event(plan.subagent, "subagent", "tool.started", "working", "tool_forge", "Subagent uses external browser tool"))
-            post_event(plan.base_url, synthetic_event(plan.main_agent, "main_agent", "completed", "idle", "standby_dock", "Main agent returns to Starting Cabin"))
+            post_event(plan.base_url, synthetic_event(plan.subagent, "subagent", "tool.started", "working", "tool_forge", "Subagent uses external browser tool"), allow_mutation=plan.allow_mutation)
+            post_event(plan.base_url, synthetic_event(plan.main_agent, "main_agent", "completed", "idle", "standby_dock", "Main agent returns to Starting Cabin"), allow_mutation=plan.allow_mutation)
             moving_sub = wait_agent_displacement(
                 browser, plan.subagent, str(initial_sub.get("transform") or ""),
                 "real subagent displacement from Clone Bay to Tool Forge",
@@ -1759,7 +1813,7 @@ def run_smoke(plan: BrowserSmokePlan) -> dict[str, Any]:
                 plan.busy_agent, "main_agent", "tool.started", "working", "terminal_bay", "Busy shell fixture",
             )
             busy_payload["tool_names"] = ["terminal", "shell"]
-            post_event(plan.base_url, busy_payload)
+            post_event(plan.base_url, busy_payload, allow_mutation=plan.allow_mutation)
             browser.wait_until(
                 "document.querySelector('.agent-roster-card[data-signal-kind=\"busy\"]') && document.querySelector('.agent-roster-card[data-signal-kind=\"offline\"]')",
                 "busy and offline roster ECG states",
@@ -1836,7 +1890,7 @@ def run_smoke(plan: BrowserSmokePlan) -> dict[str, Any]:
             }
             post_event(plan.base_url, synthetic_event(
                 plan.subagent, "subagent", "completed", "idle", "clone_bay", "Subagent smoke route completed",
-            ))
+            ), allow_mutation=plan.allow_mutation)
             browser.flush_events()
             artifact["console_errors"] = list(dict.fromkeys(filter(None, browser.console_errors)))
             artifact["page_errors"] = list(dict.fromkeys(filter(None, browser.page_errors)))
@@ -1863,6 +1917,7 @@ def run_smoke(plan: BrowserSmokePlan) -> dict[str, Any]:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run deterministic command-deck production browser acceptance.")
     parser.add_argument("--base-url", default=DEFAULT_BASE_URL)
+    parser.add_argument("--allow-mutation", action="store_true", default=DEFAULT_ALLOW_MUTATION)
     parser.add_argument("--artifact", type=Path, default=TMP / "command_deck_browser_smoke.json")
     parser.add_argument("--timeout-seconds", type=float, default=45.0)
     return parser
@@ -1872,10 +1927,15 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     plan = BrowserSmokePlan(
         base_url=args.base_url,
+        allow_mutation=args.allow_mutation,
         artifact=args.artifact,
         timeout_seconds=args.timeout_seconds,
     )
-    artifact = run_smoke(plan)
+    try:
+        artifact = run_smoke(plan)
+    except BrowserFailure as exc:
+        print(f"Command deck browser smoke: REFUSED: {exc}", file=sys.stderr)
+        return 2
     print(f"Command deck browser smoke: {'PASS' if artifact['pass'] else 'FAIL'}")
     print(f"Artifact: {plan.artifact}")
     print(json.dumps({

@@ -892,7 +892,7 @@ Run: `./run.sh status`
 Copy the exact localhost UI URL printed by status, then run (example only; substitute the printed URL):
 
 ```bash
-python3 scripts/command_deck_browser_smoke.py --base-url http://127.0.0.1:5661
+python3 scripts/command_deck_browser_smoke.py --base-url http://127.0.0.1:5661 --allow-mutation
 ```
 
 Expected: exit code 0; the three viewport cases and all four locale cases pass inside `tmp/command_deck_browser_smoke.json`; browser console/page error arrays are empty.
@@ -958,7 +958,7 @@ Expected: all selected Python tests PASS.
 
 - [ ] **Step 2: Run production browser evidence**
 
-Run: `./run.sh status`, copy the exact localhost UI URL, then run `python3 scripts/command_deck_browser_smoke.py --base-url <printed-url>`.
+Run: `./run.sh status`, copy the exact localhost UI URL, then run `python3 scripts/command_deck_browser_smoke.py --base-url <printed-url> --allow-mutation`.
 
 Expected: exit code 0, zero console/page errors, and `tmp/command_deck_browser_smoke.json` contains a passing `village_overview` section.
 

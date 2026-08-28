@@ -24,7 +24,7 @@ export const compareCommandDeckAgents = (first = {}, second = {}) => {
 
 const normalized = (value) => String(value ?? '').trim().toLowerCase();
 
-const displayName = (agent = {}) => agent.full_name || agent.name || agent.agent || agent.id || 'Agent';
+const displayName = (agent = {}) => agent.full_name || agent.name || agent.agent || agent.id || 'unknown-agent';
 
 const sourceIdentity = (agent = {}) => String(agent.source || agent.agent_kind || '');
 

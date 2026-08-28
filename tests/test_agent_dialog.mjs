@@ -55,7 +55,7 @@ test('active speech and inspector dialog framing switches across all four locale
   for (const { speech, dialog } of Object.values(rendered)) {
     assert.match(speech.summary, /RAW_TASK_4c18/);
     assert.match(dialog.body, /RAW_PREVIEW_91ef/);
-    assert.match(dialog.body, /RAW_ACTIVITY_a227/);
+    assert.doesNotMatch(dialog.body, /RAW_ACTIVITY_a227/);
   }
   assert.match(rendered['ja-JP'].dialog.rows.map(({ label }) => label).join(' '), /[ぁ-んァ-ン一-龯]/);
   assert.match(rendered['ko-KR'].dialog.rows.map(({ label }) => label).join(' '), /[가-힣]/);

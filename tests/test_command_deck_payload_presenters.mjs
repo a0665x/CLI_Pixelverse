@@ -23,3 +23,7 @@ test('external task bytes stay verbatim', () => {
   assert.equal(agentConnectionStatusText('en-US', { task: '使用者的原始任務', connection_status: 'attached' }), '');
   assert.equal(agentTaskText({ task: '使用者的原始任務' }), '使用者的原始任務');
 });
+
+test('legacy generated activity hints are not treated as external task bytes', () => {
+  assert.equal(agentTaskText({ activity_hint: '產品生成文字' }), '');
+});

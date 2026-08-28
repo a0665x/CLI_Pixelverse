@@ -97,6 +97,22 @@ test('updating an open detail preserves its original trigger and external-copy b
   assert.equal(secondTrigger.focusCalls, 0);
 });
 
+test('no-task product copy is not marked external while a genuine task is', () => {
+  const { root, view } = fixture();
+  view.open({ ...detail, task: '' }, new Node('trigger'));
+  const taskNode = root.nodes.get('[data-agent-detail-task]');
+  assert.equal(taskNode.textContent, 'agentDetail.noTask');
+  assert.equal(taskNode.dataset.externalCopy, undefined);
+
+  view.open({ ...detail, task: 'RAW_EXTERNAL_TASK' });
+  assert.equal(taskNode.textContent, 'RAW_EXTERNAL_TASK');
+  assert.equal(taskNode.dataset.externalCopy, 'true');
+
+  view.open({ ...detail, task: '' });
+  assert.equal(taskNode.textContent, 'agentDetail.noTask');
+  assert.equal(taskNode.dataset.externalCopy, undefined);
+});
+
 test('closing skips a trigger that is no longer connected', () => {
   const { view } = fixture();
   const trigger = new Node('trigger');

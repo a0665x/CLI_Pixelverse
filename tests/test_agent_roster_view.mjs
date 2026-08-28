@@ -122,6 +122,18 @@ test('view renders accessible selectable portrait cards and marks runtime tasks 
   assert.deepEqual(root.children, []);
 });
 
+test('view removes the external marker when a refreshed row has no runtime task', () => {
+  const root = new FakeNode('div');
+  const view = createAgentRosterView({ root, documentRef, spriteFor: options.spriteFor, textFor: options.textFor });
+  view.render([row]);
+  const task = root.children[0].children[1].children[2];
+  assert.equal(task.dataset.externalCopy, 'true');
+
+  view.render([{ ...row, externalTask: '' }]);
+  assert.equal(task.textContent, '');
+  assert.equal(task.dataset.externalCopy, undefined);
+});
+
 test('click and keyboard activation pass the exact card trigger', () => {
   const root = new FakeNode('div');
   const activations = [];

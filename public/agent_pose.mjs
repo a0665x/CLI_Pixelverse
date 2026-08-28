@@ -46,7 +46,6 @@ function normalizeToolText(agent = {}) {
     ...(latest.tool_names || []),
     agent.task,
     agent.tool_label,
-    agent.activity_hint,
     latest.message,
   ].filter(Boolean).join(' ');
 }

@@ -175,7 +175,7 @@ test('active interaction, activity, timeline, furniture, and pose copy has four-
   if (typeof uiStrings.interactionText !== 'function') return;
   const outputs = ['en-US', 'zh-TW', 'ja-JP', 'ko-KR'].map((locale) => ({
     interaction: uiStrings.interactionText(locale, { propType: 'terminal', pose: { pose: 'terminal' } }),
-    activity: uiStrings.activityHintForLocale(locale, { state: 'working' }, 'Workshop', 'RAW_TASK'),
+    activity: uiStrings.activityHintForLocale(locale, { state: 'working', activity_hint: '產品生成文字' }, 'Workshop', 'RAW_TASK'),
     timeline: uiStrings.timelineItemForLocale(locale, { type: 'thought', preview: 'RAW_PREVIEW' }),
     coordinate: uiStrings.furnitureCoordinateText(locale, { room: 'Workshop', x: '1', y: '2', snap: '0.5', scale: '125%', propType: 'prop' }),
     pose: uiStrings.poseLabelForLocale(locale, 'terminal'),
@@ -184,9 +184,24 @@ test('active interaction, activity, timeline, furniture, and pose copy has four-
     assert.equal(new Set(outputs.map((output) => output[key])).size, 4, key);
   }
   outputs.forEach(({ activity, timeline }) => {
-    assert.match(activity, /RAW_TASK/);
+    assert.doesNotMatch(activity, /RAW_TASK|產品生成文字/);
     assert.match(timeline.message, /RAW_PREVIEW/);
   });
+});
+
+test('acceptance catalog materializes every static and dynamic UI leaf without omissions', () => {
+  assert.equal(typeof uiStrings.materializeUiCatalogForAcceptance, 'function');
+  assert.equal(typeof uiStrings.uiCatalogLeafManifest, 'function');
+  if (typeof uiStrings.materializeUiCatalogForAcceptance !== 'function') return;
+  for (const locale of ['en-US', 'zh-TW', 'ja-JP', 'ko-KR']) {
+    const manifest = uiStrings.uiCatalogLeafManifest(locale);
+    const materialized = uiStrings.materializeUiCatalogForAcceptance(locale);
+    assert.equal(manifest.omitted.length, 0, `${locale}: ${manifest.omitted.join(', ')}`);
+    assert.equal(manifest.functionPaths.length, 43);
+    assert.deepEqual(manifest.sourcePaths, manifest.materializedPaths);
+    assert.equal(manifest.materializedPaths.length, Object.keys(materialized).length);
+    for (const path of manifest.functionPaths) assert.equal(typeof materialized[path], 'string', `${locale}:${path}`);
+  }
 });
 
 test('active formatters preserve complete long task, preview, and message fallback payloads', () => {

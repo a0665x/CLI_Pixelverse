@@ -47,3 +47,12 @@ test('roster ordering remains stable by identity within one urgency group', () =
 
   assert.deepEqual(rows.map(({ id }) => id), ['sub-a', 'sub-z']);
 });
+
+test('generated activity hints never become externally-owned roster task copy', () => {
+  const [row] = buildAgentRoster(buildCommandDeckModel({ agents: [{
+    agent: 'idle', role: 'main_agent', state: 'idle', activity_hint: '產品生成的活動文字',
+  }] }));
+
+  assert.equal(row.task, '');
+  assert.equal(row.externalTask, '');
+});

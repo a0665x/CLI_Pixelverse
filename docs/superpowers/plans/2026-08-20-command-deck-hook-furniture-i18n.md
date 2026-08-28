@@ -468,7 +468,7 @@ Run:
 ```bash
 PIXELVERSE_AGENT_KIND=codex PIXELVERSE_EXPOSURE_MODE=localhost ./run.sh down_up
 PIXELVERSE_TEST_HOOK_DELAY=5 PIXELVERSE_TEST_HOOK_TARGET=clone_bay ./run.sh test-hook
-python3 scripts/command_deck_browser_smoke.py --base-url http://127.0.0.1:5660
+python3 scripts/command_deck_browser_smoke.py --base-url http://127.0.0.1:5660 --allow-mutation
 ```
 
 Expected: JSON reports pass, both screenshots exist, village screenshot contains main/subagent evidence, and cabin screenshot contains an agent.

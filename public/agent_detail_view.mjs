@@ -21,6 +21,7 @@ export function createAgentDetailView({
     if (!node) return;
     node.textContent = valueText(value);
     if (external) node.dataset.externalCopy = 'true';
+    else delete node.dataset.externalCopy;
   };
 
   const render = (detail) => {
@@ -39,12 +40,12 @@ export function createAgentDetailView({
     setText('[data-agent-detail-name]', detail.name, { external: true });
     setText('[data-agent-detail-role]', textFor(`agentDetail.role.${detail.role}`));
     setText('[data-agent-detail-state]', textFor(`agentState.${detail.pixelState}`));
-    setText('[data-agent-detail-task]', detail.task || textFor('agentDetail.noTask'), { external: true });
+    setText('[data-agent-detail-task]', detail.task || textFor('agentDetail.noTask'), { external: Boolean(detail.task) });
     setText('[data-agent-detail-room]', detail.room?.label ? textFor(detail.room.label) : detail.room?.key);
-    setText('[data-agent-detail-tool]', detail.tool, { external: true });
-    setText('[data-agent-detail-hook]', detail.hook, { external: true });
-    setText('[data-agent-detail-process]', detail.processIdentity, { external: true });
-    setText('[data-agent-detail-session]', detail.sessionIdentity, { external: true });
+    setText('[data-agent-detail-tool]', detail.tool, { external: Boolean(detail.tool) });
+    setText('[data-agent-detail-hook]', detail.hook, { external: Boolean(detail.hook) });
+    setText('[data-agent-detail-process]', detail.processIdentity, { external: detail.processIdentity != null });
+    setText('[data-agent-detail-session]', detail.sessionIdentity, { external: Boolean(detail.sessionIdentity) });
     setText('[data-agent-detail-last-seen]', detail.lastSeen);
     const ecg = root.querySelector?.('[data-agent-detail-ecg]');
     if (ecg) {

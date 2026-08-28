@@ -46,7 +46,6 @@ export function createAgentRosterView({
     state.className = 'agent-roster-state';
     const task = documentRef.createElement('span');
     task.className = 'agent-roster-task';
-    task.dataset.externalCopy = 'true';
     const svg = documentRef.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.classList.add('agent-roster-ecg');
     svg.setAttribute('viewBox', '0 0 176 32');
@@ -93,6 +92,8 @@ export function createAgentRosterView({
         node.name.textContent = item.name;
         node.state.textContent = item.signalLabel;
         node.task.textContent = item.externalTask;
+        if (item.externalTask) node.task.dataset.externalCopy = 'true';
+        else delete node.task.dataset.externalCopy;
         node.svg.dataset.agentEcg = item.id;
         node.svg.setAttribute('aria-label', `${item.name} · ${item.signalLabel}`);
         return node.article;

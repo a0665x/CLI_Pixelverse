@@ -188,6 +188,90 @@ const AGENT_DETAIL_COPY = {
 for (const locale of SUPPORTED_LOCALES) Object.assign(UI_CATALOG[locale], AGENT_DETAIL_COPY[locale]);
 export const UI_STRINGS = UI_CATALOG;
 
+// Browser acceptance must see the same copy as production, including formatter
+// functions that JSON.stringify would otherwise silently discard. Keep this
+// table path-exact so adding or moving a dynamic catalog leaf fails the manifest
+// check until a deterministic representative invocation is chosen deliberately.
+const UI_ACCEPTANCE_PARAMS = Object.freeze({
+  'commandDeck.roster.needsYou': { count: 2 },
+  'commandDeck.roster.active': { count: 2 },
+  'commandDeck.roster.idle': { count: 2 },
+  'commandDeck.roster.offline': { count: 2 },
+  'commandDeck.inspector.liveDetail': { name: 'Sample Agent' },
+  'commandDeck.inspector.latestEvent': { value: 'Sample Event' },
+  'commandDeck.timeline.summary': { state: 'Live', count: 2 },
+  'commandDeck.timeline.eventLabel': { category: 'Tool', summary: 'Sample Summary' },
+  'commandDeck.dynamic.page': { page: 2, count: 5 },
+  'commandDeck.dynamic.lastSync': { timestamp: '12:34:56', seconds: 3 },
+  'commandDeck.dynamic.agentCount': { count: 2 },
+  'commandDeck.interaction.at': { action: 'Working', label: 'Desk' },
+  'commandDeck.activity.thinking': { room: 'Workshop' },
+  'commandDeck.activity.planning': { room: 'Workshop' },
+  'commandDeck.activity.working': { task: 'Tool', room: 'Workshop' },
+  'commandDeck.activity.offline': {},
+  'commandDeck.activity.waiting': { room: 'Workshop' },
+  'commandDeck.activity.external': { value: 'Sample Activity' },
+  'commandDeck.ambient.planning': { task: 'Sample Task' },
+  'commandDeck.ambient.thinking': { task: 'Sample Task' },
+  'commandDeck.ambient.working': { task: 'Sample Task' },
+  'commandDeck.ambient.offline': {},
+  'commandDeck.ambient.standby': {},
+  'commandDeck.furniture.scale': { scale: '125%' },
+  'commandDeck.furniture.coordinate': { label: 'Desk', room: 'Workshop', x: '42.0', y: '18.5', snap: '0.5', scale: '125%' },
+  'commandDeck.accessibility.pose': { pose: 'Working' },
+  'commandDeck.accessibility.interaction': { interaction: 'Work' },
+  'commandDeck.eventChip.events.toolStart': { tool: 'Tool' },
+  'commandDeck.eventChip.events.toolDone': { tool: 'Tool' },
+  'commandDeck.eventChip.details.taskStarted': { value: 'Sample Task' },
+  'commandDeck.eventChip.details.started': { value: 'Sample Tool' },
+  'commandDeck.eventChip.details.finished': { value: 'Sample Tool' },
+  'commandDeck.eventChip.details.completed': { value: 'Sample Result' },
+  'commandDeck.timelineDetail.messages.taskStarted': { value: 'Sample Task' },
+  'commandDeck.timelineDetail.messages.reasoning': { value: 'Sample Reasoning' },
+  'commandDeck.timelineDetail.messages.started': { tool: 'Tool', preview: 'Sample Preview' },
+  'commandDeck.timelineDetail.messages.finished': { tool: 'Tool', preview: 'Sample Preview' },
+  'commandDeck.timelineDetail.messages.route': { value: 'Sample Route' },
+  'commandDeck.timelineDetail.messages.completed': { value: 'Sample Result' },
+  'commandDeck.timelineDetail.messages.toolStep': { value: 'Sample Tool Step' },
+  'commandDeck.timelineDetail.messages.thought': { value: 'Sample Thought' },
+  'commandDeck.timelineDetail.messages.status': { value: 'Sample Status' },
+  'commandDeck.timelineDetail.messages.fallback': { value: 'Sample Action' },
+});
+
+const catalogLeaves = (value, prefix = '') => Object.entries(value || {}).flatMap(([key, child]) => {
+  const path = prefix ? `${prefix}.${key}` : key;
+  return child && typeof child === 'object' && !Array.isArray(child)
+    ? catalogLeaves(child, path)
+    : [[path, child]];
+});
+
+export function materializeUiCatalogForAcceptance(locale) {
+  const normalized = normalizeLocale(locale);
+  return Object.fromEntries(catalogLeaves(UI_CATALOG[normalized]).map(([path, value]) => {
+    if (typeof value === 'function') {
+      if (!Object.hasOwn(UI_ACCEPTANCE_PARAMS, path)) throw new Error(`Missing acceptance parameters for ${path}`);
+      return [path, String(value(UI_ACCEPTANCE_PARAMS[path]))];
+    }
+    if (typeof value !== 'string') throw new Error(`Unsupported UI catalog leaf ${path}: ${typeof value}`);
+    return [path, value];
+  }));
+}
+
+export function uiCatalogLeafManifest(locale) {
+  const normalized = normalizeLocale(locale);
+  const leaves = catalogLeaves(UI_CATALOG[normalized]);
+  const sourcePaths = leaves.map(([path]) => path).sort();
+  const functionPaths = leaves.filter(([, value]) => typeof value === 'function').map(([path]) => path).sort();
+  const materializedPaths = Object.keys(materializeUiCatalogForAcceptance(normalized)).sort();
+  const parameterPaths = Object.keys(UI_ACCEPTANCE_PARAMS).sort();
+  const omitted = [
+    ...sourcePaths.filter((path) => !materializedPaths.includes(path)),
+    ...functionPaths.filter((path) => !parameterPaths.includes(path)),
+    ...parameterPaths.filter((path) => !functionPaths.includes(path)),
+  ];
+  return { sourcePaths, functionPaths, materializedPaths, omitted: [...new Set(omitted)].sort() };
+}
+
 const nestedLocaleKeys = (value, prefix = '') => Object.entries(value || {}).flatMap(([key, child]) => {
   const path = prefix ? `${prefix}.${key}` : key;
   return child && typeof child === 'object' && !Array.isArray(child)
@@ -224,7 +308,7 @@ export function uiText(locale, key, params = {}) {
 // eligible for catalog translation.
 export function agentTaskText(agent = {}) {
   if (agent.task !== undefined && agent.task !== null && agent.task !== '') return String(agent.task);
-  return String(agent.activity_hint || '');
+  return '';
 }
 
 export function agentConnectionStatusText(locale, agent = {}) {
@@ -278,16 +362,13 @@ export function ambientText(locale, agent = {}, taskValue = agent.task || '') {
 }
 
 export function activityHintForLocale(locale, agent = {}, roomName = '', taskValue = agent.task || '') {
-  if (agent.activity_hint) {
-    return uiText(locale, 'commandDeck.activity.external', { value: String(agent.activity_hint) });
-  }
   const state = agent.state === 'thinking' ? 'thinking'
     : agent.state === 'planning' ? 'planning'
       : agent.state === 'working' ? 'working'
         : agent.state === 'offline' ? 'offline' : 'waiting';
   return uiText(locale, `commandDeck.activity.${state}`, {
     room: roomName,
-    task: String(taskValue || uiText(locale, 'commandDeck.timelineDetail.labels.tool')),
+    task: uiText(locale, 'commandDeck.timelineDetail.labels.tool'),
   });
 }
 

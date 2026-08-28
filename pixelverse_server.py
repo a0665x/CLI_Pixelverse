@@ -561,18 +561,17 @@ def infer_state_from_text(text: str | None, *, fallback: str = "idle") -> str:
 
 def summarize_action_task(action_type: str, message: str | None, action: dict[str, Any] | None = None) -> str | None:
     action = action or {}
-    tool_name = action.get("tool_name") or (action.get("tool_names") or [None])[0]
-    if tool_name:
-        tool = humanize_tool_name(tool_name)
-        if action.get("tool_phase") == "completed":
-            return f"{tool['label']} 已完成"
-        if action_type == "tool":
-            return tool["label"]
-    text = trim_text(message, 60)
+    if message is not None and str(message) != "":
+        text = str(message)
+    else:
+        tools = [
+            str(value)
+            for value in ([action.get("tool_name")] + list(action.get("tool_names") or []))
+            if value
+        ]
+        text = ", ".join(dict.fromkeys(tools))
     if not text:
         return None
-    if action_type in {"thought", "tool"} and "：" in text:
-        return trim_text(text.split("：", 1)[1], 60)
     if action_type == "status" and _contains_any(text.lower(), ("待命", "idle", "completed", "完成")):
         return None
     return text
@@ -687,12 +686,11 @@ class AgentState:
         return state
 
     def effective_task(self) -> str | None:
+        if self.task is not None and str(self.task) != "":
+            return str(self.task)
         effective_state = self.effective_state()
         if effective_state == "idle":
             return None
-        task = trim_text(self.task, 60)
-        if task:
-            return task
         latest = self.latest_recent_action()
         if latest:
             return summarize_action_task(latest.get("type", ""), latest.get("message"), latest)
@@ -729,23 +727,15 @@ class AgentState:
         data["role_label"] = "分身代理" if role == "subagent" else "分支工作階段" if role == "branch_session" else "主代理"
         data["status_label"] = PIXEL_STATE_LABELS.get(data["pixel_state"], STATUS_LABELS.get(effective_state, effective_state))
         data["instance_label"] = self.instance_name or (f"PID {self.process_id}" if self.process_id else self.agent)
-        data["tool_label"] = humanize_task_summary(effective_task)
-        tool_meta = humanize_tool_name((effective_task or "").split(",", 1)[0].strip() if effective_task else None)
+        tool_name = str(latest.get("tool_name") or "")
+        data["tool_label"] = tool_name
+        tool_meta = humanize_tool_name(tool_name or None)
         data["tool_icon"] = tool_meta["icon"]
         data["source"] = "bridge"
         data.update(room_meta)
         data["x"] = px
         data["y"] = py
-        if effective_state == "thinking":
-            data["activity_hint"] = f"正在 {room_meta['room_label']} 整理推理與回覆"
-        elif effective_state == "planning":
-            data["activity_hint"] = f"正在 {room_meta['room_label']} 拆解需求與規劃步驟"
-        elif effective_state in {"working", "self_healing"}:
-            data["activity_hint"] = f"正在 {room_meta['room_label']} 使用 {data['tool_label']}"
-        elif effective_state == "offline":
-            data["activity_hint"] = "目前沒有收到新的主代理心跳"
-        else:
-            data["activity_hint"] = f"目前位於 {room_meta['room_label']}，等待下一個任務"
+        data["activity_hint"] = ""
         return data
 
 
@@ -849,7 +839,8 @@ class WorldState:
             agent.energy = float(payload.get("energy", agent.energy))
             agent.color = payload.get("color") or agent.color
             if "task" in payload and not preserve_phase:
-                agent.task = trim_text(payload.get("task"), 60)
+                task = payload.get("task")
+                agent.task = str(task) if task is not None and str(task) != "" else None
             if payload.get("target_room") in ROOM_DISPLAY and not preserve_phase:
                 agent.room_key_hint = payload.get("target_room")
             elif payload.get("room_key") in ROOM_DISPLAY and not preserve_phase:
@@ -1294,8 +1285,9 @@ OLLAMA_SOURCE = OllamaSource()
 def summarize_session(session: dict[str, Any]) -> dict[str, Any]:
     session_id = session.get("session_id") or session.get("id")
     source_label = SESSION_SOURCE_LABELS.get(session.get("source"), session.get("source") or "工作階段")
-    preview = trim_text(session.get("preview"), 60)
-    title = trim_text(session.get("title") or session.get("summary") or source_label or "未命名工作階段", 60)
+    preview = str(session.get("preview")) if session.get("preview") is not None and str(session.get("preview")) != "" else None
+    raw_title = session.get("title") or session.get("summary") or session_id
+    title = str(raw_title) if raw_title is not None and str(raw_title) != "" else "session:unknown"
     return {
         "session_id": session_id,
         "title": title,
@@ -1356,17 +1348,17 @@ def build_subagent_agent(child: dict[str, Any], index: int) -> dict[str, Any]:
     tool = humanize_tool_name(tool_name)
     state = normalize_state(child.get("status"))
     room_meta = classify_room(state, tool["label"] if tool_name else child.get("goal"), role="subagent")
-    task = tool["label"] if tool_name else trim_text(child.get("goal"), 30)
+    task = str(child.get("goal")) if child.get("goal") is not None and str(child.get("goal")) != "" else None
     return {
         "agent": f"subagent:{child.get('id', index)}",
-        "name": trim_text(child.get("goal") or child.get("id") or f"分身 {index + 1}", 22) or f"分身 {index + 1}",
-        "full_name": child.get("goal") or child.get("id") or f"分身 {index + 1}",
+        "name": trim_text(child.get("goal") or child.get("id") or f"subagent:{index}", 22) or f"subagent:{index}",
+        "full_name": child.get("goal") or child.get("id") or f"subagent:{index}",
         "state": state,
         "status_label": STATUS_LABELS.get(state, state),
         "energy": 1.0,
         "color": "#8b5cf6",
         "task": task,
-        "tool_label": tool["label"],
+        "tool_label": str(tool_name or ""),
         "tool_icon": tool["icon"],
         "x": x,
         "y": y,
@@ -1382,7 +1374,7 @@ def build_subagent_agent(child: dict[str, Any], index: int) -> dict[str, Any]:
         "speech": None,
         "source": "hermes-subagents",
         **room_meta,
-        "activity_hint": f"正在 {room_meta['room_label']} 處理：{task or '分身任務'}",
+        "activity_hint": "",
     }
 
 
@@ -1391,9 +1383,9 @@ def build_session_agent(session: dict[str, Any], index: int) -> dict[str, Any]:
     meta = summarize_session(session)
     is_active = bool(meta.get("is_active"))
     state = "working" if is_active else "idle"
-    title = trim_text(meta.get("title"), 22) or f"分支 {index + 1}"
-    full_name = meta.get("title") or meta.get("session_id") or f"分支 {index + 1}"
-    task = meta.get("preview") or f"{meta.get('source_label', '工作階段')} 最近活動"
+    title = trim_text(meta.get("title"), 22) or str(meta.get("session_id") or f"session:{index}")
+    full_name = meta.get("title") or meta.get("session_id") or f"session:{index}"
+    task = str(meta.get("preview")) if meta.get("preview") is not None and str(meta.get("preview")) != "" else None
     last_seen = meta.get("last_active") or meta.get("started_at") or now_ts()
     room_meta = classify_room(state, task, role="branch_session")
     return {
@@ -1405,7 +1397,7 @@ def build_session_agent(session: dict[str, Any], index: int) -> dict[str, Any]:
         "energy": 1.0,
         "color": "#22c55e" if is_active else "#0ea5e9",
         "task": task,
-        "tool_label": meta.get("source_label") or "工作階段",
+        "tool_label": str(meta.get("source") or ""),
         "tool_icon": "🧵" if is_active else "🗂️",
         "x": x,
         "y": y,
@@ -1421,7 +1413,7 @@ def build_session_agent(session: dict[str, Any], index: int) -> dict[str, Any]:
         "speech": None,
         "source": "hermes-sessions",
         **room_meta,
-        "activity_hint": f"存放在 {room_meta['room_label']}：{trim_text(task, 40) or '工作階段紀錄'}",
+        "activity_hint": "",
     }
 
 
@@ -1447,7 +1439,7 @@ def build_ollama_model_agents(running_models: list[dict[str, Any]], models: list
         is_running = name in running_names
         state = "working" if is_running else "idle"
         x, y = build_clone_position(index)
-        task = "模型已載入記憶體" if is_running else "本機可用模型"
+        task = None
         details = item.get("details") or {}
         family = details.get("family") or details.get("format") or "Ollama"
         room_meta = classify_room(state, task, role="subagent")
@@ -1478,7 +1470,7 @@ def build_ollama_model_agents(running_models: list[dict[str, Any]], models: list
                 "speech": None,
                 "source": "ollama",
                 **room_meta,
-                "activity_hint": f"{name}｜{task}",
+                "activity_hint": "",
             }
         )
     return agents

@@ -184,13 +184,13 @@ export function buildAgentTimelinePanels(snapshot = {}, localeStrings = {}, opti
       role: agent.role || 'main_agent',
       ageSeconds: agent.age_seconds || 0,
       roomLabel: localeStrings.rooms?.[agent.room_key]?.name || agent.room_label || agent.room_key || '',
-      taskLabel: agent.task || agent.tool_label || agent.activity_hint || localeStrings.noEvents || '',
+      taskLabel: agent.task || agent.tool_label || localeStrings.noEvents || '',
       connectionLabel: agent.state === 'offline' || agent.is_stale
         ? (localeStrings.states?.offline || 'Offline')
         : agent.connection_status === 'awaiting_attach'
           ? (localeStrings.waitingAttach || 'Waiting')
           : (localeStrings.connectionLive || 'Live'),
-      latestSummary: latest?.summary || agent.activity_hint || agent.task || localeStrings.noEvents,
+      latestSummary: latest?.summary || agent.task || localeStrings.noEvents,
       latestCategory: latest?.rowLabel || (localeStrings.eventCategories?.status || 'Status'),
       rows,
       points,

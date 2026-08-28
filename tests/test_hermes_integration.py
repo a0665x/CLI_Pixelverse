@@ -59,7 +59,8 @@ def test_build_subagent_agent_uses_clone_role_and_goal_summary():
     agent = build_subagent_agent(child, index=1)
     assert agent["role"] == "subagent"
     assert agent["state"] == "working"
-    assert agent["task"] == "派出分身"
+    assert agent["task"] == "connect hermes sessions api"
+    assert agent["tool_label"] == "delegate_task"
     assert agent["goal"] == "connect hermes sessions api"
     assert agent["agent"].startswith("subagent:")
 
@@ -77,7 +78,7 @@ def test_build_session_agent_creates_branch_session_avatar():
     agent = build_session_agent(session, index=0)
     assert agent["role"] == "branch_session"
     assert agent["state"] == "working"
-    assert agent["tool_label"] == "API 工作階段"
+    assert agent["tool_label"] == "api_server"
     assert agent["agent"].startswith("session:")
 
 
@@ -154,7 +155,8 @@ def test_build_subagent_agent_and_session_agent_include_room_metadata():
     child = {"id": "child-1", "status": "running", "goal": "scan project files", "current_tool": "read_file"}
     subagent = build_subagent_agent(child, index=0)
     assert subagent["room_key"] == "clone_bay"
-    assert "分身工位區" in subagent["activity_hint"]
+    assert subagent["task"] == "scan project files"
+    assert subagent["activity_hint"] == ""
 
     session = {
         "id": "api-123",
@@ -167,7 +169,41 @@ def test_build_subagent_agent_and_session_agent_include_room_metadata():
     }
     branch = build_session_agent(session, index=0)
     assert branch["room_key"] == "session_archive"
-    assert "工作階段檔案庫" in branch["activity_hint"]
+    assert branch["task"] == "Reviewing Pixelverse branch session activity"
+    assert branch["activity_hint"] == ""
+
+
+def test_derived_agents_use_external_identity_or_stable_ids_for_external_markers():
+    subagent = build_subagent_agent({"status": "idle"}, index=2)
+    branch = build_session_agent({"id": "session-raw", "source": "api_server"}, index=3)
+
+    assert subagent["name"] == "subagent:2"
+    assert subagent["full_name"] == "subagent:2"
+    assert branch["name"] == "session-raw"
+    assert branch["full_name"] == "session-raw"
+    assert branch["task"] is None
+
+
+@pytest.mark.parametrize("state", ["idle", "working", "offline"])
+@pytest.mark.parametrize("task", [None, "RAW external task bytes :: 用戶載入"])
+def test_public_agents_keep_only_genuine_external_task_bytes(monkeypatch, state, task):
+    import pixelverse_server
+
+    monkeypatch.setattr(pixelverse_server, "now_ts", lambda: 1000.0)
+    world = pixelverse_server.WorldState()
+    world.upsert_agent({
+        "agent": f"fixture-{state}-{bool(task)}",
+        "name": "Fixture",
+        "state": state,
+        "task": task,
+        "source_placeholder": False,
+    })
+
+    public = world.snapshot_local_agents()[0]
+
+    assert public["state"] == state
+    assert public["task"] == task
+    assert public["activity_hint"] == ""
 
 
 def test_infer_state_from_text_detects_planning_and_idle():
@@ -201,7 +237,8 @@ def test_world_state_actions_drive_main_agent_state_and_task():
     agent = world.snapshot_local_agents()[0]
     assert agent["state"] in {"planning", "working"}
     assert agent["task"] is not None
-    assert agent["tool_label"] in {"搜尋檔案", "搜尋檔案、讀取檔案"}
+    assert agent["tool_label"] == "search_files"
+    assert agent["task"] == "工具步驟：search_files, read_file"
 
     world.act("henry-main", {"type": "status", "message": "任務已完成，回到待命站", "event_name": "main.task.completed", "state": "idle"})
     agent = world.snapshot_local_agents()[0]
@@ -243,7 +280,7 @@ def test_world_state_holds_recent_active_event_before_returning_idle(monkeypatch
     active = world.snapshot_local_agents()[0]
     assert active["state"] == "working"
     assert active["room_key"] == "tool_forge"
-    assert active["task"] == "修改檔案"
+    assert active["task"] == "工具步驟：patch"
 
     current_time[0] = 1012.0
     cooled = world.snapshot_local_agents()[0]
@@ -274,7 +311,7 @@ def test_liveness_heartbeat_does_not_replace_latest_lifecycle_phase():
     active = world.snapshot_local_agents()[0]
     assert active["state"] == "working"
     assert active["room_key"] == "tool_forge"
-    assert active["task"] == "修改檔案 已完成"
+    assert active["task"] == "修改檔案"
 
 
 def test_unattached_source_placeholder_waits_for_cli_instead_of_showing_offline(monkeypatch):

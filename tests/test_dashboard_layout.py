@@ -353,15 +353,16 @@ def test_fast_ui_ticker_reprojects_live_heartbeat_and_hook_waveforms():
     assert "renderLiveMonitoring(liveSnapshot, nowMs);" in ticker.group(1)
 
 
-def test_hook_runtime_payload_nodes_are_explicitly_external_copy():
+def test_hook_runtime_payload_nodes_mark_only_present_external_bytes():
     html = Path("public/index.html").read_text(encoding="utf-8")
     parser = DashboardParser()
     parser.feed(html)
     for element_id in ("hook-live-activity", "hook-live-agent"):
-        assert parser.elements_by_id[element_id]["attributes"].get("data-external-copy") == "true"
+        assert "data-external-copy" not in parser.elements_by_id[element_id]["attributes"]
     app = Path("public/app.mjs").read_text(encoding="utf-8")
-    assert "activity.dataset.externalCopy = 'true'" in app
-    assert "agent.dataset.externalCopy = 'true'" in app
+    assert "if (externalActivity) dom.hookLiveActivity.dataset.externalCopy = 'true'" in app
+    assert "if (channel.activity) activity.dataset.externalCopy = 'true'" in app
+    assert "if (channel.agentId) agent.dataset.externalCopy = 'true'" in app
 
 
 def test_command_deck_exposes_village_first_regions_and_keeps_legacy_surfaces_hidden():

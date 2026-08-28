@@ -34,7 +34,7 @@ export function buildAgentSpeech(agent = {}, locale = 'zh-TW') {
   const clickable = ['planning', 'thinking', 'working'].includes(agent.state);
   return {
     summary,
-    detail: preview || agent.activity_hint || task || summary || copy.idleFallback,
+    detail: preview || task || summary || copy.idleFallback,
     clickable,
   };
 }
@@ -51,7 +51,7 @@ export function buildAgentDialog(agent = {}, locale = 'zh-TW') {
   const label = uiText(normalized, 'commandDeck.inspector.liveDetail', {
     name: agent.name || uiText(normalized, 'commandDeck.inspector.agentFallback'),
   });
-  const body = [detail.detail, agent.activity_hint, previewRow(action, normalized)]
+  const body = [detail.detail, previewRow(action, normalized)]
     .filter(Boolean)
     .join(uiText(normalized, 'commandDeck.inspector.detailSeparator'));
   return {
