@@ -18,6 +18,13 @@ def test_dashboard_script_does_not_switch_to_a_legacy_map():
     source = (ROOT / "public/app.mjs").read_text(encoding="utf-8")
     for retired in (
         "beginFurnitureEdit", "saveFurnitureEdit", "cancelFurnitureEdit",
-        "furnitureEditMode", "applyMapLayerVisibility", "renderDistricts",
+        "furnitureEditMode", "applyMapLayerVisibility", "renderDistricts", "repaintAgents",
+        "agentPayloadPresentation", "agentEventChipPresentation",
     ):
         assert retired not in source
+
+
+def test_retired_outer_editor_styles_are_removed():
+    html = (ROOT / "public/index.html").read_text(encoding="utf-8")
+    for retired in (".toast-stack {", ".coord-hud {", ".toast {"):
+        assert retired not in html

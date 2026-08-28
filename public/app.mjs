@@ -39,10 +39,9 @@ import { buildAgentDetail } from './agent_detail_model.mjs';
 import { createAgentDetailView } from './agent_detail_view.mjs';
 import { createVillageFirstLayoutController } from './village_first_layout.mjs';
 import { createCommandDeckLocaleController } from './command_deck_locale_controller.mjs';
-import { agentPayloadPresentation, currentAgentStatePresentation, escapeHtml, timelinePayloadPresentation } from './command_deck_payload_presenters.mjs';
+import { currentAgentStatePresentation, escapeHtml, timelinePayloadPresentation } from './command_deck_payload_presenters.mjs';
 import { nextDraggedOffset } from './ui_state.mjs';
 import { hookStateRoutes } from './hook_state_map.mjs';
-import { agentEventChipPresentation } from './main_agent_events.mjs';
 import { formatTimelineItemForLocale } from './timeline_item_presenter.mjs';
 import { buildAgentTimelinePanels, buildHeartbeatPath, heartbeatBeatWidthPx } from './agent_timeline_graphs.mjs';
 import {
@@ -1224,7 +1223,6 @@ function selectCommandDeck(selection, { publish = true } = {}) {
   selectedAgentId = resolved.agent?.id || resolved.agent?.agent || selectedAgentId;
   const selectedEvent = resolved.event || [...(resolved.events || [])].sort((left, right) => Number(right.time || 0) - Number(left.time || 0))[0] || null;
   missionTraceController.select(selectedEvent?.id ?? null);
-  repaintAgents();
   renderInspector(resolved.agent || null);
   applyCommandSelectionStyling(resolved);
   if (publish) {
