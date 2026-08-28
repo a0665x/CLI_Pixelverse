@@ -28,7 +28,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 TMP = ROOT / "tmp"
-DEFAULT_BASE_URL = "http://127.0.0.1:5661"
+DEFAULT_BASE_URL = os.environ.get("PIXELVERSE_SMOKE_BASE_URL", "http://127.0.0.1:5661")
 SUPPORTED_LOCALES = ("en-US", "zh-TW", "ja-JP", "ko-KR")
 EXPECTED_LOCALE_COPY = {
     "en-US": {

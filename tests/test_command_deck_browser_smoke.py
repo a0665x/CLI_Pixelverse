@@ -227,6 +227,14 @@ def test_browser_smoke_plan_and_artifact_paths_are_deterministic():
     assert plan.cabin_screenshot == ROOT / "docs" / "assets" / "starting-cabin-agent.png"
 
 
+def test_browser_smoke_base_url_honors_the_runtime_environment(monkeypatch):
+    monkeypatch.setenv("PIXELVERSE_SMOKE_BASE_URL", "http://127.0.0.1:5662")
+
+    smoke = load_module()
+
+    assert smoke.BrowserSmokePlan().base_url == "http://127.0.0.1:5662"
+
+
 def test_world_readiness_returns_a_boolean_instead_of_a_cdp_serialized_dom_node():
     smoke = load_module()
 
