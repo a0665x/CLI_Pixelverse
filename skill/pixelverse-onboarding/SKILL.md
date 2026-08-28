@@ -23,24 +23,32 @@ room movement, timeline events, and per-agent heartbeat waveforms.
 
 Read these files in order:
 
-1. `spec/PROJECT_MAP.md`
-2. `spec/architecture/system-overview.md`
-3. `spec/modules/integration-and-events.md`
-4. `README.md`
+1. `README.md` for the licensed asset prerequisite, portable quick start, and
+   supported user workflow.
+2. `spec/modules/integration-and-events.md` for hook, bridge, adapter, and
+   lifecycle contracts.
+3. `spec/modules/testing-and-ops.md` for current Phaser village/interior,
+   runtime, browser, and verification guidance.
+
+Then inspect the relevant tracked source for the question at hand: `run.sh` and
+`docker-compose.yml` for startup or ports, `scripts/codex_pixelverse_hook.py`
+for Codex hook behavior, `public/` for dashboard state, and `pixelworld_mvp/src/`
+for village and interior behavior.
 
 ## First Codex Setup
 
 ```bash
 cd /path/to/CLI_Pixelverse
-PIXELVERSE_AGENT_KIND=codex ./run.sh down_up
-source .pixelverse-service/activate.sh
-./run.sh status
-./run.sh bridge-status
-which codex
+export PIXELVERSE_ROOT="$(pwd -P)"
+PIXELVERSE_AGENT_KIND=codex "$PIXELVERSE_ROOT/run.sh" start
+source "$PIXELVERSE_ROOT/.pixelverse-service/activate.sh"
+"$PIXELVERSE_ROOT/run.sh" status
+"$PIXELVERSE_ROOT/run.sh" bridge-status
+command -v codex
 codex
 ```
 
-`which codex` must resolve to:
+`command -v codex` must resolve to:
 
 ```text
 <repo>/.pixelverse-service/bin/codex
@@ -55,30 +63,30 @@ new Bash shell activation. In an already-open shell, this one-liner attaches the
 wrapper before launching Codex:
 
 ```bash
-source /path/to/CLI_Pixelverse/.pixelverse-service/activate.sh && codex
+source "$PIXELVERSE_ROOT/.pixelverse-service/activate.sh" && codex
 ```
 
 For another repo that needs high-fidelity Codex tool/subagent hook events:
 
 ```bash
 cd /path/to/other-repo
-/path/to/CLI_Pixelverse/run.sh install-codex-hook
+"$PIXELVERSE_ROOT/run.sh" install-codex-hook "$PWD"
 codex
 ```
 
 ## Verify The Connection
 
 ```bash
-./run.sh status
-./run.sh bridge-status
-which codex
+"$PIXELVERSE_ROOT/run.sh" status
+"$PIXELVERSE_ROOT/run.sh" bridge-status
+command -v codex
 curl -fsS http://localhost:5660/health
 curl -fsS http://localhost:4567/health
 curl -fsS http://localhost:5660/api/world
-./run.sh test-hook
+"$PIXELVERSE_ROOT/run.sh" test-hook
 ```
 
-Expected results: both health endpoints report `ok`, `which codex` resolves to
+Expected results: both health endpoints report `ok`, `command -v codex` resolves to
 `<repo>/.pixelverse-service/bin/codex`, and `test-hook` moves a character
 through lifecycle rooms in the browser UI.
 
@@ -112,9 +120,10 @@ Pixelverse world state
 ```bash
 bash -n run.sh
 python3 -m py_compile bridge.py scripts/*.py agent_bridges/*.py
-python3 -m pytest -q -o faulthandler_timeout=10
+python3 -m pytest -q tests/test_portable_onboarding.py tests/test_legacy_map_retirement.py
 node --test tests/*.mjs
 ```
 
-When lifecycle behavior, API fields, or room routing changes, update `spec/`
-alongside the implementation.
+When lifecycle behavior, API fields, or room routing changes, update the
+tracked `spec/modules/integration-and-events.md` or
+`spec/modules/testing-and-ops.md` documentation alongside the implementation.

@@ -59,6 +59,7 @@ def test_current_readme_does_not_advertise_retired_map_workflow():
     current_docs = {
         "README.md": ROOT / "README.md",
         "bootstrap skill": ROOT / "skill" / "CLI_Pixelverse" / "SKILL.md",
+        "onboarding skill": ROOT / "skill" / "pixelverse-onboarding" / "SKILL.md",
         "integration module": ROOT / "spec" / "modules" / "integration-and-events.md",
         "testing module": ROOT / "spec" / "modules" / "testing-and-ops.md",
     }
@@ -85,3 +86,7 @@ def test_current_readme_does_not_advertise_retired_map_workflow():
     assert "open" in readme.lower() and "interior" in readme.lower()
     assert "PIXELVERSE_BRIDGE_PORT=4568" in readme
     assert "http://127.0.0.1:4568/health" in readme
+
+    onboarding = current_docs["onboarding skill"].read_text(encoding="utf-8")
+    for absent_spec in ("spec/PROJECT_MAP.md", "spec/architecture/system-overview.md"):
+        assert absent_spec not in onboarding
