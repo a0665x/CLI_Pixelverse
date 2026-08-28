@@ -133,7 +133,7 @@ state with:
 ./run.sh assets-status
 ```
 
-Later, `./run.sh restart` reuses the saved agent/floorplan choices and rebuilds
+Later, `./run.sh restart` reuses the saved agent choices and rebuilds
 only when source files or prepared-asset metadata changed. Direct
 `docker compose build` is unsupported until `run.sh` has prepared the private
 assets.
@@ -147,11 +147,18 @@ commit these files, redistribute them, or push that image to a public registry.
 ```bash
 git clone https://github.com/a0665x/CLI_Pixelverse.git
 cd CLI_Pixelverse
+mkdir -p private_assets/modern-office
+# Place Modern_Office_Revamped_v1.zip in the directory above.
+PIXELVERSE_AGENT_KIND=codex ./run.sh start
+source "$(pwd -P)/.pixelverse-service/activate.sh"
+codex
+```
+
+For portable commands from another directory, save the clone location in the
+current shell:
+
+```bash
 export PIXELVERSE_ROOT="$(pwd -P)"
-test -x ./run.sh || chmod +x ./run.sh
-"$PIXELVERSE_ROOT/run.sh" platform
-"$PIXELVERSE_ROOT/run.sh" floorplans
-PIXELVERSE_AGENT_KIND=codex "$PIXELVERSE_ROOT/run.sh" start
 ```
 
 `PIXELVERSE_ROOT` belongs to the current shell. Set it again after opening a
@@ -202,17 +209,10 @@ Open:
 http://localhost:5660
 ```
 
-`down_up` in Codex mode selects/prepares the visible floorplan, starts the
-Docker service, installs the Codex CLI shim, attempts to create this repo's
+`down_up` in Codex mode starts the Docker service, installs the Codex CLI shim,
+attempts to create this repo's
 `.codex/hooks.json`, enables the managed Bash activation line for new terminals,
 and writes `.pixelverse-service/activate.sh`.
-
-To choose a built-in floorplan non-interactively:
-
-```bash
-PIXELVERSE_AGENT_KIND=codex PIXELVERSE_FLOORPLAN=default ./run.sh down_up
-PIXELVERSE_AGENT_KIND=codex PIXELVERSE_FLOORPLAN=custom ./run.sh down_up
-```
 
 Verify the local connection:
 
@@ -437,13 +437,12 @@ http://localhost:5660
 
 The UI uses a fixed left operations sidebar on desktop and a full-width agent timeline along the bottom. Use the top-right `Mobile Mode` button on phones; mobile mode keeps the world readable and exposes the left drawer through a compact `>` / `<` edge handle. The world viewport supports mouse drag panning, wheel zoom, and `+ / 1:1 / -` controls.
 
-The sidebar includes a live hook state routing table. Room labels also show
-their assigned state categories, so the floorplan explains where each
-lifecycle phase is handled.
+The dashboard includes a live hook state routing table. Village buildings and
+their interiors show where each lifecycle phase is handled.
 
-Furniture layout overrides are saved under `.pixelverse-service/runtime/`.
-This directory is mounted into the container, so saved positions survive
-`./run.sh down_up` and image rebuilds.
+Furniture layouts are edited and saved per building from its interior. Open a
+village building, choose **Move furniture**, then use **Save layout** after
+dragging furniture or adding an item from the shelf.
 
 ### 2. Attach A Native CLI
 
@@ -907,178 +906,21 @@ Explicit `target_room` wins. If omitted, the backend and adapters infer a room f
 
 Each lifecycle phase is a route endpoint. The character stays at that endpoint until the next phase event: `start` routes to `think_lab`; reasoning or planning routes to `blueprint_lab`; `tool.started` and `tool.completed` remain active in the tool room; only an explicit session `completed`, `end`, or `state=idle` event returns the character to `standby_dock`. A `status` event without `state` preserves the current phase.
 
-## Global Map
+## Village and Interior Editing
 
-The visible floorplan and frontend pathfinding are data-driven from one YAML
-manifest plus one optional PNG background.
+The supported world is the built-in Phaser village embedded in the dashboard.
+Agent activity routes into its buildings; there is no alternative YAML/PNG
+world authoring flow or runtime world mount to configure.
 
-Load order:
+To edit furniture, open a building in the village and use its **Move furniture**
+interior control. Drag existing furniture or shelf items in the room, then use
+**Save layout** to keep the per-building interior layout for later visits.
+The editor keeps room boundaries, doors, and required Hook furniture valid; a
+blocked placement is returned to its original position.
 
-1. User override directory: `tmp/global_map/`
-2. Environment override: `PIXELVERSE_GLOBAL_MAP_DIR=/absolute/path/to/global_map`
-3. Built-in fallback: `global_map/`
-
-For user-defined room layouts, create:
-
-```text
-tmp/global_map/default.yaml
-tmp/global_map/default.png
-```
-
-Built-in floorplans live in `global_map/` as matching pairs:
-
-```text
-global_map/default.yaml
-global_map/default.png
-global_map/custom.yaml
-global_map/custom.png
-```
-
-List complete pairs:
-
-```bash
-./run.sh floorplans
-```
-
-Prepare one pair for the runtime override directory:
-
-```bash
-PIXELVERSE_FLOORPLAN=custom ./run.sh prepare-floorplan
-```
-
-`start` keeps the interactive floorplan selector for choosing a complete
-`global_map/*.yaml` + `*.png` pair. `restart` and `down_up` preserve an
-existing `tmp/global_map/default.yaml/png` pair without showing the selector.
-Set `PIXELVERSE_FLOORPLAN` when you intentionally want a restart to replace
-the runtime pair. If no complete runtime override exists, restart falls back
-to the built-in `default` pair (or the first complete pair when `default` is
-unavailable). Non-interactive `start` and `prepare-floorplan` retain their
-existing fallback behavior.
-
-`default.yaml` is the source of truth for rooms, corridors, door portals,
-pathfinding, and furniture placement. `default.png` is only the visual
-background. If you want the PNG to follow the YAML floorplan, regenerate it:
-
-```bash
-python3 scripts/generate_global_map_pixel_art.py \
-  --yaml tmp/global_map/default.yaml \
-  --out tmp/global_map/default.png
-```
-
-The built-in map can also be rebuilt from the bundled manifest:
-
-```bash
-python3 scripts/generate_global_map_pixel_art.py
-```
-
-Then restart:
-
-```bash
-PIXELVERSE_AGENT_KIND=codex ./run.sh down_up
-```
-
-### PNG/YAML Map Builder
-
-When you already have a PNG floorplan and need the YAML to match it, use the
-browser builder instead of hand-editing coordinates:
-
-```bash
-./run.sh map-builder
-PIXELVERSE_AGENT_KIND=codex ./run.sh down_up
-```
-
-Open:
-
-```text
-http://localhost:5660/map_builder.html
-```
-
-Builder workflow:
-
-1. Choose the builder language from the top-left selector: Chinese, English, Japanese, or Korean.
-2. Load the PNG floorplan.
-3. If starting from PNG only, use `Room Palette` to pick a room type. Already assigned room keys are disabled to prevent duplicate names.
-4. If repairing a bad YAML, import it after the PNG; rooms, corridors, doors, and furniture appear as editable overlays and layer rows.
-5. In `Room` mode, drag from upper-left to lower-right. A live preview rectangle and coordinate badge follow the pointer. Releasing the mouse opens an assign popover with `Confirm`, `Delete`, and `Cancel`; the room is written only after confirmation.
-6. In `Corridor` mode, drag walkable hallway rectangles. Corridors should touch or overlap so the route graph is connected.
-7. In `Door` mode, click near a black wall line; the builder snaps the door to the nearest dark wall pixel and generates `portal`, `aisle`, and `hub`.
-8. In `Furniture` mode, click inside a room to place props with YAML-compatible `x`, `y`, `w`, `h`, and `scale`.
-9. Use the `Layers` panel to reduce visual noise. Each layer has an eye toggle for visibility, a lock toggle to prevent accidental edits, and a row selector to focus that room/corridor/door/furniture.
-10. In `Select/Edit` mode, click an overlay or layer row. Drag the selected overlay to translate it; drag the room's lower-right handle to resize it. Use the floating toolbar to edit, duplicate, delete, or cancel selection.
-11. Use mouse wheel to zoom. Use `Shift` + drag to pan the floorplan, which makes fine alignment feel closer to a ROS/global-map annotation workflow.
-12. Click `Validate map`; click a validation issue to focus the related overlay. Fix disconnected corridors, missing door anchors, overlapping rooms, or furniture occupancy errors.
-13. Click `Export YAML`.
-14. Save the export as `tmp/global_map/default.yaml` and put the matching PNG at `tmp/global_map/default.png`.
-
-Validate the exported pair before restarting:
-
-```bash
-python3 scripts/check_global_map_alignment.py \
-  --yaml tmp/global_map/default.yaml \
-  --png tmp/global_map/default.png
-```
-
-The builder uses the same `0-100` world coordinate system as the runtime YAML.
-Doors are exported as route anchors, so A* can move between rooms only through
-`aisle -> portal -> hub -> corridor`. Furniture is exported with `x`, `y`, `w`,
-`h`, and `scale`, so collision and visual placement use the same footprint.
-
-Docker Compose mounts `./tmp/global_map` into the container at
-`/app/tmp/global_map`, so users can replace the YAML/PNG without modifying the
-built-in map files. If you want a different host directory:
-
-```bash
-PIXELVERSE_GLOBAL_MAP_DIR_HOST=/path/to/my/global_map ./run.sh down_up
-```
-
-You can combine an external runtime directory with a built-in floorplan choice:
-
-```bash
-PIXELVERSE_GLOBAL_MAP_DIR_HOST=/path/to/my/global_map \
-PIXELVERSE_FLOORPLAN=custom \
-PIXELVERSE_AGENT_KIND=codex \
-./run.sh down_up
-```
-
-Schema checklist:
-
-- `corridors`: required non-empty list. Each corridor needs `key`, `left`, `top`, `width`, `height`.
-- `rooms.<room>.rect`: required room rectangle in 0-100 world coordinates.
-- `rooms.<room>.center`: required default room center.
-- `rooms.<room>.portal`: required exact door threshold. It must touch a corridor.
-- `rooms.<room>.aisle`: required room-side door approach point. It must be inside the room.
-- `rooms.<room>.hub`: required corridor-side door approach point. It must be inside a corridor.
-- `rooms.<room>.states`: lifecycle states shown in that room.
-- `rooms.<room>.furniture[]`: optional furniture list. Each movable object should include `x`, `y`, `w`, `h`, and optional `scale`; `w/h/scale` are used by collision, editing overlays, and PNG generation.
-
-Map authoring rules:
-
-- Keep the PNG as one continuous top-down world, not separate room cards.
-- Cross-room movement should pass through `portal -> hub -> corridor -> portal`; do not create visual shortcuts through walls.
-- Put user custom maps in `tmp/global_map/` when you do not want to edit built-in assets.
-- Use `PIXELVERSE_GLOBAL_MAP_DIR_HOST=/path/to/my/global_map ./run.sh down_up` when sharing a map directory outside the repo.
-- `rooms.<room>.furniture`: list of furniture. Each item needs `type`, `x`, `y`, `w`, `h`; optional `scale` must be between `0.55` and `1.8`.
-
-The A* router uses the same loaded YAML data as the UI. Cross-room paths must leave a room through `aisle -> portal -> hub`, travel on `corridors`, then enter the next room through `hub -> portal -> aisle`; non-door wall cuts are rejected.
-
-Design rules:
-
-- Do not put furniture over `aisle`, `portal`, or `hub`.
-- Make corridor rectangles overlap or touch so the corridor graph is connected.
-- If a room has no valid corridor-connected door, agents will fail closed instead of drawing a wall-cut path.
-- Furniture `w/h/scale` is used by collision and path blockers; keep footprints close to the visible PNG size.
-- The UI hides generated corridor/room blocks behind `default.png` when an image is present, but the YAML remains the source of truth for movement.
-
-Common rooms:
-
-- `think_lab`: planning or starting
-- `blueprint_lab`: search, read, research, spec work
-- `tool_forge`: terminal, patch, write, execute, browser
-- `response_studio`: reply, draft, final answer
-- `clone_bay`: subagent/delegation work
-- `session_archive`: history/session/memory work
-- `standby_dock`: completed or idle
-- `offline_corner`: stale or failed
+Each building has its own interior and saved layout. The village is the shared
+outside view; opening an interior is the supported way to customize furniture,
+not a way to redefine the world or agent routes.
 
 ## Debug Artifacts
 
@@ -1088,11 +930,9 @@ Common rooms:
 tmp/latest_test_hook_route.json
 tmp/latest_world_snapshot.json
 tmp/pixelverse_debug_log.json
-tmp/local_ui_trajectory.jpg
-tmp/global_map_walkability_mask.png
 ```
 
-Use them when checking room routing, A* pathing, door anchors, furniture blockers, and multi-agent plans. `global_map_walkability_mask.png` is the planner occupancy view: black is blocked space, white is free space, and gray marks door thresholds.
+Use these when checking hook delivery, world snapshots, and multi-agent plans.
 
 ## Troubleshooting
 

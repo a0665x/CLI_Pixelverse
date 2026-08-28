@@ -53,3 +53,15 @@ def test_retired_outer_editor_styles_are_removed():
     html = (ROOT / "public/index.html").read_text(encoding="utf-8")
     for retired in (".toast-stack {", ".coord-hud {", ".toast {"):
         assert retired not in html
+
+
+def test_current_readme_does_not_advertise_retired_map_workflow():
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    for token in (
+        "PIXELVERSE_FLOORPLAN",
+        "PIXELVERSE_GLOBAL_MAP_DIR_HOST",
+        "./run.sh map-builder",
+        "./run.sh floorplans",
+    ):
+        assert token not in readme
+    assert "open" in readme.lower() and "interior" in readme.lower()
