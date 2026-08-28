@@ -1167,19 +1167,11 @@ EOF
 
 install_codex_project_hooks() {
   local project_root="${1:-${PIXELVERSE_CODEX_PROJECT_ROOT:-$PWD}}"
-  local codex_dir="$project_root/.codex"
-  local target="$codex_dir/hooks.json"
-  if ! mkdir -p "$codex_dir"; then
-    echo "Could not create Codex hook directory: $codex_dir" >&2
+  local hook_script="$ROOT/scripts/codex_pixelverse_hook.py"
+  local installer="$ROOT/scripts/codex_hook_installer.py"
+  if ! /usr/bin/env python3 "$installer" "$project_root" "$hook_script"; then
     return 1
   fi
-  if ! write_codex_hooks_json "$target"; then
-    echo "Could not write Codex project hooks: $target" >&2
-    return 1
-  fi
-  echo
-  echo "Installed local Codex project hooks:"
-  echo "- $target"
   echo
   echo "Inside the first Codex session, run /hooks and trust the project hook definition."
 }

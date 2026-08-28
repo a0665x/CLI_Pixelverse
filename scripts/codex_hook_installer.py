@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import sys
 import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -156,3 +157,27 @@ def install_codex_hooks(project_root: Path, hook_script: Path) -> InstallResult:
         if os.path.exists(temporary_name):
             os.unlink(temporary_name)
     return InstallResult(target=target, backup=backup, changed=True)
+
+
+def main() -> int:
+    if len(sys.argv) != 3:
+        print(
+            "Usage: codex_hook_installer.py <project-root> <hook-script>",
+            file=sys.stderr,
+        )
+        return 2
+    try:
+        result = install_codex_hooks(Path(sys.argv[1]), Path(sys.argv[2]))
+    except (HookConflict, OSError, ValueError) as exc:
+        print(f"Could not install Codex project hooks: {exc}", file=sys.stderr)
+        return 1
+    status = "Installed" if result.changed else "Already installed"
+    print(f"{status} local Codex project hooks")
+    print(f"Target: {result.target}")
+    if result.backup:
+        print(f"Backup: {result.backup}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
