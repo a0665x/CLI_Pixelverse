@@ -56,7 +56,7 @@
     };
     const renderSnapshot = () => {
       const raw = agentPayloadPresentation(agent).task;
-      node('situation').textContent = currentAgentStatePresentation({ agent, name: 'Henry', state: uiText(locale, 'commandDeck.eventChip.states.working'), room: 'Workshop' }).text;
+      node('situation').textContent = currentAgentStatePresentation({ name: 'Henry', state: uiText(locale, 'commandDeck.eventChip.states.working'), room: 'Workshop', detail: agentTaskText(agent) }).text;
       node('selection').textContent = uiText(locale, 'commandDeck.inspector.selectAgent');
       node('selection').setAttribute('aria-label', node('selection').textContent);
       node('card').textContent = `${uiText(locale, 'commandDeck.rails.agentsTitle')}: ${raw}`;
