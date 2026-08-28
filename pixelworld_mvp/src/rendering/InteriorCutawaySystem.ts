@@ -56,6 +56,7 @@ import {
   type InteriorOccupantAssignment,
 } from './interiorAssignment';
 import { interiorMotionAt } from './interiorMotion';
+import { interiorNavigationSignature } from './interiorNavigationPolicy';
 import {
   readInteriorLayout,
   normalizeFurnitureScale,
@@ -105,7 +106,7 @@ import {
   type InteriorViewportRect,
   type InteriorViewportState,
 } from './interiorViewport';
-import { missingSemanticFurnitureCopy } from './interiorLocale';
+import { interiorRuntimeCopy, missingSemanticFurnitureCopy } from './interiorLocale';
 import { authoredPlacement, supportedRotations } from './interiorFurnitureScale';
 import {
   interiorEditorLayout,
@@ -851,9 +852,16 @@ export class InteriorCutawaySystem {
       this.missingFeedbackUntil = missingFeedbackKey ? this.scene.time.now + 4_000 : 0;
     }
     const missingBubbleOwnerId = missingAssignment?.agentId;
-    const signature = assignments.map(({ agentId, role, furnitureId, point, missingSemantic }) => (
+    const signature = `${interiorNavigationSignature(interior)}#${assignments.map(({ agentId, role, furnitureId, point, missingSemantic }) => (
       `${agentId}:${role}:${furnitureId ?? `${point.x},${point.y}`}:${missingSemantic ?? ''}`
-    )).join('|');
+    )).join('|')}`;
+    const localizedBubbleFor = (assignment: InteriorOccupantAssignment, blocked: boolean): string => (
+      blocked
+        ? interiorRuntimeCopy[this.locale].pathBlocked
+        : assignment.missingSemantic
+          ? missingSemanticFurnitureCopy(this.locale, assignment.missingSemantic)
+          : villageCopy(this.locale).actions[assignment.action]
+    );
     this.currentAssignments = assignments;
     if (signature !== this.assignmentSignature) {
       this.assignmentSignature = signature;
@@ -885,9 +893,7 @@ export class InteriorCutawaySystem {
         const icon = this.scene.add.text(0, 0, actionSymbols[assignment.icon], {
           fontFamily: 'sans-serif', fontSize: '8px', color: '#fff4c2', backgroundColor: '#315348', padding: { x: 3, y: 1 },
         }).setOrigin(0.5).setDepth(CUTAWAY_DEPTH + 20);
-        const localizedBubble = assignment.missingSemantic
-          ? missingSemanticFurnitureCopy(this.locale, assignment.missingSemantic)
-          : villageCopy(this.locale).actions[assignment.action];
+        const localizedBubble = localizedBubbleFor(assignment, motion.blocked);
         const bubble = this.scene.add.text(0, 0, localizedBubble, {
           fontFamily: 'sans-serif', fontSize: '8px', color: '#263323', backgroundColor: '#fff5c7', padding: { x: 4, y: 2 },
         }).setOrigin(0.5, 1).setDepth(CUTAWAY_DEPTH + 21);
@@ -895,8 +901,8 @@ export class InteriorCutawaySystem {
           fontFamily: 'sans-serif', fontSize: '6px', color: '#fff4c2', backgroundColor: '#41342f', padding: { x: 2, y: 1 },
         }).setOrigin(0.5, 0).setDepth(CUTAWAY_DEPTH + 20);
         icon.setVisible(false);
-        bubble.setVisible(assignment.agentId === missingBubbleOwnerId
-          && Boolean(assignment.missingSemantic) && this.missingFeedbackActive());
+        bubble.setVisible(motion.blocked || (assignment.agentId === missingBubbleOwnerId
+          && Boolean(assignment.missingSemantic) && this.missingFeedbackActive()));
         name.setVisible(false);
         this.occupantViews.set(assignment.agentId, { sprite, icon, bubble, name });
         layer.add([sprite, icon, bubble, name]);
@@ -921,12 +927,10 @@ export class InteriorCutawaySystem {
         stableInteriorAgentIndex(this.currentAssignments, assignment.agentId),
       ));
       view.icon.setPosition(x, y - 21 * pixelScale);
-      const localizedBubble = assignment.missingSemantic
-        ? missingSemanticFurnitureCopy(this.locale, assignment.missingSemantic)
-        : villageCopy(this.locale).actions[assignment.action];
+      const localizedBubble = localizedBubbleFor(assignment, motion.blocked);
       view.bubble.setPosition(x, y - 31 * pixelScale).setText(localizedBubble)
-        .setVisible(assignment.agentId === missingBubbleOwnerId
-          && Boolean(assignment.missingSemantic) && this.missingFeedbackActive());
+        .setVisible(motion.blocked || (assignment.agentId === missingBubbleOwnerId
+          && Boolean(assignment.missingSemantic) && this.missingFeedbackActive()));
       view.name.setPosition(x, y + 9 * pixelScale);
     });
     this.occupantDomLabels = assignments.flatMap((assignment) => {
@@ -936,9 +940,7 @@ export class InteriorCutawaySystem {
       const motion = interiorMotionAt(snapshot, interior, assignment, this.scene.time.now);
       return [{
         id: `agent:${assignment.agentId}`,
-        text: `${actionSymbols[assignment.icon]} ${assignment.missingSemantic
-          ? missingSemanticFurnitureCopy(this.locale, assignment.missingSemantic)
-          : villageCopy(this.locale).actions[assignment.action]}\n${assignment.agentId}`,
+        text: `${actionSymbols[assignment.icon]} ${localizedBubbleFor(assignment, motion.blocked)}\n${assignment.agentId}`,
         x: roomScreenPoint(this.roomOrigin, motion.point, this.roomCell).x,
         y: roomScreenPoint(this.roomOrigin, motion.point, this.roomCell).y - this.roomCell / 2 - 2 * this.roomCell / BASE_ROOM_CELL,
         kind: 'agent' as const,

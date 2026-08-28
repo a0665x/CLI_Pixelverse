@@ -15,11 +15,11 @@ export interface InteriorMotionState {
   bob: number;
   bubbleText: string;
   walking: boolean;
+  blocked: boolean;
 }
 
-const STEP_MS = 240;
+export const INTERIOR_CELLS_PER_SECOND = 2.5;
 const WORK_STOP_MS = 1_800;
-const WORK_TRANSITION_MS = 720;
 
 const eventBubble = (snapshot: InteriorAgentSnapshot): string => snapshot.bubbleText ?? ({
   session_start: '準備開始工作', think: '正在思考', plan: '整理計畫', read: '查閱檔案',
@@ -117,15 +117,27 @@ export function interiorPath(
   return [{ ...from }];
 }
 
-function pointAlongPath(path: readonly GridPoint[], progress: number): InteriorMotionState['point'] {
+const segmentDistance = (from: GridPoint, to: GridPoint): number => Math.hypot(to.x - from.x, to.y - from.y);
+
+export function interiorPathDistance(path: readonly GridPoint[]): number {
+  return path.slice(1).reduce((total, point, index) => total + segmentDistance(path[index]!, point), 0);
+}
+
+export function pointAtPathDistance(path: readonly GridPoint[], requestedDistance: number): InteriorMotionState['point'] {
   if (path.length <= 1) return { ...(path[0] ?? { x: 0, y: 0 }) };
-  const travel = Math.max(0, Math.min(path.length - 1, (path.length - 1) * progress));
-  const index = Math.min(path.length - 2, Math.floor(travel));
-  const amount = travel - index;
-  return {
-    x: lerp(path[index]!.x, path[index + 1]!.x, amount),
-    y: lerp(path[index]!.y, path[index + 1]!.y, amount),
-  };
+  let remaining = Math.max(0, Math.min(requestedDistance, interiorPathDistance(path)));
+  for (let index = 1; index < path.length; index += 1) {
+    const from = path[index - 1]!;
+    const to = path[index]!;
+    const length = segmentDistance(from, to);
+    if (length === 0) continue;
+    if (remaining <= length) {
+      const amount = remaining / length;
+      return { x: lerp(from.x, to.x, amount), y: lerp(from.y, to.y, amount) };
+    }
+    remaining -= length;
+  }
+  return { ...path.at(-1)! };
 }
 
 const facingToward = (from: InteriorMotionState['point'], to: InteriorMotionState['point'], fallback: Facing): Facing => {
@@ -154,36 +166,67 @@ export function interiorMotionAt(
   );
   const target = { ...assignment.point };
   const ingressPath = interiorPath(interior, door, target, assignment.furnitureId);
-  const ingressDuration = Math.max(STEP_MS, (ingressPath.length - 1) * STEP_MS);
+  const ingressDistance = interiorPathDistance(ingressPath);
+  const ingressBlocked = distance(door, target) > 0 && ingressPath.length <= 1;
+  const ingressDuration = ingressDistance / INTERIOR_CELLS_PER_SECOND * 1_000;
   const bob = Math.sin(nowMs / 280) * 0.85;
   const bubbleText = eventBubble(snapshot);
+  if (ingressBlocked) {
+    return {
+      phase: 'ingress', point: { ...door }, path: ingressPath.map((step) => ({ ...step })),
+      facing: 'up', bob: 0, bubbleText, walking: false, blocked: true,
+    };
+  }
   if (elapsed < ingressDuration) {
-    const point = pointAlongPath(ingressPath, elapsed / ingressDuration);
+    const point = pointAtPathDistance(ingressPath, elapsed / 1_000 * INTERIOR_CELLS_PER_SECOND);
     return {
       phase: 'ingress', point, path: ingressPath.map((step) => ({ ...step })),
-      facing: facingToward(door, point, 'up'), bob: 0, bubbleText, walking: true,
+      facing: facingToward(door, point, 'up'), bob: 0, bubbleText, walking: true, blocked: false,
     };
   }
 
   const workElapsed = elapsed - ingressDuration;
-  const index = Math.floor(workElapsed / WORK_STOP_MS) % route.length;
-  const nextIndex = (index + 1) % route.length;
-  const segmentElapsed = workElapsed % WORK_STOP_MS;
-  const from = route[index]!;
-  const to = route[nextIndex]!;
-  const fromPoint = pointForRouteItem(from);
-  const toPoint = pointForRouteItem(to);
-  const workPath = interiorPath(interior, fromPoint, toPoint, to.id === 'interior-overflow' ? undefined : to.id);
-  const transition = Math.max(0, Math.min(1, (segmentElapsed - (WORK_STOP_MS - WORK_TRANSITION_MS)) / WORK_TRANSITION_MS));
-  const point = pointAlongPath(workPath, transition);
-  const walking = transition > 0 && workPath.length > 1;
+  const segments = route.map((from, index) => {
+    const to = route[(index + 1) % route.length]!;
+    const fromPoint = pointForRouteItem(from);
+    const toPoint = pointForRouteItem(to);
+    const path = interiorPath(interior, fromPoint, toPoint, to.id === 'interior-overflow' ? undefined : to.id);
+    const blocked = distance(fromPoint, toPoint) > 0 && path.length <= 1;
+    const pathDistance = interiorPathDistance(path);
+    return { from, fromPoint, path, blocked, pathDistance, travelMs: pathDistance / INTERIOR_CELLS_PER_SECOND * 1_000 };
+  });
+  const firstBlocked = segments.findIndex(({ blocked }) => blocked);
+  const cycleDuration = segments.reduce((total, { travelMs }) => total + WORK_STOP_MS + travelMs, 0);
+  let timelineElapsed = firstBlocked >= 0 ? workElapsed : workElapsed % Math.max(WORK_STOP_MS, cycleDuration);
+  for (const segment of segments) {
+    const mappedPath = segment.path.map((step) => ({ ...step }));
+    if (timelineElapsed < WORK_STOP_MS) {
+      return {
+        phase: 'working', point: { ...segment.fromPoint }, path: mappedPath, facing: segment.from.facing,
+        bob, bubbleText, walking: false, blocked: false,
+      };
+    }
+    timelineElapsed -= WORK_STOP_MS;
+    if (segment.blocked) {
+      return {
+        phase: 'working', point: { ...segment.fromPoint }, path: mappedPath, facing: segment.from.facing,
+        bob, bubbleText, walking: false, blocked: true,
+      };
+    }
+    if (timelineElapsed < segment.travelMs) {
+      const travelled = timelineElapsed / 1_000 * INTERIOR_CELLS_PER_SECOND;
+      const point = pointAtPathDistance(segment.path, travelled);
+      const ahead = pointAtPathDistance(segment.path, Math.min(segment.pathDistance, travelled + 0.05));
+      return {
+        phase: 'working', point, path: mappedPath,
+        facing: facingToward(point, ahead, segment.from.facing), bob: 0, bubbleText, walking: true, blocked: false,
+      };
+    }
+    timelineElapsed -= segment.travelMs;
+  }
+  const fallback = segments.at(-1)!;
   return {
-    phase: 'working',
-    point,
-    path: workPath.map((step) => ({ ...step })),
-    facing: transition > 0 ? facingToward(point, pointAlongPath(workPath, Math.min(1, transition + 0.05)), from.facing) : from.facing,
-    bob: walking ? 0 : bob,
-    bubbleText,
-    walking,
+    phase: 'working', point: { ...fallback.fromPoint }, path: fallback.path.map((step) => ({ ...step })),
+    facing: fallback.from.facing, bob, bubbleText, walking: false, blocked: false,
   };
 }

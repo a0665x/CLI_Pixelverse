@@ -1,13 +1,19 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   ANIMAL_ASSETS,
   HOUSE_ASSETS,
   MODERN_INTERIOR_ASSETS,
+  MODERN_OFFICE_COLLISION_MASKS,
   SERENE_VILLAGE_ASSETS,
+  installVillageCollisionMasks,
+  preloadVillageAssets,
 } from '../src/rendering/assetManifest';
+import { clearFurnitureAlphaMasksForTests, furnitureAlphaMask } from '../src/rendering/furnitureAlphaMasks';
 import { MODERN_OFFICE_ASSETS } from '../src/rendering/modernOfficeManifest';
 
 describe('curated village asset manifest', () => {
+  afterEach(() => clearFurnitureAlphaMasksForTests());
+
   it('registers four semantic 16px Kenney Tiny Farm animal cells', () => {
     expect(Object.keys(ANIMAL_ASSETS)).toEqual(['cow', 'sheep', 'chicken', 'pig']);
     expect(ANIMAL_ASSETS.cow.path).toBe('/assets/kenney/tiny-farm/cow.png');
@@ -44,5 +50,29 @@ describe('curated village asset manifest', () => {
     expect(SERENE_VILLAGE_ASSETS.door.path).toContain('/assets/limezu/serene-village/door_16x16.png');
     expect(MODERN_INTERIOR_ASSETS.agentIdle.path).toContain('/assets/limezu/modern-interiors-free/Adam_idle_anim_16x16.png');
     expect(MODERN_OFFICE_ASSETS.roomBuilder.path).toContain('/assets/private/modern-office-v1.2/Room_Builder_Office_16x16.png');
+  });
+
+  it('preloads and installs the required Modern Office collision manifest', () => {
+    const json = vi.fn();
+    const scene = {
+      load: { spritesheet: vi.fn(), image: vi.fn(), json },
+      cache: { json: { get: vi.fn(() => ({
+        schemaVersion: 1,
+        alphaThreshold: 1,
+        assets: Object.fromEntries(Array.from({ length: 339 }, (_, index) => [
+          String(index + 1),
+          { width: 32, height: 48, runs: [[0, 0, 1]] },
+        ])),
+      })) } },
+    };
+
+    preloadVillageAssets(scene as never);
+    expect(json).toHaveBeenCalledWith(
+      MODERN_OFFICE_COLLISION_MASKS.key,
+      MODERN_OFFICE_COLLISION_MASKS.path,
+    );
+    installVillageCollisionMasks(scene as never);
+    expect(furnitureAlphaMask(1)?.width).toBe(32);
+    expect(furnitureAlphaMask(339)?.height).toBe(48);
   });
 });

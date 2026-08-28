@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { buildAgentTimelinePanels, buildHeartbeatPath, heartbeatBeatWidthPx } from '../public/agent_timeline_graphs.mjs';
+import { buildAgentTimelinePanels, buildHeartbeatPath, heartbeatBeatWidthPx, reducedMotionHeartbeatPath } from '../public/agent_timeline_graphs.mjs';
 import { getLocaleStrings } from '../public/ui_strings.mjs';
 
 test('agent timeline panels map recent activity onto time and event lanes', () => {
@@ -139,6 +139,12 @@ test('semantic ECG produces distinct idle, busy, blocked, and offline signals', 
   assert.notEqual(blocked, busy);
   assert.ok(heartbeatBeatWidthPx({ heartbeatRate: 1 })
     < heartbeatBeatWidthPx({ heartbeatRate: .62 }));
+});
+
+test('reduced-motion ECG keeps a stable semantic waveform and offline flatline', () => {
+  const busy = { signalKind: 'busy', heartbeatRate: 1, heartbeatAmplitude: 1 };
+  assert.equal(reducedMotionHeartbeatPath(busy), reducedMotionHeartbeatPath(busy));
+  assert.equal(reducedMotionHeartbeatPath({ signalKind: 'offline' }), 'M 0,16 L 176,16');
 });
 
 test('timeline points preserve semantic event identity and drill-down targets', () => {

@@ -113,8 +113,8 @@ const COMPACT_INTERIOR_DEFINITIONS: Record<BuildingThemeId, InteriorDefinition> 
       wall('rest-tv', 'television', 6.25, 1, 'up', [], 'generic', 172),
       { ...base('rest-bed-a', 'bed', 11.25, 3.25, 'right', ['offline'], 'offline', 200, 1.25), blocksNavigation: false },
       { ...base('rest-bed-b', 'bed', 11.25, 6.5, 'right', ['offline'], 'offline', 214, 1.25), blocksNavigation: false },
-      surface('rest-bedside-a', 'decor', 11.25, 3.25, 119),
-      surface('rest-bedside-b', 'decor', 11.25, 6.5, 120),
+      surface('rest-bedside-a', 'decor', 10, 3.25, 119),
+      surface('rest-bedside-b', 'decor', 10, 6.5, 120),
       surface('rest-lamp', 'decor', 4, 6.25, 153, 1, 2, ['rest-coffee-table']),
       surface('rest-plant', 'plant', 12.25, 1, 98),
       wall('rest-blocked-board', 'planning-board', 2, 1, 'up', ['repair'], 'repair', 171),
@@ -212,7 +212,7 @@ const HYBRID_OFFICE_ZONES = {
   'research-library': {
     central: [
       { prefabId: 'bench-four', anchor: { x: 4, y: 1.5 } },
-      { prefabId: 'bench-four', anchor: { x: 4, y: 6.25 } },
+      { prefabId: 'bench-four', anchor: { x: 4, y: 6.75 } },
     ],
     specialist: [
       { prefabId: 'pod-l-two', anchor: { x: 13, y: 3 } },
@@ -222,7 +222,7 @@ const HYBRID_OFFICE_ZONES = {
   'maker-workshop': {
     central: [
       { prefabId: 'bench-four', anchor: { x: 4, y: 1.5 } },
-      { prefabId: 'bench-four', anchor: { x: 4, y: 6.25 } },
+      { prefabId: 'bench-four', anchor: { x: 4, y: 6.75 } },
     ],
     specialist: [
       { prefabId: 'pod-l-two', anchor: { x: 13, y: 3 } },
@@ -232,7 +232,7 @@ const HYBRID_OFFICE_ZONES = {
   'collaboration-barn': {
     central: [
       { prefabId: 'bench-four', anchor: { x: 4, y: 1.5 } },
-      { prefabId: 'bench-four', anchor: { x: 4, y: 6.25 } },
+      { prefabId: 'bench-four', anchor: { x: 4, y: 6.75 } },
     ],
     specialist: [
       { prefabId: 'pod-l-two', anchor: { x: 13, y: 3 } },
@@ -322,7 +322,7 @@ const researchDefinition = (): InteriorDefinition => composeThemeLayout(
   'research-library', hybridOfficePlacements('research-library'), [
   modernSupport('research-archive-west', 'bookcase', 199, 1, 1, 'up', 'wall'),
   modernSupport('research-archive-center', 'bookcase', 200, 2.25, 1, 'up', 'wall'),
-  modernSupport('research-archive-east', 'bookcase', 204, 6, 1, 'up', 'wall'),
+  modernSupport('research-archive-east', 'bookcase', 204, 7.5, 1, 'up', 'wall'),
   modernSupport('research-reference-device', 'printer', 148, 1, 4.25, 'up', 'furniture'),
   modernSupport('research-reading-console', 'reading-desk', 225, 1.5, 7.75, 'down', 'furniture'),
   modernSupport('research-reading-notes', 'decor', 156, 1.5, 7.75, 'down', 'surface', [], 'read', {
@@ -370,7 +370,7 @@ const collaborationDefinition = (): InteriorDefinition => composeThemeLayout(
   modernSupport('collab-response-console', 'response-desk', 312, 3, 1, 'down', 'furniture', ['respond'], 'respond', {
     interactionPoint: { x: 3, y: 3 },
   }),
-  modernSupport('collab-communication-credenza', 'radio-console', 165, 5.5, 1, 'up', 'wall'),
+  modernSupport('collab-communication-credenza', 'radio-console', 165, 7.5, 1, 'up', 'wall'),
   modernSupport('collab-shared-refresh', 'beverage-station', 173, 10.5, 1, 'up', 'furniture', [], 'generic', {
     blocksNavigation: false,
   }),

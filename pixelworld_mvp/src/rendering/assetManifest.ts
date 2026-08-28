@@ -2,6 +2,7 @@ import type Phaser from 'phaser';
 import type { Facing } from '../world/types';
 import { MODERN_OFFICE_ASSETS } from './modernOfficeManifest';
 import { MODERN_OFFICE_CATALOG } from './modernOfficeCatalog';
+import { installFurnitureAlphaMasks, parseFurnitureAlphaMaskManifest } from './furnitureAlphaMasks';
 
 export interface SpriteSheetAsset {
   key: string;
@@ -55,6 +56,11 @@ export const MODERN_INTERIOR_ASSETS = {
     frameWidth: 16, frameHeight: 32,
   },
 } as const satisfies Record<string, SpriteSheetAsset>;
+
+export const MODERN_OFFICE_COLLISION_MASKS = {
+  key: 'modern-office-v1.2-collision-masks',
+  path: '/assets/private/modern-office-v1.2/collision-masks.json',
+} as const;
 
 export const AGENT_ATLAS = {
   main: { key: 'ninja-blue', path: '/assets/ninja-adventure/ninja-blue.png', frameWidth: 16, frameHeight: 16 },
@@ -140,6 +146,7 @@ export function agentFrameIndex(skin: AgentSkin, facing: Facing, row: number = s
 }
 
 export function preloadVillageAssets(scene: Phaser.Scene): void {
+  scene.load.json(MODERN_OFFICE_COLLISION_MASKS.key, MODERN_OFFICE_COLLISION_MASKS.path);
   [
     WORLD_ATLAS,
     ...Object.values(SERENE_VILLAGE_ASSETS),
@@ -158,6 +165,14 @@ export function preloadVillageAssets(scene: Phaser.Scene): void {
   ].forEach((asset) => {
     scene.load.image(asset.key, asset.path);
   });
+}
+
+export function installVillageCollisionMasks(scene: Phaser.Scene): void {
+  const rawManifest = scene.cache.json.get(MODERN_OFFICE_COLLISION_MASKS.key) as unknown;
+  const manifest = parseFurnitureAlphaMaskManifest(rawManifest, {
+    requiredAssetIds: MODERN_OFFICE_CATALOG.map(({ id }) => id),
+  });
+  installFurnitureAlphaMasks(manifest);
 }
 
 export const WORLD_ATLAS_FALLBACK_KEY = 'puny-world-missing';

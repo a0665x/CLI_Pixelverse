@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import type { AgentController } from '../agents/AgentController';
 import { ACTION_ICONS, aggregateBuildingActivity, type AgentActivity, withBuildingPresence } from '../status/buildingActivity';
-import type { AgentWorldEvent, BehaviorRoute, WorldBuilding } from '../world/types';
+import type { AgentWorldEvent, BehaviorRoute, GridRect, WorldBuilding } from '../world/types';
 import { DomStatusOverlay } from './domStatusOverlay';
 import {
   statusFailureMessage,
@@ -64,6 +64,10 @@ export class StatusOverlaySystem {
       this.domOverlay.setAgentBubble(agentId, message);
     });
     this.refreshBuildings();
+  }
+
+  setBuildingHitRegion(buildingId: string, bounds: GridRect): void {
+    this.domOverlay.setBuildingHitRegion(buildingId, bounds);
   }
 
   attachAgent(agent: AgentController): void {

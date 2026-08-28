@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { interiorMotionAt, interiorPath, interiorRouteFor } from '../src/rendering/interiorMotion';
+import {
+  INTERIOR_CELLS_PER_SECOND,
+  interiorMotionAt,
+  interiorPath,
+  interiorPathDistance,
+  interiorRouteFor,
+  pointAtPathDistance,
+} from '../src/rendering/interiorMotion';
 import { assignInteriorOccupants, type InteriorAgentSnapshot } from '../src/rendering/interiorAssignment';
 import { INTERIOR_DEFINITIONS } from '../src/world/interiorDefinitions';
 import { furnitureCells } from '../src/rendering/interiorLayoutEditor';
@@ -14,6 +21,17 @@ const toolSnapshot = (elapsedMs: number): InteriorAgentSnapshot => ({
 
 describe('interior motion timeline', () => {
   const interior = INTERIOR_DEFINITIONS['maker-workshop'];
+
+  it('measures and samples geometric path distance independently of node count', () => {
+    const short = [{ x: 0, y: 0 }, { x: 2, y: 0 }];
+    const long = [{ x: 0, y: 0 }, { x: 0, y: 3 }, { x: 4, y: 3 }];
+
+    expect(INTERIOR_CELLS_PER_SECOND).toBe(2.5);
+    expect(interiorPathDistance(short)).toBe(2);
+    expect(interiorPathDistance(long)).toBe(7);
+    expect(pointAtPathDistance(short, 1)).toEqual({ x: 1, y: 0 });
+    expect(pointAtPathDistance(long, 1)).toEqual({ x: 0, y: 1 });
+  });
 
   it('starts at the interior door and advances toward assigned furniture over real time', () => {
     const snapshot = toolSnapshot(0);
@@ -89,8 +107,29 @@ describe('interior motion timeline', () => {
     expect(motion.path.at(-1)).toEqual({ x: 10.5, y: 7 });
     expect(motion.path.every((point, index, path) => index === 0
       || (point.x === path[index - 1]!.x || point.y === path[index - 1]!.y))).toBe(true);
-    const settledAt = (motion.path.length - 1) * 240 + 100;
+    const settledAt = (interiorPathDistance(motion.path) / INTERIOR_CELLS_PER_SECOND) * 1_000 + 100;
     expect(interiorMotionAt(toolSnapshot(settledAt), maker, assignment, settledAt).point).toEqual(assignment.point);
+  });
+
+  it('reports blocked motion and stays at the last legal point when ingress has no route', () => {
+    const station = {
+      id: 'station', kind: 'desk' as const, point: { x: 1, y: 2 }, facing: 'up' as const,
+      supportedActions: ['terminal' as const], icon: 'tool' as const, interactionPoint: { x: 1, y: 1 },
+    };
+    const wall = (id: string, x: number) => ({
+      id, kind: 'decor' as const, point: { x, y: 2 }, facing: 'up' as const,
+      supportedActions: [], icon: 'generic' as const,
+    });
+    const room = { ...interior, width: 3, height: 5, furniture: [station, wall('left', 0), wall('right', 2)] };
+    const assignment = {
+      ...toolSnapshot(0), point: station.interactionPoint, facing: station.facing,
+      furnitureId: station.id, icon: station.icon, seated: false,
+    };
+
+    const motion = interiorMotionAt(toolSnapshot(0), room, assignment, 0);
+
+    expect(motion).toMatchObject({ point: { x: 1, y: 4 }, walking: false, blocked: true });
+    expect(motion.path).toEqual([{ x: 1, y: 4 }]);
   });
 
   it('does not route through an unrelated blocker occupying the target cell', () => {

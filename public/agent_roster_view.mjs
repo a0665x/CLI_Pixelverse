@@ -26,6 +26,7 @@ export function createAgentRosterView({
   spriteFor,
   textFor,
   onSelect = () => {},
+  onActivate = () => {},
 } = {}) {
   const nodes = new Map();
   const build = () => {
@@ -55,12 +56,16 @@ export function createAgentRosterView({
     copy.append(name, state, task, svg);
     article.append(portrait, copy);
 
-    const select = () => onSelect({ kind: 'agent', id: article.dataset.selectionId });
-    article.addEventListener('click', select);
+    const activate = () => {
+      const selection = { kind: 'agent', id: article.dataset.selectionId };
+      onSelect(selection);
+      onActivate(selection, article);
+    };
+    article.addEventListener('click', activate);
     article.addEventListener('keydown', (event) => {
       if (event.key !== 'Enter' && event.key !== ' ') return;
       event.preventDefault();
-      select();
+      activate();
     });
     return { article, portrait, name, state, task, svg };
   };

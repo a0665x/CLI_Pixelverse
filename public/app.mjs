@@ -65,6 +65,9 @@ import { getAgentPose, INTERACTION_OBJECT_ICONS, selectInteractionTarget } from 
 import { buildAgentDialog, buildAgentSpeech } from './agent_dialog.mjs';
 import { buildAgentRoster } from './agent_roster_model.mjs';
 import { createAgentRosterView } from './agent_roster_view.mjs';
+import { buildAgentDetail } from './agent_detail_model.mjs';
+import { createAgentDetailView } from './agent_detail_view.mjs';
+import { createVillageFirstLayoutController } from './village_first_layout.mjs';
 import { createCommandDeckLocaleController } from './command_deck_locale_controller.mjs';
 import { agentPayloadPresentation, currentAgentStatePresentation, escapeHtml, timelinePayloadPresentation } from './command_deck_payload_presenters.mjs';
 import { clampCameraOffset, centeredCamera, clampZoom, nextDraggedOffset, nextZoomState } from './ui_state.mjs';
@@ -184,6 +187,11 @@ const ROLE_CHIPS = {
 const dom = {
   agentsLayer: document.getElementById('agents-layer'),
   agentLiveList: document.getElementById('agent-live-list'),
+  agentDetail: document.getElementById('agent-detail'),
+  villageTopSplitter: document.getElementById('village-top-splitter'),
+  villageRosterSplitter: document.getElementById('village-roster-splitter'),
+  villageDetailSplitter: document.getElementById('village-detail-splitter'),
+  villageResetLayout: document.getElementById('village-reset-layout'),
   needsAttentionCount: document.getElementById('needs-attention-count'),
   activeAgentCount: document.getElementById('active-agent-count'),
   idleAgentCount: document.getElementById('idle-agent-count'),
@@ -322,14 +330,34 @@ const cutawayFocusHandoff = createCutawayFocusHandoff({
   schedule: (callback) => window.requestAnimationFrame(callback),
   cancel: (handle) => window.cancelAnimationFrame(handle),
 });
-const liveEcgController = createLiveEcgController({ root: dom.agentLiveList });
+const liveEcgController = createLiveEcgController({ root: dom.workspace });
+const villageFirstLayoutController = createVillageFirstLayoutController({
+  workspace: dom.workspace,
+  handles: {
+    top: dom.villageTopSplitter,
+    roster: dom.villageRosterSplitter,
+    detail: dom.villageDetailSplitter,
+  },
+  storage: dashboardStorage,
+  viewport: () => ({ width: window.innerWidth, height: window.innerHeight }),
+  eventTarget: window,
+});
+const agentDetailView = createAgentDetailView({
+  root: dom.agentDetail,
+  documentRef: document,
+  spriteFor: getKenneyAgentSprite,
+  textFor: (key, params = {}) => key.startsWith('rooms.')
+    ? (getRoomCopy(key.split('.')[1], currentLocale).name || key)
+    : uiText(currentLocale, key, params),
+  onClose: () => villageFirstLayoutController.setDetailOpen(false),
+});
 const agentRosterView = createAgentRosterView({
   root: dom.agentLiveList,
   spriteFor: getKenneyAgentSprite,
   textFor: (key, params = {}) => key === 'select'
     ? uiText(currentLocale, 'commandDeck.inspector.liveDetail', params)
     : uiText(currentLocale, `commandDeck.roster.signal.${key}`, params),
-  onSelect: (selection) => selectCommandDeck(selection),
+  onActivate: (selection, trigger) => activateAgentDetail(selection.id, { trigger }),
 });
 const commandDeckLayoutController = createCommandDeckLayoutController({
   workspace: dom.workspace,
@@ -399,7 +427,9 @@ const syncCutawayStatusRail = () => {
 const pixelworldBridge = createPixelworldBridge({
   frame: dom.pixelworldFrame,
   origin: window.location.origin,
-  onFocus: (selection) => selectCommandDeck(selection, { publish: false }),
+  onFocus: (selection) => selection?.kind === 'agent'
+    ? activateAgentDetail(selection.id, { trigger: dom.pixelworldFrame, publish: false })
+    : selectCommandDeck(selection, { publish: false }),
   onCutawayStateChange: (open) => {
     if (open) {
       cancelDashboardFocusRestore?.();
@@ -1658,19 +1688,17 @@ function createAgentElement(agent) {
   `;
   const openDetail = (event) => {
     event.stopPropagation();
-    const current = agentViews.get(agent.agent)?.data || agent;
-    selectCommandDeck({ kind: 'agent', id: agent.agent });
-    openAgentDialog(current);
+    activateAgentDetail(agent.agent, { trigger: event.currentTarget || el });
   };
   el.querySelector('.agent-speech')?.addEventListener('click', openDetail);
   el.querySelector('.event-chip')?.addEventListener('click', openDetail);
   el.addEventListener('click', () => {
-    selectCommandDeck({ kind: 'agent', id: agent.agent });
+    activateAgentDetail(agent.agent, { trigger: el });
   });
   el.addEventListener('keydown', (event) => {
     if (!['Enter', ' '].includes(event.key)) return;
     event.preventDefault();
-    selectCommandDeck({ kind: 'agent', id: agent.agent });
+    activateAgentDetail(agent.agent, { trigger: el });
   });
   dom.agentsLayer.appendChild(el);
   return el;
@@ -2374,6 +2402,15 @@ function selectCommandDeck(selection, { publish = true } = {}) {
   return true;
 }
 
+function activateAgentDetail(agentId, { trigger = document.activeElement, publish = true } = {}) {
+  if (!selectCommandDeck({ kind: 'agent', id: agentId }, { publish })) return false;
+  const detail = buildAgentDetail(currentCommandDeckModel, agentId, { nowMs: Date.now() });
+  if (!detail) return false;
+  agentDetailView.open(detail, trigger);
+  villageFirstLayoutController.setDetailOpen(true);
+  return true;
+}
+
 function resumeCommandDeckLive() {
   currentCommandSelection = null;
   missionTraceController.resume();
@@ -2391,6 +2428,12 @@ function renderLiveMonitoring(snapshot = {}, nowMs = Date.now()) {
   if (dom.agentLiveList) {
     agentRosterView.render(rows, { selectedId: selectedAgentId });
     liveEcgController.sync(rows);
+  }
+  const openDetail = agentDetailView.current();
+  if (openDetail) {
+    const detail = buildAgentDetail(model, openDetail.id, { nowMs });
+    if (detail) agentDetailView.render(detail);
+    else agentDetailView.close();
   }
   if (dom.needsAttentionCount) dom.needsAttentionCount.textContent = uiText(currentLocale, 'commandDeck.roster.needsYou', { count: model.situation.attentionCount });
   if (dom.activeAgentCount) dom.activeAgentCount.textContent = uiText(currentLocale, 'commandDeck.roster.active', { count: model.situation.activeAgentCount });
@@ -3009,7 +3052,11 @@ dom.dashboardCardNext?.addEventListener('click', () => {
 
 window.addEventListener('resize', () => {
   if (dashboardLiveSnapshot) renderLiveMonitoring(dashboardLiveSnapshot);
+  const detail = agentDetailView.current();
+  if (detail) agentDetailView.render(detail);
 });
+
+dom.villageResetLayout?.addEventListener('click', () => villageFirstLayoutController.reset());
 
 dom.mobileModeButton?.addEventListener('click', () => {
   mobileMode = !mobileMode;
@@ -3112,6 +3159,7 @@ async function initializeApp() {
   missionTraceController.start();
   commandDeckLayoutController.start();
   renderCommandDeckControls();
+  villageFirstLayoutController.start();
   startLiveUiTicker();
   restartTimelineTimer();
   connectRealtime();

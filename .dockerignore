@@ -6,8 +6,9 @@
 **/__pycache__
 **/.pytest_cache
 .pixelverse-service/
-pixelworld_mvp/public/assets/private/
-**/assets/private/
+**/assets/private/*
+!pixelworld_mvp/public/assets/private/modern-office-v1.2/
+!pixelworld_mvp/public/assets/private/modern-office-v1.2/**
 .venv/
 **/.venv/
 .codex/

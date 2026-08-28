@@ -4,6 +4,10 @@ CLI_Pixelverse is a local visual observability UI for agent CLIs. It turns
 agent lifecycle events into a pixel-room scene so you can see when a CLI is
 thinking, using tools, delegating work, answering, idle, or offline.
 
+![CLI_Pixelverse command deck with active village agents](./docs/assets/command-deck-village.png)
+
+![Starting Cabin interior with an active agent](./docs/assets/starting-cabin-agent.png)
+
 ![CLI_Pixelverse animated UI preview](./pixel_ui.gif)
 
 The service runs as a Docker Compose app and exposes:
@@ -64,9 +68,10 @@ tied to an x86-specific interpreter path. To connect a different repository to
 an already running CLI_Pixelverse service:
 
 ```bash
+export PIXELVERSE_ROOT=/path/to/CLI_Pixelverse
 cd /path/to/other-project
-/path/to/CLI_Pixelverse/run.sh install-codex-hook "$PWD"
-source /path/to/CLI_Pixelverse/.pixelverse-service/activate.sh
+"$PIXELVERSE_ROOT/run.sh" install-codex-hook "$PWD"
+source "$PIXELVERSE_ROOT/.pixelverse-service/activate.sh"
 codex
 ```
 
@@ -86,17 +91,110 @@ failure instead of silently skipping it.
 For a fresh clone, this is the shortest reliable setup path. Codex is the
 default because it has the deepest project-hook integration.
 
+### Licensed Modern Office prerequisite
+
+The village uses the paid
+[Modern Office - Revamped - RPG Tileset](https://limezu.itch.io/modernoffice)
+for its furniture. Purchase and download the pack yourself; the license does
+not permit this repository to redistribute it.
+
+From the root of your own clone, create the private input directory:
+
+```bash
+mkdir -p private_assets/modern-office
+```
+
+Place the downloaded ZIP at this exact clone-relative path:
+
+```text
+private_assets/modern-office/Modern_Office_Revamped_v1.zip
+```
+
+If the ZIP already lives elsewhere, leave it there and use a portable absolute
+override instead:
+
+```bash
+PIXELVERSE_MODERN_OFFICE_ZIP=/absolute/path/to/Modern_Office_Revamped_v1.zip ./run.sh start
+```
+
+Otherwise the normal first start is enough:
+
+```bash
+./run.sh start
+```
+
+`start` validates the ZIP, prepares all 339 furniture sprites and their local
+alpha-collision manifest, and builds the complete local image. A missing,
+partial, corrupt, or wrong-version pack stops before Docker Compose instead of
+showing black furniture placeholders. After preparation, inspect the local
+state with:
+
+```bash
+./run.sh assets-status
+```
+
+Later, `./run.sh restart` reuses the saved agent/floorplan choices and rebuilds
+only when source files or prepared-asset metadata changed. Direct
+`docker compose build` is unsupported until `run.sh` has prepared the private
+assets.
+
+The ZIP, extracted PNGs, generated collision manifest, and prepared directory
+are Git-ignored. The locally built image contains the licensed sprites: do not
+commit these files, redistribute them, or push that image to a public registry.
+
+### Once per Pixelverse clone
+
 ```bash
 git clone https://github.com/a0665x/CLI_Pixelverse.git
 cd CLI_Pixelverse
+export PIXELVERSE_ROOT="$(pwd -P)"
 test -x ./run.sh || chmod +x ./run.sh
-./run.sh platform
-./run.sh floorplans
-PIXELVERSE_AGENT_KIND=codex ./run.sh down_up
-source .pixelverse-service/activate.sh
-./run.sh status
-./run.sh bridge-status
+"$PIXELVERSE_ROOT/run.sh" platform
+"$PIXELVERSE_ROOT/run.sh" floorplans
+PIXELVERSE_AGENT_KIND=codex "$PIXELVERSE_ROOT/run.sh" start
 ```
+
+`PIXELVERSE_ROOT` belongs to the current shell. Set it again after opening a
+new shell, or use the optional automatic activation below.
+
+### Once per target repository
+
+Install high-fidelity Codex prompt, tool, subagent, and stop hooks in every
+repository that should appear in Pixelverse:
+
+```bash
+cd /path/to/your-project
+"$PIXELVERSE_ROOT/run.sh" install-codex-hook "$PWD"
+```
+
+If `.codex/hooks.json` already exists, the installer preserves unknown fields
+and custom hooks, creates a timestamped backup, and adds only missing
+Pixelverse entries. Repeated installation is idempotent. Malformed JSON or a
+conflicting Pixelverse command stops with an error and leaves the original
+file unchanged. In the first Codex session for that repository, run `/hooks`
+and trust the project hook definition.
+
+### Once per current shell
+
+```bash
+source "$PIXELVERSE_ROOT/.pixelverse-service/activate.sh"
+command -v codex
+"$PIXELVERSE_ROOT/run.sh" status
+"$PIXELVERSE_ROOT/run.sh" bridge-status
+codex
+```
+
+Activation affects only CLI processes started afterward; Pixelverse cannot
+retroactively attach to an already-running Codex process.
+
+### Optional automatic activation for new Bash shells
+
+```bash
+"$PIXELVERSE_ROOT/run.sh" enable-shell-adapter
+```
+
+This writes a managed activation block for future Bash shells. It does not
+replace the original Codex executable.
 
 Open:
 
@@ -119,7 +217,7 @@ PIXELVERSE_AGENT_KIND=codex PIXELVERSE_FLOORPLAN=custom ./run.sh down_up
 Verify the local connection:
 
 ```bash
-bash -lc 'source .pixelverse-service/activate.sh && command -v codex'
+bash -lc 'source "$PIXELVERSE_ROOT/.pixelverse-service/activate.sh" && command -v codex'
 curl -fsS http://127.0.0.1:5660/health
 curl -fsS http://127.0.0.1:4567/health
 curl -fsS http://127.0.0.1:5660/api/world
@@ -165,21 +263,21 @@ codex
 For an already-open shell:
 
 ```bash
-source /path/to/CLI_Pixelverse/.pixelverse-service/activate.sh && codex
+source "$PIXELVERSE_ROOT/.pixelverse-service/activate.sh" && codex
 ```
 
 For another repo that also needs high-fidelity Codex tool/subagent events:
 
 ```bash
 cd /path/to/other-repo
-/path/to/CLI_Pixelverse/run.sh install-codex-hook
+"$PIXELVERSE_ROOT/run.sh" install-codex-hook "$PWD"
 codex
 ```
 
 Connection rule:
 
 - `codex` from any directory is enough for process-level presence, heartbeat, start, stop, and stale/offline tracking once the shell adapter is active.
-- `/path/to/CLI_Pixelverse/run.sh install-codex-hook` is required per repository when you also want Codex tool, prompt, subagent, and stop lifecycle events from that repository.
+- `"$PIXELVERSE_ROOT/run.sh" install-codex-hook "$PWD"` is required per repository when you also want Codex tool, prompt, subagent, and stop lifecycle events from that repository.
 - In each repository where `.codex/hooks.json` is installed, run `/hooks` once inside Codex and trust the project hook.
 
 ## Using The Codex Skills
@@ -222,9 +320,10 @@ Run this flow after cloning the repository:
 
 ```bash
 cd /path/to/CLI_Pixelverse
+export PIXELVERSE_ROOT="$(pwd -P)"
 
 PIXELVERSE_AGENT_KIND=codex ./run.sh down_up
-source .pixelverse-service/activate.sh
+source "$PIXELVERSE_ROOT/.pixelverse-service/activate.sh"
 ./run.sh status
 ./run.sh bridge-status
 which codex
@@ -247,7 +346,7 @@ Codex mode automatically installs the local CLI shim, writes the git-ignored
 `.codex/hooks.json` project hook for this repo, and enables the shell adapter
 for newly opened Bash terminals. Review and trust that project hook definition.
 Start a new Codex process after activation. A Codex process that was already
-open before `source .pixelverse-service/activate.sh` cannot be attached
+open before `source "$PIXELVERSE_ROOT/.pixelverse-service/activate.sh"` cannot be attached
 retroactively.
 
 The shell adapter writes a managed Bash startup line that
@@ -268,7 +367,7 @@ codex
 If you are already in an open shell, use the explicit one-liner:
 
 ```bash
-source /path/to/CLI_Pixelverse/.pixelverse-service/activate.sh && codex
+source "$PIXELVERSE_ROOT/.pixelverse-service/activate.sh" && codex
 ```
 
 For another repository, the wrapper gives you process-level lifecycle hooking
@@ -277,7 +376,7 @@ the Codex project hook there too:
 
 ```bash
 cd /path/to/other-repo
-/path/to/CLI_Pixelverse/run.sh install-codex-hook
+"$PIXELVERSE_ROOT/run.sh" install-codex-hook "$PWD"
 codex
 ```
 
@@ -372,13 +471,13 @@ add high-fidelity Codex hooks to another working directory, run this from that
 directory:
 
 ```bash
-/path/to/CLI_Pixelverse/run.sh install-codex-hook
+"$PIXELVERSE_ROOT/run.sh" install-codex-hook "$PWD"
 ```
 
 Enable native command interception in the current shell:
 
 ```bash
-source .pixelverse-service/activate.sh
+source "$PIXELVERSE_ROOT/.pixelverse-service/activate.sh"
 ```
 
 Enable interception automatically for newly opened Bash terminals:
@@ -401,10 +500,10 @@ If you want the current shell to connect immediately without opening a new
 terminal, use:
 
 ```bash
-source /path/to/CLI_Pixelverse/.pixelverse-service/activate.sh && codex
+source "$PIXELVERSE_ROOT/.pixelverse-service/activate.sh" && codex
 ```
 
-Start a new CLI process after activation. Pixelverse cannot retroactively attach to a CLI process that was already running before `source .pixelverse-service/activate.sh`.
+Start a new CLI process after activation. Pixelverse cannot retroactively attach to a CLI process that was already running before `source "$PIXELVERSE_ROOT/.pixelverse-service/activate.sh"`.
 
 While a wrapped CLI process is running, its adapter sends a heartbeat every 15 seconds. This keeps the UI synchronized with long-running Codex, Gemini CLI, Claude Code, Antigravity, Ollama, and Hermes sessions instead of letting the character become stale after the default 45-second timeout. Wrapper heartbeats use `preserve_phase=true`: they refresh liveness without replacing a newer planning, reasoning, or tool route. Gemini CLI, Claude Code, Antigravity, and Ollama currently expose wrapper-level lifecycle only; Codex project hooks and the Hermes plugin/gateway hook add deeper tool-level events.
 
@@ -420,7 +519,7 @@ While a wrapped CLI process is running, its adapter sends a heartbeat every 15 s
 | Hermes | `hermes`, `pixelverse-hermes` | Yes through Hermes plugin/gateway hook when installed | Medium/high depending on direct CLI plugin or gateway/OpenWebUI relay |
 | Generic | HTTP only | External system posts `/api/event` / `/api/heartbeat` | Depends on payload fidelity |
 
-Gemini is treated as the official `gemini` command-line interface. After `source .pixelverse-service/activate.sh`, `gemini` resolves to the Pixelverse shim first, then the shim executes the original official CLI binary.
+Gemini is treated as the official `gemini` command-line interface. After `source "$PIXELVERSE_ROOT/.pixelverse-service/activate.sh"`, `gemini` resolves to the Pixelverse shim first, then the shim executes the original official CLI binary.
 
 Each wrapped CLI process gets a separate PID-backed identity such as `codex-cli:12345`. Codex also reads the locally generated, git-ignored `.codex/hooks.json` lifecycle adapter. The first time Codex opens this project, use `/hooks` to review and trust the project hook definition; after that, supported tool, subagent, and explicit `$skill` prompt events are relayed automatically.
 
@@ -584,7 +683,7 @@ Use explicit Pixelverse wrapper commands:
 To make normal CLI commands observable in the current shell, prepend the shim directory:
 
 ```bash
-source .pixelverse-service/activate.sh
+source "$PIXELVERSE_ROOT/.pixelverse-service/activate.sh"
 ```
 
 Then use the CLIs normally:
@@ -615,7 +714,7 @@ The adapter is intentionally non-invasive:
 
 - It does not replace `/usr/local/bin`, `~/.local/bin`, npm global binaries, or installed agent repos.
 - It only creates files inside this repo's `.pixelverse-service/bin/`.
-- It affects shells after `source .pixelverse-service/activate.sh`, new Bash shells after `./run.sh enable-shell-adapter`, or explicit `pixelverse-*` wrapper calls.
+- It affects shells after `source "$PIXELVERSE_ROOT/.pixelverse-service/activate.sh"`, new Bash shells after `./run.sh enable-shell-adapter`, or explicit `pixelverse-*` wrapper calls.
 - For Hermes, the optional user plugin lives in `~/.hermes/plugins/pixelverse` and can be removed by deleting that folder.
 
 ## MCP Onboarding Tool
@@ -656,7 +755,7 @@ pixelverse_onboard {"agent_kind":"codex"}
 This installs the selected adapter, runs `./run.sh bridge-status`, and returns the shell activation command:
 
 ```bash
-source .pixelverse-service/activate.sh
+source "$PIXELVERSE_ROOT/.pixelverse-service/activate.sh"
 ```
 
 Available MCP tools:
@@ -745,7 +844,8 @@ This installs:
 Restart Hermes/OpenWebUI after installing the hook:
 
 ```bash
-cd /home/a0665x/Desktop/AI_AGX_WS/HermesAgent_OpenWebUI
+export PIXELVERSE_HERMES_ROOT=/path/to/HermesAgent_OpenWebUI
+cd "$PIXELVERSE_HERMES_ROOT"
 ./run.sh hermes-start
 ```
 
@@ -1051,7 +1151,7 @@ If the selected CLI character becomes offline after about 45 seconds, the CLI pr
 
 ```bash
 ./run.sh bridge-status
-source .pixelverse-service/activate.sh
+source "$PIXELVERSE_ROOT/.pixelverse-service/activate.sh"
 which codex
 ```
 

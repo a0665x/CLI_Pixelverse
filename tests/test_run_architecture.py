@@ -74,6 +74,47 @@ def test_generated_codex_hook_uses_portable_python_lookup(tmp_path: Path) -> Non
     assert all("/usr/bin/python3" not in command for command in commands)
 
 
+def test_install_codex_hook_preserves_existing_project_hook(tmp_path: Path) -> None:
+    target = tmp_path / "other-project"
+    codex = target / ".codex"
+    codex.mkdir(parents=True)
+    original = {
+        "custom": {"theme": "keep"},
+        "hooks": {
+            "Stop": [
+                {
+                    "hooks": [
+                        {"type": "command", "command": "./notify", "timeout": 9}
+                    ]
+                }
+            ]
+        },
+    }
+    (codex / "hooks.json").write_text(json.dumps(original), encoding="utf-8")
+
+    result = run_script("install-codex-hook", str(target))
+    payload = json.loads((codex / "hooks.json").read_text(encoding="utf-8"))
+
+    assert result.returncode == 0, result.stderr
+    assert payload["custom"] == {"theme": "keep"}
+    assert payload["hooks"]["Stop"][0] == original["hooks"]["Stop"][0]
+    assert "Backup:" in result.stdout
+
+
+def test_install_codex_hook_refuses_malformed_existing_json(tmp_path: Path) -> None:
+    target = tmp_path / "other-project"
+    codex = target / ".codex"
+    codex.mkdir(parents=True)
+    hooks = codex / "hooks.json"
+    hooks.write_text("{broken", encoding="utf-8")
+
+    result = run_script("install-codex-hook", str(target))
+
+    assert result.returncode != 0
+    assert hooks.read_text(encoding="utf-8") == "{broken"
+    assert "valid JSON" in result.stderr
+
+
 def test_compose_and_image_publish_the_resolved_architecture_contract() -> None:
     compose = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
     dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")

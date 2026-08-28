@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import type { FurnitureDefinition, InteriorDefinition } from '../src/world/types';
 import {
   commitPlacementCandidate,
@@ -6,6 +6,7 @@ import {
   furniturePointFromRenderPoint,
   furnitureRenderGeometry,
   navigationCells,
+  navigationBlockedCellKeys,
   resolvePlacementCandidate,
   resolvedFurnitureAsset,
   rotatedFootprint,
@@ -13,6 +14,11 @@ import {
   snapFurniturePoint,
   transformedAlphaBounds,
 } from '../src/rendering/interiorPlacement';
+import {
+  clearFurnitureAlphaMasksForTests,
+  installFurnitureAlphaMasks,
+  parseFurnitureAlphaMaskManifest,
+} from '../src/rendering/furnitureAlphaMasks';
 import { catalogItem } from '../src/rendering/modernOfficeCatalog';
 import { translateFurnitureGeometry } from '../src/rendering/canonicalFurnitureGeometry';
 
@@ -36,6 +42,8 @@ const oneCellDesk: FurnitureDefinition = {
 };
 
 describe('interior fine-grid placement', () => {
+  afterEach(() => clearFurnitureAlphaMasksForTests());
+
   it('centers even footprints on half coordinates', () => {
     expect(snapFurnitureCenter({ x: 4.2, y: 3.8 }, { width: 2, height: 3 }))
       .toEqual({ x: 4.5, y: 4 });
@@ -189,5 +197,34 @@ describe('interior fine-grid placement', () => {
 
   it('does not project non-blocking decoration into navigation', () => {
     expect(navigationCells({ ...sofa, layer: 'floor', blocksNavigation: false })).toEqual([]);
+  });
+
+  it('uses an installed alpha silhouette for route blockers while keeping editor cells rectangular', () => {
+    installFurnitureAlphaMasks(parseFurnitureAlphaMaskManifest({
+      schemaVersion: 1, alphaThreshold: 1,
+      assets: { '1': {
+        width: 32, height: 48,
+        runs: [[41, 0, 16], [42, 0, 16], [43, 0, 2], [44, 0, 2], [45, 0, 2], [46, 0, 2], [47, 0, 2]],
+      } },
+    }, { requiredAssetIds: [1] }));
+    const item = { ...sofa, kind: 'desk' as const, assetId: 1, point: { x: 4, y: 4 }, scale: 3 as const };
+
+    expect(navigationCells(item)).toEqual([
+      { x: 3, y: 4 }, { x: 4, y: 4 }, { x: 5, y: 4 },
+    ]);
+    expect(navigationBlockedCellKeys([item], { x: 10, y: 10 }, undefined, {
+      clearance: { x: 0, y: 0 },
+    })).toEqual(new Set(['3,4']));
+  });
+
+  it('fails explicitly when an installed manifest omits a resolved paid asset', () => {
+    installFurnitureAlphaMasks(parseFurnitureAlphaMaskManifest({
+      schemaVersion: 1, alphaThreshold: 1,
+      assets: { '1': { width: 32, height: 48, runs: [[41, 0, 1]] } },
+    }, { requiredAssetIds: [1] }));
+
+    expect(() => navigationBlockedCellKeys([
+      { ...sofa, kind: 'desk', assetId: 247 },
+    ], { x: 10, y: 10 })).toThrow(/collision mask.*247/i);
   });
 });

@@ -7,6 +7,7 @@ import type {
 } from '../world/types';
 import { catalogFurnitureRole, catalogFurnitureSemantic } from './modernOfficeCatalog';
 import { navigationBlockedCellKeys, navigationCells } from './interiorPlacement';
+import { AGENT_FEET_CLEARANCE, interactionAccess } from './interiorNavigationPolicy';
 
 const ACTION_SEMANTICS = {
   arrive: 'rest',
@@ -103,11 +104,15 @@ const pathDistance = (
   origin: GridPoint,
   target: GridPoint,
   furnitureId: string,
+  action: AgentAction,
 ): number | undefined => {
   const start = { x: Math.round(origin.x), y: Math.round(origin.y) };
   const goal = { x: Math.round(target.x), y: Math.round(target.y) };
   if (!inside(room, start) || !inside(room, goal)) return undefined;
-  const blocked = navigationBlockedCellKeys(room.furniture, target, furnitureId);
+  const blocked = navigationBlockedCellKeys(room.furniture, target, furnitureId, {
+    action,
+    clearance: AGENT_FEET_CLEARANCE,
+  });
   blocked.delete(pointKey(start));
   if (blocked.has(pointKey(goal))) return undefined;
   const open: Array<{ point: GridPoint; distance: number }> = [{ point: start, distance: 0 }];
@@ -168,11 +173,17 @@ export function nearestSemanticStation(
 ): SemanticStation | undefined {
   const semantic = semanticForAction(action);
   const nearest = room.furniture
-    .filter((item) => semanticForFurniture(item) === semantic && !excludedFurnitureIds.has(item.id))
+    .filter((item) => {
+      if (semanticForFurniture(item) !== semantic || excludedFurnitureIds.has(item.id)) return false;
+      if (item.kind === 'bed' || item.kind === 'chair' || item.kind === 'office-chair' || item.kind === 'sofa') {
+        return interactionAccess(item, action) !== 'none';
+      }
+      return true;
+    })
     .flatMap((furniture) => {
       const reachable = (point: GridPoint) => {
         if (excludedPointKeys.has(pointKey(point))) return undefined;
-        const distance = pathDistance(room, origin, point, furniture.id);
+        const distance = pathDistance(room, origin, point, furniture.id, action);
         return distance === undefined ? undefined : { furnitureId: furniture.id, point, distance };
       };
       if (furniture.interactionPoint && !explicitPointIsInvalid(room, furniture, furniture.interactionPoint)) {

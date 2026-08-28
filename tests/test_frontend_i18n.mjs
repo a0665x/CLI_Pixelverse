@@ -15,6 +15,21 @@ test('normalizeLocale falls back to English', () => {
   assert.equal(normalizeLocale('en-US'), 'en-US');
 });
 
+test('all supported locales contain complete Agent detail and village layout copy', () => {
+  for (const locale of ['en-US', 'zh-TW', 'ja-JP', 'ko-KR']) {
+    for (const key of [
+      'agentDetail.title', 'agentDetail.close', 'agentDetail.currentTask', 'agentDetail.room',
+      'agentDetail.tool', 'agentDetail.hook', 'agentDetail.lastSeen', 'agentDetail.process',
+      'agentDetail.session', 'agentDetail.recentEvents', 'agentDetail.noTask',
+      'agentDetail.role.main_agent', 'agentDetail.role.subagent',
+      'villageLayout.reset', 'villageLayout.resizeTop', 'villageLayout.resizeRoster',
+      'villageLayout.resizeDetail', 'agentState.editing_files', 'agentState.offline',
+    ]) {
+      assert.notEqual(uiStrings.uiText(locale, key), key, `${locale}:${key}`);
+    }
+  }
+});
+
 test('getLocaleStrings returns translated HUD labels', () => {
   const zh = getLocaleStrings('zh-TW');
   const en = getLocaleStrings('en-US');

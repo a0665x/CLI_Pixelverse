@@ -56,6 +56,17 @@ def passing_artifact() -> dict:
             "village_larger_than_roster": True,
             "pass": True,
         },
+        {
+            "name": "mobile",
+            "width": 390,
+            "height": 844,
+            "mode": "narrow",
+            "layout_bounds": {"world": [0, 140, 390, 704], "roster": [0, 44, 390, 96], "overlaps": [], "horizontalOverflow": False},
+            "roster_visible": True,
+            "village_visible": True,
+            "village_larger_than_roster": True,
+            "pass": True,
+        },
     ]
     expected_languages = {"en-US": "en", "zh-TW": "zh-Hant", "ja-JP": "ja", "ko-KR": "ko"}
     expected_help = {"en-US": "Help", "zh-TW": "說明", "ja-JP": "ヘルプ", "ko-KR": "도움말"}
@@ -113,6 +124,19 @@ def passing_artifact() -> dict:
             "signal_kinds": ["busy", "offline"],
             "reduced_motion_semantics": True,
             "external_copy_nodes": 4,
+            "pass": True,
+        },
+        "agent_detail": {
+            "roster_activation": {"id": "smoke-main", "opened": True},
+            "village_activation": {"id": "smoke-main", "opened": True},
+            "viewports": {
+                "desktop-large": {"detailMode": "drawer", "horizontalOverflow": False, "external_copy_nodes": 7, "pass": True},
+                "desktop-compact": {"detailMode": "drawer", "horizontalOverflow": False, "external_copy_nodes": 7, "pass": True},
+                "narrow": {"detailMode": "dialog", "horizontalOverflow": False, "external_copy_nodes": 7, "pass": True},
+                "mobile": {"detailMode": "dialog", "horizontalOverflow": False, "external_copy_nodes": 7, "pass": True},
+            },
+            "focus_restore": True,
+            "layout_resize": {"changed": True, "persisted": True, "reset": True},
             "pass": True,
         },
         "hook_routes": {
@@ -188,6 +212,7 @@ def test_browser_smoke_plan_and_artifact_paths_are_deterministic():
         ("desktop-large", 1440, 900, "desktop"),
         ("desktop-compact", 1024, 768, "desktop"),
         ("narrow", 800, 450, "narrow"),
+        ("mobile", 390, 844, "narrow"),
     ]
     assert plan.locales == ("en-US", "zh-TW", "ja-JP", "ko-KR")
     assert plan.artifact == ROOT / "tmp" / "command_deck_browser_smoke.json"
@@ -268,9 +293,10 @@ def test_all_runner_polls_use_explicit_predicate_or_value_wait_apis():
         if node.func.attr == "wait_value"
         and isinstance(node.func.value, ast.Name) and node.func.value.id == "browser"
     ]
-    assert len(runner_value_expressions) == 6
+    assert len(runner_value_expressions) == 7
     assert all(
         "localStorage.getItem" in expression or ".__commandDeckSmokeFocus.find" in expression
+        or "world-agent-status" in expression
         for expression in runner_value_expressions
     )
 
@@ -406,8 +432,8 @@ def test_cabin_furniture_is_explicitly_saved_before_its_screenshot_is_captured()
 def test_moving_subagent_is_sampled_before_waiting_for_the_main_route_and_screenshot_uses_roster():
     runner = SCRIPT.read_text(encoding="utf-8").split("def run_smoke", 1)[1]
 
-    assert runner.index("moving_sub = agent_dom_state(browser, plan.subagent)") < runner.index(
-        '"visible main agent displacement from Clone Bay toward Starting Cabin"'
+    assert runner.index("moving_sub = wait_agent_displacement(") < runner.index(
+        '"main agent displacement from Clone Bay toward Starting Cabin"'
     )
     assert "document.querySelectorAll('.agent-roster-card[data-selection-id]')" in runner
 
@@ -452,6 +478,13 @@ def test_complete_browser_evidence_satisfies_the_artifact_contract():
     smoke = load_module()
 
     assert smoke.evaluate_artifact(passing_artifact()) == []
+
+
+def test_browser_contract_covers_agent_detail_resize_focus_and_mobile_dialog():
+    source = SCRIPT.read_text(encoding="utf-8")
+    for token in ("agent_detail", "layout_resize", "focus_restore", "detailMode", "horizontalOverflow"):
+        assert token in source
+    assert "Viewport(\"mobile\", 390, 844, \"narrow\")" in source
 
 
 def test_contract_rejects_missing_viewport_actions_and_overlap():

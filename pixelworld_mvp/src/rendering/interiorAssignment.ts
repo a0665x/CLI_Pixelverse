@@ -10,9 +10,9 @@ import type {
 import {
   nearestSemanticStation,
   semanticForAction,
-  semanticForFurniture,
 } from './interiorFurnitureSemantics';
 import { navigationBlockedCellKeys } from './interiorPlacement';
+import { interactionAccess } from './interiorNavigationPolicy';
 
 export interface InteriorAgentSnapshot {
   agentId: string;
@@ -110,7 +110,7 @@ export function assignInteriorOccupants(
       facing: furniture.facing,
       furnitureId: furniture.id,
       icon: furniture.icon,
-      seated: semanticForFurniture(furniture) === 'rest',
+      seated: ['seat', 'sleep'].includes(interactionAccess(furniture, snapshot.action)),
     });
   }
   for (const snapshot of unmatched) {

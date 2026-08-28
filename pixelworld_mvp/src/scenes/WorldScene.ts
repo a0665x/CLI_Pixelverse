@@ -8,7 +8,11 @@ import { WORLD_PIXELS } from '../game/constants';
 import { emitWorldReady } from '../game/worldReady';
 import { NavigationGrid } from '../navigation/navigationGrid';
 import { planAgentTravel } from '../navigation/travelPlanner';
-import { ensureWorldAtlasTexture, preloadVillageAssets } from '../rendering/assetManifest';
+import {
+  ensureWorldAtlasTexture,
+  installVillageCollisionMasks,
+  preloadVillageAssets,
+} from '../rendering/assetManifest';
 import type { RenderedForeground } from '../rendering/buildingForeground';
 import { DepthOcclusionSystem } from '../rendering/DepthOcclusionSystem';
 import { AmbientAnimalSystem } from '../rendering/AmbientAnimalSystem';
@@ -64,6 +68,7 @@ export class WorldScene extends Phaser.Scene {
   preload(): void { preloadVillageAssets(this); }
 
   create(): void {
+    installVillageCollisionMasks(this);
     this.sceneReady = false;
     this.cleanupComplete = false;
     clearRenderedForegrounds(this.renderedForegrounds);
@@ -93,6 +98,9 @@ export class WorldScene extends Phaser.Scene {
       });
     });
     this.attachStatusOverlay(new StatusOverlaySystem(this, this.worldDefinition.buildings));
+    village.hitRegions.forEach(({ buildingId, bounds }) => {
+      this.statusOverlay?.setBuildingHitRegion(buildingId, bounds);
+    });
     this.agents.all().forEach((agent) => this.statusOverlay?.attachAgent(agent));
     this.depthSystem = new DepthOcclusionSystem(this, this.renderedForegrounds, () => this.agents.all());
     this.debugOverlay = new DebugOverlay(this, this.navigationGrid, this.worldDefinition, () => this.agents.all());

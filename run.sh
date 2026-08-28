@@ -58,7 +58,7 @@ platform_command() {
 SAVED_PIXELVERSE_PORT=""
 SAVED_BRIDGE_PORT=""
 case "$COMMAND" in
-  start|stop|restart|down_up|status|log|logs|doctor|bridge-status|test-hook|smoke-furniture-drag|down)
+  start|stop|restart|down_up|status|log|logs|doctor|bridge-status|test-hook|smoke-furniture-drag|assets-status|down)
     load_saved_port=1
     ;;
   *) load_saved_port=0 ;;
@@ -78,7 +78,7 @@ mkdir -p "$STATE_DIR" "$RUNTIME_DIR"
 
 usage() {
   cat <<EOF
-Usage: ./run.sh [start|stop|restart|down_up|status|log|logs|doctor|platform|bridge-status|floorplans|prepare-floorplan|map-builder|adapter|install-adapter|install-codex-hook|enable-shell-adapter|install-hermes-hook|hermes-chat|test-hook|smoke-furniture-drag|down]
+Usage: ./run.sh [start|stop|restart|down_up|status|log|logs|doctor|assets-status|platform|bridge-status|floorplans|prepare-floorplan|map-builder|adapter|install-adapter|install-codex-hook|enable-shell-adapter|install-hermes-hook|hermes-chat|test-hook|smoke-furniture-drag|down]
 
 Commands:
   start      Start Docker Compose and ask for interactive service choices.
@@ -88,6 +88,8 @@ Commands:
   status     Show container status and API endpoints.
   log/logs   Follow Docker Compose logs.
   doctor     Diagnose ports, legacy processes, Docker, Compose, and API health.
+  assets-status
+             Validate locally prepared Modern Office assets without starting Docker.
   platform   Show normalized host architecture and Docker target platform.
   bridge-status
              Show Pixelverse API, bridge hook, Hermes hook, and local adapter status.
@@ -109,8 +111,8 @@ Commands:
   hermes-chat
              Launch Hermes chat through the Pixelverse wrapper.
   test-hook  Send a synthetic lifecycle sequence and refresh tmp trajectory/debug files.
-  smoke-furniture-drag
-             Run repeatable Chromium smoke for cross-room furniture drag/clipping.
+  smoke-furniture-drag  Open a real second-layer interior and verify furniture assets/rendering
+             Checks the iframe cutaway, render PNG, collision manifest, console, and screenshot.
   down       Alias for stop.
 
 Non-interactive agent selection:
@@ -129,6 +131,12 @@ Common service flows:
   ./run.sh status
   ./run.sh log
   ./run.sh doctor
+
+Licensed Modern Office assets:
+  Place Modern_Office_Revamped_v1.zip at:
+    private_assets/modern-office/Modern_Office_Revamped_v1.zip
+  Or set PIXELVERSE_MODERN_OFFICE_ZIP=/absolute/path/to/Modern_Office_Revamped_v1.zip
+  ./run.sh assets-status
 
 Universal bridge client:
   python3 -m agent_bridges.pixelverse_client start --agent-type codex --agent codex-main --name Codex
@@ -361,6 +369,14 @@ write_env_file() {
   local agent_kind="$1"
   local exposure_mode="${2:-${PIXELVERSE_EXPOSURE_MODE:-localhost}}"
   local tailscale_public_url="${PIXELVERSE_TAILSCALE_URL:-}"
+  local hermes_repo_host="${PIXELVERSE_HERMES_REPO_HOST:-}"
+  if [[ -z "$hermes_repo_host" && -n "${PIXELVERSE_HERMES_ROOT:-}" ]]; then
+    hermes_repo_host="${PIXELVERSE_HERMES_ROOT%/}/hermes-agent"
+  fi
+  if [[ -z "$hermes_repo_host" ]]; then
+    hermes_repo_host="$STATE_DIR/hermes-agent-placeholder"
+  fi
+  mkdir -p "$hermes_repo_host"
   ensure_platform_env
   if [[ -z "$tailscale_public_url" ]]; then
     tailscale_public_url="$(tailscale_url 2>/dev/null || true)"
@@ -383,7 +399,7 @@ PIXELVERSE_NOTIFY_CMD=${PIXELVERSE_NOTIFY_CMD:-henry-notify}
 PIXELVERSE_HERMES_ENABLE=${PIXELVERSE_HERMES_ENABLE:-auto}
 PIXELVERSE_HERMES_WEB_BASE=${PIXELVERSE_HERMES_WEB_BASE:-http://host.docker.internal:9119}
 PIXELVERSE_HERMES_GATEWAY_HEALTH=${PIXELVERSE_HERMES_GATEWAY_HEALTH:-http://host.docker.internal:8642/health/detailed}
-PIXELVERSE_HERMES_REPO_HOST=${PIXELVERSE_HERMES_REPO_HOST:-/home/a0665x/Desktop/AI_AGX_WS/HermesAgent_OpenWebUI/hermes-agent}
+PIXELVERSE_HERMES_REPO_HOST=$hermes_repo_host
 PIXELVERSE_RUNTIME_DIR_HOST=${PIXELVERSE_RUNTIME_DIR_HOST:-$RUNTIME_DIR}
 PIXELVERSE_OLLAMA_BASE=${PIXELVERSE_OLLAMA_BASE:-http://host.docker.internal:11434}
 PIXELVERSE_TAILSCALE_ENABLE=$PIXELVERSE_TAILSCALE_ENABLE
@@ -777,7 +793,8 @@ docker_image_is_stale() {
 
 prepare_docker_build_metadata() {
   PIXELVERSE_BUILD_REVISION="$(python3 "$ROOT/scripts/docker_build_metadata.py" revision)"
-  PIXELVERSE_BUILD_FINGERPRINT="$(python3 "$ROOT/scripts/docker_build_metadata.py" fingerprint)"
+  PIXELVERSE_BUILD_FINGERPRINT="$(python3 "$ROOT/scripts/docker_build_metadata.py" fingerprint \
+    --prepared-metadata "$ROOT/pixelworld_mvp/public/assets/private/modern-office-v1.2/.prepared-assets.json")"
   export PIXELVERSE_BUILD_REVISION PIXELVERSE_BUILD_FINGERPRINT
 }
 
@@ -1167,19 +1184,11 @@ EOF
 
 install_codex_project_hooks() {
   local project_root="${1:-${PIXELVERSE_CODEX_PROJECT_ROOT:-$PWD}}"
-  local codex_dir="$project_root/.codex"
-  local target="$codex_dir/hooks.json"
-  if ! mkdir -p "$codex_dir"; then
-    echo "Could not create Codex hook directory: $codex_dir" >&2
+  local hook_script="$ROOT/scripts/codex_pixelverse_hook.py"
+  local installer="$ROOT/scripts/codex_hook_installer.py"
+  if ! /usr/bin/env python3 "$installer" "$project_root" "$hook_script"; then
     return 1
   fi
-  if ! write_codex_hooks_json "$target"; then
-    echo "Could not write Codex project hooks: $target" >&2
-    return 1
-  fi
-  echo
-  echo "Installed local Codex project hooks:"
-  echo "- $target"
   echo
   echo "Inside the first Codex session, run /hooks and trust the project hook definition."
 }
@@ -1589,13 +1598,10 @@ smoke_furniture_drag() {
   if [[ -n "${PIXELVERSE_SMOKE_SLOW_MO_MS:-}" ]]; then
     cmd+=(--slow-mo-ms "$PIXELVERSE_SMOKE_SLOW_MO_MS")
   fi
-  if [[ -n "${PIXELVERSE_SMOKE_SOURCE_ROOM:-}" ]]; then
-    cmd+=(--source-room "$PIXELVERSE_SMOKE_SOURCE_ROOM")
+  if [[ -n "${PIXELVERSE_SMOKE_BUILDING_ID:-}" ]]; then
+    cmd+=(--building-id "$PIXELVERSE_SMOKE_BUILDING_ID")
   fi
-  if [[ -n "${PIXELVERSE_SMOKE_TARGET_ROOM:-}" ]]; then
-    cmd+=(--target-room "$PIXELVERSE_SMOKE_TARGET_ROOM")
-  fi
-  echo "Running furniture drag browser smoke against $base_url ..."
+  echo "Running second-layer furniture browser smoke against $base_url ..."
   "${cmd[@]}"
 }
 
@@ -1622,6 +1628,9 @@ case "$COMMAND" in
     ;;
   doctor)
     doctor_service
+    ;;
+  assets-status)
+    python3 "$ROOT/scripts/provision_modern_office_assets.py" --status
     ;;
   platform)
     platform_command

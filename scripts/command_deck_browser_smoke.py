@@ -69,6 +69,7 @@ class BrowserSmokePlan:
         Viewport("desktop-large", 1440, 900, "desktop"),
         Viewport("desktop-compact", 1024, 768, "desktop"),
         Viewport("narrow", 800, 450, "narrow"),
+        Viewport("mobile", 390, 844, "narrow"),
     )
     locales: tuple[str, ...] = SUPPORTED_LOCALES
     artifact: Path = TMP / "command_deck_browser_smoke.json"
@@ -92,6 +93,7 @@ def evaluate_artifact(artifact: dict[str, Any]) -> list[str]:
         "desktop-large": (1440, 900, "desktop"),
         "desktop-compact": (1024, 768, "desktop"),
         "narrow": (800, 450, "narrow"),
+        "mobile": (390, 844, "narrow"),
     }
     viewports = {
         item.get("name"): item
@@ -114,6 +116,31 @@ def evaluate_artifact(artifact: dict[str, Any]) -> list[str]:
             failures.append(f"{name}: village was not larger than the agent roster")
         if item.get("pass") is not True:
             failures.append(f"{name}: viewport did not pass")
+
+    agent_detail = _mapping(artifact.get("agent_detail"))
+    for source in ("roster_activation", "village_activation"):
+        activation = _mapping(agent_detail.get(source))
+        if not activation.get("id") or activation.get("opened") is not True:
+            failures.append(f"agent detail {source.replace('_', ' ')} was not verified")
+    detail_viewports = _mapping(agent_detail.get("viewports"))
+    for name, (_, _, shell_mode) in expected_viewports.items():
+        evidence = _mapping(detail_viewports.get(name))
+        expected_mode = "drawer" if shell_mode == "desktop" else "dialog"
+        if evidence.get("detailMode") != expected_mode:
+            failures.append(f"{name}: Agent detail did not use {expected_mode} mode")
+        if evidence.get("horizontalOverflow") is not False:
+            failures.append(f"{name}: Agent detail caused horizontal overflow")
+        if int(evidence.get("external_copy_nodes") or 0) <= 0:
+            failures.append(f"{name}: Agent detail external copy was not verified")
+        if evidence.get("pass") is not True:
+            failures.append(f"{name}: Agent detail viewport did not pass")
+    if agent_detail.get("focus_restore") is not True:
+        failures.append("Agent detail did not restore focus after Escape")
+    resize = _mapping(agent_detail.get("layout_resize"))
+    if not all(resize.get(key) is True for key in ("changed", "persisted", "reset")):
+        failures.append("Agent detail layout resize/persistence/reset was not verified")
+    if agent_detail.get("pass") is not True:
+        failures.append("Agent detail evidence did not pass")
 
     locale_coverage = _mapping(artifact.get("locale_coverage"))
     supported = locale_coverage.get("supported")
@@ -409,6 +436,11 @@ class ChromiumDevTools:
         self.mouse("mouseMoved", x, y)
         self.mouse("mousePressed", x, y, button=button, buttons=mask)
         self.mouse("mouseReleased", x, y, button=button)
+
+    def key(self, key: str, code: str | None = None) -> None:
+        payload = {"key": key, "code": code or key, "windowsVirtualKeyCode": 27 if key == "Escape" else 0}
+        self.call("Input.dispatchKeyEvent", {"type": "keyDown", **payload})
+        self.call("Input.dispatchKeyEvent", {"type": "keyUp", **payload})
 
     def drag(
         self,
@@ -778,6 +810,7 @@ def layout_snapshot(browser: ChromiumDevTools) -> dict[str, Any]:
         const workspace = document.querySelector('.map-first-workspace');
         const world = document.querySelector('#world');
         const rect = (node) => {
+          if (!node) return [0, 0, 0, 0];
           const box = node.getBoundingClientRect();
           return [Math.round(box.left), Math.round(box.top), Math.round(box.width), Math.round(box.height)];
         };
@@ -798,6 +831,9 @@ def layout_snapshot(browser: ChromiumDevTools) -> dict[str, Any]:
           world: rect(world),
           top: rect(document.querySelector('#top-status-bar')),
           roster: rect(document.querySelector('#agent-roster')),
+          detail: rect(document.querySelector('#agent-detail:not([hidden])')),
+          detailMode: document.querySelector('#agent-detail')?.dataset.agentDetailMode || '',
+          horizontalOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
           overlaps,
         };
       })()
@@ -826,8 +862,100 @@ def exercise_layout(browser: ChromiumDevTools, viewport: Viewport) -> dict[str, 
         "roster_visible": roster_visible,
         "village_visible": village_visible,
         "village_larger_than_roster": village_larger,
-        "pass": roster_visible and village_visible and village_larger and not bounds["overlaps"],
+        "pass": roster_visible and village_visible and village_larger and not bounds["overlaps"]
+        and bounds["horizontalOverflow"] is False,
     }
+
+
+def agent_detail_evidence(browser: ChromiumDevTools, plan: BrowserSmokePlan, agent_id: str) -> dict[str, Any]:
+    selector = f'.agent-roster-card[data-selection-id="{agent_id}"]'
+    viewport_evidence: dict[str, Any] = {}
+    roster_activation: dict[str, Any] = {}
+    focus_restore = True
+    layout_resize = {"changed": False, "persisted": False, "reset": False}
+
+    for index, viewport in enumerate(plan.viewports):
+        browser.set_viewport(viewport.width, viewport.height)
+        browser.evaluate("window.dispatchEvent(new Event('resize')); true")
+        browser.wait_until(f"document.querySelector({json.dumps(selector)})", f"{viewport.name} roster detail trigger")
+        browser.evaluate(f"document.querySelector({json.dumps(selector)}).focus(); true")
+        click(browser, selector)
+        browser.wait_until(
+            f"!document.querySelector('#agent-detail')?.hidden && document.querySelector('#agent-detail')?.dataset.agentId === {json.dumps(agent_id)}",
+            f"{viewport.name} Agent detail open",
+        )
+        evidence = _mapping(browser.evaluate("""
+          (() => {
+            const detail = document.querySelector('#agent-detail');
+            const box = detail.getBoundingClientRect();
+            return {
+              id: detail.dataset.agentId || '',
+              detailMode: detail.dataset.agentDetailMode || '',
+              width: Math.round(box.width), height: Math.round(box.height),
+              horizontalOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+              external_copy_nodes: detail.querySelectorAll('[data-external-copy="true"]').length,
+            };
+          })()
+        """))
+        expected_mode = "drawer" if viewport.mode == "desktop" else "dialog"
+        evidence["pass"] = bool(
+            evidence.get("id") == agent_id
+            and evidence.get("detailMode") == expected_mode
+            and evidence.get("horizontalOverflow") is False
+            and int(evidence.get("external_copy_nodes") or 0) > 0
+        )
+        viewport_evidence[viewport.name] = evidence
+        if index == 0:
+            roster_activation = {"id": evidence.get("id"), "opened": True}
+        browser.key("Escape")
+        browser.wait_until("document.querySelector('#agent-detail')?.hidden", f"{viewport.name} Agent detail Escape close")
+        evidence["focus_restored"] = bool(browser.evaluate(
+            f"document.activeElement === document.querySelector({json.dumps(selector)})"
+        ))
+        evidence["active_element"] = browser.evaluate(
+            "document.activeElement?.className || document.activeElement?.id || document.activeElement?.tagName || ''"
+        )
+        focus_restore = focus_restore and evidence["focus_restored"]
+        if index == 0:
+            before = _mapping(browser.evaluate("JSON.parse(localStorage.getItem('pixelverse:village-first-layout:v1') || '{}')"))
+            browser.evaluate("document.querySelector('#village-top-splitter').focus(); true")
+            browser.key("ArrowDown")
+            changed = _mapping(browser.evaluate("JSON.parse(localStorage.getItem('pixelverse:village-first-layout:v1') || '{}')"))
+            browser.reload(); wait_world(browser)
+            persisted = _mapping(browser.evaluate("JSON.parse(localStorage.getItem('pixelverse:village-first-layout:v1') || '{}')"))
+            browser.evaluate("document.querySelector('#village-top-splitter').dispatchEvent(new MouseEvent('dblclick', {bubbles:true})); true")
+            reset = _mapping(browser.evaluate("JSON.parse(localStorage.getItem('pixelverse:village-first-layout:v1') || '{}')"))
+            layout_resize = {
+                "changed": changed.get("topHeight") != before.get("topHeight"),
+                "persisted": persisted.get("topHeight") == changed.get("topHeight"),
+                "reset": reset.get("topHeight") == 56,
+            }
+
+    browser.set_viewport(1440, 900)
+    browser.evaluate("window.dispatchEvent(new Event('resize')); true")
+    village_activation = {"id": agent_id, "opened": False}
+    browser.evaluate(f"""
+      (() => {{
+        const frame = document.querySelector('#pixelworld-frame');
+        window.dispatchEvent(new MessageEvent('message', {{
+          data: {{ type: 'pixelverse.command.focus', selection: {{ kind: 'agent', id: {json.dumps(agent_id)} }}, sequence: Date.now() }},
+          origin: location.origin,
+          source: frame.contentWindow,
+        }}));
+        return true;
+      }})()
+    """)
+    village_activation["opened"] = bool(browser.wait_until(
+        f"!document.querySelector('#agent-detail')?.hidden && document.querySelector('#agent-detail')?.dataset.agentId === {json.dumps(agent_id)}",
+        "village Agent detail activation through the supported bridge",
+    ))
+    browser.key("Escape")
+
+    passed = bool(roster_activation.get("opened") and village_activation.get("opened") and focus_restore
+                  and all(layout_resize.values()) and all(item.get("pass") for item in viewport_evidence.values()))
+    return {"roster_activation": roster_activation, "village_activation": village_activation,
+            "viewports": viewport_evidence, "focus_restore": focus_restore,
+            "layout_resize": layout_resize, "pass": passed}
 
 
 def agent_dom_state(browser: ChromiumDevTools, agent_id: str) -> dict[str, Any]:
@@ -848,6 +976,24 @@ def wait_agent(browser: ChromiumDevTools, agent_id: str) -> dict[str, Any]:
         f"rendered agent {agent_id}",
     )
     return agent_dom_state(browser, agent_id)
+
+
+def wait_agent_displacement(
+    browser: ChromiumDevTools,
+    agent_id: str,
+    initial_transform: str,
+    description: str,
+) -> dict[str, Any]:
+    """Capture the changed transform in the same browser evaluation that observes it."""
+    return _mapping(browser.wait_value(f"""
+      (() => {{
+        const child = document.querySelector('#pixelworld-frame')?.contentDocument;
+        const node = child?.querySelector('.world-agent-status[data-agent-id={json.dumps(agent_id)}]');
+        if (!node?.style.transform || node.style.transform === {json.dumps(initial_transform)}) return null;
+        const box = node.getBoundingClientRect();
+        return {{ transform: node.style.transform, hidden: node.hidden, x: box.x, y: box.y }};
+      }})()
+    """, description))
 
 
 def locale_evidence(browser: ChromiumDevTools, locale: str) -> dict[str, Any]:
@@ -1353,6 +1499,7 @@ def run_smoke(plan: BrowserSmokePlan) -> dict[str, Any]:
         "viewports": [],
         "locale_coverage": {},
         "agent_overview": {},
+        "agent_detail": {},
         "hook_routes": {},
         "starting_cabin": {},
         "furniture_invariants": {},
@@ -1387,14 +1534,13 @@ def run_smoke(plan: BrowserSmokePlan) -> dict[str, Any]:
 
             post_event(plan.base_url, synthetic_event(plan.subagent, "subagent", "tool.started", "working", "tool_forge", "Subagent uses external browser tool"))
             post_event(plan.base_url, synthetic_event(plan.main_agent, "main_agent", "completed", "idle", "standby_dock", "Main agent returns to Starting Cabin"))
-            browser.wait_until(
-                f"(() => {{ const node = document.querySelector('#pixelworld-frame')?.contentDocument?.querySelector('.world-agent-status[data-agent-id={json.dumps(plan.subagent)}]'); return node && node.style.transform && node.style.transform !== {json.dumps(initial_sub.get('transform'))}; }})()",
+            moving_sub = wait_agent_displacement(
+                browser, plan.subagent, str(initial_sub.get("transform") or ""),
                 "real subagent displacement from Clone Bay to Tool Forge",
             )
-            moving_sub = agent_dom_state(browser, plan.subagent)
-            browser.wait_until(
-                f"(() => {{ const node = document.querySelector('#pixelworld-frame')?.contentDocument?.querySelector('.world-agent-status[data-agent-id={json.dumps(plan.main_agent)}]'); return node && !node.hidden && node.style.transform && node.style.transform !== {json.dumps(initial_main.get('transform'))}; }})()",
-                "visible main agent displacement from Clone Bay toward Starting Cabin",
+            wait_agent_displacement(
+                browser, plan.main_agent, str(initial_main.get("transform") or ""),
+                "main agent displacement from Clone Bay toward Starting Cabin",
             )
             visible_agents = browser.evaluate("""
               (() => [...document.querySelectorAll('.agent-roster-card[data-selection-id]')]
@@ -1413,6 +1559,7 @@ def run_smoke(plan: BrowserSmokePlan) -> dict[str, Any]:
                 "busy and offline roster ECG states",
             )
             artifact["agent_overview"] = agent_overview_evidence(browser, plan.subagent)
+            artifact["agent_detail"] = agent_detail_evidence(browser, plan, plan.subagent)
             locale_checks: dict[str, Any] = {}
             for locale in plan.locales:
                 check = locale_evidence(browser, locale)

@@ -42,6 +42,13 @@ const roomCommandCopy: Record<VillageLocale, string> = {
 export const interiorRoomCommandCopy = (locale: unknown): string =>
   roomCommandCopy[normalizeVillageLocale(locale)];
 
+export const interiorRuntimeCopy = {
+  'zh-TW': { pathBlocked: '移動路徑受阻' },
+  'en-US': { pathBlocked: 'Movement path blocked' },
+  'ja-JP': { pathBlocked: '移動経路が塞がれています' },
+  'ko-KR': { pathBlocked: '이동 경로가 막혔습니다' },
+} as const satisfies Record<VillageLocale, { pathBlocked: string }>;
+
 export const semanticFurnitureCopy = {
   'zh-TW': { rest: '休息', search: '搜尋', work: '工作' },
   'en-US': { rest: 'Rest', search: 'Search', work: 'Work' },

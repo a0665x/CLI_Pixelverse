@@ -41,8 +41,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
-      - ${PIXELVERSE_HERMES_REPO_HOST:-/home/a0665x/Desktop/AI_AGX_WS/HermesAgent_OpenWebUI/hermes-agent}:/host-hermes-agent:ro
+      - ${PIXELVERSE_HERMES_REPO_HOST:-./.pixelverse-service/hermes-agent-placeholder}:/host-hermes-agent:ro
       - ${PIXELVERSE_RUNTIME_DIR_HOST:-./.pixelverse-service/runtime}:/app/runtime
       - ${PIXELVERSE_GLOBAL_MAP_DIR_HOST:-./tmp/global_map}:/app/tmp/global_map
-      - "${PIXELVERSE_MODERN_OFFICE_ASSET_DIR_HOST:-./.pixelverse-service/private-assets/modern-office-v1.2}:/app/public/assets/private/modern-office-v1.2:ro"
     restart: unless-stopped
