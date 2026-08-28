@@ -108,7 +108,6 @@ const requiredKeys = [
   'commandDeck.accessibility.pose',
   'commandDeck.accessibility.interaction',
   'commandDeck.accessibility.poseFallback',
-  'commandDeck.accessibility.appleDogDoor',
   'commandDeck.eventChip.pixel.blocked',
   'commandDeck.eventChip.pixel.reading_files',
   'commandDeck.eventChip.pixel.editing_files',
@@ -261,11 +260,13 @@ test('exports production formatters used by active rendered locale surfaces', ()
   ]) assert.equal(typeof localeModule[name], 'function', `${name} must be exported`);
 });
 
-test('AppleDog door accessibility title is catalog-owned in all locales', async () => {
-  const app = await readFile(new URL('../public/app.mjs', import.meta.url), 'utf8');
-  assert.doesNotMatch(app, /AppleDog door tile/);
-  assert.match(app, /commandDeck\.accessibility\.appleDogDoor/);
-  assert.equal(new Set(locales.map((locale) => localeModule.uiText(locale, 'commandDeck.accessibility.appleDogDoor'))).size, 4);
+test('accessibility catalogs expose only active pose and interaction surfaces', () => {
+  for (const locale of locales) {
+    assert.deepEqual(
+      Object.keys(localeModule.UI_CATALOG[locale].commandDeck.accessibility).sort(),
+      ['interaction', 'pose', 'poseFallback'],
+    );
+  }
 });
 
 test('production app wires every retained-state rerender through the locale controller', async () => {
@@ -284,8 +285,8 @@ test('active formatters keep full DOM strings and delegate visual truncation to 
     assert.doesNotMatch(source, /slice\(0,[^\n]+…/, `${path} still slices active DOM copy`);
   }
   const html = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
-  assert.match(html, /\.event-chip\s*\{[\s\S]*?text-overflow:\s*ellipsis/);
-  assert.match(html, /\.agent-speech\.show\s*\{[\s\S]*?line-clamp:\s*3/);
+  assert.match(html, /\.dashboard-card-item-title\s*\{[^}]*text-overflow:\s*ellipsis/);
+  assert.match(html, /\.dashboard-card-item-detail--clamped\s*\{[\s\S]*?line-clamp:\s*2/);
 });
 
 test('production DOM payload presenters preserve markup-like task and summary bytes', async () => {

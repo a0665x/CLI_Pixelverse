@@ -20,7 +20,7 @@ const EN_ACTIVE_SURFACES = {
   activity: { thinking: ({ room }) => `Reasoning quietly inside ${room}`, planning: ({ room }) => `Planning steps inside ${room}`, working: ({ task, room }) => `Using ${task} inside ${room}`, offline: () => 'No fresh heartbeat from the main runtime', waiting: ({ room }) => `Waiting in ${room} for the next task`, external: ({ value }) => `Activity: ${value}` },
   ambient: { planning: ({ task }) => task ? `Plan: ${task}` : 'Planning route…', thinking: ({ task }) => task ? `Think: ${task}` : 'Reasoning quietly', working: ({ task }) => task ? `Doing: ${task}` : 'Running tools', offline: () => 'Signal lost', standby: () => 'Standing by' },
   furniture: { scale: ({ scale }) => `Scale ${scale}`, fallback: 'Furniture', coordinate: ({ label, room, x, y, snap, scale }) => `${label} · ${room} · x ${x}%, y ${y}% · Grid ${snap}% · Scale ${scale}` },
-  accessibility: { pose: ({ pose }) => `${pose} pose`, interaction: ({ interaction }) => `${interaction} interaction`, poseFallback: 'Active', appleDogDoor: 'AppleDog room door' },
+  accessibility: { pose: ({ pose }) => `${pose} pose`, interaction: ({ interaction }) => `${interaction} interaction`, poseFallback: 'Active' },
   eventChip: {
     pixel: { reading_files: 'Reading files', editing_files: 'Editing files', shell_command: 'Running shell command', browsing: 'Browsing', external_tool: 'Using external tool', blocked: 'Blocked', self_healing: 'Self-healing', awaiting_input: 'Awaiting input', initializing: 'Initializing', sleeping: 'Sleeping', collaborating: 'Collaborating', invoking_skill: 'Invoking skill', tool_call: 'Tool call', executing: 'Executing', responding: 'Responding' },
     events: { taskStart: 'Task started', reasoning: 'Reasoning', toolStart: ({ tool }) => `${tool || 'Tool'} start`, toolDone: ({ tool }) => `${tool || 'Tool'} done`, toolRoute: 'Tool route', standby: 'Standby' },
@@ -38,7 +38,7 @@ const ZH_ACTIVE_SURFACES = {
   activity: { thinking: ({ room }) => `在${room}安靜推理`, planning: ({ room }) => `在${room}規劃步驟`, working: ({ task, room }) => `在${room}執行 ${task}`, offline: () => '主執行環境沒有新的心跳', waiting: ({ room }) => `在${room}等待下一項任務`, external: ({ value }) => `活動：${value}` },
   ambient: { planning: ({ task }) => task ? `規劃：${task}` : '正在拆解需求', thinking: ({ task }) => task ? `思考：${task}` : '正在整理推理', working: ({ task }) => task ? `執行：${task}` : '工具運作中', offline: () => '訊號中斷', standby: () => '待命中' },
   furniture: { scale: ({ scale }) => `縮放 ${scale}`, fallback: '家具', coordinate: ({ label, room, x, y, snap, scale }) => `${label} · ${room} · x ${x}%、y ${y}% · 網格 ${snap}% · 縮放 ${scale}` },
-  accessibility: { pose: ({ pose }) => `${pose}姿勢`, interaction: ({ interaction }) => `互動：${interaction}`, poseFallback: '活動中', appleDogDoor: 'AppleDog 房間門' },
+  accessibility: { pose: ({ pose }) => `${pose}姿勢`, interaction: ({ interaction }) => `互動：${interaction}`, poseFallback: '活動中' },
   eventChip: {
     pixel: { reading_files: '讀取檔案', editing_files: '編輯檔案', shell_command: '執行 Shell 指令', browsing: '瀏覽網頁', external_tool: '使用外部工具', blocked: '受阻', self_healing: '自我修復', awaiting_input: '等待輸入', initializing: '初始化', sleeping: '休眠', collaborating: '分身討論', invoking_skill: '技能調用', tool_call: '工具調用', executing: '代碼執行', responding: '輸出響應' },
     events: { taskStart: '任務開始', reasoning: '規劃推演', toolStart: ({ tool }) => `${tool || '工具'} 啟動`, toolDone: ({ tool }) => `${tool || '工具'} 完成`, toolRoute: '工具序列', standby: '回到待命' },
@@ -56,7 +56,7 @@ const JA_ACTIVE_SURFACES = {
   activity: { thinking: ({ room }) => `${room}で静かに推論中`, planning: ({ room }) => `${room}で手順を計画中`, working: ({ task, room }) => `${room}で ${task} を実行中`, offline: () => 'メイン実行環境から新しいハートビートがありません', waiting: ({ room }) => `${room}で次のタスクを待機中`, external: ({ value }) => `活動：${value}` },
   ambient: { planning: ({ task }) => task ? `計画：${task}` : '要件を整理中…', thinking: ({ task }) => task ? `思考：${task}` : '静かに推論中', working: ({ task }) => task ? `実行：${task}` : 'ツールを実行中', offline: () => '通信が途切れました', standby: () => '待機中' },
   furniture: { scale: ({ scale }) => `倍率 ${scale}`, fallback: '家具', coordinate: ({ label, room, x, y, snap, scale }) => `${label}・${room}・x ${x}%、y ${y}%・グリッド ${snap}%・倍率 ${scale}` },
-  accessibility: { pose: ({ pose }) => `${pose}の姿勢`, interaction: ({ interaction }) => `操作：${interaction}`, poseFallback: '活動中', appleDogDoor: 'AppleDog の部屋ドア' },
+  accessibility: { pose: ({ pose }) => `${pose}の姿勢`, interaction: ({ interaction }) => `操作：${interaction}`, poseFallback: '活動中' },
   eventChip: {
     pixel: { reading_files: 'ファイルを読取中', editing_files: 'ファイルを編集中', shell_command: 'シェルコマンド実行中', browsing: '閲覧中', external_tool: '外部ツール使用中', blocked: 'ブロック中', self_healing: '自己修復中', awaiting_input: '入力待ち', initializing: '初期化中', sleeping: '休止中', collaborating: '共同作業中', invoking_skill: 'スキル実行中', tool_call: 'ツール呼び出し', executing: '実行中', responding: '応答作成中' },
     events: { taskStart: 'タスク開始', reasoning: '推論中', toolStart: ({ tool }) => `${tool || 'ツール'}を開始`, toolDone: ({ tool }) => `${tool || 'ツール'}を完了`, toolRoute: 'ツール経路', standby: '待機へ戻る' },
@@ -74,7 +74,7 @@ const KO_ACTIVE_SURFACES = {
   activity: { thinking: ({ room }) => `${room}에서 조용히 추론 중`, planning: ({ room }) => `${room}에서 단계를 계획 중`, working: ({ task, room }) => `${room}에서 ${task} 실행 중`, offline: () => '메인 실행 환경에서 새 하트비트가 없습니다', waiting: ({ room }) => `${room}에서 다음 작업 대기 중`, external: ({ value }) => `활동: ${value}` },
   ambient: { planning: ({ task }) => task ? `계획: ${task}` : '요구사항 정리 중…', thinking: ({ task }) => task ? `생각: ${task}` : '조용히 추론 중', working: ({ task }) => task ? `실행: ${task}` : '도구 실행 중', offline: () => '신호가 끊겼습니다', standby: () => '대기 중' },
   furniture: { scale: ({ scale }) => `배율 ${scale}`, fallback: '가구', coordinate: ({ label, room, x, y, snap, scale }) => `${label} · ${room} · x ${x}%, y ${y}% · 그리드 ${snap}% · 배율 ${scale}` },
-  accessibility: { pose: ({ pose }) => `${pose} 자세`, interaction: ({ interaction }) => `상호작용: ${interaction}`, poseFallback: '활동 중', appleDogDoor: 'AppleDog 방 문' },
+  accessibility: { pose: ({ pose }) => `${pose} 자세`, interaction: ({ interaction }) => `상호작용: ${interaction}`, poseFallback: '활동 중' },
   eventChip: {
     pixel: { reading_files: '파일 읽는 중', editing_files: '파일 편집 중', shell_command: '셸 명령 실행 중', browsing: '탐색 중', external_tool: '외부 도구 사용 중', blocked: '차단됨', self_healing: '자가 복구 중', awaiting_input: '입력 대기', initializing: '초기화 중', sleeping: '절전 중', collaborating: '협업 중', invoking_skill: '스킬 호출 중', tool_call: '도구 호출', executing: '실행 중', responding: '응답 작성 중' },
     events: { taskStart: '작업 시작', reasoning: '추론 중', toolStart: ({ tool }) => `${tool || '도구'} 시작`, toolDone: ({ tool }) => `${tool || '도구'} 완료`, toolRoute: '도구 경로', standby: '대기로 복귀' },

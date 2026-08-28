@@ -9,6 +9,11 @@ import {
   KENNEY_PACK,
 } from '../public/kenney_assets.mjs';
 
+function tileNumber(sprite) {
+  const match = String(sprite.src || '').match(/tile_(\d+)\.png$/);
+  return match ? Number(match[1]) : null;
+}
+
 test('Kenney pack metadata is CC0', () => {
   assert.equal(KENNEY_PACK.license, 'CC0');
   assert.match(KENNEY_PACK.sourceUrl, /kenney\.nl\/assets\/rpg-urban-pack/);
@@ -35,6 +40,26 @@ test('agent sprites map by role, facing, and walk frame', () => {
   assert.equal(main.flipX, false);
   assert.match(branch.src, /tile_0080\.png$/);
   assert.equal(branch.flipX, false);
+});
+
+test('main agent exposes distinct directional idle sprites', () => {
+  assert.equal(tileNumber(getKenneyAgentSprite({ role: 'main_agent', state: 'idle', facing: 'left', frame: 0 })), 212);
+  assert.equal(tileNumber(getKenneyAgentSprite({ role: 'main_agent', state: 'idle', facing: 'down', frame: 0 })), 213);
+  assert.equal(tileNumber(getKenneyAgentSprite({ role: 'main_agent', state: 'idle', facing: 'up', frame: 0 })), 214);
+  assert.equal(tileNumber(getKenneyAgentSprite({ role: 'main_agent', state: 'idle', facing: 'right', frame: 0 })), 215);
+});
+
+test('moving agents use directional active frames without losing facing', () => {
+  assert.equal(tileNumber(getKenneyAgentSprite({ role: 'main_agent', state: 'working', facing: 'left', frame: 0 })), 212);
+  assert.equal(tileNumber(getKenneyAgentSprite({ role: 'main_agent', state: 'working', facing: 'left', frame: 1 })), 239);
+  assert.equal(tileNumber(getKenneyAgentSprite({ role: 'main_agent', state: 'working', facing: 'down', frame: 1 })), 240);
+  assert.equal(tileNumber(getKenneyAgentSprite({ role: 'main_agent', state: 'working', facing: 'up', frame: 1 })), 241);
+  assert.equal(tileNumber(getKenneyAgentSprite({ role: 'main_agent', state: 'working', facing: 'right', frame: 1 })), 242);
+});
+
+test('subagents and branch sessions expose directional active frames', () => {
+  assert.equal(tileNumber(getKenneyAgentSprite({ role: 'subagent', state: 'planning', facing: 'up', frame: 1 })), 160);
+  assert.equal(tileNumber(getKenneyAgentSprite({ role: 'branch_session', state: 'thinking', facing: 'down', frame: 1 })), 105);
 });
 
 test('door sprite is present', () => {
