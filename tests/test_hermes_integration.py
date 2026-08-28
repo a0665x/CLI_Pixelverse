@@ -340,33 +340,6 @@ def test_world_state_only_deletes_offline_agents(monkeypatch):
     assert world.current_event_seq() == 2
 
 
-def test_furniture_layout_overlap_validation_rejects_colliding_positions():
-    from pixelverse_server import furniture_layout_has_overlaps, normalize_furniture_layout
-
-    overlapping = normalize_furniture_layout({"tool_forge": [{"x": 40, "y": 40}, {"x": 42, "y": 41}]})
-    spaced = normalize_furniture_layout({"tool_forge": [{"x": 40, "y": 40}, {"x": 55, "y": 41}]})
-
-    assert furniture_layout_has_overlaps(overlapping) is True
-    assert furniture_layout_has_overlaps(spaced) is False
-
-    scaled_overlap = normalize_furniture_layout({"tool_forge": [{"x": 40, "y": 40, "scale": 1.8}, {"x": 46, "y": 45}]})
-    assert furniture_layout_has_overlaps(scaled_overlap) is True
-
-
-def test_furniture_layout_preserves_cross_room_moves_and_rejects_target_room_overlap():
-    from pixelverse_server import furniture_layout_has_overlaps, normalize_furniture_layout
-
-    layout = normalize_furniture_layout({
-        "think_lab": [{"x": 40, "y": 40, "room": "tool_forge"}],
-        "tool_forge": [{"x": 42, "y": 41}],
-    })
-
-    assert layout["think_lab"][0]["room"] == "tool_forge"
-    assert layout["think_lab"][0]["scale"] == 1.0
-    assert layout["tool_forge"][0]["room"] == "tool_forge"
-    assert furniture_layout_has_overlaps(layout) is True
-
-
 def test_humanize_event_supports_main_tool_lifecycle():
     event = humanize_event({
         "kind": "main.tool.started",

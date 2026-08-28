@@ -1,8 +1,32 @@
-import base64
 import importlib
 
 import pytest
 from fastapi import HTTPException
+from fastapi.testclient import TestClient
+
+
+def test_legacy_map_and_outer_furniture_routes_are_absent():
+    import pixelverse_fastapi
+
+    client = TestClient(pixelverse_fastapi.app)
+    for method, path in (
+        ("get", "/global_map/default.yaml"),
+        ("post", "/api/global-map/submit"),
+        ("get", "/api/furniture-layout"),
+        ("post", "/api/furniture-layout"),
+    ):
+        response = client.post(path, json={}) if method == "post" else client.get(path)
+        assert response.status_code == 404
+
+    assert client.get("/health").status_code != 404
+    assert client.get("/api/world").status_code != 404
+    assert client.post("/api/event", json={}).status_code != 404
+
+
+def test_world_snapshot_has_no_outer_furniture_layout():
+    import pixelverse_server
+
+    assert "furniture_layout" not in pixelverse_server.WORLD.public_snapshot()
 
 
 def test_fastapi_exposes_openapi_and_generic_agent_events(monkeypatch):
@@ -75,105 +99,6 @@ def test_fastapi_static_responses_disable_cache(monkeypatch):
 
     assert root.headers["cache-control"].startswith("no-store")
     assert app_js.headers["cache-control"].startswith("no-store")
-
-
-def test_fastapi_global_map_prefers_user_runtime_directory(monkeypatch, tmp_path):
-    user_map = tmp_path / "global_map"
-    user_map.mkdir()
-    (user_map / "default.yaml").write_text("version: 2\nkey: user-map\nrooms: {}\n", encoding="utf-8")
-    (user_map / "default.png").write_bytes(b"custom-png")
-    monkeypatch.setenv("PIXELVERSE_GLOBAL_MAP_DIR", str(user_map))
-    monkeypatch.setenv("PIXELVERSE_HERMES_ENABLE", "0")
-
-    import pixelverse_server
-
-    importlib.reload(pixelverse_server)
-
-    yaml_path = pixelverse_server.resolve_global_map_file("default.yaml")
-    png_path = pixelverse_server.resolve_global_map_file("default.png")
-
-    assert yaml_path == user_map / "default.yaml"
-    assert png_path == user_map / "default.png"
-
-
-def test_fastapi_rejects_overlapping_furniture_layout(monkeypatch, tmp_path):
-    monkeypatch.setenv("PIXELVERSE_RUNTIME_DIR", str(tmp_path))
-    monkeypatch.setenv("PIXELVERSE_HERMES_ENABLE", "0")
-
-    import pixelverse_server
-    import pixelverse_fastapi
-
-    importlib.reload(pixelverse_server)
-    pixelverse_fastapi = importlib.reload(pixelverse_fastapi)
-
-    payload = pixelverse_fastapi.FurnitureLayoutPayload(
-        layout={"tool_forge": [{"x": 40, "y": 40}, {"x": 42, "y": 41}]},
-    )
-    with pytest.raises(HTTPException) as exc:
-        pixelverse_fastapi.update_furniture_layout(payload)
-
-    assert exc.value.status_code == 422
-
-
-def test_fastapi_saves_cross_room_furniture_layout(monkeypatch, tmp_path):
-    monkeypatch.setenv("PIXELVERSE_RUNTIME_DIR", str(tmp_path))
-    monkeypatch.setenv("PIXELVERSE_HERMES_ENABLE", "0")
-
-    import pixelverse_server
-    import pixelverse_fastapi
-
-    importlib.reload(pixelverse_server)
-    pixelverse_fastapi = importlib.reload(pixelverse_fastapi)
-
-    result = pixelverse_fastapi.update_furniture_layout(pixelverse_fastapi.FurnitureLayoutPayload(
-        layout={"think_lab": [{"x": 64, "y": 60, "room": "tool_forge", "scale": 1.2}]},
-    ))
-
-    assert result["layout"]["think_lab"][0] == {"x": 64.0, "y": 60.0, "room": "tool_forge", "scale": 1.2}
-
-
-def test_global_map_submit_endpoint_writes_validated_tmp_assets(monkeypatch, tmp_path):
-    user_map = tmp_path / "global_map"
-    monkeypatch.setenv("PIXELVERSE_GLOBAL_MAP_DIR", str(user_map))
-    monkeypatch.setenv("PIXELVERSE_HERMES_ENABLE", "0")
-
-    import pixelverse_server
-    import pixelverse_fastapi
-
-    importlib.reload(pixelverse_server)
-    pixelverse_fastapi = importlib.reload(pixelverse_fastapi)
-
-    png_bytes = b"\x89PNG\r\n\x1a\n" + b"pixelverse-test"
-    yaml_text = """
-version: 2
-key: submitted-map
-name: Submitted Map
-image: /global_map/default.png
-bounds: {left: 2, top: 2, width: 96, height: 96}
-corridors:
-  - {key: hall, left: 10, top: 40, width: 70, height: 8}
-rooms:
-  think_lab:
-    rect: {left: 10, top: 10, width: 20, height: 30}
-    center: {x: 20, y: 24}
-    portal: {x: 20, y: 40}
-    aisle: {x: 20, y: 35}
-    hub: {x: 20, y: 42}
-    states: [thinking]
-    event_hints: [prompt]
-    furniture:
-      - {type: desk, x: 50, y: 50, w: 4, h: 4, scale: 1}
-""".strip()
-
-    result = pixelverse_fastapi.submit_global_map(pixelverse_fastapi.GlobalMapSubmitPayload(
-        yaml=yaml_text,
-        png_base64=base64.b64encode(png_bytes).decode("ascii"),
-    ))
-
-    assert result["ok"] is True
-    assert result["yaml_path"].endswith("default.yaml")
-    assert (user_map / "default.yaml").read_text(encoding="utf-8") == yaml_text + "\n"
-    assert (user_map / "default.png").read_bytes() == png_bytes
 
 
 def test_fastapi_lifecycle_stays_active_until_explicit_session_completion(monkeypatch):

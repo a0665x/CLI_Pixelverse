@@ -8,8 +8,6 @@ for generic agent integrations.
 from __future__ import annotations
 
 import asyncio
-import base64
-import binascii
 import json
 from typing import Any
 
@@ -23,15 +21,10 @@ from pixelverse_server import (
     INDEX_HTML,
     PUBLIC_DIR,
     PORT,
-    USER_GLOBAL_MAP_DIR,
     WORLD,
     classify_room,
     exposure_snapshot,
-    load_furniture_layout,
-    normalize_furniture_layout,
-    resolve_global_map_file,
     normalize_state,
-    save_furniture_layout,
     save_exposure_mode,
 )
 
@@ -73,15 +66,6 @@ class AgentActionPayload(BaseModel):
 class WebhookPayload(BaseModel):
     agent: str = Field("main-agent", description="Agent id.")
     url: str = Field(..., description="Webhook URL.")
-
-
-class FurnitureLayoutPayload(BaseModel):
-    layout: dict[str, list[dict[str, Any]]] = Field(default_factory=dict, description="Furniture overrides keyed by origin room, including current room placement.")
-
-
-class GlobalMapSubmitPayload(BaseModel):
-    yaml: str = Field(..., min_length=20, description="Validated global_map YAML text.")
-    png_base64: str = Field(..., min_length=8, description="Base64 encoded PNG bytes for default.png.")
 
 
 class ExposurePayload(BaseModel):
@@ -135,14 +119,6 @@ def index() -> FileResponse:
     return FileResponse(INDEX_HTML, headers=NO_CACHE_HEADERS)
 
 
-@app.get("/global_map/{path:path}", include_in_schema=False)
-def global_map_file(path: str):
-    requested = resolve_global_map_file(path)
-    if requested.is_file():
-        return FileResponse(requested, headers=NO_CACHE_HEADERS)
-    return JSONResponse({"error": "not found", "path": f"/global_map/{path}"}, status_code=404)
-
-
 @app.get("/health", tags=["service"])
 def health() -> dict[str, Any]:
     snapshot = WORLD.public_snapshot()
@@ -185,37 +161,6 @@ def update_exposure(payload: ExposurePayload) -> dict[str, Any]:
 @app.get("/api/agents", tags=["world"])
 def get_agents() -> dict[str, Any]:
     return {"agents": WORLD.public_snapshot()["agents"]}
-
-
-@app.get("/api/furniture-layout", tags=["world"])
-def get_furniture_layout() -> dict[str, Any]:
-    return {"layout": load_furniture_layout()}
-
-
-@app.post("/api/furniture-layout", tags=["world"])
-def update_furniture_layout(payload: FurnitureLayoutPayload) -> dict[str, Any]:
-    try:
-        layout = save_furniture_layout(normalize_furniture_layout(payload.layout))
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return {"ok": True, "layout": layout}
-
-
-@app.post("/api/global-map/submit", tags=["world"])
-def submit_global_map(payload: GlobalMapSubmitPayload) -> dict[str, Any]:
-    try:
-        png_bytes = base64.b64decode(payload.png_base64, validate=True)
-    except (binascii.Error, ValueError) as exc:
-        raise HTTPException(status_code=422, detail="png_base64 must be valid base64") from exc
-    if not png_bytes.startswith(b"\x89PNG\r\n\x1a\n"):
-        raise HTTPException(status_code=422, detail="submitted image must be a PNG")
-    _validate_global_map_yaml(payload.yaml)
-    USER_GLOBAL_MAP_DIR.mkdir(parents=True, exist_ok=True)
-    yaml_path = USER_GLOBAL_MAP_DIR / "default.yaml"
-    png_path = USER_GLOBAL_MAP_DIR / "default.png"
-    yaml_path.write_text(payload.yaml.rstrip() + "\n", encoding="utf-8")
-    png_path.write_bytes(png_bytes)
-    return {"ok": True, "yaml_path": str(yaml_path), "png_path": str(png_path), "reload": "/"}
 
 
 @app.get("/api/inbox", tags=["world"])
@@ -303,41 +248,17 @@ def delete_offline_agent(agent: str = Query(..., description="Offline local agen
     return {"ok": True, "agent": agent}
 
 
+@app.post("/{path:path}", include_in_schema=False)
+def unknown_post(path: str):
+    return JSONResponse({"error": "not found", "path": f"/{path}"}, status_code=404)
+
+
 @app.get("/{path:path}", include_in_schema=False)
 def static_file(path: str):
     requested = (PUBLIC_DIR / path).resolve()
     if PUBLIC_DIR in requested.parents and requested.is_file():
         return FileResponse(requested, headers=NO_CACHE_HEADERS)
     return JSONResponse({"error": "not found", "path": f"/{path}"}, status_code=404)
-
-
-def _validate_global_map_yaml(yaml_text: str) -> None:
-    try:
-        import yaml  # type: ignore
-    except Exception as exc:  # pragma: no cover - dependency is supplied by tests/runtime
-        raise HTTPException(status_code=500, detail="PyYAML is required to validate global maps") from exc
-    try:
-        manifest = yaml.safe_load(yaml_text) or {}
-    except Exception as exc:
-        raise HTTPException(status_code=422, detail=f"invalid YAML: {exc}") from exc
-    if not isinstance(manifest, dict):
-        raise HTTPException(status_code=422, detail="global map YAML must be an object")
-    rooms = manifest.get("rooms")
-    corridors = manifest.get("corridors")
-    if not isinstance(rooms, dict) or not rooms:
-        raise HTTPException(status_code=422, detail="global map YAML must define rooms")
-    if not isinstance(corridors, list) or not corridors:
-        raise HTTPException(status_code=422, detail="global map YAML must define corridors")
-    for key, room in rooms.items():
-        if not isinstance(room, dict):
-            raise HTTPException(status_code=422, detail=f"room {key} must be an object")
-        for point in ("center", "portal", "aisle", "hub"):
-            value = room.get(point)
-            if not isinstance(value, dict) or "x" not in value or "y" not in value:
-                raise HTTPException(status_code=422, detail=f"room {key} missing {point}.x/y")
-        furniture = room.get("furniture", [])
-        if not isinstance(furniture, list):
-            raise HTTPException(status_code=422, detail=f"room {key} furniture must be a list")
 
 
 def _sse(event_name: str, event_id: int | None, payload: dict[str, Any]) -> str:

@@ -28,12 +28,9 @@ import httpx
 
 ROOT = Path(__file__).resolve().parent
 PUBLIC_DIR = ROOT / "public"
-GLOBAL_MAP_DIR = ROOT / "global_map"
-USER_GLOBAL_MAP_DIR = Path(os.getenv("PIXELVERSE_GLOBAL_MAP_DIR", str(ROOT / "tmp" / "global_map"))).expanduser()
 INDEX_HTML = PUBLIC_DIR / "index.html"
 RUNTIME_DIR = Path(os.getenv("PIXELVERSE_RUNTIME_DIR", str(ROOT / "runtime"))).expanduser()
 RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
-FURNITURE_LAYOUT_FILE = RUNTIME_DIR / "furniture_layout_overrides.json"
 EXPOSURE_STATE_FILE = RUNTIME_DIR / "exposure_state.json"
 HOST = os.getenv("PIXELVERSE_HOST", "0.0.0.0")
 PORT = int(os.getenv("PIXELVERSE_PORT", "5660"))
@@ -67,23 +64,6 @@ def env_flag(value: str | None, *, default: bool = False) -> bool:
 
 HERMES_SOURCE_ENABLED = env_flag(os.getenv("PIXELVERSE_HERMES_ENABLE", "auto"), default=True)
 
-
-def _resolve_inside(base: Path, relative_path: str) -> Path | None:
-    candidate = (base / relative_path.lstrip("/")).resolve()
-    base_resolved = base.resolve()
-    if candidate == base_resolved or base_resolved in candidate.parents:
-        return candidate
-    return None
-
-
-def resolve_global_map_file(relative_path: str) -> Path:
-    """Resolve user-provided map assets before falling back to the built-in map."""
-    for base in (USER_GLOBAL_MAP_DIR, GLOBAL_MAP_DIR):
-        candidate = _resolve_inside(base, relative_path)
-        if candidate and candidate.is_file():
-            return candidate
-    fallback = _resolve_inside(GLOBAL_MAP_DIR, relative_path)
-    return fallback or (GLOBAL_MAP_DIR / "__not_found__")
 
 TOOL_DISPLAY: dict[str, dict[str, str]] = {
     "search_files": {"label": "搜尋檔案", "icon": "🔎"},
@@ -202,76 +182,6 @@ def trim_text(value: str | None, limit: int = 80) -> str | None:
     if not value:
         return None
     return value if len(value) <= limit else value[: limit - 1] + "…"
-
-
-def _sanitize_layout_value(value: Any, fallback: float = 50.0) -> float:
-    try:
-        num = float(value)
-    except Exception:
-        num = fallback
-    return round(max(6.0, min(94.0, num)), 2)
-
-
-def _sanitize_layout_scale(value: Any, fallback: float = 1.0) -> float:
-    try:
-        num = float(value)
-    except Exception:
-        num = fallback
-    return round(max(0.55, min(1.8, num)), 2)
-
-
-def normalize_furniture_layout(layout: Any) -> dict[str, list[dict[str, Any]]]:
-    if not isinstance(layout, dict):
-        return {}
-    normalized: dict[str, list[dict[str, float]]] = {}
-    for room_key, positions in layout.items():
-        if room_key not in ROOM_DISPLAY or room_key == "offline_corner" or not isinstance(positions, list):
-            continue
-        normalized[room_key] = []
-        for item in positions:
-            if not isinstance(item, dict):
-                continue
-            target_room = item.get("room")
-            normalized[room_key].append({
-                "x": _sanitize_layout_value(item.get("x")),
-                "y": _sanitize_layout_value(item.get("y")),
-                "room": target_room if target_room in ROOM_DISPLAY and target_room != "offline_corner" else room_key,
-                "scale": _sanitize_layout_scale(item.get("scale")),
-            })
-    return normalized
-
-
-def furniture_layout_has_overlaps(layout: dict[str, list[dict[str, Any]]], min_gap: float = 4.0) -> bool:
-    positions_by_room: dict[str, list[dict[str, Any]]] = {}
-    for origin_room, positions in layout.items():
-        for item in positions:
-            positions_by_room.setdefault(item.get("room", origin_room), []).append(item)
-    for positions in positions_by_room.values():
-        for index, left in enumerate(positions):
-            for right in positions[index + 1:]:
-                left_scale = _sanitize_layout_scale(left.get("scale"))
-                right_scale = _sanitize_layout_scale(right.get("scale"))
-                dynamic_gap = min_gap * max(left_scale, right_scale)
-                if abs(left["x"] - right["x"]) < dynamic_gap and abs(left["y"] - right["y"]) < dynamic_gap:
-                    return True
-    return False
-
-
-def load_furniture_layout() -> dict[str, list[dict[str, Any]]]:
-    if not FURNITURE_LAYOUT_FILE.exists():
-        return {}
-    try:
-        return normalize_furniture_layout(json.loads(FURNITURE_LAYOUT_FILE.read_text(encoding="utf-8")))
-    except Exception:
-        return {}
-
-
-def save_furniture_layout(layout: Any) -> dict[str, list[dict[str, Any]]]:
-    normalized = normalize_furniture_layout(layout)
-    if furniture_layout_has_overlaps(normalized):
-        raise ValueError("furniture layout contains overlapping positions")
-    FURNITURE_LAYOUT_FILE.write_text(json.dumps(normalized, ensure_ascii=False, indent=2), encoding="utf-8")
-    return normalized
 
 
 def normalize_exposure_mode(mode: str | None) -> str:
@@ -1077,7 +987,6 @@ class WorldState:
             "server_time_ms": int(now_ts() * 1000),
             "agents": merged_agents,
             "events": [humanize_event(event) for event in merged_events],
-            "furniture_layout": load_furniture_layout(),
             "webhooks": self.webhooks,
             "hermes": hermes,
             "ollama": ollama,
@@ -1814,11 +1723,6 @@ class PixelverseHandler(BaseHTTPRequestHandler):
             self._send_text(INDEX_HTML.read_text())
             return
         if parsed.path.startswith("/") and "." in parsed.path.rsplit("/", 1)[-1]:
-            if parsed.path.startswith("/global_map/"):
-                requested = resolve_global_map_file(parsed.path.removeprefix("/global_map/"))
-                if requested.is_file():
-                    self._send_file(requested)
-                    return
             requested = (PUBLIC_DIR / parsed.path.lstrip("/")).resolve()
             if PUBLIC_DIR in requested.parents or requested == PUBLIC_DIR:
                 self._send_file(requested)
@@ -1883,14 +1787,6 @@ class PixelverseHandler(BaseHTTPRequestHandler):
         if parsed.path == "/api/webhook":
             WORLD.register_webhook(data.get("agent", "unknown"), data.get("url", ""))
             self._send_json({"ok": True})
-            return
-        if parsed.path == "/api/furniture-layout":
-            try:
-                layout = save_furniture_layout(data.get("layout", data))
-            except ValueError as exc:
-                self._send_json({"ok": False, "error": str(exc)}, status=422)
-                return
-            self._send_json({"ok": True, "layout": layout})
             return
         self._send_json({"error": "not found", "path": parsed.path}, status=404)
 
