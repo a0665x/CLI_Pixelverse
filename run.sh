@@ -58,7 +58,7 @@ platform_command() {
 SAVED_PIXELVERSE_PORT=""
 SAVED_BRIDGE_PORT=""
 case "$COMMAND" in
-  start|stop|restart|down_up|status|log|logs|doctor|bridge-status|test-hook|smoke-furniture-drag|down)
+  start|stop|restart|down_up|status|log|logs|doctor|bridge-status|test-hook|smoke-furniture-drag|assets-status|down)
     load_saved_port=1
     ;;
   *) load_saved_port=0 ;;
@@ -78,7 +78,7 @@ mkdir -p "$STATE_DIR" "$RUNTIME_DIR"
 
 usage() {
   cat <<EOF
-Usage: ./run.sh [start|stop|restart|down_up|status|log|logs|doctor|platform|bridge-status|floorplans|prepare-floorplan|map-builder|adapter|install-adapter|install-codex-hook|enable-shell-adapter|install-hermes-hook|hermes-chat|test-hook|smoke-furniture-drag|down]
+Usage: ./run.sh [start|stop|restart|down_up|status|log|logs|doctor|assets-status|platform|bridge-status|floorplans|prepare-floorplan|map-builder|adapter|install-adapter|install-codex-hook|enable-shell-adapter|install-hermes-hook|hermes-chat|test-hook|smoke-furniture-drag|down]
 
 Commands:
   start      Start Docker Compose and ask for interactive service choices.
@@ -88,6 +88,8 @@ Commands:
   status     Show container status and API endpoints.
   log/logs   Follow Docker Compose logs.
   doctor     Diagnose ports, legacy processes, Docker, Compose, and API health.
+  assets-status
+             Validate locally prepared Modern Office assets without starting Docker.
   platform   Show normalized host architecture and Docker target platform.
   bridge-status
              Show Pixelverse API, bridge hook, Hermes hook, and local adapter status.
@@ -129,6 +131,12 @@ Common service flows:
   ./run.sh status
   ./run.sh log
   ./run.sh doctor
+
+Licensed Modern Office assets:
+  Place Modern_Office_Revamped_v1.zip at:
+    private_assets/modern-office/Modern_Office_Revamped_v1.zip
+  Or set PIXELVERSE_MODERN_OFFICE_ZIP=/absolute/path/to/Modern_Office_Revamped_v1.zip
+  ./run.sh assets-status
 
 Universal bridge client:
   python3 -m agent_bridges.pixelverse_client start --agent-type codex --agent codex-main --name Codex
@@ -785,7 +793,8 @@ docker_image_is_stale() {
 
 prepare_docker_build_metadata() {
   PIXELVERSE_BUILD_REVISION="$(python3 "$ROOT/scripts/docker_build_metadata.py" revision)"
-  PIXELVERSE_BUILD_FINGERPRINT="$(python3 "$ROOT/scripts/docker_build_metadata.py" fingerprint)"
+  PIXELVERSE_BUILD_FINGERPRINT="$(python3 "$ROOT/scripts/docker_build_metadata.py" fingerprint \
+    --prepared-metadata "$ROOT/pixelworld_mvp/public/assets/private/modern-office-v1.2/.prepared-assets.json")"
   export PIXELVERSE_BUILD_REVISION PIXELVERSE_BUILD_FINGERPRINT
 }
 
@@ -1622,6 +1631,9 @@ case "$COMMAND" in
     ;;
   doctor)
     doctor_service
+    ;;
+  assets-status)
+    python3 "$ROOT/scripts/provision_modern_office_assets.py" --status
     ;;
   platform)
     platform_command

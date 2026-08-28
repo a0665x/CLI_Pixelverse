@@ -369,18 +369,60 @@ def test_missing_archive_fails_with_configurable_path_guidance(tmp_path: Path) -
     assert "https://limezu.itch.io/modernoffice" in result.stderr
 
 
-def test_run_and_compose_wire_the_read_only_private_asset_mount() -> None:
+def test_run_and_docker_wire_preparation_before_the_local_image_build() -> None:
     run_script = (ROOT / "run.sh").read_text(encoding="utf-8")
     compose = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
+    dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
 
     provision_call = 'python3 "$ROOT/scripts/provision_modern_office_assets.py"'
     assert provision_call in run_script
     assert run_script.index(provision_call) < run_script.index("stop_legacy_local_processes", run_script.index("start_service()"))
-    assert (
-        "${PIXELVERSE_MODERN_OFFICE_ASSET_DIR_HOST:-"
-        "./.pixelverse-service/private-assets/modern-office-v1.2}:"
-        "/app/public/assets/private/modern-office-v1.2:ro"
-    ) in compose
+    assert "PIXELVERSE_MODERN_OFFICE_ASSET_DIR_HOST" not in compose
+    assert "collision-masks.json" in dockerfile
+    assert "Modern_Office_Singles_339.png" in dockerfile
+
+
+def test_assets_status_reports_ready_without_requiring_the_zip(tmp_path: Path) -> None:
+    required = _required_names()
+    archive = tmp_path / "licensed.zip"
+    destination = tmp_path / "prepared"
+    _write_fixture_archive(archive, required)
+    prepared = _run("--archive", str(archive), "--destination", str(destination))
+    assert prepared.returncode == 0, prepared.stderr
+
+    result = _run("--status", "--destination", str(destination))
+
+    assert result.returncode == 0, result.stderr
+    assert "ready" in result.stdout.lower()
+    assert "Modern_Office_Singles" not in result.stdout
+
+
+def test_assets_status_distinguishes_missing_and_invalid(tmp_path: Path) -> None:
+    destination = tmp_path / "prepared"
+    missing = _run("--status", "--destination", str(destination))
+    assert missing.returncode == 2
+    assert "missing" in missing.stdout.lower()
+
+    destination.mkdir()
+    (destination / ".prepared-assets.json").write_text("not json", encoding="utf-8")
+    invalid = _run("--status", "--destination", str(destination))
+    assert invalid.returncode == 2
+    assert "invalid" in invalid.stdout.lower()
+
+
+def test_run_help_documents_private_asset_setup() -> None:
+    result = subprocess.run(
+        [str(ROOT / "run.sh"), "--help"],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0
+    assert "assets-status" in result.stdout
+    assert "PIXELVERSE_MODERN_OFFICE_ZIP" in result.stdout
+    assert "private_assets/modern-office/Modern_Office_Revamped_v1.zip" in result.stdout
 
 
 def test_git_tracks_no_proprietary_modern_office_assets() -> None:

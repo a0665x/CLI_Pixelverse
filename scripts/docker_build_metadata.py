@@ -57,13 +57,24 @@ def _files(root: Path, inputs: Iterable[str]) -> list[Path]:
     return sorted(set(files), key=lambda path: path.relative_to(root).as_posix())
 
 
-def build_fingerprint(root: Path = ROOT, inputs: Iterable[str] = BUILD_INPUTS) -> str:
+def build_fingerprint(
+    root: Path = ROOT,
+    inputs: Iterable[str] = BUILD_INPUTS,
+    prepared_metadata: Path | None = None,
+) -> str:
     digest = hashlib.sha256()
     for path in _files(root, inputs):
         relative = path.relative_to(root).as_posix().encode()
         content = path.read_bytes()
         digest.update(len(relative).to_bytes(4, "big"))
         digest.update(relative)
+        digest.update(len(content).to_bytes(8, "big"))
+        digest.update(content)
+    if prepared_metadata is not None and prepared_metadata.is_file():
+        content = prepared_metadata.read_bytes()
+        marker = b"pixelverse-private-asset-metadata"
+        digest.update(len(marker).to_bytes(4, "big"))
+        digest.update(marker)
         digest.update(len(content).to_bytes(8, "big"))
         digest.update(content)
     return digest.hexdigest()
@@ -81,8 +92,13 @@ def git_revision(root: Path = ROOT) -> str:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("field", choices=("fingerprint", "revision"))
+    parser.add_argument("--prepared-metadata", type=Path)
     args = parser.parse_args()
-    print(build_fingerprint() if args.field == "fingerprint" else git_revision())
+    print(
+        build_fingerprint(prepared_metadata=args.prepared_metadata)
+        if args.field == "fingerprint"
+        else git_revision()
+    )
     return 0
 
 

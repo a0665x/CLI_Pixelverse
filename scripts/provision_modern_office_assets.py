@@ -317,6 +317,24 @@ def provision(archive_path: Path, destination: Path) -> int:
     return 0
 
 
+def status(destination: Path) -> int:
+    if not destination.exists():
+        print(f"Modern Office assets: missing ({destination})")
+        return 2
+    try:
+        metadata = json.loads((destination / PREPARATION_METADATA).read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        print(f"Modern Office assets: invalid ({destination})")
+        return 2
+    if not isinstance(metadata, dict) or not _existing_matches(
+        destination, metadata, required_asset_names()
+    ):
+        print(f"Modern Office assets: invalid ({destination})")
+        return 2
+    print(f"Modern Office assets: ready ({destination})")
+    return 0
+
+
 def _path_from_env(names: tuple[str, ...], fallback: Path) -> Path:
     value = next((os.environ[name] for name in names if os.environ.get(name)), None)
     path = Path(value).expanduser() if value else fallback
@@ -325,6 +343,7 @@ def _path_from_env(names: tuple[str, ...], fallback: Path) -> Path:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--status", action="store_true", help="check prepared assets without reading the ZIP")
     parser.add_argument(
         "--archive",
         type=Path,
@@ -343,6 +362,8 @@ def main() -> int:
     if not destination.is_absolute():
         destination = ROOT / destination
     try:
+        if args.status:
+            return status(destination.resolve())
         return provision(archive.resolve(), destination.resolve())
     except (BadZipFile, OSError, ValueError) as error:
         print(f"Modern Office asset provisioning failed: {error}", file=sys.stderr)

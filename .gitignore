@@ -1,4 +1,6 @@
 .pixelverse-service/
+private_assets/
+pixelworld_mvp/public/assets/private/
 tmp/*
 !tmp/global_map/
 !tmp/global_map/.gitkeep
