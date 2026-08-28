@@ -111,6 +111,8 @@ def passing_artifact() -> dict:
             "shell_signature": f"shell-signature-{locale}",
             "village_signature": f"village-signature-{locale}",
             "help_signature": f"help-signature-{locale}",
+            "foreign_product_copy": [],
+            "external_copy": [],
             "missing_text": [],
             "pass": True,
         }
@@ -209,7 +211,8 @@ def passing_artifact() -> dict:
     }
 
 
-def test_browser_smoke_plan_and_artifact_paths_are_deterministic():
+def test_browser_smoke_plan_and_artifact_paths_are_deterministic(monkeypatch):
+    monkeypatch.delenv("PIXELVERSE_SMOKE_BASE_URL", raising=False)
     smoke = load_module()
 
     plan = smoke.BrowserSmokePlan()
@@ -584,6 +587,49 @@ def test_contract_requires_catalog_derived_current_agent_state_without_foreign_c
 
     assert any("en-US" in failure and "current agent state" in failure for failure in failures)
     assert any("ja-JP" in failure and "current agent state" in failure for failure in failures)
+
+
+def test_contract_rejects_foreign_catalog_copy_hidden_in_product_signatures():
+    smoke = load_module()
+    artifact = passing_artifact()
+    artifact["locale_coverage"]["checks"]["ja-JP"]["shell_signature"] += " Help"
+    artifact["locale_coverage"]["checks"]["ko-KR"]["village_signature"] += " 休憩小屋"
+
+    failures = smoke.evaluate_artifact(artifact)
+
+    assert any(
+        "ja-JP" in failure and "foreign" in failure and "Help" in failure
+        for failure in failures
+    )
+    assert any(
+        "ko-KR" in failure and "foreign" in failure and "休憩小屋" in failure
+        for failure in failures
+    )
+
+
+def test_foreign_copy_catalog_excludes_legitimately_shared_phrases():
+    smoke = load_module()
+    catalog = {
+        "en-US": {"help": "Shared product token", "agents_title": "English only"},
+        "ja-JP": {"help": "Shared product token", "agents_title": "日本語だけ"},
+        "ko-KR": {"help": "Shared product token", "agents_title": "한국어 전용"},
+    }
+
+    foreign = smoke._foreign_product_phrases("ja-JP", catalog)
+
+    assert "Shared product token" not in foreign
+    assert foreign["English only"] == "en-US"
+    assert foreign["한국어 전용"] == "ko-KR"
+
+
+def test_contract_excludes_external_payloads_from_foreign_product_copy_detection():
+    smoke = load_module()
+    artifact = passing_artifact()
+    artifact["locale_coverage"]["checks"]["ja-JP"]["external_copy"] = [
+        "User supplied Help and 說明 verbatim",
+    ]
+
+    assert smoke.evaluate_artifact(artifact) == []
 
 
 def test_browser_captures_placeholder_locale_state_before_synthetic_agent_events():

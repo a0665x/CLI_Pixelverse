@@ -56,6 +56,25 @@ EXPECTED_LOCALE_COPY = {
         "current_agent_state": "codex · 대기 · 대기 도크 · 새 CLI 세션을 기다리는 중",
     },
 }
+PRODUCT_COPY_KEYS = (
+    "agents_title",
+    "timeline_title",
+    "language_label",
+    "help",
+    "help_aria",
+    "rest_cabin",
+    "maker_workshop",
+    "current_agent_state",
+)
+PRODUCT_CAPTURE_FIELDS = (
+    "shell_text",
+    "village_text",
+    "copy_signature",
+    "shell_signature",
+    "village_signature",
+    "help_signature",
+    "current_agent_state",
+)
 
 
 @dataclass(frozen=True)
@@ -88,6 +107,35 @@ class BrowserSmokePlan:
 
 def _mapping(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
+
+
+def _foreign_product_phrases(
+    locale: str, catalog: dict[str, dict[str, str]] = EXPECTED_LOCALE_COPY
+) -> dict[str, str]:
+    """Return phrases owned by exactly one other locale in the product catalog."""
+    owners: dict[str, set[str]] = {}
+    for catalog_locale, copy in catalog.items():
+        for key in PRODUCT_COPY_KEYS:
+            phrase = str(copy.get(key) or "").strip()
+            if phrase:
+                owners.setdefault(phrase, set()).add(catalog_locale)
+    return {
+        phrase: next(iter(phrase_owners))
+        for phrase, phrase_owners in owners.items()
+        if locale not in phrase_owners and len(phrase_owners) == 1
+    }
+
+
+def _foreign_product_copy_matches(locale: str, check: dict[str, Any]) -> list[dict[str, str]]:
+    product_copy = [str(check.get(key) or "") for key in PRODUCT_CAPTURE_FIELDS]
+    for key in ("help_copy", "shell_copy", "village_copy"):
+        product_copy.extend(str(value or "") for value in _mapping(check.get(key)).values())
+    captured = "\n".join(product_copy)
+    return [
+        {"locale": owner, "copy": phrase}
+        for phrase, owner in sorted(_foreign_product_phrases(locale).items())
+        if phrase in captured
+    ]
 
 
 def evaluate_artifact(artifact: dict[str, Any]) -> list[str]:
@@ -175,6 +223,14 @@ def evaluate_artifact(artifact: dict[str, Any]) -> list[str]:
             failures.append(f"{locale}: village did not use the selected locale")
         if check.get("current_agent_state") != expected["current_agent_state"]:
             failures.append(f"{locale}: current agent state did not use the selected locale")
+        foreign_product_copy = _foreign_product_copy_matches(locale, check)
+        if foreign_product_copy:
+            summary = ", ".join(
+                f"{item['locale']} {item['copy']!r}" for item in foreign_product_copy[:5]
+            )
+            failures.append(f"{locale}: product-owned surfaces contain foreign copy: {summary}")
+        if check.get("foreign_product_copy") != foreign_product_copy:
+            failures.append(f"{locale}: foreign product-copy evidence was missing or stale")
         if not check.get("copy_signature"):
             failures.append(f"{locale}: localized copy signature was empty")
         if check.get("missing_text") != []:
@@ -1040,7 +1096,10 @@ def locale_evidence(browser: ChromiumDevTools, locale: str) -> dict[str, Any]:
           ...[...child.querySelectorAll('[aria-label]')]
             .filter((node) => !(node.getAttribute('aria-label') || '').trim()).map((node) => mark(node, 'aria-label')),
         ];
-        const shellNodes = [...document.querySelectorAll('[data-i18n], [data-i18n-aria-label], [data-i18n-title], [data-i18n-tooltip]')];
+        const isExternalCopy = (node) => node?.dataset?.externalCopy === 'true'
+          || Boolean(node?.closest?.('[data-external-copy="true"]'));
+        const shellNodes = [...document.querySelectorAll('[data-i18n], [data-i18n-aria-label], [data-i18n-title], [data-i18n-tooltip]')]
+          .filter((node) => !isExternalCopy(node));
         const shell = [
           document.querySelector('#agent-live-title')?.textContent,
           document.querySelector('#mission-trace-title')?.textContent,
@@ -1065,11 +1124,18 @@ def locale_evidence(browser: ChromiumDevTools, locale: str) -> dict[str, Any]:
           node.dataset.i18n || node.dataset.i18nAriaLabel || node.dataset.i18nTitle || node.dataset.i18nTooltip,
           (node.textContent || '').trim(), node.getAttribute('aria-label') || '', node.title || '', node.dataset.tooltip || '',
         ]));
-        const villageSignature = JSON.stringify([...child.querySelectorAll('[aria-label]')]
+        const villageNodes = [...child.querySelectorAll('[aria-label]')]
+          .filter((node) => !isExternalCopy(node));
+        const villageSignature = JSON.stringify(villageNodes
           .map((node) => [node.className, node.getAttribute('aria-label') || '', (node.textContent || '').trim()]));
+        const externalCopy = [
+          ...document.querySelectorAll('[data-external-copy="true"]'),
+          ...child.querySelectorAll('[data-external-copy="true"]'),
+        ].map((node) => (node.textContent || node.getAttribute('aria-label') || '').trim()).filter(Boolean);
         return { shell_text: shell, village_text: village, missing_text: missing,
           help_copy: helpCopy, shell_copy: shellCopy, village_copy: villageCopy,
           current_agent_state: currentAgentState,
+          external_copy: externalCopy,
           document_lang: document.documentElement.lang,
           copy_signature: JSON.stringify([shellSignature, villageSignature, helpCopy]),
           shell_signature: shellSignature, village_signature: villageSignature,
@@ -1088,6 +1154,7 @@ def locale_coverage_evidence(
         check = locale_evidence(browser, locale)
         help_copy = _mapping(check.get("help_copy"))
         expected = EXPECTED_LOCALE_COPY[locale]
+        check["foreign_product_copy"] = _foreign_product_copy_matches(locale, check)
         check["pass"] = bool(
             check["shell_text"]
             and check["village_text"]
@@ -1104,6 +1171,7 @@ def locale_coverage_evidence(
                 for key in ("rest_cabin", "maker_workshop")
             )
             and check.get("current_agent_state") == expected["current_agent_state"]
+            and not check["foreign_product_copy"]
         )
         locale_checks[locale] = check
     signature_keys = ("shell_signature", "village_signature", "help_signature")
