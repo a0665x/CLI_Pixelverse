@@ -403,9 +403,14 @@ def test_live_monitoring_uses_a_top_portrait_roster_above_the_primary_village():
     } <= parser.ids
     assert parser.elements_by_id["agent-roster"]["attributes"].get("data-command-region") == "roster"
     assert parser.elements_by_id["world"]["attributes"].get("data-command-region") == "center"
-    assert "grid-template-rows: 44px 112px minmax(320px, 1fr)" in html
+    assert "grid-template-columns: minmax(520px, 1fr) var(--agent-detail-track, 0px)" in html
+    assert "grid-template-rows: var(--village-top-height, 56px) var(--village-roster-height, 128px) minmax(280px, 1fr)" in html
     assert ".map-first-workspace .world.map-stage { grid-column: 1; grid-row: 3;" in html
     assert ".agent-roster { grid-column: 1; grid-row: 2;" in html
+    assert {"agent-detail", "village-top-splitter", "village-roster-splitter", "village-detail-splitter", "village-reset-layout"} <= parser.ids
+    assert all(parser.elements_by_id[element_id]["attributes"].get("role") == "separator" for element_id in [
+        "village-top-splitter", "village-roster-splitter", "village-detail-splitter",
+    ])
     assert "overflow: hidden" in html
     assert "dashboard-events-btn" not in parser.ids
     assert "dashboard-agents-btn" not in parser.ids

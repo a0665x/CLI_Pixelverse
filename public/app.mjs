@@ -67,6 +67,7 @@ import { buildAgentRoster } from './agent_roster_model.mjs';
 import { createAgentRosterView } from './agent_roster_view.mjs';
 import { buildAgentDetail } from './agent_detail_model.mjs';
 import { createAgentDetailView } from './agent_detail_view.mjs';
+import { createVillageFirstLayoutController } from './village_first_layout.mjs';
 import { createCommandDeckLocaleController } from './command_deck_locale_controller.mjs';
 import { agentPayloadPresentation, currentAgentStatePresentation, escapeHtml, timelinePayloadPresentation } from './command_deck_payload_presenters.mjs';
 import { clampCameraOffset, centeredCamera, clampZoom, nextDraggedOffset, nextZoomState } from './ui_state.mjs';
@@ -187,6 +188,10 @@ const dom = {
   agentsLayer: document.getElementById('agents-layer'),
   agentLiveList: document.getElementById('agent-live-list'),
   agentDetail: document.getElementById('agent-detail'),
+  villageTopSplitter: document.getElementById('village-top-splitter'),
+  villageRosterSplitter: document.getElementById('village-roster-splitter'),
+  villageDetailSplitter: document.getElementById('village-detail-splitter'),
+  villageResetLayout: document.getElementById('village-reset-layout'),
   needsAttentionCount: document.getElementById('needs-attention-count'),
   activeAgentCount: document.getElementById('active-agent-count'),
   idleAgentCount: document.getElementById('idle-agent-count'),
@@ -326,11 +331,23 @@ const cutawayFocusHandoff = createCutawayFocusHandoff({
   cancel: (handle) => window.cancelAnimationFrame(handle),
 });
 const liveEcgController = createLiveEcgController({ root: dom.agentLiveList });
+const villageFirstLayoutController = createVillageFirstLayoutController({
+  workspace: dom.workspace,
+  handles: {
+    top: dom.villageTopSplitter,
+    roster: dom.villageRosterSplitter,
+    detail: dom.villageDetailSplitter,
+  },
+  storage: dashboardStorage,
+  viewport: () => ({ width: window.innerWidth, height: window.innerHeight }),
+  eventTarget: window,
+});
 const agentDetailView = createAgentDetailView({
   root: dom.agentDetail,
   documentRef: document,
   spriteFor: getKenneyAgentSprite,
   textFor: (key, params = {}) => uiText(currentLocale, key, params),
+  onClose: () => villageFirstLayoutController.setDetailOpen(false),
 });
 const agentRosterView = createAgentRosterView({
   root: dom.agentLiveList,
@@ -2388,6 +2405,7 @@ function activateAgentDetail(agentId, { trigger = document.activeElement, publis
   const detail = buildAgentDetail(currentCommandDeckModel, agentId, { nowMs: Date.now() });
   if (!detail) return false;
   agentDetailView.open(detail, trigger);
+  villageFirstLayoutController.setDetailOpen(true);
   return true;
 }
 
@@ -3032,7 +3050,11 @@ dom.dashboardCardNext?.addEventListener('click', () => {
 
 window.addEventListener('resize', () => {
   if (dashboardLiveSnapshot) renderLiveMonitoring(dashboardLiveSnapshot);
+  const detail = agentDetailView.current();
+  if (detail) agentDetailView.render(detail);
 });
+
+dom.villageResetLayout?.addEventListener('click', () => villageFirstLayoutController.reset());
 
 dom.mobileModeButton?.addEventListener('click', () => {
   mobileMode = !mobileMode;
@@ -3135,6 +3157,7 @@ async function initializeApp() {
   missionTraceController.start();
   commandDeckLayoutController.start();
   renderCommandDeckControls();
+  villageFirstLayoutController.start();
   startLiveUiTicker();
   restartTimelineTimer();
   connectRealtime();

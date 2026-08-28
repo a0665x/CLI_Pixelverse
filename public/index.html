@@ -2828,8 +2828,9 @@
     /* Village-first phase 1 */
     .map-first-workspace {
       display: grid;
-      grid-template-columns: minmax(0, 1fr);
-      grid-template-rows: 44px 112px minmax(320px, 1fr);
+      position: relative;
+      grid-template-columns: minmax(520px, 1fr) var(--agent-detail-track, 0px);
+      grid-template-rows: var(--village-top-height, 56px) var(--village-roster-height, 128px) minmax(280px, 1fr);
       min-height: 100dvh;
       overflow: hidden;
     }
@@ -2838,7 +2839,7 @@
       grid-row: 1;
       overflow: visible;
     }
-    .map-first-workspace .world.map-stage { grid-column: 1; grid-row: 3; min-width: 0; min-height: 0; }
+    .map-first-workspace .world.map-stage { grid-column: 1; grid-row: 3; min-width: 520px; min-height: 280px; }
     .agent-roster { grid-column: 1; grid-row: 2; display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 6px; padding: 7px 10px; border-bottom: 1px solid #294838; color: #e9f7eb; background: #0d1b15; }
     .agent-roster-header { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 10px; }
     .agent-roster-header h2 { margin: 0; font-size: 12px; letter-spacing: .04em; }
@@ -2865,7 +2866,7 @@
     .agent-roster-card[data-signal-kind='degraded'] .agent-roster-ecg path { stroke: #f5c45d; stroke-dasharray: 3 2; }
     .agent-roster-card[data-signal-kind='offline'] { filter: saturate(.25); }
     .agent-roster-card[data-signal-kind='offline'] .agent-roster-ecg path { stroke: #89958f; }
-    .agent-detail { position: fixed; inset: 0 0 0 auto; z-index: 120; width: min(360px, calc(100vw - 520px)); min-width: 300px; color: #e9f7eb; background: #102019; box-shadow: -14px 0 36px rgba(0,0,0,.42); }
+    .agent-detail { position: relative; z-index: 120; grid-column: 2; grid-row: 1 / 4; width: auto; min-width: 0; color: #e9f7eb; background: #102019; box-shadow: -14px 0 36px rgba(0,0,0,.42); }
     .agent-detail[hidden] { display: none; }
     .agent-detail-panel { display: grid; height: 100%; grid-template-rows: auto auto auto minmax(0, 1fr); gap: 12px; overflow: auto; padding: 16px; }
     .agent-detail-header { display: grid; grid-template-columns: 56px minmax(0, 1fr) auto; align-items: center; gap: 10px; }
@@ -2882,6 +2883,14 @@
     .agent-detail-fields dd { min-width: 0; margin: 0; overflow-wrap: anywhere; font-size: 11px; }
     .agent-detail-events { display: grid; align-content: start; gap: 6px; overflow: auto; }
     .agent-detail-event { padding: 7px; border: 1px solid #294838; border-radius: 7px; color: #cfe3d5; background: #14281f; font-size: 10px; overflow-wrap: anywhere; }
+    .village-first-splitter { position: absolute; z-index: 125; display: block; margin: 0; padding: 0; border: 0; background: transparent; touch-action: none; }
+    .village-first-splitter::after { position: absolute; content: ''; border-radius: 99px; background: #345844; opacity: .55; }
+    .village-first-splitter:hover::after, .village-first-splitter:focus-visible::after { background: #72e2a5; opacity: 1; }
+    .village-first-splitter--top { top: calc(var(--village-top-height, 56px) - 4px); right: var(--agent-detail-track, 0px); left: 0; height: 8px; cursor: row-resize; }
+    .village-first-splitter--roster { top: calc(var(--village-top-height, 56px) + var(--village-roster-height, 128px) - 4px); right: var(--agent-detail-track, 0px); left: 0; height: 8px; cursor: row-resize; }
+    .village-first-splitter--top::after, .village-first-splitter--roster::after { inset: 3px 12px; }
+    .village-first-splitter--detail { top: 0; right: calc(var(--agent-detail-track, 0px) - 4px); bottom: 0; width: 8px; cursor: col-resize; }
+    .village-first-splitter--detail::after { inset: 12px 3px; }
     .agent-live-rail[hidden],
     .hook-live-rail[hidden],
     .live-rail-splitter[hidden],
@@ -2910,15 +2919,16 @@
     }
     .map-first-workspace .dashboard-card:not([hidden]) { display: grid !important; }
     @media (max-width: 899px) {
-      .map-first-workspace { grid-template-columns: minmax(0, 1fr); grid-template-rows: 44px 96px minmax(280px, 1fr); }
+      .map-first-workspace { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto minmax(280px, 1fr); overflow-x: hidden; overflow-y: auto; }
       .top-status-bar { grid-column: 1; }
       .map-first-workspace .world.map-stage { grid-column: 1; grid-row: 3; }
       .agent-roster { grid-column: 1; grid-row: 2; padding: 6px 8px; }
       .agent-roster-card { min-width: 128px; }
       .agent-roster-counts output:nth-last-child(-n+2) { display: none; }
       .map-first-workspace .dashboard-card { grid-column: 1; grid-row: 3; width: min(340px, calc(100% - 16px)) !important; height: auto !important; }
-      .agent-detail[data-agent-detail-mode='dialog'] { inset: 0; display: grid; width: auto; min-width: 0; place-items: center; padding: 12px; background: rgba(3,12,8,.72); }
+      .agent-detail[data-agent-detail-mode='dialog'] { position: fixed; inset: 0; display: grid; width: auto; min-width: 0; place-items: center; padding: 12px; background: rgba(3,12,8,.72); }
       .agent-detail[data-agent-detail-mode='dialog'] .agent-detail-panel { width: min(560px, 100%); max-height: min(720px, calc(100dvh - 24px)); height: auto; border: 1px solid #345844; border-radius: 12px; background: #102019; box-shadow: 0 18px 48px rgba(0,0,0,.5); }
+      .village-first-splitter { display: none !important; }
     }
     @media (prefers-reduced-motion: reduce) { .agent-roster-ecg { transition: none; } }
   </style>
@@ -3034,6 +3044,7 @@
             <span class="muted" id="language-label"></span>
             <select id="locale-select" data-i18n-aria-label="commandDeck.settings.languageSelector"></select>
             <button type="button" id="mobile-mode-btn" aria-pressed="false"></button>
+            <button type="button" id="village-reset-layout" data-i18n="villageLayout.reset"></button>
             <button type="button" id="edit-furniture-btn"></button>
             <button type="button" id="save-furniture-btn" hidden></button>
             <button type="button" id="cancel-furniture-btn" hidden></button>
@@ -3049,6 +3060,8 @@
     </div>
     </header>
 
+    <button type="button" class="village-first-splitter village-first-splitter--top" id="village-top-splitter" role="separator" aria-orientation="horizontal" data-i18n-aria-label="villageLayout.resizeTop"></button>
+
     <section class="agent-roster command-deck-region" id="agent-roster" data-command-region="roster" data-i18n-aria-label="commandDeck.roster.title">
       <header class="agent-roster-header">
         <h2 id="agent-live-title" data-i18n="commandDeck.roster.title"></h2>
@@ -3061,7 +3074,9 @@
       </header>
       <div class="agent-live-list" id="agent-live-list"></div>
     </section>
+    <button type="button" class="village-first-splitter village-first-splitter--roster" id="village-roster-splitter" role="separator" aria-orientation="horizontal" data-i18n-aria-label="villageLayout.resizeRoster"></button>
 
+    <button type="button" class="village-first-splitter village-first-splitter--detail" id="village-detail-splitter" role="separator" aria-orientation="vertical" data-i18n-aria-label="villageLayout.resizeDetail"></button>
     <aside class="agent-detail" id="agent-detail" aria-hidden="true" hidden>
       <section class="agent-detail-panel" data-agent-detail-panel role="dialog" aria-modal="true" aria-labelledby="agent-detail-name">
         <header class="agent-detail-header">
