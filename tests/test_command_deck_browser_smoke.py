@@ -578,6 +578,23 @@ def test_contract_requires_catalog_derived_current_agent_state_without_foreign_c
     assert any("ja-JP" in failure and "current agent state" in failure for failure in failures)
 
 
+def test_browser_captures_placeholder_locale_state_before_synthetic_agent_events():
+    source = SCRIPT.read_text(encoding="utf-8")
+    run_smoke = source[source.index("def run_smoke("):]
+
+    assert "def locale_coverage_evidence(" in source
+    assert run_smoke.index('artifact["locale_coverage"] = locale_coverage_evidence') < run_smoke.index(
+        "post_event(plan.base_url, synthetic_event(plan.main_agent"
+    )
+
+
+def test_agent_detail_smoke_closes_a_previously_open_detail_before_focus_restore_checks():
+    source = SCRIPT.read_text(encoding="utf-8")
+    agent_detail = source[source.index("def agent_detail_evidence("):]
+
+    assert "close pre-opened Agent detail" in agent_detail
+
+
 def test_contract_rejects_text_only_routes_closed_cabin_and_missing_agents():
     smoke = load_module()
     artifact = passing_artifact()

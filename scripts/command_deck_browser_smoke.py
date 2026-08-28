@@ -880,6 +880,13 @@ def agent_detail_evidence(browser: ChromiumDevTools, plan: BrowserSmokePlan, age
     focus_restore = True
     layout_resize = {"changed": False, "persisted": False, "reset": False}
 
+    if not browser.evaluate("document.querySelector('#agent-detail')?.hidden"):
+        browser.key("Escape")
+        browser.wait_until(
+            "document.querySelector('#agent-detail')?.hidden",
+            "close pre-opened Agent detail",
+        )
+
     for index, viewport in enumerate(plan.viewports):
         browser.set_viewport(viewport.width, viewport.height)
         browser.evaluate("window.dispatchEvent(new Event('resize')); true")
@@ -1069,6 +1076,47 @@ def locale_evidence(browser: ChromiumDevTools, locale: str) -> dict[str, Any]:
           village_nodes: child.querySelectorAll('[aria-label]').length };
       })()
     """)
+
+
+def locale_coverage_evidence(
+    browser: ChromiumDevTools, plan: BrowserSmokePlan
+) -> dict[str, Any]:
+    locale_checks: dict[str, Any] = {}
+    for locale in plan.locales:
+        check = locale_evidence(browser, locale)
+        help_copy = _mapping(check.get("help_copy"))
+        expected = EXPECTED_LOCALE_COPY[locale]
+        check["pass"] = bool(
+            check["shell_text"]
+            and check["village_text"]
+            and not check["missing_text"]
+            and check.get("document_lang") == expected["document_lang"]
+            and help_copy.get("aria_label") == expected["help_aria"]
+            and all(help_copy.get(key) == expected["help"] for key in ("tooltip", "title"))
+            and all(
+                _mapping(check.get("shell_copy")).get(key) == expected[key]
+                for key in ("agents_title", "timeline_title", "language_label")
+            )
+            and all(
+                _mapping(check.get("village_copy")).get(key) == expected[key]
+                for key in ("rest_cabin", "maker_workshop")
+            )
+            and check.get("current_agent_state") == expected["current_agent_state"]
+        )
+        locale_checks[locale] = check
+    signature_keys = ("shell_signature", "village_signature", "help_signature")
+    unique_signatures = all(
+        len({str(check.get(key) or "") for check in locale_checks.values()}) == len(plan.locales)
+        and all(check.get(key) for check in locale_checks.values())
+        for key in signature_keys
+    )
+    locale_evidence(browser, "en-US")
+    return {
+        "supported": list(plan.locales),
+        "checks": locale_checks,
+        "unique_signatures": unique_signatures,
+        "pass": unique_signatures and all(check["pass"] for check in locale_checks.values()),
+    }
 
 
 def drilldown_evidence(browser: ChromiumDevTools) -> dict[str, Any]:
@@ -1527,6 +1575,7 @@ def run_smoke(plan: BrowserSmokePlan) -> dict[str, Any]:
             browser.set_viewport(1440, 900)
             browser.reload()
             wait_world(browser)
+            artifact["locale_coverage"] = locale_coverage_evidence(browser, plan)
 
             post_event(plan.base_url, synthetic_event(plan.main_agent, "main_agent", "start", "working", "clone_bay", "Main agent enters Clone Bay"))
             post_event(plan.base_url, synthetic_event(plan.subagent, "subagent", "start", "working", "clone_bay", "Subagent starts in Clone Bay"))
@@ -1568,38 +1617,6 @@ def run_smoke(plan: BrowserSmokePlan) -> dict[str, Any]:
             )
             artifact["agent_overview"] = agent_overview_evidence(browser, plan.subagent)
             artifact["agent_detail"] = agent_detail_evidence(browser, plan, plan.subagent)
-            locale_checks: dict[str, Any] = {}
-            for locale in plan.locales:
-                check = locale_evidence(browser, locale)
-                help_copy = _mapping(check.get("help_copy"))
-                expected = EXPECTED_LOCALE_COPY[locale]
-                check["pass"] = bool(
-                    check["shell_text"]
-                    and check["village_text"]
-                    and not check["missing_text"]
-                    and check.get("document_lang") == expected["document_lang"]
-                    and help_copy.get("aria_label") == expected["help_aria"]
-                    and all(help_copy.get(key) == expected["help"] for key in ("tooltip", "title"))
-                    and all(_mapping(check.get("shell_copy")).get(key) == expected[key]
-                            for key in ("agents_title", "timeline_title", "language_label"))
-                    and all(_mapping(check.get("village_copy")).get(key) == expected[key]
-                            for key in ("rest_cabin", "maker_workshop"))
-                    and check.get("current_agent_state") == expected["current_agent_state"]
-                )
-                locale_checks[locale] = check
-            signature_keys = ("shell_signature", "village_signature", "help_signature")
-            unique_signatures = all(
-                len({str(check.get(key) or "") for check in locale_checks.values()}) == len(plan.locales)
-                and all(check.get(key) for check in locale_checks.values())
-                for key in signature_keys
-            )
-            artifact["locale_coverage"] = {
-                "supported": list(plan.locales),
-                "checks": locale_checks,
-                "unique_signatures": unique_signatures,
-                "pass": unique_signatures and all(check["pass"] for check in locale_checks.values()),
-            }
-            locale_evidence(browser, "en-US")
 
             browser.wait_until(
                 f"(() => {{ const node = document.querySelector('#pixelworld-frame')?.contentDocument?.querySelector('.world-agent-status[data-agent-id={json.dumps(plan.main_agent)}]'); return node && node.hidden && node.style.transform && node.style.transform !== {json.dumps(initial_main.get('transform'))}; }})()",
