@@ -29,6 +29,40 @@ describe('interior occupant assignment', () => {
     }
   });
 
+  it('reserves chair targets for rest and bed targets for offline sleep', () => {
+    const room = {
+      ...INTERIOR_DEFINITIONS['rest-cabin'], width: 8, height: 6,
+      furniture: [
+        {
+          id: 'sleep-bed', kind: 'bed' as const, point: { x: 1, y: 1 }, facing: 'right' as const,
+          supportedActions: ['offline' as const], icon: 'offline' as const, blocksNavigation: false,
+          interactionPoint: { x: 1, y: 1 },
+        },
+        {
+          id: 'rest-chair', kind: 'chair' as const, point: { x: 5, y: 1 }, facing: 'down' as const,
+          supportedActions: ['rest' as const], icon: 'rest' as const, blocksNavigation: false,
+          interactionPoint: { x: 5, y: 1 },
+        },
+      ],
+      overflow: [],
+    };
+
+    const rest = assignInteriorOccupants(room, [snapshot({
+      buildingId: 'custom-house', action: 'rest', eventKind: 'idle',
+    })], 'custom-house')[0]!;
+    const offline = assignInteriorOccupants(room, [snapshot({
+      buildingId: 'custom-house', action: 'offline', eventKind: 'offline',
+    })], 'custom-house')[0]!;
+    const working = assignInteriorOccupants(room, [snapshot({
+      buildingId: 'custom-house', action: 'terminal', eventKind: 'tool',
+    })], 'custom-house')[0]!;
+
+    expect(rest).toMatchObject({ furnitureId: 'rest-chair', point: { x: 5, y: 1 }, seated: true });
+    expect(offline).toMatchObject({ furnitureId: 'sleep-bed', point: { x: 1, y: 1 }, seated: true });
+    expect(working).toMatchObject({ missingSemantic: 'work', seated: false });
+    expect(working.furnitureId).toBeUndefined();
+  });
+
   it('maps web work to a stable nearby Search station independently of activity cycle id', () => {
     const research = INTERIOR_DEFINITIONS['research-library'];
     const first = assignInteriorOccupants(research, [snapshot({

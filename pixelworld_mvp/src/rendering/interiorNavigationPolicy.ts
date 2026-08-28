@@ -18,9 +18,12 @@ const SEATING_KINDS = new Set<FurnitureDefinition['kind']>([
 const SEATING_ACTIONS = new Set<AgentAction>(['arrive', 'queue', 'rest']);
 
 export function navigationBlockerKind(
-  item: Pick<FurnitureDefinition, 'layer'>,
+  item: Pick<FurnitureDefinition, 'kind' | 'layer' | 'supportedByIds'>,
 ): 'passable' | 'solid' {
-  return item.layer === 'floor' ? 'passable' : 'solid';
+  return item.layer === 'floor'
+    || Boolean(item.supportedByIds?.length)
+    ? 'passable'
+    : 'solid';
 }
 
 export function interactionAccess(

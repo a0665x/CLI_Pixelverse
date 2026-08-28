@@ -20,11 +20,12 @@ import {
   translateFurnitureGeometry,
 } from './canonicalFurnitureGeometry';
 import {
-  AGENT_FEET_CLEARANCE,
   interactionAccess,
   navigationBlockerKind,
   type NavigationClearance,
 } from './interiorNavigationPolicy';
+
+const ZERO_NAVIGATION_CLEARANCE: Readonly<NavigationClearance> = Object.freeze({ x: 0, y: 0 });
 
 export const EDITOR_CELL = 5.5;
 export type PlacementDiagnostic = 'valid' | 'outside-room' | 'blocks-door' | 'overlap' | 'invalid-asset';
@@ -271,19 +272,33 @@ export function navigationBlockedCellKeys(
   stationId?: string,
   options: NavigationBlockOptions = {},
 ): Set<string> {
-  const clearance = options.clearance ?? AGENT_FEET_CLEARANCE;
+  const clearance = options.clearance ?? ZERO_NAVIGATION_CLEARANCE;
   const station = stationId ? furniture.find(({ id }) => id === stationId) : undefined;
   const targetKey = gridKey({ x: Math.round(target.x), y: Math.round(target.y) });
-  const eligibleTargetOwners = new Set(furniture.filter((item) => (
-    (item.id === station?.id
+  const stationAccess = station ? (options.action === undefined
+    ? station.supportedActions.map((action) => interactionAccess(station, action)).find((access) => access !== 'none') ?? 'none'
+    : interactionAccess(station, options.action)) : 'none';
+  const routePassableOwners = new Set(furniture.filter((item) => (
+    (item.id === station?.id && (stationAccess === 'seat' || stationAccess === 'sleep'))
       || (Boolean(station?.prefabInstanceId)
         && item.prefabInstanceId === station!.prefabInstanceId
-        && samePoint(item.interactionPoint, target)))
+        && interactionAccess(item, 'rest') === 'seat')
+  )).map(({ id }) => id));
+  const eligibleTargetOwners = new Set(furniture.filter((item) => (
+    (item.id === station?.id
+      || item.supportedByIds?.includes(station?.id ?? '')
+      || (Boolean(station?.prefabInstanceId)
+        && item.prefabInstanceId === station!.prefabInstanceId
+        && (samePoint(item.interactionPoint, target)
+          || (['chair', 'office-chair', 'sofa'].includes(item.kind)
+            && navigationObstacleCells(item, clearance).some((cell) => gridKey(cell) === targetKey)))))
   )).map(({ id }) => id));
   const targetOwners = furniture.filter((item) => (
     navigationObstacleCells(item, clearance).some((cell) => gridKey(cell) === targetKey)
   ));
-  const blocked = new Set(furniture.flatMap((item) => navigationObstacleCells(item, clearance)).map(gridKey));
+  const blocked = new Set(furniture.flatMap((item) => (
+    routePassableOwners.has(item.id) ? [] : navigationObstacleCells(item, clearance)
+  )).map(gridKey));
   const genuineStationTarget = Boolean(station)
     && (samePoint(station!.interactionPoint, target) || samePoint(station!.point, target));
   const accessAllowed = Boolean(station) && (options.action === undefined
