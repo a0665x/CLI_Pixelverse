@@ -330,7 +330,7 @@ const cutawayFocusHandoff = createCutawayFocusHandoff({
   schedule: (callback) => window.requestAnimationFrame(callback),
   cancel: (handle) => window.cancelAnimationFrame(handle),
 });
-const liveEcgController = createLiveEcgController({ root: dom.agentLiveList });
+const liveEcgController = createLiveEcgController({ root: dom.workspace });
 const villageFirstLayoutController = createVillageFirstLayoutController({
   workspace: dom.workspace,
   handles: {
@@ -346,7 +346,9 @@ const agentDetailView = createAgentDetailView({
   root: dom.agentDetail,
   documentRef: document,
   spriteFor: getKenneyAgentSprite,
-  textFor: (key, params = {}) => uiText(currentLocale, key, params),
+  textFor: (key, params = {}) => key.startsWith('rooms.')
+    ? (getRoomCopy(key.split('.')[1], currentLocale).name || key)
+    : uiText(currentLocale, key, params),
   onClose: () => villageFirstLayoutController.setDetailOpen(false),
 });
 const agentRosterView = createAgentRosterView({

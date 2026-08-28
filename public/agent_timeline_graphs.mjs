@@ -151,6 +151,10 @@ export function heartbeatBeatWidthPx(panel = {}) {
   return Math.round(28 - (rate * 16));
 }
 
+export function reducedMotionHeartbeatPath(panel = {}, widthPx = 176) {
+  return buildHeartbeatPath(panel, 0, 160, widthPx);
+}
+
 export function buildAgentTimelinePanels(snapshot = {}, localeStrings = {}, options = {}) {
   const nowMs = toTime(options.nowMs ?? snapshot.server_time_ms ?? Date.now());
   const windowMs = Number.isFinite(Number(options.windowMs)) ? Number(options.windowMs) : 20 * 60 * 1000;

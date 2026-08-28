@@ -83,3 +83,21 @@ test('default path builder consumes the canonical semantic signal', () => {
 
   assert.notEqual(view.paths.get('main').value, 'M 0,16 L 176,16');
 });
+
+test('one scheduler paints roster and detail ECG nodes for the same Agent', () => {
+  const paths = [];
+  const nodes = Array.from({ length: 2 }, () => {
+    const path = { value: '', setAttribute: (_name, value) => { path.value = value; } };
+    paths.push(path);
+    return { dataset: { agentEcg: 'main' }, querySelector: () => path };
+  });
+  const controller = createLiveEcgController({
+    root: { querySelectorAll: () => nodes },
+    now: () => 1_000,
+    pathFor: (row) => row.signal.kind,
+  });
+
+  controller.sync([{ id: 'main', state: 'working', signal: { kind: 'busy' } }]);
+
+  assert.deepEqual(paths.map(({ value }) => value), ['busy', 'busy']);
+});
