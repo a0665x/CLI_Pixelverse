@@ -293,7 +293,7 @@ test('production DOM payload presenters preserve markup-like task and summary by
   const task = `<task>&"'${'TASK'.repeat(30)}END`;
   const summary = `<preview>&"'${'PREVIEW'.repeat(30)}END`;
   const agent = { task };
-  assert.equal(presenters.currentAgentStatePresentation({ agent, name: 'Henry', state: 'Working', room: 'Workshop' }).task, task);
+  assert.equal(presenters.currentAgentStatePresentation({ name: 'Henry', state: 'Working', room: 'Workshop', detail: task }).detail, task);
   assert.equal(presenters.agentPayloadPresentation(agent).task, task);
   const timeline = presenters.timelinePayloadPresentation({ taskLabel: task, latestSummary: summary });
   assert.equal(timeline.task, task);

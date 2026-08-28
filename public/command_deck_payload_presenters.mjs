@@ -8,9 +8,8 @@ export function agentPayloadPresentation(agent = {}, fallback = '') {
   return { task: agentTaskText(agent) || String(fallback || '') };
 }
 
-export function currentAgentStatePresentation({ agent = {}, name = '', state = '', room = '', fallback = '' } = {}) {
-  const task = agentPayloadPresentation(agent, fallback).task;
-  return { task, text: [name, state, room, task].filter(Boolean).join(' · ') };
+export function currentAgentStatePresentation({ name = '', state = '', room = '', detail = '' } = {}) {
+  return { detail: String(detail || ''), text: [name, state, room, detail].filter(Boolean).join(' · ') };
 }
 
 export function timelinePayloadPresentation(panel = {}, fallback = '') {

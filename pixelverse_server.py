@@ -1048,16 +1048,14 @@ class WorldState:
             item["connection_status"] = "awaiting_attach" if item.get("source_placeholder") else "attached"
             if item["is_stale"] and item.get("source_placeholder"):
                 item["state"] = "idle"
-                item["status_label"] = "等待接線"
-                standby_room = classify_room("idle", None, role="main_agent")
-                item.update(standby_room)
-                item["activity_hint"] = "已選擇 agent source，等待新的 CLI session 接入"
+                item["status_label"] = ""
+                item.update(classify_room("idle", None, role="main_agent"))
+                item["activity_hint"] = ""
             elif item["is_stale"] and item["state"] != "offline":
                 item["state"] = "offline"
-                item["status_label"] = STATUS_LABELS["offline"]
-                offline_room = classify_room("offline", item.get("task"), role="main_agent")
-                item.update(offline_room)
-                item["activity_hint"] = "目前沒有收到新的主代理心跳"
+                item["status_label"] = ""
+                item.update(classify_room("offline", item.get("task"), role="main_agent"))
+                item["activity_hint"] = ""
                 item["connection_status"] = "stale"
             item["can_delete"] = item["state"] == "offline" and item["connection_status"] != "awaiting_attach"
         return agents

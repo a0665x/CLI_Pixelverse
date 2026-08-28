@@ -298,10 +298,11 @@ def test_unattached_source_placeholder_waits_for_cli_instead_of_showing_offline(
     assert waiting["room_key"] == "standby_dock"
     assert waiting["connection_status"] == "awaiting_attach"
     assert waiting["is_stale"] is True
-    assert "等待新的 CLI session" in waiting["activity_hint"]
+    assert waiting["activity_hint"] == ""
+    assert waiting["status_label"] == ""
 
 
-def test_attached_cli_that_stops_heartbeats_still_becomes_offline(monkeypatch):
+def test_stale_attached_cli_that_stops_heartbeats_still_becomes_offline(monkeypatch):
     import pixelverse_server
 
     current_time = [1000.0]
@@ -315,6 +316,8 @@ def test_attached_cli_that_stops_heartbeats_still_becomes_offline(monkeypatch):
     assert stale["state"] == "offline"
     assert stale["room_key"] == "offline_corner"
     assert stale["connection_status"] == "stale"
+    assert stale["activity_hint"] == ""
+    assert stale["status_label"] == ""
     assert stale["can_delete"] is True
 
 

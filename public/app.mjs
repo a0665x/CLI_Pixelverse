@@ -9,6 +9,7 @@ import {
 } from './kenney_assets.mjs';
 import {
   activityHintForLocale,
+  agentConnectionStatusText,
   agentTaskText,
   agentToolText,
   agentTooltipText,
@@ -1019,8 +1020,9 @@ function updateCurrentAgentState(snapshot = {}) {
   }
   const room = getRoomCopy(mainAgent.room_key, currentLocale);
   const roomName = room.name || mainAgent.room_label || copy.unknownRoom;
+  const detail = agentConnectionStatusText(currentLocale, mainAgent) || agentTaskText(mainAgent);
   const presentation = currentAgentStatePresentation({
-    agent: mainAgent, name: displayAgentName(mainAgent), state: stateText(mainAgent.state), room: roomName,
+    name: displayAgentName(mainAgent), state: stateText(mainAgent.state), room: roomName, detail,
   });
   updateLiveRegionText(dom.currentAgentState, presentation.text);
 }

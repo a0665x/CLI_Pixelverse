@@ -24,6 +24,7 @@ test('all supported locales contain complete Agent detail and village layout cop
       'agentDetail.role.main_agent', 'agentDetail.role.subagent',
       'villageLayout.reset', 'villageLayout.resizeTop', 'villageLayout.resizeRoster',
       'villageLayout.resizeDetail', 'agentState.editing_files', 'agentState.offline',
+      'agentConnection.awaitingAttach', 'agentConnection.stale',
     ]) {
       assert.notEqual(uiStrings.uiText(locale, key), key, `${locale}:${key}`);
     }
