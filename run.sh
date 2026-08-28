@@ -105,7 +105,7 @@ Commands:
              Install/update the Hermes gateway hook that relays agent lifecycle events.
   hermes-chat
              Launch Hermes chat through the Pixelverse wrapper.
-  test-hook  Send a synthetic lifecycle sequence and refresh tmp trajectory/debug files.
+  test-hook  Send a synthetic lifecycle sequence and verify fresh route evidence.
   smoke-furniture-drag  Open a real second-layer interior and verify furniture assets/rendering
              Checks the iframe cutaway, render PNG, collision manifest, console, and screenshot.
   down       Alias for stop.
@@ -177,9 +177,6 @@ Supported PIXELVERSE_TEST_HOOK_TARGET values:
 Test-hook debug artifacts are overwritten on each run:
   tmp/latest_test_hook_route.json   Planned scenario, event sequence, and agent plan.
   tmp/latest_world_snapshot.json    /api/world snapshot after synthetic events.
-  tmp/pixelverse_debug_log.json     Per-agent routes, room anchors, blockers, walkable checks.
-  tmp/local_ui_trajectory.jpg       Visual route overlay for the latest task.
-  tmp/global_map_walkability_mask.png  Planner occupancy mask: black=blocked, white=free, gray=door.
 
 Repeatable browser smoke tests:
   ./run.sh smoke-furniture-drag
@@ -1212,25 +1209,6 @@ hermes_chat() {
   exec "$STATE_DIR/bin/pixelverse-hermes" chat "$@"
 }
 
-render_latest_trajectory() {
-  local target_room="${1:-}"
-  local output
-  local -a renderer_cmd=(python3 "$ROOT/scripts/render_local_ui_trajectory.py")
-  if ! python3 -c 'import PIL' >/dev/null 2>&1 && command -v uv >/dev/null 2>&1; then
-    renderer_cmd=(uv run --with Pillow python "$ROOT/scripts/render_local_ui_trajectory.py")
-  fi
-  if [[ -n "$target_room" ]]; then
-    renderer_cmd+=(--require-hook-evidence "$target_room")
-  fi
-  if output="$("${renderer_cmd[@]}" 2>&1)"; then
-    echo "Trajectory image: $output"
-  else
-    echo "Failed to render or validate trajectory evidence:" >&2
-    echo "$output" >&2
-    return 1
-  fi
-}
-
 capture_world_snapshot() {
   local snapshot_url="http://127.0.0.1:${PIXELVERSE_PORT}/api/world"
   local output="$ROOT/tmp/latest_world_snapshot.json"
@@ -1419,7 +1397,6 @@ test_hook() {
   if ! wait_for_route_evidence "henry-main" "$target_room" "standby_dock" "$minimum_event_id"; then
     return 1
   fi
-  render_latest_trajectory "$target_room"
   echo "Hook movement evidence accepted: ${target_room} route and coordinate checks passed."
   echo "Synthetic hook sequence sent. Check UI or /api/world events."
 }

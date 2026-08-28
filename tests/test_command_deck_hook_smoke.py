@@ -1,28 +1,22 @@
 from __future__ import annotations
 
-import importlib.util
 import json
 import os
 import shutil
 import subprocess
-import sys
 import textwrap
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-RENDERER = ROOT / "scripts" / "render_local_ui_trajectory.py"
 RUN_SH = ROOT / "run.sh"
 
 
 def prepare_async_hook_fixture(tmp_path: Path, *, never_deliver: bool = False) -> tuple[Path, dict[str, str], Path]:
     fixture_root = tmp_path / "fixture"
     fixture_root.mkdir()
-    (fixture_root / "scripts").mkdir()
     (fixture_root / "tmp").mkdir()
     shutil.copy2(RUN_SH, fixture_root / "run.sh")
-    shutil.copy2(RENDERER, fixture_root / "scripts" / RENDERER.name)
-    (fixture_root / "public").symlink_to(ROOT / "public", target_is_directory=True)
 
     state_dir = fixture_root / "state"
     state_dir.mkdir()
@@ -112,106 +106,14 @@ def prepare_async_hook_fixture(tmp_path: Path, *, never_deliver: bool = False) -
     return fixture_root, env, relay_state
 
 
-def load_renderer():
-    spec = importlib.util.spec_from_file_location("render_local_ui_trajectory", RENDERER)
-    assert spec and spec.loader
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-def valid_clone_debug_artifact() -> dict:
-    def agent(agent_id, rooms, points, event_ids):
-        start, work, returned = points
-        return {
-            "agent": agent_id,
-            "rooms": {"start": rooms[0], "work": rooms[1], "return": rooms[2]},
-            "points": {"start": start, "work": work, "return": returned},
-            "outbound_route": [start, {"x": start["x"] + 2, "y": start["y"] + 3}, work],
-            "return_route": [work, {"x": returned["x"] - 1, "y": returned["y"] - 2}, returned],
-            "route_evidence": {
-                "outbound": {
-                    "event_id": event_ids[0],
-                    "from_room": rooms[0],
-                    "to_room": rooms[1],
-                    "from_position": start,
-                    "to_position": work,
-                    "position_changed": True,
-                },
-                "return": {
-                    "event_id": event_ids[1],
-                    "from_room": rooms[1],
-                    "to_room": rooms[2],
-                    "from_position": work,
-                    "to_position": returned,
-                    "position_changed": True,
-                },
-            },
-        }
-
-    return {
-        "latest": {"minimum_event_id": 10},
-        "agents": [
-            agent(
-                "henry-main",
-                ("think_lab", "clone_bay", "standby_dock"),
-                ({"x": 19, "y": 20}, {"x": 80, "y": 20}, {"x": 16, "y": 82}),
-                (11, 17),
-            ),
-            agent(
-                "synthetic-subagent-1",
-                ("clone_bay", "tool_forge", "clone_bay"),
-                ({"x": 66, "y": 18}, {"x": 64, "y": 82}, {"x": 66, "y": 18}),
-                (13, 16),
-            ),
-        ]
-    }
-
-
-def test_clone_hook_evidence_requires_two_agents_routes_and_positive_displacement():
-    renderer = load_renderer()
-    validator = getattr(renderer, "validate_hook_evidence", None)
-    assert callable(validator)
-
-    failures = validator(valid_clone_debug_artifact(), "clone_bay")
-
-    assert failures == []
-
-
-def test_clone_hook_evidence_rejects_text_or_room_label_only_changes():
-    renderer = load_renderer()
-    validator = getattr(renderer, "validate_hook_evidence", None)
-    assert callable(validator)
-    debug = valid_clone_debug_artifact()
-    child = debug["agents"][1]
-    child["points"]["work"] = dict(child["points"]["start"])
-    child["outbound_route"] = [dict(child["points"]["start"])]
-    child["route_evidence"]["outbound"]["to_position"] = dict(
-        child["route_evidence"]["outbound"]["from_position"]
-    )
-
-    failures = validator(debug, "clone_bay")
-
-    assert any("positive coordinate displacement" in failure for failure in failures)
-    assert any("route points" in failure for failure in failures)
-    assert any("runtime coordinate displacement" in failure for failure in failures)
-
-
-def test_clone_hook_evidence_rejects_matching_routes_from_an_older_run():
-    renderer = load_renderer()
-    debug = valid_clone_debug_artifact()
-    debug["latest"]["minimum_event_id"] = 18
-
-    failures = renderer.validate_hook_evidence(debug, "clone_bay")
-
-    assert any("current test-hook run" in failure for failure in failures)
-
-
-def test_run_sh_test_hook_enforces_renderer_evidence_acceptance():
+def test_run_sh_test_hook_enforces_snapshot_evidence_without_legacy_renderer():
     run_sh = RUN_SH.read_text(encoding="utf-8")
 
-    assert '--require-hook-evidence "$target_room"' in run_sh
+    assert "render_latest_trajectory" not in run_sh
+    assert "render_local_ui_trajectory" not in run_sh
+    assert "local_ui_trajectory" not in run_sh
+    assert "global_map_walkability_mask" not in run_sh
+    assert "pixelverse_debug_log" not in run_sh
     assert "Hook movement evidence accepted" in run_sh
 
 
@@ -250,7 +152,7 @@ def test_run_sh_waits_for_delayed_async_main_return_evidence(tmp_path):
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert json.loads(relay_state.read_text(encoding="utf-8"))["snapshot_polls"] >= 3
-    assert "Hook movement evidence accepted for clone_bay" in result.stdout
+    assert "Hook movement evidence accepted: clone_bay route and coordinate checks passed." in result.stdout
 
 
 def test_run_sh_async_main_return_wait_is_bounded_and_clear(tmp_path):

@@ -2,24 +2,30 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { hookStateRoutes } from '../public/hook_state_map.mjs';
-import { ROOM_LAYOUTS, ROOM_STATE_GROUPS } from '../public/house_layout.mjs';
 
-test('hook state table routes every lifecycle condition to a visible room category', () => {
+test('hook state table preserves the active semantic room contract', () => {
   const routes = hookStateRoutes();
-  assert.ok(routes.length >= 8);
+  const statesByRoom = {};
   for (const route of routes) {
-    assert.ok(ROOM_LAYOUTS[route.room], `unknown room for ${route.hook}`);
-    assert.ok(ROOM_STATE_GROUPS[route.room]?.includes(route.state), `${route.state} missing from ${route.room}`);
+    (statesByRoom[route.room] ||= []).push(route.state);
   }
+
+  assert.deepEqual(statesByRoom, {
+    clone_bay: ['initializing', 'collaborating', 'collaborating'],
+    think_lab: ['thinking', 'awaiting_input'],
+    tool_forge: ['invoking_skill', 'browsing', 'external_tool', 'tool_call'],
+    file_library: ['reading_files', 'reading_files'],
+    code_workbench: ['editing_files', 'editing_files'],
+    terminal_bay: ['shell_command'],
+    blueprint_lab: ['planning'],
+    offline_corner: ['blocked', 'offline'],
+    standby_dock: ['idle'],
+  });
 });
 
-test('hook rooms group fine-grained active tool states', () => {
-  assert.deepEqual(ROOM_STATE_GROUPS.file_library, ['reading_files']);
-  assert.deepEqual(ROOM_STATE_GROUPS.code_workbench, ['editing_files', 'self_healing']);
-  assert.deepEqual(ROOM_STATE_GROUPS.terminal_bay, ['shell_command', 'executing']);
-  assert.deepEqual(
-    ROOM_STATE_GROUPS.tool_forge,
-    ['invoking_skill', 'tool_call', 'browsing', 'external_tool'],
-  );
-  assert.deepEqual(ROOM_STATE_GROUPS.offline_corner, ['offline', 'blocked']);
+test('hook state routes are returned as defensive copies', () => {
+  const routes = hookStateRoutes();
+  routes[0].room = 'changed';
+
+  assert.equal(hookStateRoutes()[0].room, 'clone_bay');
 });

@@ -1,106 +1,153 @@
-# Task 5 Report: Hook and Subagent Movement Evidence
+# Task 5 Report: Delete Tracked Legacy YAML Map Stack
 
 ## Status
 
-Implementation complete; automated verification green. Live `run.sh test-hook` against the local bridge/container remains unavailable because the sandbox could not reach the bridge or Docker socket, and the escalation request was aborted before execution. The corrected command now fails immediately and non-zero in that condition instead of false-passing.
+DONE_WITH_CONCERNS
 
-## RED evidence
+The Task 5 retirement contract and all focused tests pass. The complete JS and
+Python matrices still contain three verified pre-existing/out-of-scope failures,
+documented below.
 
-Command:
+## Plan correction
+
+The required pre-deletion audit found tracked dependencies that the original
+Task 5 file list omitted:
+
+- `public/room_furniture.mjs` imported `public/house_layout.mjs`.
+- `scripts/render_local_ui_trajectory.py` imported `house_layout.mjs`,
+  `room_furniture.mjs`, and `world_motion.mjs`; `run.sh test-hook` invoked it.
+- `tests/test_agent_walk_cycle.mjs` imported `world_motion.mjs`.
+- `tests/test_hook_state_map.mjs` imported `house_layout.mjs` even though the
+  active dashboard still uses `public/hook_state_map.mjs` directly.
+- `docker-compose.yml` and `run.sh` still contained strings rejected by the
+  required active-source negative contract.
+
+Execution paused before deletion. The parent workflow authorized a bounded
+correction: delete the exclusively retired outer/YAML renderer dependencies,
+decouple the active semantic hook-route test from `house_layout.mjs`, preserve
+snapshot delivery and asynchronous route-evidence polling in `run.sh test-hook`,
+and move the Compose map-mount removal forward from Task 6. README and skill
+documentation remain for Task 6.
+
+## Changes
+
+- Deleted the 12 retired production files/assets/scripts and 10 obsolete suites
+  listed in the brief.
+- Also deleted the audited outer-renderer-only files
+  `public/room_furniture.mjs`, `scripts/render_local_ui_trajectory.py`, and
+  `tests/test_agent_walk_cycle.mjs`.
+- Removed the obsolete renderer function/call/artifact help from `run.sh` while
+  retaining hook delivery, snapshot capture, event freshness, positive runtime
+  displacement, bounded polling, and transport diagnostics.
+- Removed the global-map environment variable and bind mount from Compose.
+- Removed `global_map` from `scripts/docker_build_metadata.py` `BUILD_INPUTS`
+  (named `SOURCE_INPUTS` in the brief) and updated its release contract.
+- Rewrote `tests/test_hook_state_map.mjs` to validate the active semantic
+  room/state table and defensive copies without importing the retired geometry.
+- Extended the negative file/reference contract to cover the audited renderer
+  additions and obsolete artifact names.
+
+No file under `pixelworld_mvp/` was modified. In particular,
+`pixelworld_mvp/src/world/worldDefinition.ts` and Phaser interior definition,
+editor, placement, prefab, navigation, and rendering modules remain present.
+No recursive deletion was used against `global_map/`.
+
+## TDD evidence
+
+Initial RED:
 
 ```text
-python3 -m pytest -q tests/test_hermes_integration.py tests/test_fastapi_service.py tests/test_command_deck_hook_smoke.py
+python3 -m pytest -q tests/test_legacy_map_retirement.py
+2 failed, 3 passed
 ```
 
-Initial result: `7 failed, 33 passed`.
+The absence test listed all 12 original retired production paths. The active
+source test also found the obsolete `run.sh`/Compose map contract.
 
-Expected failures proved:
-
-- child `PreToolUse` / `PostToolUse` fell back to the main id;
-- idle subagent room hints overrode clone-bay role routing;
-- subagents changed room labels without changing coordinates;
-- runtime route evidence and server event ids were absent;
-- smoke validation and the `run.sh` acceptance gate were absent.
-
-A follow-up transport RED proved that an unavailable bridge/container could print errors but return success. Cross-field identity REDs proved both that child tool callbacks using only `agent_id` were not recognized and that a parent `agent_id` could incorrectly outrank nested child identity. Independent review then drove stale-event freshness and bounded-curl RED cases.
-
-## GREEN evidence
+Corrected-scope RED before implementation:
 
 ```text
-python3 -m pytest -q tests/test_hermes_integration.py tests/test_fastapi_service.py tests/test_command_deck_hook_smoke.py tests/test_codex_pixelverse_hook.py
-................................................                         [100%]
-49 passed in 1.95s
+python3 -m pytest -q tests/test_legacy_map_retirement.py \
+  tests/test_docker_release_integrity.py tests/test_command_deck_hook_smoke.py
+5 failed, 12 passed, 1 skipped
 ```
+
+Failures covered the 14 retired production paths, stale build input, legacy
+renderer wiring, and the copied async fixture's dependency on the renderer.
+
+GREEN:
+
+```text
+python3 -m pytest -q tests/test_legacy_map_retirement.py \
+  tests/test_docker_release_integrity.py tests/test_command_deck_hook_smoke.py
+17 passed, 1 skipped
+```
+
+```text
+node --test tests/test_hook_state_map.mjs
+1 suite passed
+```
+
+The skip is the existing optional release-image inspection gate.
+
+## Repository audits
+
+The required post-deletion import scan reports only:
+
+- README references assigned to Task 6;
+- a negative dashboard test name/assertion;
+- stale skill documentation assigned to Task 6.
+
+A second active-code scan found no imports of `global_map_loader`,
+`house_layout`, `world_motion`, `room_furniture`, or the trajectory renderer
+outside negative assertions. The same scan found no retired imports in Phaser,
+bridge, server, or dashboard sources.
+
+## Verification
+
+```text
+python3 -m pytest -q tests/test_legacy_map_retirement.py
+5 passed
+```
+
+```text
+node --test tests/*.mjs
+32 suites passed, 2 failed
+```
+
+Both failures come from `tests/test_command_deck_i18n.mjs`, which still expects
+the already-retired outer AppleDog door and `.agent-speech.show` surfaces.
+Commit `6c27638` removed those surfaces before Task 5; Task 5 did not modify
+`public/app.mjs`, `public/index.html`, or this i18n suite. The real-browser locale
+suite passes when run with the i18n suite, confirming this is not caused by the
+legacy file deletion.
+
+```text
+python3 -m pytest -q
+165 passed, 1 skipped, 1 failed
+```
+
+The sole Python failure is the baseline missing untracked
+`spec/PROJECT_MAP.md` fixture in
+`test_readme_and_progressive_specs_publish_the_verified_browser_acceptance`;
+it is recorded in `.superpowers/sdd/progress.md` and unrelated to Task 5.
 
 ```text
 bash -n run.sh
 exit 0
+
+git diff --check HEAD
+exit 0
 ```
 
-```text
-python3 scripts/render_local_ui_trajectory.py
-```
+## Commit
 
-Generated the trajectory image, debug log, and walkability mask successfully.
+Committed with message: `refactor: delete legacy yaml map stack`.
 
-The negative acceptance probe against a stale snapshot returned code 2 and listed missing runtime rooms, movement, and event ids for both `henry-main` and `synthetic-subagent-1`.
+## Concerns
 
-The no-runtime shell probe now reports `Unable to deliver synthetic hook start event to the bridge or service container.` and exits non-zero.
-
-## Implementation summary
-
-- Codex child tool hooks retain the stable identity established by subagent lifecycle events, including callbacks whose only child marker is `agent_id`.
-- Active subagents use their target-room coordinates; idle subagents return to a stable clone-bay slot.
-- Cross-room backend state transitions record optional route evidence with source/destination coordinates, displacement, and the actual server event id.
-- Tool completion remains working; explicit session completion returns the main agent to standby.
-- The renderer joins planned route points with runtime server evidence and validates both legs for every expected agent.
-- Acceptance independently measures runtime `from_position -> to_position` displacement instead of trusting the `position_changed` flag alone.
-- A pre-run server event baseline prevents an older matching route from satisfying the current invocation.
-- Direct and Docker-fallback curl calls have connection and overall deadlines.
-- `run.sh test-hook` creates the child in clone bay before tool work, fails on transport/snapshot/render/evidence errors, and prints a human-readable success summary only after acceptance.
-
-## Self-review
-
-- Existing endpoint and SSE shapes remain intact; `route_evidence` is optional additive evidence.
-- Evidence records backend state displacement and planned walkable route points; it does not claim browser animation completion.
-- Exact Task 5 source/test/spec paths only are staged. Unrelated dirty and untracked workspace files were preserved.
-
-## Independent review
-
-The first gate found one Critical identity-precedence bug and two Important acceptance issues (stale evidence and unbounded curl). All were reproduced with RED tests and fixed. Refreshed re-review verdict: spec compliance **PASS**, code quality **APPROVE**, Critical 0, Important 0.
-
-Optional Minor: concurrent `test-hook` invocations still share fixed synthetic agent ids and no run nonce, so one concurrent matching run could satisfy another run's post-baseline evidence. This is not a stated Task 5 requirement or blocker.
-
-## Live acceptance follow-up
-
-Root's first authorized live run reached the active container but failed because the service used saved host ports UI `5661` / bridge `4568`, while `run.sh` loaded only the saved UI port and defaulted the bridge to `4567`. A focused RED test reproduced the asymmetric initialization contract. `run.sh` now loads saved `PIXELVERSE_BRIDGE_PORT` beside `PIXELVERSE_PORT`, while preserving explicit environment override precedence.
-
-After deploying image `sha256:fb1a2a52727a4f9ab99af74505cdebd5ce8eaf2d10444f01018df49796f3245b`, root ran:
-
-```text
-PIXELVERSE_TEST_HOOK_TARGET=clone_bay ./run.sh test-hook
-```
-
-Runtime result: exit `0`, targeting `http://127.0.0.1:4568/hook`. The command wrote the trajectory image, debug log, and walkability mask, then reported `Hook movement evidence accepted for clone_bay` and confirmed route/coordinate checks passed.
-
-## Remaining concern
-
-Only the optional concurrent-run nonce Minor from independent review remains; the required single-run live acceptance is verified.
-
-## Async relay review follow-up
-
-An external reviewer identified that bridge `/hook` acknowledges queue admission before its worker necessarily writes the final main-agent transition to `/api/world`. The prior flow posted `agent:end` and captured immediately, so it could reject a valid but delayed run.
-
-Execution-level RED used a copied `run.sh`, a delayed fake relay, the real trajectory renderer, and real artifact validation. The relay returned success immediately but withheld the fresh `henry-main clone_bay -> standby_dock` event for the first two world snapshots; the command failed before polling existed. A second never-delivered fixture proved the missing bounded-timeout diagnostic.
-
-GREEN adds condition-based polling for the exact post-baseline main return evidence, including source/destination rooms, positive recorded coordinate displacement, and event freshness. It remains bounded by `PIXELVERSE_TEST_HOOK_EVIDENCE_TIMEOUT`, reports the exact awaited route on timeout, and reports snapshot transport errors separately. The delayed and timeout execution tests both pass without relying on source-string-only or fixed-sleep assertions.
-
-Verification after the async fix:
-
-```text
-python3 -m pytest -q tests/test_hermes_integration.py tests/test_fastapi_service.py tests/test_command_deck_hook_smoke.py tests/test_codex_pixelverse_hook.py
-....................................................                     [100%]
-52 passed in 6.25s
-```
-
-`bash -n run.sh` and `git diff --check` also passed. Independent internal re-review verdict: spec compliance **PASS**, code quality **APPROVE**, Critical 0, Important 0. Reviewer Minor: timeout/interval environment overrides are not validated against non-finite or non-positive values; documented defaults remain bounded. The earlier concurrent fixed-ID Minor also remains nonblocking.
+- Task 6 must remove the remaining operational legacy-map references from
+  README, skill documentation, ignore rules, and any release documentation.
+- The two stale JS i18n assertions and missing untracked progressive-spec
+  fixture keep the literal full-suite commands from being completely green;
+  neither was widened into this deletion task.

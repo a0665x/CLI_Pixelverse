@@ -22,7 +22,6 @@ BUILD_INPUTS = (
     "public",
     "agent_bridges",
     "scripts",
-    "global_map",
     "pixelworld_mvp/package.json",
     "pixelworld_mvp/package-lock.json",
     "pixelworld_mvp/index.html",

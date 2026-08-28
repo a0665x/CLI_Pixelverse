@@ -2,6 +2,31 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+RETIRED = (
+    "global_map/default.yaml", "global_map/default.png",
+    "public/global_map_loader.mjs", "public/house_layout.mjs",
+    "public/room_furniture.mjs",
+    "public/map_builder.html", "public/map_builder.mjs", "public/map_builder_core.mjs",
+    "public/world_motion.mjs", "scripts/check_global_map_alignment.py",
+    "scripts/generate_global_map_pixel_art.py", "scripts/generate_honeycomb_global_map.py",
+    "scripts/generate_vlm_courtyard_map.py", "scripts/render_local_ui_trajectory.py",
+)
+
+
+def test_tracked_legacy_map_files_are_absent():
+    assert [path for path in RETIRED if (ROOT / path).exists()] == []
+
+
+def test_active_sources_do_not_reference_retired_map_contracts():
+    sources = "\n".join((ROOT / path).read_text(encoding="utf-8") for path in (
+        "public/app.mjs", "public/index.html", "run.sh", "docker-compose.yml",
+        "pixelverse_server.py", "pixelverse_fastapi.py",
+    ))
+    for token in (
+        "global_map", "map_builder", "PIXELVERSE_FLOORPLAN", "furniture-layout",
+        "render_local_ui_trajectory", "local_ui_trajectory", "pixelverse_debug_log",
+    ):
+        assert token not in sources
 
 
 def test_outer_dashboard_contains_only_the_phaser_world_layer():
