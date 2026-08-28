@@ -31,7 +31,11 @@ const sourceIdentity = (agent = {}) => String(agent.source || agent.agent_kind |
 const heartbeatState = (agent = {}) => {
   const state = normalized(agent.state);
   const pixelState = normalized(agent.pixel_state);
-  if (state === 'offline' || agent.is_stale) return { tone: 'offline', state: 'offline', load: 0 };
+  if (state === 'offline') return { tone: 'offline', state: 'offline', load: 0 };
+  if (agent.connection_status === 'awaiting_attach' || agent.source_placeholder) {
+    return { tone: 'rest', state: 'idle', load: .18 };
+  }
+  if (agent.is_stale) return { tone: 'offline', state: 'offline', load: 0 };
   if (['thinking', 'planning', 'reading_files', 'browsing'].includes(pixelState)) {
     return { tone: 'search', state: 'thinking', load: .62 };
   }

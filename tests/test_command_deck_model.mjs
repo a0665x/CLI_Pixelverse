@@ -5,6 +5,7 @@ import {
   commandBuildingIds,
   commandDeckFindings,
   compareCommandDeckAgents,
+  normalizeAgentForWorld,
   resolveCommandSelection,
 } from '../public/command_deck_model.mjs';
 
@@ -77,6 +78,18 @@ test('stale placeholders are suppressed only after a real source replacement att
   };
   assert.deepEqual(buildCommandDeckModel({ agents: [placeholder] }).agents.map(({ id }) => id), ['codex-main']);
   assert.deepEqual(buildCommandDeckModel({ agents: [placeholder, replacement] }).agents.map(({ id }) => id), ['codex-cli:7']);
+});
+
+test('an unattached stale source remains idle in the standby dock', () => {
+  const placeholder = normalizeAgentForWorld({
+    agent: 'codex-main', role: 'main_agent', source: 'bridge', source_placeholder: true,
+    connection_status: 'awaiting_attach', state: 'idle', pixel_state: 'idle',
+    room_key: 'standby_dock', is_stale: true,
+  });
+
+  assert.equal(placeholder.state, 'idle');
+  assert.equal(placeholder.pixel_state, 'idle');
+  assert.equal(placeholder.room_key, 'standby_dock');
 });
 
 test('generated event IDs are stable across snapshot ordering', () => {

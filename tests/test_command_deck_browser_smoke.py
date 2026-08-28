@@ -601,6 +601,7 @@ def test_agent_detail_smoke_closes_a_previously_open_detail_before_focus_restore
     agent_detail = source[source.index("def agent_detail_evidence("):]
 
     assert "close pre-opened Agent detail" in agent_detail
+    assert agent_detail.count("document.querySelector('[data-agent-detail-close]').focus(); true") == 2
 
 
 def test_contract_rejects_text_only_routes_closed_cabin_and_missing_agents():

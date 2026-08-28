@@ -881,6 +881,7 @@ def agent_detail_evidence(browser: ChromiumDevTools, plan: BrowserSmokePlan, age
     layout_resize = {"changed": False, "persisted": False, "reset": False}
 
     if not browser.evaluate("document.querySelector('#agent-detail')?.hidden"):
+        browser.evaluate("document.querySelector('[data-agent-detail-close]').focus(); true")
         browser.key("Escape")
         browser.wait_until(
             "document.querySelector('#agent-detail')?.hidden",
@@ -920,6 +921,7 @@ def agent_detail_evidence(browser: ChromiumDevTools, plan: BrowserSmokePlan, age
         viewport_evidence[viewport.name] = evidence
         if index == 0:
             roster_activation = {"id": evidence.get("id"), "opened": True}
+        browser.evaluate("document.querySelector('[data-agent-detail-close]').focus(); true")
         browser.key("Escape")
         browser.wait_until("document.querySelector('#agent-detail')?.hidden", f"{viewport.name} Agent detail Escape close")
         evidence["focus_restored"] = bool(browser.evaluate(
