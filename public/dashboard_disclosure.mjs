@@ -187,15 +187,3 @@ export function updateLiveRegionText(node, text) {
   node.textContent = text;
   return true;
 }
-
-export function applyMapLayerVisibility({ frame, legacyStage, legacyControls } = {}, legacyActive = false) {
-  const update = (element, hidden) => {
-    if (!element) return;
-    element.hidden = hidden;
-    element.inert = hidden;
-    element.setAttribute?.('aria-hidden', String(hidden));
-  };
-  update(frame, legacyActive);
-  update(legacyStage, !legacyActive);
-  update(legacyControls, !legacyActive);
-}

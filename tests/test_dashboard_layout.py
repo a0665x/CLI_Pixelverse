@@ -43,94 +43,10 @@ def test_dashboard_layout_keeps_map_primary_and_exposes_only_help_as_a_card_cont
     parser.feed(Path("public/index.html").read_text(encoding="utf-8"))
 
     assert {"mobile-mode-btn", "heartbeat-status", "heartbeat-label", "current-agent-state", "agent-count"} <= parser.ids
-    assert {"furniture-coord-hud", "furniture-coord-title"} <= parser.ids
-    assert {"zoom-in-btn", "zoom-reset-btn", "zoom-out-btn"} <= parser.ids
+    assert {"pixelworld-frame", "world"} <= parser.ids
+    assert {"furniture-coord-hud", "camera-stage", "agents-layer"}.isdisjoint(parser.ids)
     card_controls = [element for element in parser.elements if element["attributes"].get("data-dashboard-card")]
     assert [element["attributes"]["data-dashboard-card"] for element in card_controls] == ["help"]
-
-
-def test_dashboard_supports_persistent_furniture_and_visible_timeline_lanes():
-    compose = Path("docker-compose.yml").read_text(encoding="utf-8")
-    html = Path("public/index.html").read_text(encoding="utf-8")
-    app = Path("public/app.mjs").read_text(encoding="utf-8")
-
-    assert "PIXELVERSE_RUNTIME_DIR: /app/runtime" in compose
-    assert ":/app/runtime" in compose
-    assert "PIXELVERSE_GLOBAL_MAP_DIR: /app/tmp/global_map" in compose
-    assert ":/app/tmp/global_map" in compose
-    assert "furniture-drag-ghost" in html
-    assert "updateFurnitureDragGhost" in app
-    assert "overflow-y: auto;" in html
-
-
-def test_global_map_png_mode_hides_generated_room_card_chrome():
-    html = Path("public/index.html").read_text(encoding="utf-8")
-
-    assert ".house-shell.has-global-map-image .district {" in html
-    assert "background: transparent;" in html
-    assert ".house-shell.has-global-map-image .district-label" in html
-    assert ".house-shell.has-global-map-image .district-floor-accents" in html
-    assert ".house-shell.has-global-map-image .district:not(.editing) .district-props" not in html
-
-
-def test_global_map_background_and_live_overlays_share_one_coordinate_plane():
-    html = Path("public/index.html").read_text(encoding="utf-8")
-    app = Path("public/app.mjs").read_text(encoding="utf-8")
-
-    assert '<div class="map-coordinate-plane" id="map-coordinate-plane">' in html
-    assert '.map-coordinate-plane {' in html
-    assert '.map-coordinate-plane::before {' in html
-    assert '.house-shell.has-global-map-image .map-coordinate-plane::before' in html
-    assert '.house-shell.has-global-map-image::after' not in html
-
-    plane_start = html.index('<div class="map-coordinate-plane" id="map-coordinate-plane">')
-    agents_fragment = '<div class="agents-layer" id="agents-layer"></div>'
-    plane_end = html.index(agents_fragment, plane_start) + len(agents_fragment)
-    plane_markup = html[plane_start:plane_end]
-    for fragment in [
-        '<div class="office-shell">',
-        '<div class="district" data-room="think_lab">',
-        '<svg class="path-layer" id="path-layer"',
-        agents_fragment,
-    ]:
-        assert fragment in plane_markup
-
-    assert "mapCoordinatePlane: document.getElementById('map-coordinate-plane')" in app
-    assert "mapCoordinatePlane.insertBefore(district" in app
-
-
-def test_agent_overlays_do_not_occlude_sprites_or_map_by_default():
-    html = Path("public/index.html").read_text(encoding="utf-8")
-    app = Path("public/app.mjs").read_text(encoding="utf-8")
-
-    assert "agentOverlayClass" in app
-    assert "overlay-left" in app
-    assert ".agent-speech {" in html
-    assert "position: absolute;" in html
-    assert "max-width: 96px;" in html
-    assert ".agent.overlay-left .agent-speech" in html
-    assert ".agent.overlay-right .agent-speech" in html
-    assert ".agent-card {" in html
-    assert "opacity: 0;" in html
-    assert "pointer-events: none;" in html
-    assert ".agent:hover .agent-card" in html
-    assert ".agent.selected .agent-card" not in html
-    assert ".agent.walking .agent-card" in html
-    assert ".agent.walking .agent-speech" in html
-
-
-def test_furniture_layer_can_escape_room_clip_during_cross_room_drag():
-    html = Path("public/index.html").read_text(encoding="utf-8")
-    app = Path("public/app.mjs").read_text(encoding="utf-8")
-
-    assert ".district {" in html
-    assert "overflow: visible;" in html
-    assert ".district-props { z-index: 4; overflow: visible; }" in html
-    assert ".district-props { pointer-events: none; }" in html
-    assert ".prop {" in html
-    assert "pointer-events: auto;" in html
-    assert "document.body.append(ghost);" in app
-    assert "districtAtPoint(event.clientX, event.clientY)" in app
 
 
 def test_liquid_glass_is_reserved_for_functional_controls():
@@ -147,7 +63,7 @@ def test_liquid_glass_is_reserved_for_functional_controls():
     ):
         assert token in html
 
-    approved_roles = {"camera-controls", "lang-switch", "exposure-switch"}
+    approved_roles = {"lang-switch", "exposure-switch"}
     glass_elements = [element for element in parser.elements if "functional-glass" in element["classes"]]
     observed_roles = set()
     for element in glass_elements:
@@ -326,15 +242,14 @@ def test_deferred_dashboard_focus_wins_in_a_real_dom_and_skips_hidden_or_destroy
     assert 'data-cancel-result="outside"' in result.stdout
 
 
-def test_pixelworld_is_the_default_interactive_layer_and_legacy_editor_is_explicitly_hidden():
+def test_pixelworld_is_the_only_interactive_world_layer():
     parser = DashboardParser()
     parser.feed(Path("public/index.html").read_text(encoding="utf-8"))
 
     frame = parser.elements_by_id["pixelworld-frame"]
-    legacy_stage = parser.elements_by_id["camera-stage"]
     assert "hidden" not in frame["attributes"]
-    assert "hidden" in legacy_stage["attributes"]
-    assert legacy_stage["attributes"].get("aria-hidden") == "true"
+    assert frame["attributes"].get("src") == "/pixelworld/index.html?embed=1"
+    assert "camera-stage" not in parser.ids
 
 
 def test_persistent_three_button_hud_and_motion_safe_tooltips_are_structural_contracts():
@@ -487,7 +402,7 @@ def test_command_deck_controls_render_persisted_expand_collapse_copy_at_startup(
 
 def test_background_live_tick_restores_exact_hook_agent_selection_after_rebuilding_rows():
     app = Path("public/app.mjs").read_text(encoding="utf-8")
-    ticker = app[app.index("function startLiveUiTicker()") : app.index("function roomCopy(")]
+    ticker = app[app.index("function startLiveUiTicker()") : app.index("function ageText(")]
 
     assert "renderLiveMonitoring(liveSnapshot, nowMs);\n    renderAgents(liveSnapshot);\n    restoreCurrentCommandSelectionStyling();" in ticker
     restore = app[

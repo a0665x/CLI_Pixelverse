@@ -211,27 +211,6 @@ test('live-region helper only writes when meaningful text changes', () => {
   assert.equal(writes, 2);
 });
 
-test('map layer helper makes the iframe interactive by default and restores legacy editing on demand', () => {
-  const element = () => ({ hidden: false, inert: false, attributes: new Map(), setAttribute(name, value) { this.attributes.set(name, String(value)); } });
-  const frame = element();
-  const legacyStage = element();
-  const legacyControls = element();
-
-  dashboardDisclosure.applyMapLayerVisibility({ frame, legacyStage, legacyControls }, false);
-  assert.equal(frame.hidden, false);
-  assert.equal(frame.inert, false);
-  assert.equal(legacyStage.hidden, true);
-  assert.equal(legacyStage.inert, true);
-  assert.equal(legacyControls.hidden, true);
-
-  dashboardDisclosure.applyMapLayerVisibility({ frame, legacyStage, legacyControls }, true);
-  assert.equal(frame.hidden, true);
-  assert.equal(frame.inert, true);
-  assert.equal(legacyStage.hidden, false);
-  assert.equal(legacyStage.inert, false);
-  assert.equal(legacyControls.hidden, false);
-});
-
 test('every locale provides the three dashboard card labels and pagination copy', () => {
   for (const locale of ['zh-TW', 'en-US', 'ja-JP', 'ko-KR']) {
     const copy = getLocaleStrings(locale);

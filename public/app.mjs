@@ -1,32 +1,16 @@
-import { createAgentSprite, createPropSprite } from './pixel_assets.mjs';
-import {
-  getKenneyAgentSprite,
-  getKenneyDoorSprite,
-  getKenneyPropSprite,
-  getKenneyRoomLayout,
-  getKenneyRoomTheme,
-  KENNEY_PACK,
-} from './kenney_assets.mjs';
+import { getKenneyAgentSprite } from './kenney_assets.mjs';
 import {
   activityHintForLocale,
   agentConnectionStatusText,
   agentTaskText,
   agentToolText,
-  agentTooltipText,
-  ambientText,
-  furnitureCoordinateText,
-  furnitureLabelForLocale,
   getLocaleLabel,
   getLocaleStrings,
   getRoomCopy,
-  getRoomDecor,
   eventSummaryForLocale,
   eventTitleForLocale,
   LOCALE_LABELS,
-  localizeToolSummary,
   normalizeLocale,
-  interactionText,
-  poseLabelForLocale,
   summarizeWorld,
   SUPPORTED_LOCALES,
   uiText,
@@ -48,22 +32,7 @@ import {
   setupWorkbenchLayoutController,
   workbenchTopFor,
 } from './workbench_layout.mjs';
-import {
-  getPropFx,
-  getZoneFx,
-} from './scene_fx.mjs';
-import {
-  buildRoute,
-  getFacingFromDelta,
-  movementDurationMs,
-  nextWalkFrame,
-  patrolPoint,
-  refreshFurnitureBlockers,
-  shouldPatrol,
-  snapToWalkable,
-} from './world_motion.mjs';
-import { getAgentPose, INTERACTION_OBJECT_ICONS, selectInteractionTarget } from './agent_pose.mjs';
-import { buildAgentDialog, buildAgentSpeech } from './agent_dialog.mjs';
+import { buildAgentDialog } from './agent_dialog.mjs';
 import { buildAgentRoster } from './agent_roster_model.mjs';
 import { createAgentRosterView } from './agent_roster_view.mjs';
 import { buildAgentDetail } from './agent_detail_model.mjs';
@@ -71,33 +40,10 @@ import { createAgentDetailView } from './agent_detail_view.mjs';
 import { createVillageFirstLayoutController } from './village_first_layout.mjs';
 import { createCommandDeckLocaleController } from './command_deck_locale_controller.mjs';
 import { agentPayloadPresentation, currentAgentStatePresentation, escapeHtml, timelinePayloadPresentation } from './command_deck_payload_presenters.mjs';
-import { clampCameraOffset, centeredCamera, clampZoom, nextDraggedOffset, nextZoomState } from './ui_state.mjs';
-import { CORRIDOR_RECTS, GLOBAL_MAP, HOUSE_DOORS, loadGlobalMap, roomMapCopy, ROOM_LAYOUTS, ROOM_STATE_GROUPS } from './house_layout.mjs';
+import { nextDraggedOffset } from './ui_state.mjs';
 import { hookStateRoutes } from './hook_state_map.mjs';
 import { agentEventChipPresentation } from './main_agent_events.mjs';
 import { formatTimelineItemForLocale } from './timeline_item_presenter.mjs';
-import { getAppleDogDoorSprite, getAppleDogPropSprite, getAppleDogRoomTheme } from './appledog_assets.mjs';
-import { shouldUseHighClarityProp } from './office_life_assets.mjs';
-import {
-  exportFurnitureLayout,
-  FURNITURE_SIZE_MULTIPLIER,
-  getRoomPropPositions,
-  positionOverlapsFurniture,
-  roomDecorLayout,
-  roomInteractionPositions,
-  setFurnitureLayoutOverrides,
-} from './room_furniture.mjs';
-import {
-  buildGridLines,
-  clampPercent,
-  dragPositionStyle,
-  formatScale,
-  formatPercent,
-  normalizeScale,
-  normalizePercent,
-  resolveSnapStep,
-  SCALE_STEP,
-} from './furniture_editing.mjs';
 import { buildAgentTimelinePanels, buildHeartbeatPath, heartbeatBeatWidthPx } from './agent_timeline_graphs.mjs';
 import {
   hookChannelsForAgents,
@@ -106,7 +52,6 @@ import {
   normalizeAgentForWorld,
   normalizeVisibleAgents,
 } from './live_agent_rails.mjs';
-import { agentOverlayClass } from './agent_overlay.mjs';
 import { setupPressFeedback } from './press_feedback.mjs';
 import {
   buildDashboardLiveSnapshot,
@@ -118,7 +63,6 @@ import {
 } from './dashboard_cards.mjs';
 import {
   activeDashboardCardTrigger,
-  applyMapLayerVisibility,
   createCutawayFocusHandoff,
   dashboardCardLabel as localizedDashboardCardLabel,
   dashboardInputModality,
@@ -132,61 +76,10 @@ import {
 } from './dashboard_disclosure.mjs';
 import { createLiveEcgController } from './live_ecg_controller.mjs';
 import { createCommandDeckLayoutController } from './command_deck_layout.mjs';
-import { buildCommandDeckModel, resolveCommandSelection } from './command_deck_model.mjs';
+import { buildCommandDeckModel, commandBuildingIds, resolveCommandSelection } from './command_deck_model.mjs';
 import { createMissionTraceController } from './mission_trace.mjs';
 
-const ROOM_ACTIVITY_TARGETS = {
-  think_lab: {
-    thinking: [{ x: 44, y: 52 }, { x: 62, y: 26 }, { x: 74, y: 44 }],
-    planning: [{ x: 62, y: 26 }, { x: 38, y: 20 }, { x: 44, y: 52 }],
-  },
-  blueprint_lab: {
-    planning: [{ x: 28, y: 56 }, { x: 50, y: 18 }, { x: 74, y: 56 }],
-    working: [{ x: 78, y: 26 }, { x: 18, y: 56 }, { x: 52, y: 62 }],
-  },
-  file_library: {
-    reading_files: [{ x: 28, y: 58 }, { x: 52, y: 18 }, { x: 74, y: 52 }],
-    working: [{ x: 28, y: 58 }, { x: 74, y: 52 }, { x: 52, y: 18 }],
-  },
-  code_workbench: {
-    editing_files: [{ x: 26, y: 58 }, { x: 50, y: 22 }, { x: 74, y: 58 }],
-    working: [{ x: 26, y: 58 }, { x: 74, y: 58 }, { x: 50, y: 22 }],
-  },
-  terminal_bay: {
-    shell_command: [{ x: 24, y: 58 }, { x: 52, y: 22 }, { x: 74, y: 58 }],
-    executing: [{ x: 24, y: 58 }, { x: 74, y: 58 }, { x: 52, y: 22 }],
-  },
-  tool_forge: {
-    external_tool: [{ x: 24, y: 58 }, { x: 66, y: 56 }, { x: 54, y: 20 }],
-    browsing: [{ x: 48, y: 36 }, { x: 24, y: 58 }, { x: 78, y: 18 }],
-    working: [{ x: 24, y: 58 }, { x: 66, y: 56 }, { x: 54, y: 20 }],
-  },
-  response_studio: {
-    working: [{ x: 24, y: 58 }, { x: 74, y: 56 }, { x: 46, y: 56 }],
-    thinking: [{ x: 24, y: 24 }, { x: 46, y: 56 }, { x: 74, y: 20 }],
-  },
-  standby_dock: {
-    idle: [{ x: 16, y: 54 }, { x: 40, y: 54 }, { x: 56, y: 26 }],
-  },
-  clone_bay: {
-    working: [{ x: 28, y: 56 }, { x: 74, y: 56 }, { x: 52, y: 18 }],
-    planning: [{ x: 18, y: 20 }, { x: 82, y: 22 }, { x: 52, y: 18 }],
-  },
-  session_archive: {
-    working: [{ x: 18, y: 60 }, { x: 74, y: 24 }, { x: 52, y: 60 }],
-    idle: [{ x: 18, y: 26 }, { x: 74, y: 60 }, { x: 52, y: 18 }],
-  },
-};
-
-const ROLE_CHIPS = {
-  'zh-TW': { main_agent: '主', subagent: '分', branch_session: '支' },
-  'en-US': { main_agent: 'M', subagent: 'S', branch_session: 'B' },
-  'ja-JP': { main_agent: '主', subagent: '副', branch_session: '分' },
-  'ko-KR': { main_agent: '주', subagent: '부', branch_session: '분' },
-};
-
 const dom = {
-  agentsLayer: document.getElementById('agents-layer'),
   agentLiveList: document.getElementById('agent-live-list'),
   agentDetail: document.getElementById('agent-detail'),
   villageTopSplitter: document.getElementById('village-top-splitter'),
@@ -200,9 +93,6 @@ const dom = {
   liveLeftSplitter: document.getElementById('live-left-splitter'),
   liveRightSplitter: document.getElementById('live-right-splitter'),
   brand: document.querySelector('.brand'),
-  cameraControls: document.getElementById('camera-controls'),
-  cameraStage: document.getElementById('camera-stage'),
-  cancelFurnitureButton: document.getElementById('cancel-furniture-btn'),
   currentAgentState: document.getElementById('current-agent-state'),
   commandBottomSplitter: document.getElementById('command-bottom-splitter'),
   commandCollapseBottom: document.getElementById('command-collapse-bottom'),
@@ -229,18 +119,6 @@ const dom = {
   exposureSelect: document.getElementById('exposure-select'),
   exposureUrl: document.getElementById('exposure-url'),
   copyExposureButton: document.getElementById('copy-exposure-btn'),
-  editFurnitureButton: document.getElementById('edit-furniture-btn'),
-  furnitureEditBanner: document.getElementById('furniture-edit-banner'),
-  furnitureEditDirtyLabel: document.getElementById('furniture-edit-dirty-label'),
-  furnitureEditHint: document.getElementById('furniture-edit-hint'),
-  furnitureEditMeta: document.getElementById('furniture-edit-meta'),
-  furnitureEditModeLabel: document.getElementById('furniture-edit-mode-label'),
-  furnitureCoordBody: document.getElementById('furniture-coord-body'),
-  furnitureCoordHud: document.getElementById('furniture-coord-hud'),
-  furnitureCoordTitle: document.getElementById('furniture-coord-title'),
-  furnitureToast: document.getElementById('furniture-toast'),
-  furnitureToastBody: document.getElementById('furniture-toast-body'),
-  furnitureToastTitle: document.getElementById('furniture-toast-title'),
   heartbeatLabel: document.getElementById('heartbeat-label'),
   heartbeatStatus: document.getElementById('heartbeat-status'),
   hookLiveActivity: document.getElementById('hook-live-activity'),
@@ -253,9 +131,7 @@ const dom = {
   hookStateTable: document.getElementById('hook-state-table'),
   languageSelect: document.getElementById('locale-select'),
   lastSync: document.getElementById('last-sync'),
-  mapCoordinatePlane: document.getElementById('map-coordinate-plane'),
   mobileModeButton: document.getElementById('mobile-mode-btn'),
-  pathLayer: document.getElementById('path-layer'),
   pixelworldFrame: document.getElementById('pixelworld-frame'),
   panels: Array.from(document.querySelectorAll('[data-draggable-panel]')),
   panelHandles: Array.from(document.querySelectorAll('[data-drag-handle]')),
@@ -265,7 +141,6 @@ const dom = {
   dialogTitle: document.getElementById('speech-dialog-title'),
   dialogBody: document.getElementById('speech-dialog-body'),
   dialogRows: document.getElementById('speech-dialog-rows'),
-  saveFurnitureButton: document.getElementById('save-furniture-btn'),
   sidebarCloseButton: document.getElementById('sidebar-close-btn'),
   sidebarTitle: document.getElementById('sidebar-title'),
   sidebarToggleButton: document.getElementById('sidebar-toggle-btn'),
@@ -285,13 +160,9 @@ const dom = {
   worldState: document.getElementById('world-state'),
   worldSummary: document.getElementById('world-summary'),
   workspaceSettingsSummary: document.querySelector('.workspace-settings > summary'),
-  zoomInButton: document.getElementById('zoom-in-btn'),
-  zoomOutButton: document.getElementById('zoom-out-btn'),
-  zoomResetButton: document.getElementById('zoom-reset-btn'),
   agentCount: document.getElementById('agent-count'),
 };
 
-const agentViews = new Map();
 let currentSnapshot = null;
 let currentCommandDeckModel = null;
 let currentCommandSelection = null;
@@ -300,7 +171,6 @@ let commandFocusSequence = 0;
 let currentExposure = null;
 let selectedAgentId = null;
 let pollTimer = null;
-let patrolTimer = null;
 let timelineTimer = null;
 let uiTickTimer = null;
 let liveStream = null;
@@ -490,26 +360,8 @@ window.addEventListener('resize', () => {
   }
 });
 let workbenchLayoutController = null;
-let cameraOffset = { x: 0, y: 0 };
-let cameraScale = 1;
-let cameraPanning = null;
 let panelDragging = null;
 let activeDialogAgentId = null;
-let furnitureEditMode = false;
-let furnitureDraft = {};
-let furnitureSavedLayout = {};
-let furnitureDirty = false;
-let furnitureSaving = false;
-let propDragging = null;
-let dragRenderQueued = false;
-let dragAgentsQueued = false;
-let furnitureToastTimer = null;
-let selectedFurnitureProp = null;
-let furnitureSnapStep = resolveSnapStep(false);
-let lastFurnitureCollisionAt = 0;
-const forcedOpenDoorRooms = new Set();
-const proximityOpenDoorRooms = new Set();
-const DOOR_OPEN_DISTANCE = 5.6;
 
 function clampNumber(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -530,231 +382,6 @@ function populateLocaleSelect() {
     return `<option value="${locale}">${label}</option>`;
   }).join('');
   dom.languageSelect.value = currentLocale;
-}
-
-function cloneLayout(layout = {}) {
-  return JSON.parse(JSON.stringify(layout || {}));
-}
-
-function layoutEquals(left = {}, right = {}) {
-  return JSON.stringify(left || {}) === JSON.stringify(right || {});
-}
-
-function selectedPropMeta() {
-  const target = propDragging || selectedFurnitureProp;
-  if (!target) return '';
-  const room = getRoomCopy(target.roomKey, currentLocale);
-  const roomName = room.name || target.roomKey;
-  const coords = `${Number(target.x || 0).toFixed(1)}%, ${Number(target.y || 0).toFixed(1)}%`;
-  return `${furnitureLabelForLocale(currentLocale, target.label, target.propType)} · ${roomName} · ${coords} · ${formatScale(target.scale || 1)}`;
-}
-
-function selectedPropCoordinates(target = propDragging || selectedFurnitureProp) {
-  if (!target) return null;
-  return {
-    x: formatPercent(target.x || 0),
-    y: formatPercent(target.y || 0),
-  };
-}
-
-function selectedPropGuideLabel(target = propDragging || selectedFurnitureProp) {
-  if (!target) return '';
-  const copy = strings();
-  const coords = selectedPropCoordinates(target);
-  return copy.layoutGuideBadge(furnitureLabelForLocale(currentLocale, target.label, target.propType), coords?.x || '0.0', coords?.y || '0.0', Number(furnitureSnapStep || 0.5).toFixed(1));
-}
-
-function updateFurnitureCoordinateHud() {
-  if (!dom.furnitureCoordHud) return;
-  const copy = strings();
-  const target = propDragging || selectedFurnitureProp;
-  const active = furnitureEditMode && !!target;
-  dom.furnitureCoordHud.hidden = !active;
-  if (!active) return;
-  const room = getRoomCopy(target.roomKey, currentLocale);
-  const coords = selectedPropCoordinates(target);
-  const furnitureLabel = furnitureLabelForLocale(currentLocale, target.label, target.propType);
-  if (dom.furnitureCoordTitle) {
-    dom.furnitureCoordTitle.textContent = `${copy.layoutCoordTitle} · ${furnitureLabel}`;
-  }
-  if (dom.furnitureCoordBody) {
-    const label = document.createElement('span');
-    label.textContent = furnitureCoordinateText(currentLocale, {
-      label: furnitureLabel,
-      propType: target.propType,
-      room: room.name || target.roomKey,
-      x: coords?.x || '0.0',
-      y: coords?.y || '0.0',
-      snap: Number(furnitureSnapStep || 0.5).toFixed(1),
-      scale: formatScale(target.scale || 1),
-    });
-    const scaleDown = document.createElement('button');
-    scaleDown.type = 'button';
-    scaleDown.dataset.furnitureScale = '-1';
-    scaleDown.setAttribute('aria-label', copy.layoutScaleDown);
-    scaleDown.textContent = '-';
-    const scaleUp = document.createElement('button');
-    scaleUp.type = 'button';
-    scaleUp.dataset.furnitureScale = '1';
-    scaleUp.setAttribute('aria-label', copy.layoutScaleUp);
-    scaleUp.textContent = '+';
-    dom.furnitureCoordBody.replaceChildren(label, scaleDown, scaleUp);
-  }
-}
-
-function setSelectedFurnitureProp(next = null) {
-  selectedFurnitureProp = next ? {
-    roomKey: next.roomKey,
-    originRoomKey: next.originRoomKey || next.roomKey,
-    index: Number(next.index || 0),
-    propType: next.propType || 'prop',
-    label: next.label || next.propType || 'prop',
-    x: Number(next.x || 50),
-    y: Number(next.y || 50),
-    scale: normalizeScale(next.scale || 1),
-  } : null;
-}
-
-function selectedFurnitureKey() {
-  if (!selectedFurnitureProp) return '';
-  return `${selectedFurnitureProp.originRoomKey}:${selectedFurnitureProp.index}`;
-}
-
-function getDecorByRoom() {
-  return Object.fromEntries(
-    Object.keys(ROOM_LAYOUTS)
-      .filter((roomKey) => roomKey !== 'offline_corner')
-      .map((roomKey) => [roomKey, roomDecorFor(roomKey)]),
-  );
-}
-
-function roomDecorFor(roomKey) {
-  const mapFurniture = roomMapCopy(roomKey).furniture || [];
-  if (mapFurniture.length) {
-    return mapFurniture.map((item) => ({
-      type: item.type || 'table',
-      label: item.label || item.type || 'prop',
-      labelKey: item.type || 'prop',
-      handles: item.handles || [],
-      anchors: item.anchors || [],
-      footprint: item.footprint,
-      iconStyle: item.icon_style,
-      w: item.w,
-      h: item.h,
-      scale: item.scale,
-    }));
-  }
-  return getRoomDecor(roomKey, currentLocale);
-}
-
-function furnitureChangeCount(layout = currentLayoutSnapshot(), baseline = furnitureSavedLayout || {}) {
-  return Object.keys(layout || {}).reduce((count, roomKey) => {
-    const roomLayout = layout[roomKey] || [];
-    const roomBaseline = baseline[roomKey] || [];
-    return count + roomLayout.reduce((roomCount, item, index) => {
-      const previous = roomBaseline[index] || {};
-      return roomCount + ((Math.abs((item.x || 0) - (previous.x || 0)) > 0.01
-        || Math.abs((item.y || 0) - (previous.y || 0)) > 0.01
-        || (item.room || roomKey) !== (previous.room || roomKey)) ? 1 : 0);
-    }, 0);
-  }, 0);
-}
-
-function changedRoomCount(layout = currentLayoutSnapshot(), baseline = furnitureSavedLayout || {}) {
-  return Object.keys(layout || {}).filter((roomKey) => {
-    const roomLayout = layout[roomKey] || [];
-    const roomBaseline = baseline[roomKey] || [];
-    return roomLayout.some((item, index) => {
-      const previous = roomBaseline[index] || {};
-      return Math.abs((item.x || 0) - (previous.x || 0)) > 0.01
-        || Math.abs((item.y || 0) - (previous.y || 0)) > 0.01
-        || (item.room || roomKey) !== (previous.room || roomKey);
-    });
-  }).length;
-}
-
-function dragHintText() {
-  const copy = strings();
-  if (propDragging) return copy.layoutDragActiveHint;
-  if (selectedFurnitureProp) return copy.layoutSelectedHint;
-  return copy.layoutEditingHint;
-}
-
-function queueDistrictRender() {
-  if (dragRenderQueued) return;
-  dragRenderQueued = true;
-  window.requestAnimationFrame(() => {
-    dragRenderQueued = false;
-    renderDistricts();
-  });
-}
-
-function queueAgentRefresh() {
-  if (dragAgentsQueued || !currentSnapshot) return;
-  dragAgentsQueued = true;
-  window.requestAnimationFrame(() => {
-    dragAgentsQueued = false;
-    if (currentSnapshot) renderAgents(currentSnapshot);
-  });
-}
-
-function updateFurnitureEditorBanner() {
-  const copy = strings();
-  if (!dom.furnitureEditBanner) return;
-  dom.furnitureEditBanner.hidden = !furnitureEditMode;
-  if (!furnitureEditMode) return;
-  const changes = furnitureChangeCount();
-  if (dom.furnitureEditModeLabel) {
-    dom.furnitureEditModeLabel.className = 'editor-chip info';
-    dom.furnitureEditModeLabel.textContent = furnitureSaving ? copy.layoutSaving : copy.layoutEditing;
-  }
-  if (dom.furnitureEditDirtyLabel) {
-    const dirtyClass = furnitureDirty ? 'warn' : 'success';
-    dom.furnitureEditDirtyLabel.className = `editor-chip ${dirtyClass}`;
-    dom.furnitureEditDirtyLabel.textContent = furnitureDirty ? copy.layoutChangesCount(changes) : copy.layoutNoChanges;
-  }
-  if (dom.furnitureEditHint) {
-    dom.furnitureEditHint.textContent = dragHintText();
-  }
-  if (dom.furnitureEditMeta) {
-    const coords = selectedPropCoordinates();
-    const chips = [
-      `<span class="editor-chip info">${copy.layoutKeyboardHint}</span>`,
-      `<span class="editor-chip info">${copy.layoutDragSurfaceHint}</span>`,
-      `<span class="editor-chip info">${copy.layoutGridHint}</span>`,
-      `<span class="editor-chip ${selectedFurnitureProp ? 'warn' : 'info'}">${selectedPropMeta() || copy.layoutPickHint}</span>`,
-      selectedFurnitureProp && coords ? `<span class="editor-chip success">${copy.layoutCoordChip(coords.x, coords.y)}</span>` : '',
-      selectedFurnitureProp ? `<span class="editor-chip info">${copy.layoutSnapChip(Number(furnitureSnapStep || 0.5).toFixed(1))}</span>` : '',
-    ].filter(Boolean);
-    dom.furnitureEditMeta.innerHTML = chips.join('');
-  }
-  updateFurnitureCoordinateHud();
-}
-
-function updateFurnitureToolbar() {
-  const copy = strings();
-  if (dom.editFurnitureButton) dom.editFurnitureButton.textContent = copy.editFurniture;
-  if (dom.saveFurnitureButton) {
-    dom.saveFurnitureButton.textContent = furnitureSaving ? copy.layoutSaving : copy.saveLayout;
-    dom.saveFurnitureButton.hidden = !furnitureEditMode;
-    dom.saveFurnitureButton.disabled = furnitureSaving || !furnitureDirty;
-  }
-  if (dom.cancelFurnitureButton) {
-    dom.cancelFurnitureButton.textContent = copy.cancelLayout;
-    dom.cancelFurnitureButton.hidden = !furnitureEditMode;
-    dom.cancelFurnitureButton.disabled = furnitureSaving;
-  }
-  if (dom.editFurnitureButton) {
-    dom.editFurnitureButton.hidden = furnitureEditMode;
-    dom.editFurnitureButton.disabled = furnitureSaving;
-  }
-  dom.world?.classList.toggle('editing', furnitureEditMode);
-  applyMapLayerVisibility({
-    frame: dom.pixelworldFrame,
-    legacyStage: dom.cameraStage,
-    legacyControls: dom.cameraControls,
-  }, furnitureEditMode);
-  updateFurnitureEditorBanner();
 }
 
 function applyMobileMode() {
@@ -1059,12 +686,6 @@ function startLiveUiTicker() {
   }, Math.max(100, timelineRefreshMs));
 }
 
-function roomCopy(agent) {
-  const room = getRoomCopy(agent.room_key, currentLocale);
-  const roomName = room.name || agent.room_label || strings().unknownRoom;
-  return `${agent.room_icon || '📍'} ${roomName}`;
-}
-
 function ageText(ageSeconds = 0) {
   const copy = strings();
   return ageSeconds < 60 ? copy.secondsAgo(Math.round(ageSeconds)) : copy.minutesAgo(ageSeconds / 60);
@@ -1074,64 +695,10 @@ function stateText(state = 'idle') {
   return strings().states[state] || state;
 }
 
-function localizeTask(task = '') {
-  const localized = localizeToolSummary(task, currentLocale);
-  return localized || task || strings().idleFallback;
-}
-
 function roleLabel(role = 'main_agent') {
   if (role === 'subagent') return strings().roleSubagent;
   if (role === 'branch_session') return strings().roleBranch;
   return strings().roleMain;
-}
-
-function roleChip(role = 'main_agent') {
-  return ROLE_CHIPS[currentLocale]?.[role] || ROLE_CHIPS['zh-TW'][role] || '主';
-}
-
-function toolTokens(agent) {
-  return String(agent.task || agent.tool_label || '')
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
-function semanticFocus(agent) {
-  const raw = [agent.task, agent.tool_label, agent.activity_hint].filter(Boolean).join(' ').toLowerCase();
-  if (/(search|read|spec|plan|session|map|搜尋|讀取|規劃|藍圖|研究)/.test(raw)) return 'planning';
-  if (/(patch|write|terminal|execute|browser|reply|修改|寫入|終端機|回覆)/.test(raw)) return 'working';
-  if (agent.state === 'thinking') return 'thinking';
-  if (agent.state === 'working') return 'working';
-  if (agent.state === 'planning') return 'planning';
-  return 'idle';
-}
-
-function activityTarget(agent, patrolIndex = 0) {
-  const roomKey = agent.room_key || 'standby_dock';
-  const room = ROOM_LAYOUTS[roomKey] || ROOM_LAYOUTS.standby_dock;
-  const points = room.patrol || [room.center];
-  const fallback = points.length ? points[patrolIndex % points.length] : (room.center || { x: agent.x || 0, y: agent.y || 0 });
-  if (patrolIndex > 0) return fallback;
-  const roomDecor = roomDecorFor(roomKey);
-  const decorByRoom = getDecorByRoom();
-  const layout = roomDecorLayout(roomKey, roomDecor, decorByRoom);
-  const decor = layout.map((item) => item.prop);
-  const worldPositions = roomInteractionPositions(roomKey, roomDecor, decorByRoom);
-  return selectInteractionTarget(agent, decor, worldPositions, fallback) || fallback;
-}
-
-function activityPoint(agent, patrolIndex = 0) {
-  const target = activityTarget(agent, patrolIndex);
-  return target ? { x: target.x, y: target.y } : { x: agent.x || 0, y: agent.y || 0 };
-}
-
-function interactionCopy(target) {
-  return interactionText(currentLocale, target);
-}
-
-function ambientSpeech(agent) {
-  if (agent.role !== 'main_agent' && !agent.speech && !agent.task) return '';
-  return ambientText(currentLocale, agent, agent.task || '');
 }
 
 function activityHintText(agent) {
@@ -1142,26 +709,6 @@ function activityHintText(agent) {
 
 function formatTimelineItem(item = {}) {
   return formatTimelineItemForLocale(currentLocale, item);
-}
-
-function applyCameraTransform(active = false) {
-  if (!dom.cameraStage || !dom.world) return;
-  dom.cameraStage.style.setProperty('--camera-x', `${cameraOffset.x}px`);
-  dom.cameraStage.style.setProperty('--camera-y', `${cameraOffset.y}px`);
-  dom.cameraStage.style.setProperty('--camera-scale', String(cameraScale));
-  dom.cameraStage.classList.toggle('is-panning', active);
-  dom.world.classList.toggle('panning', active);
-}
-
-function clampCamera(next) {
-  if (!dom.cameraStage || !dom.world) return next;
-  return clampCameraOffset(next, {
-    width: dom.world.clientWidth,
-    height: dom.world.clientHeight,
-  }, {
-    width: dom.cameraStage.offsetWidth,
-    height: dom.cameraStage.offsetHeight,
-  }, cameraScale);
 }
 
 function displayAgentName(agent) {
@@ -1242,15 +789,12 @@ function applyStaticCopy() {
   renderHookStateTable();
   populateLocaleSelect();
   updateRefreshController();
-  updateFurnitureToolbar();
   applyMobileMode();
   updateCurrentAgentState(currentSnapshot || {});
   if (!selectedAgentId && dom.inspectorBody) {
     dom.inspectorBody.className = 'empty';
     dom.inspectorBody.textContent = copy.inspectorEmpty;
   }
-  renderDistricts();
-  repaintAgents();
   renderExposure();
 }
 
@@ -1319,210 +863,6 @@ async function copyExposureUrl() {
   }
 }
 
-function renderDistricts() {
-  const copy = strings();
-  syncGlobalMapDom();
-  document.querySelectorAll('.district').forEach((district) => {
-    const roomKey = district.dataset.room;
-    const layoutRect = ROOM_LAYOUTS[roomKey] || ROOM_LAYOUTS.standby_dock;
-    district.style.left = `${layoutRect.left}%`;
-    district.style.top = `${layoutRect.top}%`;
-    district.style.width = `${layoutRect.width}%`;
-    district.style.height = `${layoutRect.height}%`;
-    district.tabIndex = 0;
-    district.setAttribute('role', 'button');
-    if (Array.isArray(layoutRect.polygon) && layoutRect.polygon.length >= 3) {
-      const points = layoutRect.polygon.map((point) => `${((point.x - layoutRect.left) / layoutRect.width) * 100}% ${((point.y - layoutRect.top) / layoutRect.height) * 100}%`);
-      district.style.clipPath = `polygon(${points.join(', ')})`;
-    } else {
-      district.style.clipPath = '';
-    }
-    const localizedRoom = getRoomCopy(roomKey, currentLocale);
-    const metadata = roomMapCopy(roomKey);
-    const room = localizedRoom.name === copy.unknownRoom
-      ? { name: metadata.name || roomKey, subtitle: metadata.description || '' }
-      : localizedRoom;
-    const roomTheme = getAppleDogRoomTheme(roomKey) || getKenneyRoomTheme(roomKey);
-    const layout = getKenneyRoomLayout(roomKey);
-    district.style.setProperty('--district-floor-tile', `url("${roomTheme.floorTile}")`);
-    district.style.setProperty('--district-floor-color', roomTheme.floorColor || '#d4c196');
-    district.style.setProperty('--district-wall-tile', `url("${roomTheme.wallTile}")`);
-    district.style.setProperty('--district-rug-color', roomTheme.rugColor || 'rgba(102,75,48,0.14)');
-    district.style.setProperty('--district-accent-color', roomTheme.accentColor || 'rgba(255,255,255,0.12)');
-    district.style.setProperty('--district-floor-size', roomTheme.floorSize || '24px 24px');
-    district.style.setProperty('--district-wall-size', roomTheme.wallSize || '64px 64px');
-    const labelEl = district.querySelector('.district-label');
-    if (labelEl) {
-      const stateLabels = (ROOM_STATE_GROUPS[roomKey] || []).map((state) => `<span>${stateText(state)}</span>`).join('');
-      labelEl.innerHTML = `<span>${roomIcon(roomKey)}</span><div><strong>${room.name}</strong><div class="district-subtitle">${room.subtitle}</div><div class="district-state-tags">${stateLabels}</div></div>`;
-    }
-
-    const floorAccentLayer = district.querySelector('.district-floor-accents');
-    if (floorAccentLayer) {
-      floorAccentLayer.innerHTML = layout.floorAccents.map((item) => `
-        <div class="tile-accent ${item.key}" style="left:${item.left}%;top:${item.top}%;width:${item.width}%;height:${item.height}%;--tile-url:url('${item.tile}');--tile-opacity:${item.opacity ?? 0.45}"></div>
-      `).join('');
-    }
-
-    const semanticLayer = district.querySelector('.district-semantics');
-    if (semanticLayer) {
-      semanticLayer.innerHTML = layout.semanticZones.map((item) => {
-        const label = copy.decor?.[item.labelKey] || item.labelKey || item.key;
-        const fx = getZoneFx(item);
-        return `
-          <div class="semantic-zone ${item.kind || 'focus'} ${fx.className}" data-fx-intensity="${fx.intensity}" style="left:${item.left}%;top:${item.top}%;width:${item.width}%;height:${item.height}%;--tile-url:url('${item.tile}');--tile-opacity:${item.opacity ?? 0.75}" title="${label}">
-            <span class="semantic-zone-label">${label}</span>
-          </div>
-        `;
-      }).join('');
-    }
-
-    const wallLayer = district.querySelector('.district-walls');
-    if (wallLayer) {
-      wallLayer.innerHTML = layout.wallSegments.map((item) => `
-        <div class="wall-segment ${item.key}" style="left:${item.left}%;top:${item.top}%;width:${item.width}%;height:${item.height}%;--tile-url:url('${item.tile}');--tile-opacity:${item.opacity ?? 0.75}"></div>
-      `).join('');
-    }
-
-    const propLayout = roomDecorLayout(roomKey, roomDecorFor(roomKey), getDecorByRoom());
-    district.classList.toggle('editing', furnitureEditMode);
-    const selectedKey = selectedFurnitureKey();
-    const selectedInRoom = selectedFurnitureProp && selectedFurnitureProp.roomKey === roomKey;
-    const propsLayer = district.querySelector('.district-props');
-    if (propsLayer) {
-      const gridLines = buildGridLines();
-      const guide = furnitureEditMode && selectedInRoom ? `
-        <div class="room-edit-grid" aria-hidden="true">
-          ${gridLines.map((value) => `<span class="grid-line vertical${Math.abs(value - 50) < 0.01 ? ' mid' : ''}" style="left:${value}%"></span>`).join('')}
-          ${gridLines.map((value) => `<span class="grid-line horizontal${Math.abs(value - 50) < 0.01 ? ' mid' : ''}" style="top:${value}%"></span>`).join('')}
-        </div>
-        <div class="prop-guide${propDragging && propDragging.roomKey === roomKey ? ' dragging' : ''}" style="left:${Number(selectedFurnitureProp.x || 50).toFixed(2)}%;top:${Number(selectedFurnitureProp.y || 50).toFixed(2)}%">
-          <span class="snap-guide vertical"></span>
-          <span class="snap-guide horizontal"></span>
-          <span class="snap-guide-dot"></span>
-          <span class="prop-guide-badge">${selectedPropGuideLabel()}</span>
-        </div>
-      ` : '';
-      propsLayer.innerHTML = guide + propLayout.map(({ prop, pos, index, originRoomKey }) => {
-        const appledog = getAppleDogPropSprite(prop.type);
-        const useHighClarity = shouldUseHighClarityProp(prop.type);
-        const kenney = appledog || useHighClarity ? null : getKenneyPropSprite(prop.type);
-        const src = appledog?.src || kenney?.src || createPropSprite(prop.type);
-        const assetScale = appledog?.scale || (useHighClarity ? 1.25 : (kenney?.scale || 1));
-        const scale = Number((assetScale * normalizeScale(pos.scale || prop.scale || 1) * FURNITURE_SIZE_MULTIPLIER).toFixed(2));
-        const widthTiles = appledog?.widthTiles || 1;
-        const heightTiles = appledog?.heightTiles || 1;
-        const fx = getPropFx(prop.type, roomKey);
-        const icon = INTERACTION_OBJECT_ICONS[prop.type] || '▪';
-        const assetPack = appledog ? 'appledog' : kenney ? 'kenney' : 'office-fallback';
-        const draftPos = pos;
-        const isSelected = selectedKey === `${originRoomKey}:${index}`;
-        return `
-          <div class="prop ${fx.className}${isSelected ? ' selected' : ''}" data-room-key="${roomKey}" data-origin-room-key="${originRoomKey}" data-prop-index="${index}" data-prop-type="${prop.type}" data-prop-label="${prop.label}" data-prop-scale="${normalizeScale(pos.scale || prop.scale || 1)}" data-asset-pack="${assetPack}" data-fx-intensity="${fx.intensity}" style="left:${draftPos.x}%;top:${draftPos.y}%;--prop-scale:${scale};--prop-width-tiles:${widthTiles};--prop-height-tiles:${heightTiles}" title="${prop.label}">
-            <div class="prop-icon" aria-hidden="true">${icon}</div>
-            <img alt="${prop.label}" src="${src}" data-pack="${assetPack}" />
-            <div class="prop-label">${prop.label}</div>
-            <div class="prop-meta">${prop.label} · ${draftPos.x.toFixed(1)}%, ${draftPos.y.toFixed(1)} · ${formatScale(pos.scale || prop.scale || 1)}</div>
-          </div>
-        `;
-      }).join('');
-    }
-  });
-  document.querySelectorAll('.room-door').forEach((door) => {
-    const config = HOUSE_DOORS.find((item) => item.room === door.dataset.room);
-    if (config) {
-      door.style.left = `${config.left}%`;
-      door.style.top = `${config.top}%`;
-      door.style.width = `${config.width}%`;
-      door.style.height = `${config.height}%`;
-      door.dataset.side = config.side || 'bottom';
-    }
-    door.style.backgroundImage = `url("${getAppleDogDoorSprite() || getKenneyDoorSprite()}")`;
-    door.title = commandText('commandDeck.accessibility.appleDogDoor');
-  });
-}
-
-function roomIcon(roomKey) {
-  const icons = {
-    bed: '🛏️',
-    books: '📚',
-    card_index_dividers: '🗂️',
-    dna: '🧬',
-    envelope: '📨',
-    laptop: '💻',
-    lightbulb: '💡',
-    map: '🗺️',
-    memo: '📝',
-    tools: '🛠️',
-    warning: '⚠️',
-  };
-  const fixed = {
-    think_lab: '💡',
-    blueprint_lab: '🗺️',
-    file_library: '📚',
-    code_workbench: '📝',
-    terminal_bay: '💻',
-    tool_forge: '🛠️',
-    response_studio: '📨',
-    standby_dock: '🛏️',
-    clone_bay: '🧬',
-    session_archive: '🗂️',
-    offline_corner: '⚠️',
-  };
-  return icons[roomMapCopy(roomKey).icon] || fixed[roomKey] || '🗂️';
-}
-
-function syncGlobalMapDom() {
-  const shell = document.querySelector('.house-shell');
-  const officeShell = document.querySelector('.office-shell');
-  const mapCoordinatePlane = dom.mapCoordinatePlane || document.getElementById('map-coordinate-plane');
-  if (!shell || !officeShell || !mapCoordinatePlane) return;
-  if (GLOBAL_MAP.image) {
-    shell.style.setProperty('--global-map-image', `url("${GLOBAL_MAP.image}")`);
-    shell.classList.add('has-global-map-image');
-  }
-
-  const pathLayer = dom.pathLayer;
-  const agentsLayer = dom.agentsLayer;
-  document.querySelectorAll('.house-corridor').forEach((node) => node.remove());
-  CORRIDOR_RECTS.forEach((rect) => {
-    const node = document.createElement('div');
-    node.className = 'house-corridor';
-    node.dataset.corridor = rect.key || '';
-    node.style.left = `${rect.left}%`;
-    node.style.top = `${rect.top}%`;
-    node.style.width = `${rect.width}%`;
-    node.style.height = `${rect.height}%`;
-    node.style.opacity = GLOBAL_MAP.image ? '0' : '1';
-    mapCoordinatePlane.insertBefore(node, officeShell);
-  });
-  HOUSE_DOORS.forEach((door) => {
-    if (!officeShell.querySelector(`.room-door[data-room="${door.room}"]`)) {
-      const node = document.createElement('div');
-      node.className = 'room-door';
-      node.dataset.room = door.room;
-      officeShell.appendChild(node);
-    }
-  });
-  document.querySelectorAll('.room-door').forEach((door) => {
-    if (!HOUSE_DOORS.some((item) => item.room === door.dataset.room)) door.remove();
-  });
-
-  Object.keys(ROOM_LAYOUTS).forEach((roomKey) => {
-    if (roomKey === 'offline_corner') return;
-    if (mapCoordinatePlane.querySelector(`.district[data-room="${roomKey}"]`)) return;
-    const district = document.createElement('div');
-    district.className = 'district';
-    district.dataset.room = roomKey;
-    district.innerHTML = '<div class="district-label"></div><div class="district-floor-accents"></div><div class="district-semantics"></div><div class="district-walls"></div><div class="district-props"></div>';
-    mapCoordinatePlane.insertBefore(district, pathLayer || agentsLayer || null);
-  });
-  document.querySelectorAll('.district').forEach((district) => {
-    if (!ROOM_LAYOUTS[district.dataset.room]) district.remove();
-  });
-  refreshDoorOpenStates();
-}
-
 function renderHookStateTable() {
   if (!dom.hookStateTable) return;
   const copy = strings();
@@ -1533,39 +873,6 @@ function renderHookStateTable() {
       return `<div class="hook-state-row"><code>${route.hook}</code><span>${stateText(route.state)}</span><span>${room.name}</span></div>`;
     }).join('')}
   `;
-}
-
-function setRouteDoorsOpen(roomKeys = [], open = false) {
-  roomKeys
-    .filter(Boolean)
-    .forEach((roomKey) => {
-      if (open) forcedOpenDoorRooms.add(roomKey);
-      else forcedOpenDoorRooms.delete(roomKey);
-    });
-  refreshDoorOpenStates();
-}
-
-function distanceToDoor(view, doorConfig) {
-  const room = ROOM_LAYOUTS[doorConfig.room];
-  if (!room) return Infinity;
-  const candidates = [room.portal, room.aisle, room.hub].filter(Boolean);
-  return Math.min(...candidates.map((point) => Math.hypot((view.currentX || 0) - point.x, (view.currentY || 0) - point.y)));
-}
-
-function refreshDoorProximity() {
-  proximityOpenDoorRooms.clear();
-  HOUSE_DOORS.forEach((door) => {
-    const close = Array.from(agentViews.values()).some((view) => distanceToDoor(view, door) <= DOOR_OPEN_DISTANCE);
-    if (close) proximityOpenDoorRooms.add(door.room);
-  });
-}
-
-function refreshDoorOpenStates() {
-  refreshDoorProximity();
-  document.querySelectorAll('.room-door').forEach((door) => {
-    const roomKey = door.dataset.room;
-    door.classList.toggle('open', forcedOpenDoorRooms.has(roomKey) || proximityOpenDoorRooms.has(roomKey));
-  });
 }
 
 function renderInspector(agent) {
@@ -1663,446 +970,6 @@ function openAgentDialog(agent) {
     </div>
   `).join('');
   dom.dialogBackdrop.classList.add('show');
-}
-
-function createAgentElement(agent) {
-  const el = document.createElement('div');
-  el.className = 'agent';
-  el.tabIndex = 0;
-  el.setAttribute('role', 'button');
-  el.dataset.agentId = agent.agent;
-  el.innerHTML = `
-    <div class="agent-speech"></div>
-      <div class="sprite-wrap">
-        <div class="beam"></div>
-        <div class="object-chip"></div>
-        <div class="role-chip"></div>
-        <div class="tool-chip"></div>
-        <div class="pose-chip"></div>
-      <div class="event-chip"></div>
-      <img class="agent-pixel" alt="${agent.name}" />
-    </div>
-    <div class="agent-card">
-      <div class="agent-name"><span class="state-dot"></span><span class="agent-name-text"></span></div>
-      <div class="agent-room"></div>
-      <div class="agent-meta"></div>
-    </div>
-  `;
-  const openDetail = (event) => {
-    event.stopPropagation();
-    activateAgentDetail(agent.agent, { trigger: event.currentTarget || el });
-  };
-  el.querySelector('.agent-speech')?.addEventListener('click', openDetail);
-  el.querySelector('.event-chip')?.addEventListener('click', openDetail);
-  el.addEventListener('click', () => {
-    activateAgentDetail(agent.agent, { trigger: el });
-  });
-  el.addEventListener('keydown', (event) => {
-    if (!['Enter', ' '].includes(event.key)) return;
-    event.preventDefault();
-    activateAgentDetail(agent.agent, { trigger: el });
-  });
-  dom.agentsLayer.appendChild(el);
-  return el;
-}
-
-function ensureAgentView(agent) {
-  if (!agentViews.has(agent.agent)) {
-    const el = createAgentElement(agent);
-    const slot = Array.from(String(agent.agent || '')).reduce((sum, char) => sum + char.charCodeAt(0), 0) % 3;
-    agentViews.set(agent.agent, {
-      el,
-      data: agent,
-      currentX: agent.x || 0,
-      currentY: agent.y || 0,
-      motionToken: 0,
-      patrolIndex: slot,
-      frame: 0,
-      facing: 'right',
-      lastPatrolKey: '',
-      nextPatrolAt: 0,
-      pathTimeout: null,
-      pathEl: null,
-      walkFrameTimer: null,
-    });
-  }
-  return agentViews.get(agent.agent);
-}
-
-function decorateAgent(view) {
-  const agent = view.data;
-  const room = getRoomCopy(agent.room_key, currentLocale);
-  const roomName = room.name || agent.room_label || strings().unknownRoom;
-  const displayTask = agentPayloadPresentation(agent, strings().idleFallback).task;
-  const speechEl = view.el.querySelector('.agent-speech');
-  const beamEl = view.el.querySelector('.beam');
-  const objectChipEl = view.el.querySelector('.object-chip');
-  const roleChipEl = view.el.querySelector('.role-chip');
-  const toolChipEl = view.el.querySelector('.tool-chip');
-  const poseChipEl = view.el.querySelector('.pose-chip');
-  const eventChipEl = view.el.querySelector('.event-chip');
-  const imgEl = view.el.querySelector('.agent-pixel');
-  const nameText = view.el.querySelector('.agent-name-text');
-  const roomEl = view.el.querySelector('.agent-room');
-  const metaEl = view.el.querySelector('.agent-meta');
-  const dotEl = view.el.querySelector('.state-dot');
-  const pose = getAgentPose(agent);
-  const interaction = view.interactionTarget || activityTarget(agent, 0);
-  const eventChip = agentEventChipPresentation(agent, currentLocale);
-  const eventVisual = eventChip.visual;
-  const bubble = buildAgentSpeech(agent, currentLocale);
-  view.el.classList.toggle('selected', selectedAgentId === agent.agent);
-  view.el.classList.remove('overlay-left', 'overlay-right');
-  view.el.classList.add(agentOverlayClass(agent));
-  view.el.classList.toggle('walking', !!view.isMoving);
-  view.el.classList.toggle('at-interaction', !!interaction?.propType && !view.isMoving);
-  ['idle', 'thinking', 'planning', 'working', 'blocked', 'self_healing', 'awaiting_input', 'initializing', 'sleeping', 'offline'].forEach((state) => view.el.classList.toggle(state, agent.state === state));
-  view.el.dataset.pixelState = agent.pixel_state || agent.state || 'idle';
-  ['ponder', 'planning', 'terminal', 'dispatch', 'notes', 'writing', 'rest', 'neutral'].forEach((name) => view.el.classList.toggle(`pose-${name}`, pose.pose === name));
-  beamEl.className = `beam ${agent.state || 'idle'}`;
-  objectChipEl.textContent = interaction?.objectIcon || INTERACTION_OBJECT_ICONS[interaction?.propType] || '';
-  objectChipEl.title = interactionCopy(interaction);
-  objectChipEl.dataset.propType = interaction?.propType || '';
-  objectChipEl.classList.toggle('show', !!interaction?.propType && !view.isMoving);
-  roleChipEl.textContent = roleChip(agent.role);
-  toolChipEl.textContent = agent.tool_icon || eventVisual.icon || '✨';
-  toolChipEl.title = agentTooltipText(agent, currentLocale) || strings().idleFallback;
-  poseChipEl.textContent = pose.icon || '✨';
-  poseChipEl.title = poseLabelForLocale(currentLocale, pose.pose);
-  eventChipEl.textContent = eventChip.textContent;
-  eventChipEl.title = eventChip.title;
-  eventChipEl.className = eventChip.className;
-  eventChipEl.classList.toggle('show', eventChip.visible);
-  eventChipEl.classList.toggle('clickable', !!bubble.clickable);
-  const sprite = getKenneyAgentSprite({ role: agent.role, state: agent.state, color: agent.color, facing: view.facing, frame: view.frame });
-  imgEl.src = sprite?.src || createAgentSprite({ role: agent.role, state: agent.state, color: agent.color, facing: view.facing, frame: view.frame });
-  imgEl.className = `agent-pixel ${sprite?.pixelClass || `fallback-${agent.role || 'main_agent'}`}`;
-  imgEl.dataset.pack = sprite?.src ? 'kenney' : 'fallback';
-  view.el.dataset.agentRole = agent.role || 'main_agent';
-  imgEl.style.transform = sprite?.flipX ? 'scaleX(-1)' : '';
-  imgEl.alt = agent.name;
-  nameText.textContent = `${displayAgentName(agent)} · ${agent.instance_label || agent.agent}`;
-  roomEl.textContent = `${agent.room_icon || '📍'} ${roomName}`;
-  metaEl.textContent = agent.role === 'main_agent'
-    ? (interactionCopy(interaction) || eventVisual.detail || displayTask)
-    : displayTask;
-  dotEl.className = `state-dot ${agent.state || 'idle'}`;
-  speechEl.textContent = bubble.summary;
-  speechEl.title = bubble.detail || bubble.summary || '';
-  speechEl.classList.toggle('show', !!bubble.summary);
-  speechEl.classList.toggle('clickable', !!bubble.clickable);
-}
-
-function updateAgentPosition(view, x, y) {
-  const dx = x - view.currentX;
-  const dy = y - view.currentY;
-  view.facing = getFacingFromDelta(dx, dy, view.facing || 'right');
-  view.frame = nextWalkFrame(view.frame, !!view.isMoving);
-  view.currentX = x;
-  view.currentY = y;
-  view.el.style.left = `${x}%`;
-  view.el.style.top = `${y}%`;
-  refreshDoorOpenStates();
-}
-
-function clearWalkFrameTimer(view) {
-  if (!view.walkFrameTimer) return;
-  window.clearInterval(view.walkFrameTimer);
-  view.walkFrameTimer = null;
-}
-
-function startWalkFrameTimer(view, token) {
-  clearWalkFrameTimer(view);
-  view.walkFrameTimer = window.setInterval(() => {
-    if (token !== view.motionToken || !view.isMoving) {
-      clearWalkFrameTimer(view);
-      return;
-    }
-    view.frame = nextWalkFrame(view.frame, true);
-    decorateAgent(view);
-  }, 170);
-}
-
-function clearAgentPath(view) {
-  if (view.pathTimeout) {
-    clearTimeout(view.pathTimeout);
-    view.pathTimeout = null;
-  }
-  if (view.pathEl) {
-    view.pathEl.remove();
-    view.pathEl = null;
-  }
-}
-
-function drawPath(view) {
-  clearAgentPath(view);
-}
-
-function moveAlongRoute(view, route, state, { patrol = false, routeDoors = [] } = {}) {
-  const token = ++view.motionToken;
-  const duration = movementDurationMs(route, state);
-  let elapsed = 0;
-  view.isMoving = true;
-  setRouteDoorsOpen(routeDoors, true);
-  startWalkFrameTimer(view, token);
-  decorateAgent(view);
-  drawPath(view);
-
-  const step = (index) => {
-    if (token !== view.motionToken) return;
-    if (index >= route.length) {
-      view.isMoving = false;
-      view.frame = 0;
-      clearWalkFrameTimer(view);
-      decorateAgent(view);
-      return;
-    }
-    const point = route[index];
-    const prev = index === 0 ? { x: view.currentX, y: view.currentY } : route[index - 1];
-    const segmentDist = Math.hypot(point.x - prev.x, point.y - prev.y);
-    const totalDist = Math.max(1, route.slice(1).reduce((acc, item, idx) => acc + Math.hypot(item.x - route[idx].x, item.y - route[idx].y), 0));
-    const segmentMs = index === 0 ? 0 : Math.max(180, Math.round((segmentDist / totalDist) * duration));
-    view.el.style.transitionDuration = `${segmentMs}ms`;
-    updateAgentPosition(view, point.x, point.y);
-    elapsed += segmentMs;
-    if (index === route.length - 1) {
-      window.setTimeout(() => {
-        if (token === view.motionToken) {
-          view.isMoving = false;
-          view.frame = 0;
-          clearWalkFrameTimer(view);
-          setRouteDoorsOpen(routeDoors, false);
-          decorateAgent(view);
-          if (!patrol) view.nextPatrolAt = performance.now() + 1200;
-          const pending = view.pendingMove;
-          view.pendingMove = null;
-          if (pending) {
-            maybeMoveAgent(view, pending.agent, pending.targetX, pending.targetY, pending.roomKey, pending.options);
-          }
-        }
-      }, segmentMs + 40);
-      return;
-    }
-    window.setTimeout(() => step(index + 1), segmentMs + 24);
-  };
-
-  step(0);
-}
-
-function maybeMoveAgent(view, agent, targetX, targetY, roomKey, options = {}) {
-  if (view.isMoving && !options.patrol) {
-    view.pendingMove = {
-      agent,
-      targetX,
-      targetY,
-      roomKey,
-      options: {
-        ...options,
-        fromRoomKey: view.data.room_key || options.fromRoomKey || roomKey,
-      },
-    };
-    return;
-  }
-  const fromRoomKey = options.fromRoomKey || view.data.room_key || roomKey;
-  const safeTarget = snapToWalkable({ x: targetX, y: targetY });
-  targetX = safeTarget.x;
-  targetY = safeTarget.y;
-  const route = buildRoute({ x: view.currentX, y: view.currentY }, { x: targetX, y: targetY }, fromRoomKey, roomKey);
-  const targetDelta = Math.hypot(targetX - view.currentX, targetY - view.currentY);
-  const routeBlocked = route.length < 2 && targetDelta > 0.2;
-  if (routeBlocked) {
-    view.data = { ...agent, x: view.currentX, y: view.currentY, room_key: fromRoomKey };
-    decorateAgent(view);
-    return;
-  }
-  const noMove = route.length < 2 || route.every((item, idx) => idx === 0 || (Math.abs(item.x - route[idx - 1].x) < 0.2 && Math.abs(item.y - route[idx - 1].y) < 0.2));
-  view.data = { ...agent, x: targetX, y: targetY, room_key: roomKey };
-  if (Object.hasOwn(options, 'interactionTarget')) view.interactionTarget = options.interactionTarget;
-  decorateAgent(view);
-  if (!noMove) moveAlongRoute(view, route, agent.state, { ...options, routeDoors: fromRoomKey === roomKey ? [roomKey] : [fromRoomKey, roomKey] });
-  else updateAgentPosition(view, targetX, targetY);
-}
-
-function patrolActiveAgents() {
-  const now = performance.now();
-  agentViews.forEach((view) => {
-    const agent = view.data;
-    if (!shouldPatrol(agent.state) || view.isMoving || now < view.nextPatrolAt) return;
-    view.patrolIndex = (view.patrolIndex + 1) % 3;
-    const patrol = activityPoint(agent, view.patrolIndex) || patrolPoint(agent.room_key, view.patrolIndex);
-    const patrolKey = `${agent.room_key}:${view.patrolIndex}:${agent.state}:${semanticFocus(agent)}`;
-    if (patrolKey === view.lastPatrolKey) return;
-    view.lastPatrolKey = patrolKey;
-    maybeMoveAgent(view, { ...agent, x: patrol.x, y: patrol.y }, patrol.x, patrol.y, agent.room_key, { patrol: true, interactionTarget: null });
-    view.nextPatrolAt = now + 2600;
-  });
-}
-
-function repaintAgents() {
-  agentViews.forEach((view) => decorateAgent(view));
-}
-
-function syncFurnitureLayout(layout = {}) {
-  furnitureSavedLayout = cloneLayout(layout || {});
-  furnitureDraft = cloneLayout(layout || {});
-  furnitureDirty = false;
-  if (selectedFurnitureProp) {
-    const next = (furnitureDraft[selectedFurnitureProp.originRoomKey] || [])[selectedFurnitureProp.index];
-    if (next) {
-      selectedFurnitureProp.roomKey = next.room || selectedFurnitureProp.originRoomKey;
-      selectedFurnitureProp.x = Number(next.x || selectedFurnitureProp.x || 50);
-      selectedFurnitureProp.y = Number(next.y || selectedFurnitureProp.y || 50);
-      selectedFurnitureProp.scale = normalizeScale(next.scale || selectedFurnitureProp.scale || 1);
-    } else {
-      setSelectedFurnitureProp(null);
-    }
-  }
-  setFurnitureLayoutOverrides(furnitureDraft);
-  refreshFurnitureBlockers();
-  updateFurnitureToolbar();
-}
-
-function districtAtPoint(clientX, clientY) {
-  return Array.from(dom.world?.querySelectorAll('.district[data-room]') || []).find((district) => {
-    const roomKey = district.dataset.room;
-    if (!roomKey || roomKey === 'offline_corner') return false;
-    const rect = district.getBoundingClientRect();
-    return clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom;
-  }) || null;
-}
-
-function currentLayoutSnapshot() {
-  return exportFurnitureLayout();
-}
-
-function updateFurnitureDirtyState() {
-  furnitureDirty = !layoutEquals(currentLayoutSnapshot(), furnitureSavedLayout || {});
-  updateFurnitureToolbar();
-}
-
-function updateDraggedGuideVisual(roomKey, x, y, { create = false } = {}) {
-  const propsLayer = dom.world?.querySelector(`.district[data-room="${roomKey}"] .district-props`);
-  if (!propsLayer) return;
-  if (create) {
-    dom.world?.querySelectorAll('.room-edit-grid, .prop-guide').forEach((item) => {
-      if (!propsLayer.contains(item)) item.remove();
-    });
-  }
-  let guide = propsLayer.querySelector('.prop-guide');
-  if (!guide && create) {
-    const gridLines = buildGridLines();
-    const grid = document.createElement('div');
-    grid.className = 'room-edit-grid';
-    grid.setAttribute('aria-hidden', 'true');
-    grid.innerHTML = [
-      ...gridLines.map((value) => `<span class="grid-line vertical${Math.abs(value - 50) < 0.01 ? ' mid' : ''}" style="left:${value}%"></span>`),
-      ...gridLines.map((value) => `<span class="grid-line horizontal${Math.abs(value - 50) < 0.01 ? ' mid' : ''}" style="top:${value}%"></span>`),
-    ].join('');
-    guide = document.createElement('div');
-    guide.className = 'prop-guide dragging';
-    guide.innerHTML = `
-      <span class="snap-guide vertical"></span>
-      <span class="snap-guide horizontal"></span>
-      <span class="snap-guide-dot"></span>
-      <span class="prop-guide-badge"></span>
-    `;
-    propsLayer.prepend(grid, guide);
-  }
-  if (!guide) return;
-  const style = dragPositionStyle(x, y);
-  guide.style.left = style.left;
-  guide.style.top = style.top;
-  guide.classList.add('dragging');
-  const badge = guide.querySelector('.prop-guide-badge');
-  if (badge) badge.textContent = selectedPropGuideLabel();
-}
-
-function updateDraggedPropVisual(prop, roomKey, x, y) {
-  if (!prop) return;
-  const propsLayer = dom.world?.querySelector(`.district[data-room="${roomKey}"] .district-props`);
-  if (propsLayer && prop.parentElement !== propsLayer) propsLayer.append(prop);
-  prop.dataset.roomKey = roomKey;
-  const style = dragPositionStyle(x, y);
-  prop.style.left = style.left;
-  prop.style.top = style.top;
-  prop.classList.add('selected');
-  updateDraggedGuideVisual(roomKey, x, y, { create: true });
-  const meta = prop.querySelector('.prop-meta');
-  if (meta) {
-    const label = furnitureLabelForLocale(currentLocale, prop.dataset.propLabel, prop.dataset.propType);
-    meta.textContent = `${label} · ${formatPercent(x)}%, ${formatPercent(y)}%`;
-  }
-}
-
-function updateFurnitureDragGhost(event) {
-  if (!propDragging?.ghost) return;
-  propDragging.ghost.style.left = `${event.clientX - propDragging.offsetX}px`;
-  propDragging.ghost.style.top = `${event.clientY - propDragging.offsetY}px`;
-}
-
-function applyDraftPosition(originRoomKey, index, x, y, options = {}) {
-  const roomKey = options.roomKey || originRoomKey;
-  const roomPositions = (furnitureDraft[originRoomKey] || getRoomPropPositions(originRoomKey)).map((item) => ({ ...item }));
-  const nextX = normalizePercent(x, { step: options.step || furnitureSnapStep });
-  const nextY = normalizePercent(y, { step: options.step || furnitureSnapStep });
-  const current = roomPositions[index] || {};
-  const nextScale = normalizeScale(options.scale || current.scale || 1);
-  if (positionOverlapsFurniture(roomKey, roomDecorFor(roomKey), index, { x: nextX, y: nextY, scale: nextScale }, roomPositions, {
-    originRoomKey,
-    decorByRoom: getDecorByRoom(),
-  })) {
-    const now = Date.now();
-    if (now - lastFurnitureCollisionAt > 900) {
-      const copy = strings();
-      showFurnitureToast('error', copy.layoutCollisionTitle, copy.layoutCollisionDetail);
-      lastFurnitureCollisionAt = now;
-    }
-    return false;
-  }
-  roomPositions[index] = { x: nextX, y: nextY, room: roomKey, scale: nextScale };
-  furnitureDraft[originRoomKey] = roomPositions;
-  if (selectedFurnitureProp && selectedFurnitureProp.originRoomKey === originRoomKey && selectedFurnitureProp.index === index) {
-    selectedFurnitureProp.roomKey = roomKey;
-    selectedFurnitureProp.x = nextX;
-    selectedFurnitureProp.y = nextY;
-    selectedFurnitureProp.scale = nextScale;
-  }
-  if (propDragging && propDragging.originRoomKey === originRoomKey && propDragging.index === index) {
-    propDragging.roomKey = roomKey;
-    propDragging.x = nextX;
-    propDragging.y = nextY;
-    propDragging.scale = nextScale;
-  }
-  setFurnitureLayoutOverrides(furnitureDraft);
-  refreshFurnitureBlockers();
-  updateFurnitureDirtyState();
-  if (options.prop) updateDraggedPropVisual(options.prop, roomKey, nextX, nextY);
-  if (options.renderDistricts) queueDistrictRender();
-  queueAgentRefresh();
-  return true;
-}
-
-function applyDraftScale(originRoomKey, index, delta = 0) {
-  const current = (furnitureDraft[originRoomKey] || getRoomPropPositions(originRoomKey))[index];
-  if (!current || !selectedFurnitureProp) return false;
-  const nextScale = normalizeScale((current.scale || 1) + delta);
-  return applyDraftPosition(originRoomKey, index, current.x, current.y, {
-    roomKey: current.room || selectedFurnitureProp.roomKey,
-    scale: nextScale,
-    renderDistricts: true,
-  });
-}
-
-function showFurnitureToast(kind = 'info', title = '', body = '') {
-  if (!dom.furnitureToast || !dom.furnitureToastTitle || !dom.furnitureToastBody) return;
-  if (furnitureToastTimer) window.clearTimeout(furnitureToastTimer);
-  dom.furnitureToast.className = `toast ${kind}`;
-  dom.furnitureToastTitle.textContent = title;
-  dom.furnitureToastBody.textContent = body;
-  window.requestAnimationFrame(() => dom.furnitureToast?.classList.add('show'));
-  furnitureToastTimer = window.setTimeout(() => {
-    dom.furnitureToast?.classList.remove('show');
-  }, 2600);
 }
 
 const missionCategoryColor = (category) => ({
@@ -2291,57 +1158,21 @@ async function deleteOfflineAgent(agentId) {
 }
 
 function renderAgents(snapshot) {
-  const seen = new Set();
   const agents = snapshot.agents || [];
-  agents.forEach((agent) => {
-    seen.add(agent.agent);
-    const view = ensureAgentView(agent);
-    const previous = view.data || {};
-    const target = activityTarget(agent, view.patrolIndex || 0);
-    const targetChanged = previous.room_key !== agent.room_key
-      || Math.abs((previous.x || 0) - target.x) > 0.25
-      || Math.abs((previous.y || 0) - target.y) > 0.25;
-    const stateChanged = previous.state !== agent.state || previous.task !== agent.task || previous.activity_hint !== agent.activity_hint;
-    if (!view.el.style.left) updateAgentPosition(view, target.x || 0, target.y || 0);
-    if (targetChanged || stateChanged) {
-      view.lastPatrolKey = '';
-      maybeMoveAgent(view, { ...agent, x: target.x, y: target.y }, target.x || 0, target.y || 0, agent.room_key || 'standby_dock', {
-        fromRoomKey: previous.room_key || agent.room_key || 'standby_dock',
-        interactionTarget: target.propType ? target : null,
-      });
-    } else {
-      view.data = { ...agent, x: target.x, y: target.y };
-      view.interactionTarget = target.propType ? target : null;
-      decorateAgent(view);
-    }
-  });
-
-  Array.from(agentViews.keys()).forEach((agentId) => {
-    if (!seen.has(agentId)) {
-      const view = agentViews.get(agentId);
-      clearAgentPath(view);
-      view.el.remove();
-      agentViews.delete(agentId);
-    }
-  });
-
   renderInspectorAgentSelect(agents);
   const resolvedSelection = resolveCurrentCommandSelection(currentCommandSelection);
-  renderInspector(resolvedSelection?.agent || agents.find((item) => item.agent === selectedAgentId) || (!currentCommandSelection ? agents[0] : null));
+  renderInspector(resolvedSelection?.agent || agents.find((item) => item.agent === selectedAgentId)
+    || (!currentCommandSelection ? agents[0] : null));
   if (dashboardDisclosure.activeCard === 'agents') renderDashboardCardContent();
   if (activeDialogAgentId) {
     const active = agents.find((item) => item.agent === activeDialogAgentId);
-    if (active) openAgentDialog(active);
-    else closeAgentDialog();
+    if (active) openAgentDialog(active); else closeAgentDialog();
   }
 }
 
 function applyCommandSelectionStyling(resolved = null) {
   const agentId = resolved?.agent?.id || resolved?.agent?.agent || '';
-  const buildingId = resolved?.buildingId || resolved?.building?.id || '';
   const hookId = resolved?.hook?.id || '';
-  agentViews.forEach((view, id) => view.el.classList.toggle('selected', id === agentId));
-  document.querySelectorAll('.district[data-room]').forEach((district) => district.classList.toggle('command-selected', district.dataset.room === buildingId));
   dom.agentLiveList?.querySelectorAll('[data-selection-kind="agent"]').forEach((row) => row.classList.toggle('selected', row.dataset.selectionId === agentId));
   dom.hookLiveChannels?.querySelectorAll('[data-selection-kind="hook"]').forEach((row) => row.classList.toggle('selected', row.dataset.selectionId === hookId));
 }
@@ -2494,13 +1325,12 @@ function renderSnapshot(snapshot) {
   currentSnapshot = dashboardLiveSnapshot;
   currentCommandDeckModel = buildCommandDeckModel(dashboardLiveSnapshot, {
     nowMs: Number(snapshot.server_time_ms) || Date.now(),
-    buildings: Object.keys(ROOM_LAYOUTS).map((id) => ({ id })),
+    buildings: commandBuildingIds(dashboardLiveSnapshot).map((id) => ({ id })),
   });
   missionTraceController.setModel(currentCommandDeckModel);
   const sequence = snapshot.server_time_ms || Date.now();
   pixelworldBridge.setLocale(currentLocale, sequence);
   pixelworldBridge.setSnapshot(dashboardLiveSnapshot, sequence);
-  if (!furnitureEditMode) syncFurnitureLayout(snapshot.furniture_layout || {});
   const copy = strings();
   dom.agentCount.textContent = String(dashboardLiveSnapshot.stats.agent_count || 0);
   dom.subagentCount.textContent = String(dashboardLiveSnapshot.stats.subagent_count || 0);
@@ -2514,245 +1344,6 @@ function renderSnapshot(snapshot) {
   renderAgents(dashboardLiveSnapshot);
   restoreCurrentCommandSelectionStyling();
   if (dashboardDisclosure.activeCard) renderDashboardCardContent();
-}
-
-function beginFurnitureEdit() {
-  const copy = strings();
-  furnitureEditMode = true;
-  furnitureSaving = false;
-  furnitureSnapStep = resolveSnapStep(false);
-  furnitureDraft = cloneLayout(furnitureSavedLayout || {});
-  furnitureDirty = false;
-  propDragging = null;
-  setSelectedFurnitureProp(null);
-  setFurnitureLayoutOverrides(furnitureDraft);
-  refreshFurnitureBlockers();
-  updateFurnitureToolbar();
-  renderDistricts();
-  showFurnitureToast('info', copy.layoutEditing, copy.layoutEditingHint);
-}
-
-function cancelFurnitureEdit() {
-  const copy = strings();
-  if (furnitureDirty && !window.confirm(copy.layoutExitConfirm)) return;
-  furnitureEditMode = false;
-  furnitureSaving = false;
-  furnitureSnapStep = resolveSnapStep(false);
-  propDragging = null;
-  setSelectedFurnitureProp(null);
-  syncFurnitureLayout(furnitureSavedLayout || {});
-  updateFurnitureToolbar();
-  renderDistricts();
-  if (currentSnapshot) renderAgents(currentSnapshot);
-  showFurnitureToast('info', copy.cancelLayout, copy.layoutReset);
-}
-
-async function saveFurnitureEdit() {
-  const copy = strings();
-  if (furnitureSaving) return;
-  const layout = currentLayoutSnapshot();
-  const changeCount = furnitureChangeCount(layout, furnitureSavedLayout || {});
-  const roomCount = changedRoomCount(layout, furnitureSavedLayout || {});
-  if (!furnitureDirty) {
-    showFurnitureToast('info', copy.layoutEditing, copy.layoutNoChanges);
-    return;
-  }
-  furnitureSaving = true;
-  updateFurnitureToolbar();
-  try {
-    const res = await fetch('/api/furniture-layout', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ layout }),
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const payload = await res.json();
-    syncFurnitureLayout(payload.layout || layout);
-    furnitureEditMode = false;
-    furnitureSaving = false;
-    furnitureSnapStep = resolveSnapStep(false);
-    propDragging = null;
-    setSelectedFurnitureProp(null);
-    updateFurnitureToolbar();
-    renderDistricts();
-    if (currentSnapshot) renderAgents(currentSnapshot);
-    dom.worldState.textContent = copy.layoutSaved;
-    showFurnitureToast('success', copy.saveLayout, copy.layoutSavedDetail(changeCount, roomCount));
-  } catch (err) {
-    furnitureSaving = false;
-    updateFurnitureToolbar();
-    dom.worldState.textContent = `${copy.layoutSaveFailed}: ${err.message}`;
-    showFurnitureToast('error', copy.layoutSaveFailed, err.message);
-  }
-}
-
-function setupFurnitureEditor() {
-  dom.editFurnitureButton?.addEventListener('click', beginFurnitureEdit);
-  dom.cancelFurnitureButton?.addEventListener('click', cancelFurnitureEdit);
-  dom.saveFurnitureButton?.addEventListener('click', saveFurnitureEdit);
-  dom.furnitureCoordHud?.addEventListener('click', (event) => {
-    if (!furnitureEditMode || furnitureSaving || !selectedFurnitureProp) return;
-    const button = event.target.closest('[data-furniture-scale]');
-    if (!button) return;
-    const direction = Number(button.dataset.furnitureScale || 0);
-    if (!direction) return;
-    const accepted = applyDraftScale(
-      selectedFurnitureProp.originRoomKey,
-      selectedFurnitureProp.index,
-      direction * SCALE_STEP,
-    );
-    if (!accepted) {
-      const copy = strings();
-      showFurnitureToast('error', copy.layoutCollisionTitle, copy.layoutCollisionBody);
-    }
-    updateFurnitureEditorBanner();
-    event.preventDefault();
-    event.stopPropagation();
-  });
-
-  dom.world?.addEventListener('pointerdown', (event) => {
-    if (!furnitureEditMode || furnitureSaving) return;
-    const prop = event.target.closest('.prop');
-    if (!prop) {
-      if (selectedFurnitureProp) {
-        setSelectedFurnitureProp(null);
-        queueDistrictRender();
-        updateFurnitureEditorBanner();
-      }
-      return;
-    }
-    const roomKey = prop.dataset.roomKey;
-    const originRoomKey = prop.dataset.originRoomKey || roomKey;
-    const index = Number(prop.dataset.propIndex || 0);
-    const district = prop.closest('.district');
-    const rect = district?.getBoundingClientRect();
-    const propRect = prop.getBoundingClientRect();
-    if (!roomKey || !rect || !propRect) return;
-    const current = (furnitureDraft[originRoomKey] || getRoomPropPositions(originRoomKey))[index] || { x: 50, y: 50, room: roomKey };
-    setSelectedFurnitureProp({
-      roomKey,
-      originRoomKey,
-      index,
-      propType: prop.dataset.propType || 'prop',
-      label: prop.dataset.propLabel || prop.dataset.propType || 'prop',
-      x: Number(current.x || 50),
-      y: Number(current.y || 50),
-      scale: normalizeScale(current.scale || prop.dataset.propScale || 1),
-    });
-    propDragging = {
-      roomKey,
-      originRoomKey,
-      index,
-      prop,
-      rect,
-      propType: prop.dataset.propType || 'prop',
-      label: prop.dataset.propLabel || prop.dataset.propType || 'prop',
-      offsetX: event.clientX - (propRect.left + propRect.width / 2),
-      offsetY: event.clientY - (propRect.top + propRect.height / 2),
-      x: Number(current.x || 50),
-      y: Number(current.y || 50),
-      scale: normalizeScale(current.scale || prop.dataset.propScale || 1),
-      pointerId: event.pointerId,
-    };
-    const ghost = prop.cloneNode(true);
-    ghost.classList.add('furniture-drag-ghost', 'dragging');
-    ghost.classList.remove('selected');
-    document.body.append(ghost);
-    propDragging.ghost = ghost;
-    prop.setPointerCapture?.(event.pointerId);
-    prop.classList.add('dragging', 'drag-source');
-    updateFurnitureDragGhost(event);
-    updateDraggedGuideVisual(roomKey, propDragging.x, propDragging.y, { create: true });
-    updateFurnitureEditorBanner();
-    event.preventDefault();
-    event.stopPropagation();
-  });
-
-  window.addEventListener('pointermove', (event) => {
-    if (!propDragging || furnitureSaving) return;
-    updateFurnitureDragGhost(event);
-    const district = districtAtPoint(event.clientX, event.clientY);
-    if (!district) {
-      updateFurnitureEditorBanner();
-      return;
-    }
-    const roomKey = district.dataset.room;
-    const liveRect = district.getBoundingClientRect();
-    const rawX = (((event.clientX - liveRect.left) - propDragging.offsetX) / liveRect.width) * 100;
-    const rawY = (((event.clientY - liveRect.top) - propDragging.offsetY) / liveRect.height) * 100;
-    furnitureSnapStep = resolveSnapStep(event.shiftKey);
-    const x = normalizePercent(rawX, { step: furnitureSnapStep });
-    const y = normalizePercent(rawY, { step: furnitureSnapStep });
-    propDragging.rect = liveRect;
-    const accepted = applyDraftPosition(propDragging.originRoomKey, propDragging.index, x, y, {
-      prop: propDragging.prop,
-      roomKey,
-      step: furnitureSnapStep,
-    });
-    if (accepted) {
-      propDragging.roomKey = roomKey;
-      propDragging.x = x;
-      propDragging.y = y;
-    }
-    updateFurnitureEditorBanner();
-  });
-
-  const finishDrag = ({ rerender = true } = {}) => {
-    if (!propDragging) return;
-    const settled = { ...propDragging };
-    setSelectedFurnitureProp(settled);
-    propDragging.prop?.releasePointerCapture?.(propDragging.pointerId);
-    propDragging.prop?.classList.remove('dragging', 'drag-source');
-    propDragging.ghost?.remove();
-    propDragging = null;
-    updateFurnitureEditorBanner();
-    if (rerender) {
-      queueDistrictRender();
-      queueAgentRefresh();
-    }
-  };
-
-  window.addEventListener('pointerup', () => finishDrag());
-  window.addEventListener('pointercancel', () => finishDrag());
-  window.addEventListener('keydown', (event) => {
-    if (!furnitureEditMode || furnitureSaving) return;
-    if (event.key === 'Escape') {
-      if (propDragging) {
-        finishDrag();
-        return;
-      }
-      cancelFurnitureEdit();
-      return;
-    }
-    if (event.key === 'Enter' && furnitureDirty) {
-      event.preventDefault();
-      saveFurnitureEdit();
-      return;
-    }
-    if (!selectedFurnitureProp) return;
-    const delta = { x: 0, y: 0 };
-    const step = resolveSnapStep(event.shiftKey);
-    furnitureSnapStep = step;
-    if (event.key === 'ArrowLeft') delta.x = -step;
-    if (event.key === 'ArrowRight') delta.x = step;
-    if (event.key === 'ArrowUp') delta.y = -step;
-    if (event.key === 'ArrowDown') delta.y = step;
-    if (!delta.x && !delta.y) return;
-    event.preventDefault();
-    const nextX = clampPercent(selectedFurnitureProp.x + delta.x);
-    const nextY = clampPercent(selectedFurnitureProp.y + delta.y);
-    applyDraftPosition(selectedFurnitureProp.originRoomKey, selectedFurnitureProp.index, nextX, nextY, {
-      renderDistricts: true,
-      roomKey: selectedFurnitureProp.roomKey,
-      step,
-    });
-    updateFurnitureEditorBanner();
-  });
-  window.addEventListener('beforeunload', (event) => {
-    if (!furnitureEditMode || !furnitureDirty) return;
-    event.preventDefault();
-    event.returnValue = '';
-  });
 }
 
 async function refresh() {
@@ -2838,18 +1429,12 @@ function setupDraggablePanels() {
   });
 
   window.addEventListener('pointermove', (event) => {
-    if (panelDragging) {
-      const delta = { x: event.clientX - panelDragging.pointer.x, y: event.clientY - panelDragging.pointer.y };
-      const next = nextDraggedOffset(panelDragging.start, delta);
-      panelDragging.panel.dataset.offsetX = String(next.x);
-      panelDragging.panel.dataset.offsetY = String(next.y);
-      panelDragging.panel.style.transform = `translate3d(${next.x}px, ${next.y}px, 0)`;
-      return;
-    }
-    if (!cameraPanning) return;
-    const delta = { x: event.clientX - cameraPanning.pointer.x, y: event.clientY - cameraPanning.pointer.y };
-    cameraOffset = clampCamera(nextDraggedOffset(cameraPanning.start, delta));
-    applyCameraTransform(true);
+    if (!panelDragging) return;
+    const delta = { x: event.clientX - panelDragging.pointer.x, y: event.clientY - panelDragging.pointer.y };
+    const next = nextDraggedOffset(panelDragging.start, delta);
+    panelDragging.panel.dataset.offsetX = String(next.x);
+    panelDragging.panel.dataset.offsetY = String(next.y);
+    panelDragging.panel.style.transform = `translate3d(${next.x}px, ${next.y}px, 0)`;
   });
 
   window.addEventListener('pointerup', () => {
@@ -2861,10 +1446,6 @@ function setupDraggablePanels() {
       }));
       panel.classList.remove('dragging');
       panelDragging = null;
-    }
-    if (cameraPanning) {
-      cameraPanning = null;
-      applyCameraTransform(false);
     }
   });
 }
@@ -2918,73 +1499,6 @@ function setupWorkbenchLayout() {
       observer.observe(dom.brand);
       return () => observer.disconnect();
     },
-  });
-}
-
-function setupCameraPan() {
-  if (!dom.world || !dom.cameraStage) return;
-  const viewport = () => ({ width: dom.world.clientWidth, height: dom.world.clientHeight });
-  const stage = () => ({ width: dom.cameraStage.offsetWidth, height: dom.cameraStage.offsetHeight });
-  const recenter = () => {
-    cameraScale = clampZoom(cameraScale);
-    cameraOffset = centeredCamera(viewport(), stage(), cameraScale);
-    applyCameraTransform(false);
-  };
-  const zoomAtCenter = (deltaY) => {
-    const currentViewport = viewport();
-    const next = nextZoomState({
-      offset: cameraOffset,
-      scale: cameraScale,
-      viewport: currentViewport,
-      stage: stage(),
-      pointer: { x: currentViewport.width / 2, y: currentViewport.height / 2 },
-      deltaY,
-    });
-    cameraOffset = next.offset;
-    cameraScale = next.scale;
-    applyCameraTransform(false);
-  };
-  recenter();
-  window.addEventListener('resize', recenter);
-  dom.world.addEventListener('pointerdown', (event) => {
-    if (furnitureEditMode && event.target.closest('.prop')) return;
-    if (event.target.closest('.agent-speech') || event.target.closest('.event-chip') || event.target.closest('.speech-dialog')) return;
-    if (event.target.closest('.agent') || event.target.closest('[data-draggable-panel]') || event.target.closest('button') || event.target.closest('select')) {
-      if (!event.target.closest('.speech-dialog')) closeAgentDialog();
-      return;
-    }
-    closeAgentDialog();
-    cameraPanning = {
-      start: { ...cameraOffset },
-      pointer: { x: event.clientX, y: event.clientY },
-    };
-    dom.world.setPointerCapture?.(event.pointerId);
-    applyCameraTransform(true);
-    event.preventDefault();
-  });
-  dom.world.addEventListener('wheel', (event) => {
-    if (event.target.closest('[data-draggable-panel]')) return;
-    const rect = dom.world.getBoundingClientRect();
-    const pointer = { x: event.clientX - rect.left, y: event.clientY - rect.top };
-    const next = nextZoomState({
-      offset: cameraOffset,
-      scale: cameraScale,
-      viewport: viewport(),
-      stage: stage(),
-      pointer,
-      deltaY: event.deltaY,
-    });
-    cameraOffset = next.offset;
-    cameraScale = next.scale;
-    applyCameraTransform(false);
-    event.preventDefault();
-  }, { passive: false });
-  dom.zoomInButton?.addEventListener('click', () => zoomAtCenter(-120));
-  dom.zoomOutButton?.addEventListener('click', () => zoomAtCenter(120));
-  dom.zoomResetButton?.addEventListener('click', () => {
-    cameraScale = 1;
-    cameraOffset = centeredCamera(viewport(), stage(), cameraScale);
-    applyCameraTransform(false);
   });
 }
 
@@ -3113,18 +1627,6 @@ dom.hookLiveChannels?.addEventListener('keydown', (event) => {
   selectCommandDeck({ kind: 'hook', id: target.dataset.selectionId });
 });
 
-dom.world?.addEventListener('click', (event) => {
-  const district = event.target.closest('.district[data-room]');
-  if (district && !furnitureEditMode) selectCommandDeck({ kind: 'building', id: district.dataset.room });
-});
-dom.world?.addEventListener('keydown', (event) => {
-  if (!['Enter', ' '].includes(event.key)) return;
-  const district = event.target.closest('.district[data-room]');
-  if (!district || furnitureEditMode) return;
-  event.preventDefault();
-  selectCommandDeck({ kind: 'building', id: district.dataset.room });
-});
-
 dom.missionTraceLive?.addEventListener('click', resumeCommandDeckLive);
 
 function adjustRefreshInterval(deltaMs) {
@@ -3141,22 +1643,13 @@ dom.refreshFasterButton?.addEventListener('click', () => adjustRefreshInterval(-
 
 async function initializeApp() {
   setupPressFeedback();
-  try {
-    await loadGlobalMap();
-  } catch (err) {
-    console.warn('[pixelverse] using fallback global map:', err);
-  }
   populateLocaleSelect();
   applyStaticCopy();
-  syncGlobalMapDom();
-  refreshFurnitureBlockers();
   loadExposure();
   updateRefreshController();
   setupDraggablePanels();
   setupResizablePanels();
   setupWorkbenchLayout();
-  setupCameraPan();
-  setupFurnitureEditor();
   liveEcgController.start();
   missionTraceController.start();
   commandDeckLayoutController.start();
@@ -3165,8 +1658,6 @@ async function initializeApp() {
   startLiveUiTicker();
   restartTimelineTimer();
   connectRealtime();
-  if (patrolTimer) clearInterval(patrolTimer);
-  patrolTimer = window.setInterval(patrolActiveAgents, 1500);
 }
 
 initializeApp();

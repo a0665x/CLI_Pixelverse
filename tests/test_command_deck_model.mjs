@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   buildCommandDeckModel,
+  commandBuildingIds,
   commandDeckFindings,
   compareCommandDeckAgents,
   resolveCommandSelection,
@@ -30,6 +31,13 @@ const snapshotWithMainAndSubagent = {
     },
   ],
 };
+
+test('command building catalog is unique, sorted, and snapshot-derived', () => {
+  assert.deepEqual(commandBuildingIds({ agents: [
+    { room_key: 'standby_dock' }, { room_key: 'code_workbench' }, { room_key: 'standby_dock' },
+  ] }), ['code_workbench', 'standby_dock']);
+  assert.deepEqual(commandBuildingIds({ agents: [] }), []);
+});
 
 test('main agent sorts first and real subagents remain visible', () => {
   const model = buildCommandDeckModel(snapshotWithMainAndSubagent);

@@ -5,6 +5,10 @@ const MAIN_ROLE = 'main_agent';
 const REST_ROOMS = new Set(['standby_dock', 'offline_corner', 'rest-cabin']);
 const GENERIC_EVENT_KINDS = new Set(['', 'action', 'event', 'update']);
 
+export const commandBuildingIds = (snapshot = {}) => [...new Set(
+  (snapshot.agents || []).map((agent) => String(agent.room_key || '')).filter(Boolean),
+)].sort();
+
 const stateRank = (agent = {}) => {
   if (agent.lifecycle === 'offline' || agent.state === 'offline' || agent.is_stale) return 0;
   if (agent.semantic === 'work' || agent.hookSemantic === 'work') return 4;
