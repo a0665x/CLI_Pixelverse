@@ -148,6 +148,61 @@ Committed with message: `refactor: delete legacy yaml map stack`.
 
 - Task 6 must remove the remaining operational legacy-map references from
   README, skill documentation, ignore rules, and any release documentation.
-- The two stale JS i18n assertions and missing untracked progressive-spec
-  fixture keep the literal full-suite commands from being completely green;
-  neither was widened into this deletion task.
+- The missing untracked progressive-spec fixture keeps the full Python command
+  from being completely green. The stale JS assertions were resolved by the
+  review correction below.
+
+## Review correction
+
+Corrective commit: `4f121f8` (`fix: align legacy retirement coverage`).
+
+The review identified that the two JS failures recorded above were stale
+retirement contracts worth correcting in Task 5, and that deletion of
+`tests/test_agent_walk_cycle.mjs` also removed useful active Kenney sprite
+coverage. The correction:
+
+- removed `appleDogDoor` from all four locale catalogs, the required-key list,
+  and the real-browser locale fixture;
+- replaced retired AppleDog, `.event-chip`, and `.agent-speech.show` assertions
+  with active accessibility-catalog and dashboard-card truncation contracts;
+- moved main-agent, subagent, and branch-session directional idle/active frame
+  coverage into `tests/test_frontend_kenney.mjs` without restoring
+  `world_motion` or `nextWalkFrame`.
+
+Review RED:
+
+```text
+node --test tests/test_command_deck_i18n.mjs tests/test_frontend_kenney.mjs
+1 passed, 1 failed
+```
+
+The i18n suite failed because the accessibility catalog still exposed the
+retired fourth key; the restored Kenney coverage passed against active code.
+
+Review GREEN (supersedes the earlier JS matrix result):
+
+```text
+node --test tests/*.mjs
+222 passed, 0 failed
+```
+
+The real-browser locale test was run with loopback/Chromium permissions and
+passed as part of the full matrix.
+
+```text
+python3 -m pytest -q tests/test_legacy_map_retirement.py \
+  tests/test_docker_release_integrity.py tests/test_command_deck_hook_smoke.py
+17 passed, 1 skipped
+```
+
+```text
+bash -n run.sh
+exit 0
+
+git diff --check
+exit 0
+```
+
+Repository search found no remaining `appleDogDoor`, retired AppleDog door
+wiring, `.agent-speech.show`, `nextWalkFrame`, or `world_motion` references in
+the corrected active/catalog/fixture test surface.
