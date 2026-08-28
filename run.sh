@@ -111,8 +111,8 @@ Commands:
   hermes-chat
              Launch Hermes chat through the Pixelverse wrapper.
   test-hook  Send a synthetic lifecycle sequence and refresh tmp trajectory/debug files.
-  smoke-furniture-drag
-             Run repeatable Chromium smoke for cross-room furniture drag/clipping.
+  smoke-furniture-drag  Open a real second-layer interior and verify furniture assets/rendering
+             Checks the iframe cutaway, render PNG, collision manifest, console, and screenshot.
   down       Alias for stop.
 
 Non-interactive agent selection:
@@ -1598,13 +1598,10 @@ smoke_furniture_drag() {
   if [[ -n "${PIXELVERSE_SMOKE_SLOW_MO_MS:-}" ]]; then
     cmd+=(--slow-mo-ms "$PIXELVERSE_SMOKE_SLOW_MO_MS")
   fi
-  if [[ -n "${PIXELVERSE_SMOKE_SOURCE_ROOM:-}" ]]; then
-    cmd+=(--source-room "$PIXELVERSE_SMOKE_SOURCE_ROOM")
+  if [[ -n "${PIXELVERSE_SMOKE_BUILDING_ID:-}" ]]; then
+    cmd+=(--building-id "$PIXELVERSE_SMOKE_BUILDING_ID")
   fi
-  if [[ -n "${PIXELVERSE_SMOKE_TARGET_ROOM:-}" ]]; then
-    cmd+=(--target-room "$PIXELVERSE_SMOKE_TARGET_ROOM")
-  fi
-  echo "Running furniture drag browser smoke against $base_url ..."
+  echo "Running second-layer furniture browser smoke against $base_url ..."
   "${cmd[@]}"
 }
 

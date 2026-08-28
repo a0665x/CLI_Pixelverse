@@ -19,101 +19,64 @@ def load_module():
     return module
 
 
-def test_browser_smoke_script_defines_repeatable_cross_room_drag_plan():
+def test_browser_smoke_script_targets_the_current_second_layer_interior():
     smoke = load_module()
-
-    plan = smoke.DragPlan()
-
+    plan = smoke.InteriorSmokePlan()
     assert plan.base_url == "http://127.0.0.1:5660"
-    assert plan.source_room == "file_library"
-    assert plan.target_room == "response_studio"
-    assert plan.target_x_pct > 90
-    assert plan.target_y_pct > 90
+    assert plan.building_id == "maker-workshop"
     assert plan.artifact.name == "furniture_drag_browser_smoke.json"
     assert plan.screenshot.name == "furniture_drag_browser_smoke.png"
-
     source = SCRIPT.read_text(encoding="utf-8")
     assert 'wait_until="domcontentloaded"' in source
+    assert "pixelverse.command.focus" in source
+    assert ".cutaway-dom-panel" in source
+    assert ".district[data-room]" not in source
     assert "networkidle" not in source
 
 
-def test_browser_smoke_result_requires_cross_room_move_and_visible_overflow():
+def test_browser_smoke_result_requires_visible_cutaway_and_assets():
     smoke = load_module()
-
-    result = smoke.SmokeResult(
-        ok=True,
-        source_room="file_library",
-        target_room="response_studio",
-        before_room="file_library",
-        after_room="response_studio",
-        parent_room="response_studio",
-        ghost_seen=True,
-        save_enabled=True,
-        visually_outside_target_district=True,
-        clipping_ancestor=None,
-        district_overflow="visible",
-        props_overflow="visible",
-        props_pointer_events="none",
-        prop_pointer_events="auto",
-        console_errors=[],
-        screenshot="tmp/furniture_drag_browser_smoke.png",
+    result = smoke.InteriorSmokeResult(
+        ok=True, building_id="maker-workshop", iframe_visible=True,
+        cutaway_visible=True, cutaway_title="Maker Workshop",
+        canvas_width=1280, canvas_height=720, edit_control_visible=True,
+        console_errors=[], screenshot="tmp/furniture_drag_browser_smoke.png",
         essential_asset_statuses={
             "/assets/private/modern-office-v1.2/Modern_Office_Singles_200.png": 200,
             "/assets/private/modern-office-v1.2/collision-masks.json": 200,
         },
     )
-
-    failures = smoke.evaluate_result(result)
-
-    assert failures == []
+    assert smoke.evaluate_result(result) == []
 
 
-def test_browser_smoke_result_fails_when_drop_is_clipped_or_does_not_cross_room():
+def test_browser_smoke_result_reports_interior_and_asset_failures():
     smoke = load_module()
-
-    result = smoke.SmokeResult(
-        ok=False,
-        source_room="file_library",
-        target_room="response_studio",
-        before_room="file_library",
-        after_room="file_library",
-        parent_room="file_library",
-        ghost_seen=False,
-        save_enabled=False,
-        visually_outside_target_district=False,
-        clipping_ancestor="district",
-        district_overflow="hidden",
-        props_overflow="hidden",
-        props_pointer_events="auto",
-        prop_pointer_events="auto",
-        console_errors=["TypeError: boom"],
-        screenshot="",
+    result = smoke.InteriorSmokeResult(
+        ok=False, building_id="maker-workshop", iframe_visible=False,
+        cutaway_visible=False, cutaway_title="", canvas_width=0, canvas_height=0,
+        edit_control_visible=False, console_errors=["TypeError: boom"], screenshot="",
         essential_asset_statuses={
             "/assets/private/modern-office-v1.2/Modern_Office_Singles_200.png": 404,
             "/assets/private/modern-office-v1.2/collision-masks.json": 200,
         },
     )
-
     failures = smoke.evaluate_result(result)
-
-    assert any("did not cross rooms" in failure for failure in failures)
-    assert any("clipping ancestor" in failure for failure in failures)
-    assert any("ghost" in failure for failure in failures)
+    assert any("iframe" in failure for failure in failures)
+    assert any("cutaway" in failure for failure in failures)
+    assert any("canvas" in failure for failure in failures)
     assert any("console" in failure for failure in failures)
     assert any("essential asset" in failure for failure in failures)
 
 
 def test_browser_smoke_declares_the_render_and_collision_assets_as_essential():
     smoke = load_module()
-
     assert smoke.ESSENTIAL_ASSET_PATHS == (
         "/assets/private/modern-office-v1.2/Modern_Office_Singles_200.png",
         "/assets/private/modern-office-v1.2/collision-masks.json",
     )
 
 
-def test_run_sh_exposes_furniture_drag_smoke_command():
+def test_run_sh_exposes_furniture_smoke_command():
     run_sh = RUN_SH.read_text(encoding="utf-8")
-
     assert "smoke-furniture-drag" in run_sh
     assert "furniture_drag_browser_smoke.py" in run_sh
