@@ -126,6 +126,15 @@ def test_compose_and_image_publish_the_resolved_architecture_contract() -> None:
     assert "PIXELVERSE_DOCKER_PLATFORM" in run_script_source
 
 
+def test_bridge_port_is_configurable_without_changing_the_container_port() -> None:
+    compose = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
+    run_script_source = (ROOT / "run.sh").read_text(encoding="utf-8")
+
+    assert '- "${PIXELVERSE_BRIDGE_PORT:-4567}:4567"' in compose
+    assert 'BRIDGE_PORT="${PIXELVERSE_BRIDGE_PORT:-${SAVED_BRIDGE_PORT:-4567}}"' in run_script_source
+    assert 'export PIXELVERSE_BRIDGE_URL="http://127.0.0.1:${BRIDGE_PORT}"' in run_script_source
+
+
 def test_startup_treats_project_codex_hook_installation_as_best_effort() -> None:
     source = (ROOT / "run.sh").read_text(encoding="utf-8")
 

@@ -231,6 +231,23 @@ Expected:
 - `./run.sh test-hook` moves an agent in the UI.
 - The first Codex session in a repo should run `/hooks` and trust the project hook.
 
+### Use a different host bridge port
+
+The container bridge remains on port `4567`; set `PIXELVERSE_BRIDGE_PORT` to
+publish it on a different host port. For example, use `4568` when `4567` is
+already occupied:
+
+```bash
+PIXELVERSE_BRIDGE_PORT=4568 PIXELVERSE_AGENT_KIND=codex ./run.sh start
+curl -fsS http://127.0.0.1:4568/health
+curl -fsS -X POST http://127.0.0.1:4568/hook \
+  -H 'Content-Type: application/json' \
+  -d '{"event":"agent:start","context":{"message":"Bridge port check","target_room":"think_lab"}}'
+```
+
+The default remains `4567`. `run.sh` saves the chosen port so `status`,
+`bridge-status`, and `test-hook` reuse the same bridge endpoint.
+
 Check Tailscale before using remote exposure:
 
 ```bash
@@ -929,7 +946,6 @@ not a way to redefine the world or agent routes.
 ```text
 tmp/latest_test_hook_route.json
 tmp/latest_world_snapshot.json
-tmp/pixelverse_debug_log.json
 ```
 
 Use these when checking hook delivery, world snapshots, and multi-agent plans.
@@ -1071,7 +1087,7 @@ node --test tests/*.mjs
 - `hooks/pixelverse/`: Hermes hook payload relay
 - `skill/pixelverse-onboarding/`: newcomer setup and architecture handoff skill
 - `public/`: pixel world frontend
-- `scripts/`: helper scripts and trajectory renderer
+- `scripts/`: helper scripts, browser smoke runners, and bridge tooling
 - `scripts/pixelverse_mcp_server.py`: dependency-free stdio MCP onboarding server
 - `spec/`: architecture, module, and integration notes
 - `tests/`: Python and Node tests

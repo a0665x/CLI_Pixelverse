@@ -14,6 +14,16 @@
 - `agent:end`：主代理回 idle / standby_dock
 - hook context 可帶 `target_room`，目前 test-hook 會明確傳入，避免靠字串推斷
 
+### Dashboard and village projection
+- `public/command_deck_model.mjs` normalizes the active agent and Hook data for
+  the dashboard; `public/mission_trace.mjs` presents the current mission trace.
+- The dashboard embeds the Phaser village as its only world surface. A lifecycle
+  route selects a building, and opening that building exposes its separate
+  interior editor.
+- `pixelworld_mvp/src/rendering/canonicalFurnitureGeometry.ts` is the shared
+  geometry authority for interior rendering, placement, collision, and saved
+  furniture layouts. Interior edits remain local to the opened building.
+
 ### Universal Bridge Client
 - `agent_bridges/pixelverse_client.py` 是不綁特定 agent runtime 的標準 client。
 - 任何 agent 只要能執行 Python 或 HTTP POST，就可以用 `/api/event` / `/api/heartbeat` 推送狀態。

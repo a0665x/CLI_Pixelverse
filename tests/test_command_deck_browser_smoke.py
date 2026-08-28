@@ -622,10 +622,9 @@ def test_catalog_prefab_slot_accounts_for_missing_required_hook_furniture():
     assert smoke.catalog_prefab_offset("status unavailable") == 0
 
 
-def test_readme_and_progressive_specs_publish_the_verified_browser_acceptance():
+def test_readme_and_tracked_modules_publish_the_verified_browser_acceptance():
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    project_map = (ROOT / "spec" / "PROJECT_MAP.md").read_text(encoding="utf-8")
-    frontend = (ROOT / "spec" / "modules" / "world-frontend.md").read_text(encoding="utf-8")
+    integration = (ROOT / "spec" / "modules" / "integration-and-events.md").read_text(encoding="utf-8")
     testing = (ROOT / "spec" / "modules" / "testing-and-ops.md").read_text(encoding="utf-8")
 
     village_markdown = "![CLI_Pixelverse command deck with active village agents](./docs/assets/command-deck-village.png)"
@@ -634,8 +633,8 @@ def test_readme_and_progressive_specs_publish_the_verified_browser_acceptance():
     assert cabin_markdown in readme
     assert readme.index(village_markdown) < readme.index("## What It Supports")
     assert readme.index(cabin_markdown) < readme.index("## What It Supports")
-    assert "command_deck_model.mjs" in project_map
-    assert "mission_trace.mjs" in frontend
-    assert "canonicalFurnitureGeometry.ts" in frontend
+    assert "command_deck_model.mjs" in integration
+    assert "mission_trace.mjs" in integration
+    assert "canonicalFurnitureGeometry.ts" in integration
     assert "tmp/command_deck_browser_smoke.json" in testing
     assert "python3 scripts/command_deck_browser_smoke.py --base-url http://127.0.0.1:5661" in testing

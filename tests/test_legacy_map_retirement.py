@@ -56,12 +56,32 @@ def test_retired_outer_editor_styles_are_removed():
 
 
 def test_current_readme_does_not_advertise_retired_map_workflow():
-    readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    for token in (
+    current_docs = {
+        "README.md": ROOT / "README.md",
+        "bootstrap skill": ROOT / "skill" / "CLI_Pixelverse" / "SKILL.md",
+        "integration module": ROOT / "spec" / "modules" / "integration-and-events.md",
+        "testing module": ROOT / "spec" / "modules" / "testing-and-ops.md",
+    }
+    retired = (
         "PIXELVERSE_FLOORPLAN",
         "PIXELVERSE_GLOBAL_MAP_DIR_HOST",
         "./run.sh map-builder",
         "./run.sh floorplans",
-    ):
-        assert token not in readme
+        "global_map",
+        "world_motion",
+        "house_layout",
+        "room_furniture",
+        "render_local_ui_trajectory",
+        "pixelverse_debug_log",
+        "local_ui_trajectory",
+        "global_map_walkability",
+    )
+    for label, path in current_docs.items():
+        contents = path.read_text(encoding="utf-8")
+        for token in retired:
+            assert token not in contents, f"{label} advertises {token}"
+
+    readme = current_docs["README.md"].read_text(encoding="utf-8")
     assert "open" in readme.lower() and "interior" in readme.lower()
+    assert "PIXELVERSE_BRIDGE_PORT=4568" in readme
+    assert "http://127.0.0.1:4568/health" in readme

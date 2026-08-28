@@ -36,14 +36,30 @@ Default assumptions:
 From the CLI_Pixelverse repo root:
 
 ```bash
-test -x ./run.sh || chmod +x ./run.sh
-PIXELVERSE_AGENT_KIND=codex ./run.sh down_up
-source .pixelverse-service/activate.sh
-./run.sh status
-./run.sh bridge-status
+mkdir -p private_assets/modern-office
+# Purchase Modern_Office_Revamped_v1.zip and place it in the directory above.
+PIXELVERSE_AGENT_KIND=codex ./run.sh start
+source "$(pwd -P)/.pixelverse-service/activate.sh"
+codex
 ```
 
-`down_up` in Codex mode should:
+The [Modern Office - Revamped - RPG Tileset](https://limezu.itch.io/modernoffice)
+is licensed content. The user must purchase and download it; do not commit,
+redistribute, or publish the ZIP, prepared sprites, or a local image that
+contains them. The expected path is:
+
+```text
+private_assets/modern-office/Modern_Office_Revamped_v1.zip
+```
+
+For portable commands from another directory, set the clone root in the
+current shell:
+
+```bash
+export PIXELVERSE_ROOT="$(pwd -P)"
+```
+
+`start` in Codex mode should:
 
 - start the Docker Compose service
 - install the Codex CLI shim
@@ -63,7 +79,7 @@ Run these checks after init:
 
 ```bash
 ./run.sh bridge-status
-bash -lc 'source .pixelverse-service/activate.sh && command -v codex'
+bash -lc 'source "$PIXELVERSE_ROOT/.pixelverse-service/activate.sh" && command -v codex'
 curl -fsS http://127.0.0.1:5660/health
 curl -fsS http://127.0.0.1:4567/health
 curl -fsS http://127.0.0.1:5660/api/world
@@ -126,59 +142,26 @@ codex
 For an already-open shell:
 
 ```bash
-source /path/to/CLI_Pixelverse/.pixelverse-service/activate.sh && codex
+source "$PIXELVERSE_ROOT/.pixelverse-service/activate.sh" && codex
 ```
 
 For high-fidelity Codex tool/subagent events in another repo:
 
 ```bash
 cd /path/to/other-repo
-/path/to/CLI_Pixelverse/run.sh install-codex-hook
+"$PIXELVERSE_ROOT/run.sh" install-codex-hook "$PWD"
 codex
 ```
 
 After launching Codex in that repo, run `/hooks` once and trust the project hook
 definition.
 
-## Custom Global Map
+## Village Interior Editing
 
-Use this when the user wants their own room shape, PNG, or furniture layout
-without editing the built-in map files.
-
-Preferred user override path:
-
-```text
-<CLI_Pixelverse>/tmp/global_map/default.yaml
-<CLI_Pixelverse>/tmp/global_map/default.png
-```
-
-Then restart:
-
-```bash
-PIXELVERSE_AGENT_KIND=codex ./run.sh down_up
-```
-
-If the user wants a different host directory, use:
-
-```bash
-PIXELVERSE_GLOBAL_MAP_DIR_HOST=/path/to/global_map PIXELVERSE_AGENT_KIND=codex ./run.sh down_up
-```
-
-Validate the YAML before reporting success:
-
-- `corridors` is non-empty and each item has `left/top/width/height`
-- every active room has `rect`, `center`, `portal`, `aisle`, and `hub`
-- `portal` touches a corridor, `hub` is inside a corridor, and `aisle` is inside the room
-- each furniture item has `type`, `x`, `y`, `w`, and `h`
-- optional furniture `scale` stays between `0.55` and `1.8`
-- furniture does not cover door approach points
-
-Run these checks after a custom map change:
-
-```bash
-node --test tests/test_house_layout_connected.mjs tests/test_world_motion.mjs tests/test_furniture_editing.mjs
-python3 -m pytest -q tests/test_fastapi_service.py tests/test_dashboard_layout.py
-```
+The supported world is the built-in Phaser village. To customize a room, open
+a village building, use **Move furniture**, drag furniture or shelf items, and
+choose **Save layout**. Layouts are saved per building. Do not describe or
+offer an alternate world-authoring workflow.
 
 ## Report Format
 
@@ -190,5 +173,5 @@ End with a concise status report:
 - Codex project hook: installed path or missing
 - shell activation: enabled or manual source command
 - Tailscale: installed/authenticated/exposure status
-- custom map: built-in fallback / `tmp/global_map` / `PIXELVERSE_GLOBAL_MAP_DIR_HOST`
+- village interior: selected building and saved-layout status
 - next action: `/hooks` trust, install missing dependency, or open UI
