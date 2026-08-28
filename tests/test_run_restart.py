@@ -7,6 +7,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+RUN_SH = ROOT / "run.sh"
 
 
 def run_bash(
@@ -103,52 +104,7 @@ def test_reuse_without_saved_agent_falls_back_to_selector(tmp_path):
     assert result.stdout == "codex\n"
 
 
-def test_reuse_preserves_complete_runtime_floorplan_without_selector(tmp_path):
-    output = tmp_path / "runtime-map"
-    output.mkdir()
-    (output / "default.yaml").write_text(
-        "version: 2\nkey: retained\n",
-        encoding="utf-8",
-    )
-    (output / "default.png").write_bytes(b"retained")
-    result = run_bash(
-        'PIXELVERSE_SOURCE_ONLY=1 source ./run.sh; '
-        'select_floorplan_key(){ echo SELECTOR_CALLED >&2; return 87; }; '
-        'prepare_floorplan reuse',
-        state_dir=tmp_path / "state",
-        env={"PIXELVERSE_GLOBAL_MAP_DIR_HOST": str(output)},
-        tty_stdin=True,
-    )
-
-    assert result.returncode == 0, result.stderr
-    assert "Using existing floorplan override" in result.stdout
-    assert "SELECTOR_CALLED" not in result.stderr
-    assert (output / "default.yaml").read_text(encoding="utf-8") == (
-        "version: 2\nkey: retained\n"
-    )
-    assert (output / "default.png").read_bytes() == b"retained"
-
-
-def test_reuse_explicit_floorplan_replaces_runtime_pair(tmp_path):
-    output = tmp_path / "runtime-map"
-    output.mkdir()
-    (output / "default.yaml").write_text("old", encoding="utf-8")
-    (output / "default.png").write_bytes(b"old")
-    result = run_bash(
-        'PIXELVERSE_SOURCE_ONLY=1 source ./run.sh; prepare_floorplan reuse',
-        state_dir=tmp_path / "state",
-        env={
-            "PIXELVERSE_GLOBAL_MAP_DIR_HOST": str(output),
-            "PIXELVERSE_FLOORPLAN": "default",
-        },
-        tty_stdin=True,
-    )
-
-    assert result.returncode == 0, result.stderr
-    assert "Selected floorplan: default" in result.stdout
-    assert (output / "default.yaml").read_bytes() == (
-        ROOT / "global_map/default.yaml"
-    ).read_bytes()
-    assert (output / "default.png").read_bytes() == (
-        ROOT / "global_map/default.png"
-    ).read_bytes()
+def test_restart_never_selects_or_prepares_a_floorplan():
+    source = RUN_SH.read_text(encoding="utf-8")
+    assert 'prepare_floorplan "$mode"' not in source
+    assert "Select visual floorplan" not in source

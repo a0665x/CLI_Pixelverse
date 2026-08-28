@@ -78,12 +78,12 @@ mkdir -p "$STATE_DIR" "$RUNTIME_DIR"
 
 usage() {
   cat <<EOF
-Usage: ./run.sh [start|stop|restart|down_up|status|log|logs|doctor|assets-status|platform|bridge-status|floorplans|prepare-floorplan|map-builder|adapter|install-adapter|install-codex-hook|enable-shell-adapter|install-hermes-hook|hermes-chat|test-hook|smoke-furniture-drag|down]
+Usage: ./run.sh [start|stop|restart|down_up|status|log|logs|doctor|assets-status|platform|bridge-status|adapter|install-adapter|install-codex-hook|enable-shell-adapter|install-hermes-hook|hermes-chat|test-hook|smoke-furniture-drag|down]
 
 Commands:
   start      Start Docker Compose and ask for interactive service choices.
   stop       Stop Docker Compose service and legacy local processes.
-  restart    Restart with saved agent, exposure, and runtime floorplan settings.
+  restart    Restart with saved agent and exposure settings.
   down_up    Alias for restart.
   status     Show container status and API endpoints.
   log/logs   Follow Docker Compose logs.
@@ -93,11 +93,6 @@ Commands:
   platform   Show normalized host architecture and Docker target platform.
   bridge-status
              Show Pixelverse API, bridge hook, Hermes hook, and local adapter status.
-  floorplans List complete global_map/*.yaml + *.png floorplan pairs.
-  prepare-floorplan
-             Copy the selected floorplan pair to tmp/global_map/default.yaml/png.
-  map-builder
-             Print the PNG/YAML alignment builder URL and export validation flow.
   adapter [codex|gemini-cli|claude-code|antigravity|ollama|hermes|generic|all]
              Install the adapter for the selected/native CLI without modifying the original CLI code.
   install-adapter [codex|gemini-cli|claude-code|antigravity|ollama|hermes|generic|all|hermes-hook|hermes-plugin]
@@ -119,11 +114,6 @@ Non-interactive agent selection:
   PIXELVERSE_AGENT_KIND=ollama ./run.sh start
   PIXELVERSE_AGENT_KIND=codex ./run.sh down_up
   PIXELVERSE_AGENT_KIND=antigravity ./run.sh down_up
-
-Non-interactive floorplan selection:
-  PIXELVERSE_FLOORPLAN=default ./run.sh down_up
-  PIXELVERSE_FLOORPLAN=custom ./run.sh prepare-floorplan
-  PIXELVERSE_GLOBAL_MAP_DIR_HOST=/path/to/runtime-map PIXELVERSE_FLOORPLAN=custom ./run.sh down_up
 
 Common service flows:
   PIXELVERSE_AGENT_KIND=hermes ./run.sh down_up
@@ -407,160 +397,6 @@ PIXELVERSE_TAILSCALE_PORT=$PIXELVERSE_TAILSCALE_PORT
 PIXELVERSE_TAILSCALE_URL=$tailscale_public_url
 PIXELVERSE_NGROK_URL=${PIXELVERSE_NGROK_URL:-}
 PIXELVERSE_EXPOSURE_MODE=$exposure_mode
-PIXELVERSE_GLOBAL_MAP_DIR_HOST=${PIXELVERSE_GLOBAL_MAP_DIR_HOST:-./tmp/global_map}
-EOF
-}
-
-floorplan_output_dir_host() {
-  printf '%s\n' "${PIXELVERSE_GLOBAL_MAP_DIR_HOST:-./tmp/global_map}"
-}
-
-floorplan_output_dir_abs() {
-  local output_dir
-  output_dir="$(floorplan_output_dir_host)"
-  case "$output_dir" in
-    /*) printf '%s\n' "$output_dir" ;;
-    ./*) printf '%s/%s\n' "$ROOT" "${output_dir#./}" ;;
-    *) printf '%s/%s\n' "$ROOT" "$output_dir" ;;
-  esac
-}
-
-list_floorplan_keys() {
-  local yaml png key
-  for yaml in "$ROOT"/global_map/*.yaml; do
-    [[ -f "$yaml" ]] || continue
-    key="$(basename "$yaml" .yaml)"
-    png="$ROOT/global_map/$key.png"
-    [[ -f "$png" ]] || continue
-    printf '%s\n' "$key"
-  done | sort
-}
-
-floorplans_command() {
-  local key count=0
-  echo "Available CLI_Pixelverse floorplans:"
-  while IFS= read -r key; do
-    [[ -n "$key" ]] || continue
-    count=$((count + 1))
-    printf '  %s\n' "$key"
-  done < <(list_floorplan_keys)
-  if [[ "$count" -eq 0 ]]; then
-    echo "  (none)"
-    echo "No complete global_map/*.yaml + *.png floorplan pairs were found." >&2
-    return 1
-  fi
-}
-
-validate_floorplan_key() {
-  local key="$1"
-  case "$key" in
-    ""|*/*|*..*|*[!A-Za-z0-9_.-]*)
-      printf 'Invalid PIXELVERSE_FLOORPLAN: %q\n' "$key" >&2
-      echo "Use a basename from ./run.sh floorplans, for example: default" >&2
-      return 2
-      ;;
-  esac
-}
-
-select_floorplan_key() {
-  local mode="${1:-interactive}"
-  local requested="${PIXELVERSE_FLOORPLAN:-}"
-  local keys=()
-  local key index choice
-  mapfile -t keys < <(list_floorplan_keys)
-  if [[ "${#keys[@]}" -eq 0 ]]; then
-    echo "No complete global_map/*.yaml + *.png floorplan pairs were found." >&2
-    return 1
-  fi
-
-  if [[ -n "$requested" ]]; then
-    validate_floorplan_key "$requested"
-    for key in "${keys[@]}"; do
-      if [[ "$key" == "$requested" ]]; then
-        printf '%s\n' "$requested"
-        return 0
-      fi
-    done
-    printf 'Unknown PIXELVERSE_FLOORPLAN: %q\n' "$requested" >&2
-    echo "Available floorplans:" >&2
-    printf '  %s\n' "${keys[@]}" >&2
-    return 2
-  fi
-
-  if [[ "$mode" == "reuse" || ! -t 0 ]]; then
-    if printf '%s\n' "${keys[@]}" | grep -qx 'default'; then
-      printf 'default\n'
-    else
-      printf '%s\n' "${keys[0]}"
-    fi
-    return 0
-  fi
-
-  echo "Select visual floorplan from CLI_Pixelverse/global_map/:" >&2
-  select choice in "${keys[@]}"; do
-    if [[ -n "$choice" ]]; then
-      printf '%s\n' "$choice"
-      return 0
-    fi
-    echo "Invalid floorplan selection." >&2
-  done
-}
-
-prepare_floorplan() {
-  local mode="${1:-interactive}"
-  local selected source_yaml source_png output_dir
-  output_dir="$(floorplan_output_dir_abs)"
-  if [[ -z "${PIXELVERSE_FLOORPLAN:-}" && ( "$mode" == "reuse" || ! -t 0 ) && -f "$output_dir/default.yaml" && -f "$output_dir/default.png" ]]; then
-    PIXELVERSE_GLOBAL_MAP_DIR_HOST="$(floorplan_output_dir_host)"
-    export PIXELVERSE_GLOBAL_MAP_DIR_HOST
-    echo "Using existing floorplan override: $output_dir/default.yaml + $output_dir/default.png"
-    return 0
-  fi
-
-  selected="$(select_floorplan_key "$mode")"
-  source_yaml="$ROOT/global_map/$selected.yaml"
-  source_png="$ROOT/global_map/$selected.png"
-  if [[ ! -f "$source_yaml" || ! -f "$source_png" ]]; then
-    echo "Floorplan '$selected' must have both YAML and PNG:" >&2
-    echo "- $source_yaml" >&2
-    echo "- $source_png" >&2
-    return 2
-  fi
-
-  PIXELVERSE_GLOBAL_MAP_DIR_HOST="$(floorplan_output_dir_host)"
-  export PIXELVERSE_GLOBAL_MAP_DIR_HOST
-  mkdir -p "$output_dir"
-  cp "$source_yaml" "$output_dir/default.yaml"
-  cp "$source_png" "$output_dir/default.png"
-  echo "Selected floorplan: $selected"
-  echo "- YAML: $source_yaml -> $output_dir/default.yaml"
-  echo "- PNG:  $source_png -> $output_dir/default.png"
-}
-
-map_builder_command() {
-  local host_url="http://localhost:${PIXELVERSE_PORT}/map_builder.html"
-  cat <<EOF
-CLI_Pixelverse PNG/YAML map builder:
-- URL: $host_url
-
-Start or refresh the service first:
-  PIXELVERSE_AGENT_KIND=codex ./run.sh down_up
-
-Builder workflow:
-  1. Open $host_url
-  2. Load a PNG floorplan.
-  3. Draw rooms, corridors, doors, and furniture on top of the PNG.
-  4. Export YAML.
-  5. Save the exported YAML to tmp/global_map/default.yaml.
-  6. Put the matching PNG at tmp/global_map/default.png.
-
-Validate before restart:
-  python3 scripts/check_global_map_alignment.py \\
-    --yaml tmp/global_map/default.yaml \\
-    --png tmp/global_map/default.png
-
-Then restart with the runtime override:
-  ./run.sh down_up
 EOF
 }
 
@@ -810,7 +646,6 @@ start_service() {
   if [[ "$exposure_mode" != "tailscale" && -z "${PIXELVERSE_TAILSCALE_ENABLE_SET:-}" ]]; then
     PIXELVERSE_TAILSCALE_ENABLE=0
   fi
-  prepare_floorplan "$mode"
   write_env_file "$agent_kind" "$exposure_mode"
   install_agent_adapter "$agent_kind" "$ROOT" optional
   if [[ "$agent_kind" != "generic" && "${PIXELVERSE_AUTO_ENABLE_SHELL_ADAPTER:-1}" != "0" ]]; then
@@ -1638,14 +1473,9 @@ case "$COMMAND" in
   bridge-status)
     bridge_status
     ;;
-  floorplans)
-    floorplans_command
-    ;;
-  prepare-floorplan)
-    prepare_floorplan
-    ;;
-  map-builder)
-    map_builder_command
+  floorplans|prepare-floorplan|map-builder)
+    echo "The Phaser village uses a single built-in world; YAML floorplans are no longer supported." >&2
+    exit 2
     ;;
   adapter)
     adapter_command "${2:-}"

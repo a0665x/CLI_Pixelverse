@@ -132,3 +132,10 @@ def test_startup_treats_project_codex_hook_installation_as_best_effort() -> None
     assert 'install_agent_adapter "$agent_kind" "$ROOT" optional' in source
     assert 'if ! install_codex_project_hooks "$codex_project_root"' in source
     assert 'Continuing without project-local Codex hooks' in source
+
+
+def test_startup_env_file_excludes_retired_floorplan_settings() -> None:
+    source = (ROOT / "run.sh").read_text(encoding="utf-8")
+
+    assert "PIXELVERSE_FLOORPLAN" not in source
+    assert "PIXELVERSE_GLOBAL_MAP_DIR_HOST" not in source
