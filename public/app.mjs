@@ -110,7 +110,7 @@ const dom = {
   dashboardCardPrevious: document.getElementById('dashboard-card-previous'),
   dashboardCardTitle: document.getElementById('dashboard-card-title'),
   dashboardHelpSettings: document.getElementById('dashboard-help-settings'),
-  dashboardHelpButton: document.getElementById('dashboard-help-btn'),
+  dashboardHelpButton: document.getElementById('settings-open-help-btn'),
   eventSummary: document.getElementById('event-summary'),
   events: document.getElementById('events'),
   missionTraceLive: document.getElementById('mission-trace-live'),
@@ -148,6 +148,8 @@ const dom = {
   subagentCount: document.getElementById('subagent-count'),
   timelineResizer: document.getElementById('timeline-resizer'),
   timelineRefreshLabel: document.getElementById('timeline-refresh-label'),
+  topSettings: document.getElementById('top-settings'),
+  topSettingsSummary: document.getElementById('top-settings-summary'),
   topStatusBar: document.getElementById('top-status-bar'),
   refreshSlowerButton: document.getElementById('refresh-slower-btn'),
   refreshFasterButton: document.getElementById('refresh-faster-btn'),
@@ -219,6 +221,7 @@ const agentDetailView = createAgentDetailView({
   textFor: (key, params = {}) => key.startsWith('rooms.')
     ? (getRoomCopy(key.split('.')[1], currentLocale).name || key)
     : uiText(currentLocale, key, params),
+  eventTextFor: (event) => eventSummaryForLocale(event, currentLocale),
   onClose: () => villageFirstLayoutController.setDetailOpen(false),
 });
 const agentRosterView = createAgentRosterView({
@@ -761,7 +764,7 @@ function applyStaticCopy() {
   setText('summary-subagent-label', copy.subagentsVisible);
   setText('summary-session-label', copy.sessionsVisible);
   setText('language-label', copy.languageLabel);
-  setText('exposure-label', copy.exposureLabel || 'URL');
+  setText('exposure-label', copy.exposureLabel);
   setText('core-wing-label', copy.coreWing);
   setText('clone-wing-label', copy.cloneWing);
   setText('legend-title', copy.worldLegend);
@@ -817,7 +820,7 @@ function renderExposure() {
   dom.exposureUrl.title = currentExposure.active_url || '';
   if (dom.copyExposureButton) {
     dom.copyExposureButton.disabled = !currentExposure.active_url;
-    dom.copyExposureButton.title = `${strings().copyUrl || 'Copy URL'}: ${currentExposure.active_url || ''}`;
+    dom.copyExposureButton.title = `${strings().copyUrl}: ${currentExposure.active_url || ''}`;
   }
 }
 
@@ -848,7 +851,7 @@ async function setExposureMode(mode) {
     currentExposure = await response.json();
     renderExposure();
   } catch (err) {
-    dom.exposureUrl.textContent = `${strings().exposureFailed || 'Exposure update failed'}: ${err.message}`;
+    dom.exposureUrl.textContent = `${strings().exposureFailed}: ${err.message}`;
   }
 }
 
@@ -860,7 +863,7 @@ async function copyExposureUrl() {
     dom.copyExposureButton.textContent = '✓';
     window.setTimeout(() => { if (dom.copyExposureButton) dom.copyExposureButton.textContent = '📋'; }, 900);
   } catch {
-    window.prompt(strings().copyUrlPrompt || 'Copy URL', url);
+    window.prompt(strings().copyUrlPrompt, url);
   }
 }
 
@@ -1537,8 +1540,17 @@ dom.exposureSelect?.addEventListener('change', (event) => {
 
 dom.copyExposureButton?.addEventListener('click', copyExposureUrl);
 
+function closeTopSettings({ restoreFocus = false } = {}) {
+  if (!dom.topSettings?.open) return;
+  dom.topSettings.open = false;
+  if (restoreFocus) dom.topSettingsSummary?.focus();
+}
+
 dom.dashboardCardButtons.forEach((button) => {
-  button.addEventListener('click', () => changeDashboardCard(button.dataset.dashboardCard, button));
+  button.addEventListener('click', () => {
+    closeTopSettings();
+    changeDashboardCard(button.dataset.dashboardCard, button);
+  });
   button.addEventListener('pointerdown', (event) => {
     if (event.pointerType !== 'touch') return;
     if (dashboardTouchTooltipTimer) window.clearTimeout(dashboardTouchTooltipTimer);
@@ -1553,6 +1565,9 @@ dom.dashboardCardButtons.forEach((button) => {
 
 document.addEventListener('pointerdown', (event) => {
   lastDashboardInputModality = dashboardInputModality(event);
+  if (dom.topSettings?.open && !dom.topSettings.contains(event.target)) {
+    closeTopSettings();
+  }
   if (!dashboardDisclosure.activeCard) return;
   if (event.target.closest('#dashboard-card, [data-dashboard-card]')) return;
   closeDashboardCard({ deferFocus: true });
@@ -1561,6 +1576,7 @@ document.addEventListener('pointerdown', (event) => {
 document.addEventListener('keydown', (event) => {
   lastDashboardInputModality = dashboardInputModality(event);
   if (event.key !== 'Escape') return;
+  closeTopSettings({ restoreFocus: true });
   closeDashboardCard({ deferFocus: true });
 });
 

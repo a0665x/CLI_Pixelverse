@@ -38,7 +38,7 @@ class DashboardParser(HTMLParser):
             self.stack.pop()
 
 
-def test_dashboard_layout_keeps_map_primary_and_exposes_only_help_as_a_card_control():
+def test_dashboard_layout_keeps_map_primary_and_exposes_help_inside_settings():
     parser = DashboardParser()
     parser.feed(Path("public/index.html").read_text(encoding="utf-8"))
 
@@ -47,6 +47,8 @@ def test_dashboard_layout_keeps_map_primary_and_exposes_only_help_as_a_card_cont
     assert {"furniture-coord-hud", "camera-stage", "agents-layer"}.isdisjoint(parser.ids)
     card_controls = [element for element in parser.elements if element["attributes"].get("data-dashboard-card")]
     assert [element["attributes"]["data-dashboard-card"] for element in card_controls] == ["help"]
+    assert card_controls[0]["id"] == "settings-open-help-btn"
+    assert "settings-help" in parser.parents[card_controls[0]["id"]]
 
 
 def test_liquid_glass_is_reserved_for_functional_controls():
@@ -143,7 +145,7 @@ def test_map_first_help_card_is_paginated_and_discoverable():
     card = parser.elements_by_id["dashboard-card"]
     assert "hidden" in card["attributes"]
     for card_name in ("help",):
-        button = parser.elements_by_id[f"dashboard-{card_name}-btn"]
+        button = parser.elements_by_id["settings-open-help-btn"]
         assert button["attributes"].get("aria-controls") == "dashboard-card"
         assert button["attributes"].get("aria-expanded") == "false"
         assert button["attributes"].get("aria-label")
@@ -252,12 +254,12 @@ def test_pixelworld_is_the_only_interactive_world_layer():
     assert "camera-stage" not in parser.ids
 
 
-def test_persistent_three_button_hud_and_motion_safe_tooltips_are_structural_contracts():
+def test_settings_help_action_and_motion_safe_tooltips_are_structural_contracts():
     html = Path("public/index.html").read_text(encoding="utf-8")
     parser = DashboardParser()
     parser.feed(html)
 
-    help_button = parser.elements_by_id["dashboard-help-btn"]
+    help_button = parser.elements_by_id["settings-open-help-btn"]
     assert help_button["tag"] == "button"
     assert help_button["attributes"].get("aria-controls") == "dashboard-card"
     assert help_button["attributes"].get("data-tooltip")
@@ -319,7 +321,7 @@ def test_live_monitoring_uses_a_top_portrait_roster_above_the_primary_village():
     assert parser.elements_by_id["agent-roster"]["attributes"].get("data-command-region") == "roster"
     assert parser.elements_by_id["world"]["attributes"].get("data-command-region") == "center"
     assert "grid-template-columns: minmax(520px, 1fr) var(--agent-detail-track, 0px)" in html
-    assert "grid-template-rows: var(--village-top-height, 56px) var(--village-roster-height, 128px) minmax(280px, 1fr)" in html
+    assert "grid-template-rows: minmax(64px, var(--village-top-height, 64px)) var(--village-roster-height, 128px) minmax(280px, 1fr)" in html
     assert ".map-first-workspace .world.map-stage { grid-column: 1; grid-row: 3;" in html
     assert ".agent-roster { grid-column: 1; grid-row: 2;" in html
     assert {"agent-detail", "village-top-splitter", "village-roster-splitter", "village-detail-splitter", "village-reset-layout"} <= parser.ids
@@ -329,7 +331,7 @@ def test_live_monitoring_uses_a_top_portrait_roster_above_the_primary_village():
     assert "overflow: hidden" in html
     assert "dashboard-events-btn" not in parser.ids
     assert "dashboard-agents-btn" not in parser.ids
-    assert "dashboard-help-btn" in parser.ids
+    assert "settings-open-help-btn" in parser.ids
     assert "agent-live-list" in parser.ids
     assert "hidden" in parser.elements_by_id["hook-live-rail"]["attributes"]
     assert "hidden" in parser.elements_by_id["mission-trace"]["attributes"]
