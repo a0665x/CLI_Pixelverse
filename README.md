@@ -10,6 +10,63 @@ thinking, using tools, delegating work, answering, idle, or offline.
 
 ![CLI_Pixelverse animated UI preview](./pixel_ui.gif)
 
+## Beginner Quick Start
+
+You need Docker with Docker Compose, an installed Codex CLI, and the separately
+licensed Modern Office asset ZIP. The ZIP is not included in this repository.
+
+### 1. Prepare Pixelverse
+
+```bash
+git clone https://github.com/a0665x/CLI_Pixelverse.git
+cd CLI_Pixelverse
+export PIXELVERSE_ROOT="$(pwd -P)"
+mkdir -p private_assets/modern-office
+```
+
+Purchase and download
+[Modern Office - Revamped](https://limezu.itch.io/modernoffice), then place the
+original ZIP here without renaming it:
+
+```text
+CLI_Pixelverse/private_assets/modern-office/Modern_Office_Revamped_v1.zip
+```
+
+### 2. Start the village
+
+```bash
+PIXELVERSE_AGENT_KIND=codex ./run.sh --start
+```
+
+The first run prepares the licensed assets and builds the local Docker image,
+so it takes longer than later starts. Open `http://localhost:5660` after the
+service reports that it is ready.
+
+### 3. Bind your Codex project
+
+Open another terminal and replace the example path with your own project:
+
+```bash
+export PIXELVERSE_ROOT=/path/to/CLI_Pixelverse
+cd /home/user/my-project
+"$PIXELVERSE_ROOT/hook_bridge.sh" --agent codex
+source "$PIXELVERSE_ROOT/.pixelverse-service/activate.sh"
+codex
+```
+
+Inside the first Codex session for that project, run `/hooks` and trust the
+project hook definition. Binding alone does not create a fake online Agent: the
+character appears after a real Codex session starts and sends activity.
+
+To bind and launch Codex in one command, use:
+
+```bash
+"$PIXELVERSE_ROOT/hook_bridge.sh" --target /home/user/my-project --agent codex --launch
+```
+
+For later use, start the village with `./run.sh restart`, then launch Codex from
+the bound project. Run `./run.sh status` if the page does not open.
+
 The service runs as a Docker Compose app and exposes:
 
 - UI: `http://localhost:5660`
@@ -70,7 +127,7 @@ an already running CLI_Pixelverse service:
 ```bash
 export PIXELVERSE_ROOT=/path/to/CLI_Pixelverse
 cd /path/to/other-project
-"$PIXELVERSE_ROOT/run.sh" install-codex-hook "$PWD"
+"$PIXELVERSE_ROOT/hook_bridge.sh" --agent codex
 source "$PIXELVERSE_ROOT/.pixelverse-service/activate.sh"
 codex
 ```
@@ -171,7 +228,7 @@ repository that should appear in Pixelverse:
 
 ```bash
 cd /path/to/your-project
-"$PIXELVERSE_ROOT/run.sh" install-codex-hook "$PWD"
+"$PIXELVERSE_ROOT/hook_bridge.sh" --agent codex
 ```
 
 If `.codex/hooks.json` already exists, the installer preserves unknown fields
