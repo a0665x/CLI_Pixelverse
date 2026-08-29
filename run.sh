@@ -6,6 +6,14 @@ STATE_DIR="${PIXELVERSE_STATE_DIR:-$ROOT/.pixelverse-service}"
 ENV_FILE="$STATE_DIR/compose.env"
 RUNTIME_DIR="$STATE_DIR/runtime"
 COMMAND="${1:-start}"
+case "$COMMAND" in
+  --start) COMMAND="start" ;;
+  --stop) COMMAND="stop" ;;
+  --restart) COMMAND="restart" ;;
+  --status) COMMAND="status" ;;
+  --log) COMMAND="log" ;;
+  --logs) COMMAND="logs" ;;
+esac
 
 normalized_host_arch() {
   local machine="${PIXELVERSE_UNAME_M:-$(uname -m)}"
@@ -78,7 +86,7 @@ mkdir -p "$STATE_DIR" "$RUNTIME_DIR"
 
 usage() {
   cat <<EOF
-Usage: ./run.sh [start|stop|restart|down_up|status|log|logs|doctor|assets-status|platform|bridge-status|adapter|install-adapter|install-codex-hook|enable-shell-adapter|install-hermes-hook|hermes-chat|test-hook|smoke-furniture-drag|down]
+Usage: ./run.sh [start|--start|stop|restart|down_up|status|log|logs|doctor|assets-status|platform|bridge-status|adapter|install-adapter|install-codex-hook|enable-shell-adapter|install-hermes-hook|hermes-chat|test-hook|smoke-furniture-drag|down]
 
 Commands:
   start      Start Docker Compose and ask for interactive service choices.
@@ -1459,7 +1467,7 @@ case "$COMMAND" in
     ;;
   install-adapter)
     if [[ -n "${2:-}" ]]; then
-      install_agent_adapter "$2"
+      install_agent_adapter "$2" "${3:-$PWD}"
     elif current_agent_kind >/dev/null 2>&1; then
       install_agent_adapter "$(current_agent_kind)"
     else
