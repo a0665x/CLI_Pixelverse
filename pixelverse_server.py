@@ -634,6 +634,8 @@ class AgentState:
     source_placeholder: bool = False
     process_id: int | None = None
     instance_name: str | None = None
+    project_path: str | None = None
+    project_name: str | None = None
     route_evidence: dict[str, Any] | None = None
 
     def latest_recent_action(self) -> dict[str, Any] | None:
@@ -833,6 +835,10 @@ class WorldState:
                 agent.process_id = int(payload.get("process_id"))
             if payload.get("instance_name"):
                 agent.instance_name = trim_text(payload.get("instance_name"), 40)
+            if payload.get("project_path"):
+                agent.project_path = trim_text(payload.get("project_path"), 4096)
+            if payload.get("project_name"):
+                agent.project_name = trim_text(payload.get("project_name"), 255)
             if payload.get("state") is not None and not preserve_phase:
                 agent.pixel_state = infer_pixel_state(payload.get("pixel_state") or payload.get("state"), payload.get("task"))
                 agent.state = normalize_state(payload.get("state"))

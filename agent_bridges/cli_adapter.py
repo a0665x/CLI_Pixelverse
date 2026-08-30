@@ -8,6 +8,7 @@ import os
 import subprocess
 import sys
 import threading
+from pathlib import Path
 
 try:
     from .pixelverse_client import PixelverseClient, infer_target_room, normalize_base_url
@@ -36,6 +37,15 @@ DEFAULT_NAMES = {
 }
 
 DEFAULT_HEARTBEAT_SECONDS = 15.0
+
+
+def resolve_project_identity(cwd: str | None = None) -> tuple[str | None, str | None]:
+    try:
+        path = Path(cwd or os.getcwd()).resolve()
+    except (OSError, RuntimeError):
+        return None, None
+    value = str(path)
+    return value, path.name or value
 
 
 def safe_emit(label: str, fn) -> None:
@@ -120,6 +130,7 @@ def main(argv: list[str] | None = None) -> int:
     agent_type = args.agent_type
     process_id = os.getpid()
     agent_id = args.agent or f"{agent_type}-cli:{process_id}"
+    project_path, project_name = resolve_project_identity()
     client = PixelverseClient(
         base_url=args.base_url,
         agent_type=agent_type,
@@ -129,6 +140,8 @@ def main(argv: list[str] | None = None) -> int:
         color=args.color or DEFAULT_COLORS.get(agent_type, DEFAULT_COLORS["generic"]),
         process_id=process_id,
         instance_name=args.instance_name,
+        project_path=project_path,
+        project_name=project_name,
     )
 
     safe_emit("start", lambda: client.start(args.start_message, target_room="think_lab"))
@@ -153,6 +166,10 @@ def main(argv: list[str] | None = None) -> int:
     child_env["PIXELVERSE_PROCESS_ID"] = str(process_id)
     if args.instance_name:
         child_env["PIXELVERSE_INSTANCE_NAME"] = args.instance_name
+    if project_path:
+        child_env["PIXELVERSE_PROJECT_PATH"] = project_path
+    if project_name:
+        child_env["PIXELVERSE_PROJECT_NAME"] = project_name
     try:
         result = subprocess.run(command, env=child_env)
     except FileNotFoundError:

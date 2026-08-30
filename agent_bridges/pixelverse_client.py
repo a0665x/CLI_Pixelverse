@@ -53,6 +53,8 @@ class PixelverseClient:
     color: str | None = None
     process_id: int | None = None
     instance_name: str | None = None
+    project_path: str | None = None
+    project_name: str | None = None
     timeout: float = 4.0
 
     def __post_init__(self) -> None:
@@ -77,6 +79,16 @@ class PixelverseClient:
         except json.JSONDecodeError:
             return {"ok": True, "raw": raw}
 
+    def _add_runtime_identity(self, payload: dict[str, Any]) -> None:
+        if self.process_id is not None:
+            payload["process_id"] = self.process_id
+        if self.instance_name:
+            payload["instance_name"] = self.instance_name
+        if self.project_path:
+            payload["project_path"] = self.project_path
+        if self.project_name:
+            payload["project_name"] = self.project_name
+
     def event(
         self,
         event: str,
@@ -98,10 +110,7 @@ class PixelverseClient:
             payload["name"] = self.name
         if self.color:
             payload["color"] = self.color
-        if self.process_id is not None:
-            payload["process_id"] = self.process_id
-        if self.instance_name:
-            payload["instance_name"] = self.instance_name
+        self._add_runtime_identity(payload)
         if message:
             payload["message"] = message
         if state:
@@ -134,10 +143,7 @@ class PixelverseClient:
             payload["task"] = task
         if self.color:
             payload["color"] = self.color
-        if self.process_id is not None:
-            payload["process_id"] = self.process_id
-        if self.instance_name:
-            payload["instance_name"] = self.instance_name
+        self._add_runtime_identity(payload)
         if target_room:
             payload["target_room"] = target_room
         return self._post("/api/heartbeat", payload)

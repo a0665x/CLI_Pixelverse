@@ -52,6 +52,8 @@ def test_fastapi_exposes_openapi_and_generic_agent_events(monkeypatch):
             event="tool.started",
             tool_name="terminal",
             message="running a command",
+            project_path="/home/user/Allen_CV",
+            project_name="Allen_CV",
         )
     )
     assert result["ok"] is True
@@ -59,6 +61,8 @@ def test_fastapi_exposes_openapi_and_generic_agent_events(monkeypatch):
     world = pixelverse_fastapi.get_world()
     agent = next(item for item in world["agents"] if item["agent"] == "codex-main")
     assert agent["state"] == "working"
+    assert agent["project_path"] == "/home/user/Allen_CV"
+    assert agent["project_name"] == "Allen_CV"
     assert world["hermes"]["source"] == "disabled"
     assert world["ollama"]["source"] == "disabled"
 

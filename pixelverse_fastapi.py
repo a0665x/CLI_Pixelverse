@@ -42,6 +42,8 @@ class HeartbeatPayload(BaseModel):
     preserve_phase: bool = Field(False, description="Refresh liveness without replacing the latest lifecycle phase.")
     process_id: int | None = Field(None, description="Optional OS PID for a CLI-backed instance.")
     instance_name: str | None = Field(None, description="Optional user-facing instance label.")
+    project_path: str | None = Field(None, max_length=4096, description="Canonical Agent project path.")
+    project_name: str | None = Field(None, max_length=255, description="Short Agent project directory name.")
 
 
 class ActionPayload(BaseModel):
@@ -86,6 +88,8 @@ class GenericAgentEvent(BaseModel):
     color: str | None = None
     process_id: int | None = Field(None, description="Optional OS PID for a CLI-backed instance.")
     instance_name: str | None = Field(None, description="Optional user-facing instance label.")
+    project_path: str | None = Field(None, max_length=4096, description="Canonical Agent project path.")
+    project_name: str | None = Field(None, max_length=255, description="Short Agent project directory name.")
 
 
 app = FastAPI(
@@ -218,6 +222,8 @@ def generic_event(payload: GenericAgentEvent) -> dict[str, Any]:
             "source_placeholder": False,
             "process_id": data.get("process_id"),
             "instance_name": data.get("instance_name"),
+            "project_path": data.get("project_path"),
+            "project_name": data.get("project_name"),
         }
     )
     data["target_room"] = target_room

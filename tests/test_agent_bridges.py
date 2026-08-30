@@ -1,6 +1,7 @@
 import time
+from pathlib import Path
 
-from agent_bridges.cli_adapter import HeartbeatLoop
+from agent_bridges.cli_adapter import HeartbeatLoop, resolve_project_identity
 from agent_bridges.hermes_adapter import normalize_command
 from agent_bridges.pixelverse_client import PixelverseClient, infer_target_room
 
@@ -82,6 +83,30 @@ def test_cli_adapter_heartbeat_loop_keeps_long_running_process_attached():
     assert all(payload["state"] == "working" for payload in heartbeats)
     assert all(payload["target_room"] == "response_studio" for payload in heartbeats)
     assert all(payload["preserve_phase"] is True for payload in heartbeats)
+
+
+def test_project_identity_uses_canonical_launch_directory(tmp_path: Path):
+    project = tmp_path / "Allen_CV"
+    project.mkdir()
+
+    path, name = resolve_project_identity(str(project / "."))
+
+    assert path == str(project.resolve())
+    assert name == "Allen_CV"
+
+
+def test_events_and_heartbeats_include_project_identity():
+    client = RecordingClient()
+    client.project_path = "/home/user/Allen_CV"
+    client.project_name = "Allen_CV"
+
+    client.start()
+    client.heartbeat()
+
+    assert client.posts[0][1]["project_path"] == "/home/user/Allen_CV"
+    assert client.posts[0][1]["project_name"] == "Allen_CV"
+    assert client.posts[1][1]["project_path"] == "/home/user/Allen_CV"
+    assert client.posts[1][1]["project_name"] == "Allen_CV"
 
 
 def test_normalize_command_prefers_remainder_after_separator(monkeypatch):

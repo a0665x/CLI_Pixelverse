@@ -229,6 +229,25 @@ def test_world_state_exposes_instance_pid_and_pixel_state():
     assert agent["instance_label"] == "PID 42"
 
 
+def test_world_state_retains_project_identity_when_later_updates_omit_it():
+    world = WorldState()
+    world.upsert_agent({
+        "agent": "codex-cli:42",
+        "state": "working",
+        "project_path": "/home/user/Allen_CV",
+        "project_name": "Allen_CV",
+    })
+    world.upsert_agent({
+        "agent": "codex-cli:42",
+        "state": "working",
+        "preserve_phase": True,
+    })
+
+    agent = world.snapshot_local_agents()[0]
+    assert agent["project_path"] == "/home/user/Allen_CV"
+    assert agent["project_name"] == "Allen_CV"
+
+
 def test_world_state_actions_drive_main_agent_state_and_task():
     world = WorldState()
     world.upsert_agent({"agent": "henry-main", "name": "Henry", "state": "idle", "task": None})
