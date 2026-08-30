@@ -1,19 +1,40 @@
 .pixelverse-service/
 private_assets/
 pixelworld_mvp/public/assets/private/
-tmp/*
+
+.cache/
+.codegraph/
+.superpowers/
+docs/plans/
+docs/superpowers/
+global_map/
+pixelworld_mvp/build_world_guide.md
+tmp/
+
 spec/
 .spec/
 .codex/
+.agents/
 
-__pycache__/
+**/__pycache__/
 *.py[cod]
-.pytest_cache/
+**/.pytest_cache/
 
-node_modules/
+**/node_modules/
+**/dist/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+test-results/
+playwright-report/
+browser-artifacts/
+
+.env
+.env.*
+*.pem
+*.key
+*.log
 
 .DS_Store
 .worktrees/

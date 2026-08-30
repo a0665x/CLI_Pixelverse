@@ -70,3 +70,24 @@ def test_readme_documents_portable_binding_and_real_presence() -> None:
         "http://localhost:5660",
     ):
         assert required in readme
+
+
+def test_internal_history_is_not_tracked() -> None:
+    names = [path.relative_to(ROOT).as_posix() for path in tracked_files()]
+    forbidden_prefixes = (".superpowers/", "docs/superpowers/", "docs/plans/", "global_map/")
+    assert [name for name in names if name.startswith(forbidden_prefixes)] == []
+
+
+def test_local_artifact_paths_are_ignored() -> None:
+    rules = (ROOT / ".gitignore").read_text(encoding="utf-8")
+    for rule in (
+        ".cache/",
+        ".codegraph/",
+        ".superpowers/",
+        "docs/plans/",
+        "docs/superpowers/",
+        "global_map/",
+        "pixelworld_mvp/build_world_guide.md",
+        "private_assets/",
+    ):
+        assert rule in rules
