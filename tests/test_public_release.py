@@ -47,3 +47,26 @@ def test_no_paid_modern_office_payload_is_tracked() -> None:
     names = [path.as_posix() for path in tracked_files()]
     forbidden = ("Modern_Office_Revamped", "/assets/private/modern-office-v1.2/")
     assert [name for name in names if any(token in name for token in forbidden)] == []
+
+
+def test_readme_has_one_quick_start_and_current_demo_images() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert readme.count("## Quick Start") == 1
+    assert "./cli_pixelverse_demo_1.png" in readme
+    assert "./cli_pixelverse_demo_2.png" in readme
+    assert "pixel_ui.gif" not in readme
+    assert "command-deck-village.png" not in readme
+    assert "starting-cabin-agent.png" not in readme
+
+
+def test_readme_documents_portable_binding_and_real_presence() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    for required in (
+        'export PIXELVERSE_ROOT="$(pwd -P)"',
+        "cd /path/to/your-project",
+        '"$PIXELVERSE_ROOT/hook_bridge.sh" --agent codex --launch',
+        "Modern_Office_Revamped_v1.zip",
+        "real CLI session",
+        "http://localhost:5660",
+    ):
+        assert required in readme
