@@ -91,3 +91,22 @@ def test_local_artifact_paths_are_ignored() -> None:
         "private_assets/",
     ):
         assert rule in rules
+
+
+def test_retained_docs_describe_the_current_release() -> None:
+    paths = (
+        ROOT / "docs/reference/office-assets.md",
+        ROOT / "pixelworld_mvp/README.md",
+        ROOT / "pixelworld_mvp/ATTRIBUTION.md",
+        ROOT / "pixelworld_mvp/public/assets/ASSET_SOURCES.md",
+    )
+    retired = ("~/Downloads", "install-modern-office-assets.sh", "outdoor-only", "has no backend")
+    for path in paths:
+        text = path.read_text(encoding="utf-8")
+        for token in retired:
+            assert token not in text, f"{path} still contains {token}"
+    pixelworld = paths[1].read_text(encoding="utf-8")
+    assert "interior" in pixelworld.lower()
+    assert "CLI_Pixelverse" in pixelworld
+    sources = paths[3].read_text(encoding="utf-8")
+    assert "scripts/provision_modern_office_assets.py" in sources

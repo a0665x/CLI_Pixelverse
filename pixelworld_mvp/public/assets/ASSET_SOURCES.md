@@ -110,11 +110,17 @@ AI-prohibited asset is included. The LimeZu Modern Interiors Free files are
 explicitly non-commercial and must be replaced or covered by a commercial
 license before distributing a paid/commercial build.
 
-## LimeZu Modern Office Revamped v1.2 (private installation)
+## LimeZu Modern Office Revamped (private installation)
 
 - Creator: LimeZu
 - Canonical page: <https://limezu.itch.io/modernoffice>
 - License: purchased project license supplied inside the archive; editing and commercial/non-commercial project use permitted, redistribution/resale prohibited.
-- Local source: `~/Downloads/Modern_Office_Revamped_v1.2.zip`
-- Installation: `scripts/install-modern-office-assets.sh` extracts only the allowlisted atlas, room builder, license, and selected office furniture singles.
-- Privacy: installed binaries live under the Git-ignored `public/assets/private/modern-office-v1.2/` directory and are never committed or redistributed.
+- Local source: the user-supplied
+  `private_assets/modern-office/Modern_Office_Revamped_v1.zip`, or the path in
+  `PIXELVERSE_MODERN_OFFICE_ZIP`
+- Installation: repository-root `run.sh` invokes
+  `scripts/provision_modern_office_assets.py`, which validates the archive,
+  prepares the required sprites, and generates alpha-collision metadata.
+- Privacy: prepared binaries live under the Git-ignored
+  `pixelworld_mvp/public/assets/private/modern-office-v1.2/` directory and are
+  never committed, redistributed, or pushed in a public container image.
