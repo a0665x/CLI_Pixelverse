@@ -15,6 +15,26 @@ export function worldPointToOverlay(
   };
 }
 
+export function buildingHitRegionToOverlay(
+  building: Pick<WorldBuilding, 'bounds'>,
+  rect: OverlayRect,
+): OverlayRect {
+  const topLeft = worldPointToOverlay({
+    x: building.bounds.x * TILE_SIZE,
+    y: building.bounds.y * TILE_SIZE,
+  }, rect);
+  const bottomRight = worldPointToOverlay({
+    x: (building.bounds.x + building.bounds.width) * TILE_SIZE,
+    y: (building.bounds.y + building.bounds.height) * TILE_SIZE,
+  }, rect);
+  return {
+    left: topLeft.x,
+    top: topLeft.y,
+    width: bottomRight.x - topLeft.x,
+    height: bottomRight.y - topLeft.y,
+  };
+}
+
 interface AgentDomView {
   root: HTMLDivElement;
   chip: HTMLDivElement;
@@ -137,6 +157,11 @@ export class DomStatusOverlay {
       x: building.labelAnchor.x * TILE_SIZE,
       y: building.labelAnchor.y * TILE_SIZE + 14,
     }, rect);
+    const overlayHitRegion = buildingHitRegionToOverlay(building, rect);
+    label.dataset.hitRegionLeft = String(overlayHitRegion.left);
+    label.dataset.hitRegionTop = String(overlayHitRegion.top);
+    label.dataset.hitRegionWidth = String(overlayHitRegion.width);
+    label.dataset.hitRegionHeight = String(overlayHitRegion.height);
     label.style.transform = `translate3d(${Math.round(labelPosition.x)}px, ${Math.round(labelPosition.y)}px, 0)`;
     badge.style.transform = `translate3d(${Math.round(badgePosition.x)}px, ${Math.round(badgePosition.y)}px, 0)`;
     badge.textContent = text;

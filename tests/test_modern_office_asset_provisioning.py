@@ -145,6 +145,22 @@ def test_provisions_every_required_asset_and_is_idempotent(tmp_path: Path) -> No
     assert re.fullmatch(r"[0-9a-f]{64}", prepared["collisionManifestSha256"])
 
 
+def test_reuses_valid_prepared_assets_when_original_zip_is_unavailable(tmp_path: Path) -> None:
+    required = _required_names()
+    archive = tmp_path / "licensed.zip"
+    destination = tmp_path / "private-assets"
+    _write_fixture_archive(archive, required)
+
+    prepared = _run("--archive", str(archive), "--destination", str(destination))
+    assert prepared.returncode == 0, prepared.stderr
+    archive.unlink()
+
+    reused = _run("--archive", str(archive), "--destination", str(destination))
+
+    assert reused.returncode == 0, reused.stderr
+    assert "already provisioned" in reused.stdout.lower()
+
+
 def test_rejects_archive_missing_a_required_member_before_extracting(tmp_path: Path) -> None:
     required = _required_names()
     missing = min(required)

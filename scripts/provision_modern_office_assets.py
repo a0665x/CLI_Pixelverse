@@ -263,6 +263,13 @@ def _replace_directory(prepared: Path, destination: Path) -> None:
 def provision(archive_path: Path, destination: Path) -> int:
     required = required_asset_names()
     if not archive_path.is_file():
+        try:
+            metadata = json.loads((destination / PREPARATION_METADATA).read_text(encoding="utf-8"))
+        except (OSError, ValueError, TypeError):
+            metadata = None
+        if isinstance(metadata, dict) and _existing_matches(destination, metadata, required):
+            print(f"Modern Office assets already provisioned: {destination}")
+            return 0
         raise ValueError(
             f"licensed Modern Office ZIP not found: {archive_path}. Purchase/download it from {OFFICIAL_URL}, "
             f"place it at {DEFAULT_ARCHIVE}, or set PIXELVERSE_MODERN_OFFICE_ZIP=/absolute/path/to/"

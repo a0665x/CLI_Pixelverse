@@ -25,6 +25,30 @@ describe('production locale ingress', () => {
     expect(parent.postMessage).toHaveBeenCalledWith({ type: 'pixelverse.world.ready' }, host.location.origin);
   });
 
+  it('publishes an early dashboard locale to iframe chrome before WorldScene is ready', () => {
+    let onMessage: ((event: MessageEvent) => void) | undefined;
+    const parent = { postMessage: vi.fn() };
+    const host = {
+      location: { origin: 'https://pixelverse.test' },
+      parent,
+      addEventListener: vi.fn((_type: string, listener: (event: MessageEvent) => void) => { onMessage = listener; }),
+      removeEventListener: vi.fn(),
+    };
+    const publishLocale = vi.fn();
+    (connectProductionLocaleIngress as unknown as (
+      target: typeof host,
+      callback: (locale: 'en-US') => void,
+    ) => unknown)(host, publishLocale);
+
+    onMessage?.({
+      origin: host.location.origin,
+      source: parent,
+      data: { type: 'pixelverse.locale.update', locale: 'en-US', sequence: 1 },
+    } as unknown as MessageEvent);
+
+    expect(publishLocale).toHaveBeenCalledWith('en-US');
+  });
+
   it('rejects a forged same-origin locale message from any source except the exact parent', () => {
     let onMessage: ((event: MessageEvent) => void) | undefined;
     const parent = { postMessage: vi.fn() };

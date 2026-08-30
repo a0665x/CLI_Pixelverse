@@ -54,9 +54,9 @@ describe('backend snapshot event adapter', () => {
       role: 'subagent',
       state: 'working',
       pixel_state: 'external_tool',
-      task: 'codegraph_explore',
-      activity_hint: '正在網路屋查詢呼叫關係',
-      tool_label: 'CodeGraph',
+      task: 'dependency_explorer',
+      activity_hint: '正在分析模組依賴關係',
+      tool_label: 'Dependency Explorer',
     }), 42);
 
     expect(event).toEqual({
@@ -67,9 +67,9 @@ describe('backend snapshot event adapter', () => {
       agentRole: 'subagent',
       kind: 'web',
       phase: 'external_tool',
-      activityLabel: 'codegraph_explore',
-      detail: '正在網路屋查詢呼叫關係',
-      toolName: 'CodeGraph',
+      activityLabel: 'dependency_explorer',
+      detail: '正在分析模組依賴關係',
+      toolName: 'Dependency Explorer',
     });
   });
 

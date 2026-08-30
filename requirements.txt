@@ -3,3 +3,4 @@ fastapi>=0.110
 uvicorn[standard]>=0.27
 pytest>=8.0
 Pillow>=10.0
+websockets>=12.0

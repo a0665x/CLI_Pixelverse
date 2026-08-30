@@ -16,6 +16,7 @@ export interface ProductionLocaleIngress {
 
 export function connectProductionLocaleIngress(
   host: LocaleHost = window,
+  publishLocale: (locale: VillageLocale) => void = () => undefined,
 ): ProductionLocaleIngress {
   let selectedLocale: VillageLocale = 'zh-TW';
   let selectedSequence = Number.NEGATIVE_INFINITY;
@@ -26,6 +27,7 @@ export function connectProductionLocaleIngress(
     if (!message || message.sequence < selectedSequence) return;
     selectedLocale = message.locale;
     selectedSequence = message.sequence;
+    publishLocale(selectedLocale);
     world?.setLocale(selectedLocale);
   };
   host.addEventListener('message', onMessage);

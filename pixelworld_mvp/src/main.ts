@@ -15,7 +15,15 @@ import { villageCopy, type VillageLocale } from './i18n/villageLocale';
 
 let activeLocale: VillageLocale = 'zh-TW';
 let activeWorld: WorldScene | undefined;
-const localeIngress = connectProductionLocaleIngress();
+
+function applyVillageChromeLocale(locale: VillageLocale): void {
+  activeLocale = locale;
+  document.documentElement.lang = activeLocale;
+  localizeVillageChrome();
+  window.dispatchEvent(new Event('pixelverse:locale'));
+}
+
+const localeIngress = connectProductionLocaleIngress(window, applyVillageChromeLocale);
 
 function localizeVillageChrome(): void {
   const copy = villageCopy(activeLocale).accessibility;
@@ -126,11 +134,8 @@ createGame('game-root', (world: WorldScene) => {
     ({ snapshot, sequence }) => world.syncLiveSnapshot(snapshot, sequence),
     (message) => {
       if (!message) return;
-      activeLocale = message.locale;
-      activeWorld?.setLocale(activeLocale);
-      document.documentElement.lang = activeLocale;
-      localizeVillageChrome();
-      window.dispatchEvent(new Event('pixelverse:locale'));
+      activeWorld?.setLocale(message.locale);
+      applyVillageChromeLocale(message.locale);
     },
     (selection) => world.focusCommandSelection?.(selection),
   );
