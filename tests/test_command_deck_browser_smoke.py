@@ -200,14 +200,14 @@ def passing_artifact() -> dict:
         },
         "screenshots": {
             "village": {
-                "path": "docs/assets/command-deck-village.png",
+                "path": "cli_pixelverse_demo_1.png",
                 "width": 1440,
                 "height": 900,
                 "agents": ["smoke-main", "smoke-subagent"],
                 "pass": True,
             },
             "cabin": {
-                "path": "docs/assets/starting-cabin-agent.png",
+                "path": "cli_pixelverse_demo_2.png",
                 "width": 1440,
                 "height": 900,
                 "agents": ["smoke-main"],
@@ -239,8 +239,8 @@ def test_browser_smoke_plan_and_artifact_paths_are_deterministic(monkeypatch):
     ]
     assert plan.locales == ("en-US", "zh-TW", "ja-JP", "ko-KR")
     assert plan.artifact == ROOT / "tmp" / "command_deck_browser_smoke.json"
-    assert plan.village_screenshot == ROOT / "docs" / "assets" / "command-deck-village.png"
-    assert plan.cabin_screenshot == ROOT / "docs" / "assets" / "starting-cabin-agent.png"
+    assert plan.village_screenshot == ROOT / "cli_pixelverse_demo_1.png"
+    assert plan.cabin_screenshot == ROOT / "cli_pixelverse_demo_2.png"
 
 
 def test_browser_smoke_base_url_honors_the_runtime_environment(monkeypatch):
@@ -883,12 +883,12 @@ def test_readme_and_tracked_modules_publish_the_verified_browser_acceptance():
     integration = (ROOT / "spec" / "modules" / "integration-and-events.md").read_text(encoding="utf-8")
     testing = (ROOT / "spec" / "modules" / "testing-and-ops.md").read_text(encoding="utf-8")
 
-    village_markdown = "![CLI_Pixelverse command deck with active village agents](./docs/assets/command-deck-village.png)"
-    cabin_markdown = "![Starting Cabin interior with an active agent](./docs/assets/starting-cabin-agent.png)"
+    village_markdown = "![CLI_Pixelverse live Agent roster, ECG, village, and detail panel](./cli_pixelverse_demo_1.png)"
+    cabin_markdown = "![CLI_Pixelverse editable room interior](./cli_pixelverse_demo_2.png)"
     assert village_markdown in readme
     assert cabin_markdown in readme
-    assert readme.index(village_markdown) < readme.index("## What It Supports")
-    assert readme.index(cabin_markdown) < readme.index("## What It Supports")
+    assert readme.index(village_markdown) < readme.index("## What You Get")
+    assert readme.index(cabin_markdown) < readme.index("## What You Get")
     assert "command_deck_model.mjs" in integration
     assert "mission_trace.mjs" in integration
     assert "canonicalFurnitureGeometry.ts" in integration

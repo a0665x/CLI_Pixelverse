@@ -272,7 +272,7 @@ Equivalent variables exist for Codex, Gemini, Antigravity, Ollama, and Hermes.
 
 ```bash
 PYTHONPATH=. pytest -q
-node --test tests/*.mjs
+node --test --test-concurrency=1 tests/*.mjs
 cd pixelworld_mvp
 npm ci
 npm test

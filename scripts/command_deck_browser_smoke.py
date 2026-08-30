@@ -96,8 +96,8 @@ class BrowserSmokePlan:
     )
     locales: tuple[str, ...] = SUPPORTED_LOCALES
     artifact: Path = TMP / "command_deck_browser_smoke.json"
-    village_screenshot: Path = ROOT / "docs" / "assets" / "command-deck-village.png"
-    cabin_screenshot: Path = ROOT / "docs" / "assets" / "starting-cabin-agent.png"
+    village_screenshot: Path = ROOT / "cli_pixelverse_demo_1.png"
+    cabin_screenshot: Path = ROOT / "cli_pixelverse_demo_2.png"
     timeout_seconds: float = 45.0
     main_agent: str = "command-deck-smoke-main"
     subagent: str = "command-deck-smoke-subagent"
@@ -382,12 +382,12 @@ def evaluate_artifact(artifact: dict[str, Any]) -> list[str]:
     screenshots = _mapping(artifact.get("screenshots"))
     village = _mapping(screenshots.get("village"))
     cabin_shot = _mapping(screenshots.get("cabin"))
-    if village.get("path") != "docs/assets/command-deck-village.png" or village.get("pass") is not True:
+    if village.get("path") != "cli_pixelverse_demo_1.png" or village.get("pass") is not True:
         failures.append("village screenshot was not captured at the canonical path")
     village_agents = village.get("agents") if isinstance(village.get("agents"), list) else []
     if len(village_agents) < 2:
         failures.append("village screenshot does not prove a main agent and subagent")
-    if cabin_shot.get("path") != "docs/assets/starting-cabin-agent.png" or cabin_shot.get("pass") is not True:
+    if cabin_shot.get("path") != "cli_pixelverse_demo_2.png" or cabin_shot.get("pass") is not True:
         failures.append("cabin screenshot was not captured at the canonical path")
     if not cabin_shot.get("agents"):
         failures.append("cabin screenshot does not identify its visible agent")
@@ -1747,8 +1747,8 @@ def run_smoke(plan: BrowserSmokePlan) -> dict[str, Any]:
     if authorization_error:
         raise BrowserFailure(authorization_error)
     TMP.mkdir(parents=True, exist_ok=True)
-    temporary_village = TMP / "command-deck-village.candidate.png"
-    temporary_cabin = TMP / "starting-cabin-agent.candidate.png"
+    temporary_village = TMP / "cli_pixelverse_demo_1.candidate.png"
+    temporary_cabin = TMP / "cli_pixelverse_demo_2.candidate.png"
     artifact: dict[str, Any] = {
         "schema_version": 1,
         "created_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
@@ -1872,14 +1872,14 @@ def run_smoke(plan: BrowserSmokePlan) -> dict[str, Any]:
             }
             artifact["screenshots"] = {
                 "village": {
-                    "path": "docs/assets/command-deck-village.png",
+                    "path": "cli_pixelverse_demo_1.png",
                     "width": village_size[0],
                     "height": village_size[1],
                     "agents": [agent for agent in (plan.main_agent, plan.subagent) if agent in visible_agents],
                     "pass": village_size == (1440, 900) and all(agent in visible_agents for agent in (plan.main_agent, plan.subagent)),
                 },
                 "cabin": {
-                    "path": "docs/assets/starting-cabin-agent.png",
+                    "path": "cli_pixelverse_demo_2.png",
                     "width": cabin_size[0],
                     "height": cabin_size[1],
                     "agents": cabin_agents,
