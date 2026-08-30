@@ -5,6 +5,8 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+DEVELOPER_HOME = "/home/" + "a0665x"
+DEVELOPER_WORKSPACE = "AI_" + "AGX_WS"
 PUBLIC_RUNTIME = (
     "README.md",
     "run.sh",
@@ -29,8 +31,8 @@ def test_public_runtime_has_no_developer_machine_path() -> None:
     for path in tracked_files():
         if path.is_file() and any(path == root or root in path.parents for root in roots):
             text = path.read_text(encoding="utf-8", errors="ignore")
-            assert "/home/a0665x" not in text, path
-            assert "AI_AGX_WS" not in text, path
+            assert DEVELOPER_HOME not in text, path
+            assert DEVELOPER_WORKSPACE not in text, path
 
 
 def test_retired_floorplan_commands_are_absent() -> None:

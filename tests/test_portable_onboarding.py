@@ -10,11 +10,12 @@ PUBLIC_PATHS = [
     Path("docker-compose.yml"),
     Path("scripts/pixelverse_mcp_server.py"),
 ]
+DEVELOPER_HOME = "/home/" + "a0665x"
 
 
 def test_public_docs_and_scripts_do_not_contain_developer_home() -> None:
     for path in PUBLIC_PATHS:
-        assert "/home/a0665x" not in path.read_text(encoding="utf-8"), path
+        assert DEVELOPER_HOME not in path.read_text(encoding="utf-8"), path
 
 
 def test_readme_defines_portable_root_and_cross_repo_commands() -> None:

@@ -76,6 +76,10 @@ The first start validates the archive, prepares the furniture and alpha
 collision masks, builds the local image, and starts the service. Later starts
 reuse valid prepared assets even if the original ZIP is no longer present.
 
+`./run.sh start` and `./run.sh --start` are equivalent. Do not bypass this
+provisioning step with a direct `docker compose build`. The resulting local
+image contains licensed sprites, so do not publish it to a public registry.
+
 Open [http://localhost:5660](http://localhost:5660), or inspect the resolved
 address and saved ports:
 

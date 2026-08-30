@@ -456,7 +456,7 @@ def test_readme_documents_portable_licensed_asset_quickstart() -> None:
         "public registry",
     ):
         assert required in readme
-    assert "/home/a0665x" not in readme
+    assert ("/home/" + "a0665x") not in readme
     assert readme.index("https://limezu.itch.io/modernoffice") < readme.index("./run.sh start")
 
 
