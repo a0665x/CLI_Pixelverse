@@ -254,8 +254,9 @@ const overlayDomHarness = () => {
           || target.dataset.testHovered === 'true'
           || activeElement === target;
         const isLabel = target.className.includes('cutaway-room-label');
-        const width = isLabel ? (expanded ? 180 : 26) : 0;
-        const height = isLabel ? (expanded ? (target.className.includes('--agent') ? 44 : 34) : 18) : 0;
+        const isAgentLabel = target.className.includes('--agent');
+        const width = isLabel ? (isAgentLabel ? 160 : expanded ? 180 : 26) : 0;
+        const height = isLabel ? (expanded || isAgentLabel ? (isAgentLabel ? 44 : 34) : 18) : 0;
         const match = target.style.transform?.match(/translate3d\((-?[\d.]+)px, (-?[\d.]+)px/);
         const anchorX = Number(match?.[1] ?? 0);
         const anchorY = Number(match?.[2] ?? 0);
@@ -1043,10 +1044,14 @@ describe('InteriorCutawaySystem', () => {
         expect(label.dataset.expanded).toBe('false');
         expect(label.dataset.measureExpanded).toBeUndefined();
         expect(label.style.maxWidth).toBeUndefined();
-        expect(label.getBoundingClientRect().width).toBe(26);
+        expect(label.getBoundingClientRect().width).toBe(
+          label.className.includes('--agent') ? 160 : 26,
+        );
         expect(inside(label.getBoundingClientRect())).toBe(true);
         label.focus();
-        expect(label.getBoundingClientRect().width).toBe(180);
+        expect(label.getBoundingClientRect().width).toBe(
+          label.className.includes('--agent') ? 160 : 180,
+        );
         expect(inside(label.getBoundingClientRect())).toBe(true);
         label.emitEvent('mouseenter');
         expect(inside(label.getBoundingClientRect())).toBe(true);
@@ -1375,11 +1380,17 @@ describe('InteriorCutawaySystem', () => {
       expect(labelLayer.children.length).toBeGreaterThan(0);
       expect(labelLayer.children.every((label) => label.dataset.expanded === 'false')).toBe(true);
       expect(labelLayer.children.every((label) => label.style.maxWidth === undefined)).toBe(true);
-      expect(labelLayer.children.every((label) => label.getBoundingClientRect().width === 26)).toBe(true);
+      const agentLabel = labelLayer.children.find((label) => label.className.includes('--agent'))!;
+      expect(agentLabel.getBoundingClientRect().width).toBeGreaterThan(26);
+      expect(agentLabel.getBoundingClientRect().width).toBeLessThanOrEqual(160);
+      expect(agentLabel.textContent).toContain('暫時休息');
+      expect(labelLayer.children.filter((label) => !label.className.includes('--agent'))
+        .every((label) => label.getBoundingClientRect().width === 26)).toBe(true);
 
       actions.get('guide')!.click();
       expect(labelLayer.children.every((label) => label.dataset.expanded === 'true')).toBe(true);
-      expect(labelLayer.children.every((label) => label.getBoundingClientRect().width === 180)).toBe(true);
+      expect(labelLayer.children.every((label) => label.getBoundingClientRect().width
+        === (label.className.includes('--agent') ? 160 : 180))).toBe(true);
       const layout = cutawayLayoutForViewport(1_280, 720);
       const room = editorLayoutForCutaway(layout, {
         editMode: false, catalogExpanded: false, inspectorExpanded: false,
@@ -1397,7 +1408,10 @@ describe('InteriorCutawaySystem', () => {
 
       guide.children[1]!.click();
       expect(labelLayer.children.every((label) => label.dataset.expanded === 'false')).toBe(true);
-      expect(labelLayer.children.every((label) => label.getBoundingClientRect().width === 26)).toBe(true);
+      expect(labelLayer.children.filter((label) => label.className.includes('--agent'))
+        .every((label) => label.getBoundingClientRect().width === 160)).toBe(true);
+      expect(labelLayer.children.filter((label) => !label.className.includes('--agent'))
+        .every((label) => label.getBoundingClientRect().width === 26)).toBe(true);
       expect(storage.setItem).toHaveBeenCalledWith('pixelworld:guide-dismissed:v1', 'true');
     } finally {
       overlay.destroy();
@@ -1423,7 +1437,10 @@ describe('InteriorCutawaySystem', () => {
       expect(labelLayer.children.every((label) => label.dataset.expanded === 'true')).toBe(true);
       guide.children[1]!.click();
       expect(labelLayer.children.every((label) => label.dataset.expanded === 'false')).toBe(true);
-      expect(labelLayer.children.every((label) => label.getBoundingClientRect().width === 26)).toBe(true);
+      expect(labelLayer.children.filter((label) => label.className.includes('--agent'))
+        .every((label) => label.getBoundingClientRect().width === 160)).toBe(true);
+      expect(labelLayer.children.filter((label) => !label.className.includes('--agent'))
+        .every((label) => label.getBoundingClientRect().width === 26)).toBe(true);
       expect(labelLayer.children.every((label) => label.style.maxWidth === undefined)).toBe(true);
     } finally {
       overlay.destroy();

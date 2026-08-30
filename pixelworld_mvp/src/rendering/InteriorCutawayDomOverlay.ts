@@ -487,7 +487,7 @@ export class InteriorCutawayDomOverlay {
       if (room) {
         const cssScaleX = rect.width / WORLD_PIXELS.width;
         const cssScaleY = rect.height / WORLD_PIXELS.height;
-        label.dataset.measureExpanded = 'true';
+        if (item.kind !== 'agent') label.dataset.measureExpanded = 'true';
         const measured = label.getBoundingClientRect();
         delete label.dataset.measureExpanded;
         const labelWidth = Math.min(room.width, measured.width / cssScaleX);

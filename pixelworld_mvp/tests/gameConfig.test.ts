@@ -108,6 +108,7 @@ describe('fixed village game config', () => {
     expect(styles).toMatch(/\.cutaway-room-label:hover[^{}]*\{[^}]*overflow:\s*visible;[^}]*overflow-wrap:\s*anywhere;/s);
     expect(styles).toMatch(/\.cutaway-room-label--hook\s*\{[^}]*pointer-events:\s*none;/s);
     expect(styles).toMatch(/\.cutaway-room-label--agent\s*\{[^}]*pointer-events:\s*auto;/s);
+    expect(styles).toMatch(/\.cutaway-room-label--agent\s*\{[^}]*width:\s*max-content;[^}]*max-width:\s*160px;[^}]*overflow-wrap:\s*anywhere;[^}]*white-space:\s*pre-line;/s);
   });
 
   it('makes every contextual glass surface opaque when transparency is reduced', () => {
