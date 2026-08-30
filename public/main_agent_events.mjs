@@ -58,14 +58,14 @@ export function deriveAgentEventVisual(agent = {}, locale = 'zh-TW') {
   }
   if (PIXEL_VISUALS[pixelState]) {
     const [tone, icon] = PIXEL_VISUALS[pixelState];
-    return { tone, icon, label: uiText(locale, `commandDeck.eventChip.pixel.${pixelState}`), detail: localizedTool || agentTaskText(agent) };
+    return { tone, icon, label: uiText(locale, `commandDeck.eventChip.pixel.${pixelState}`), detail: localizedTool || agentTaskText(agent, locale) };
   }
   const stateKey = ['working', 'planning', 'thinking', 'offline'].includes(state) ? state : 'standby';
   return {
     tone: state === 'offline' ? 'offline' : state === 'planning' ? 'planning' : state === 'thinking' ? 'thinking' : state === 'working' ? 'working' : 'idle',
     icon: state === 'offline' ? '⛔' : state === 'planning' ? '🗺️' : state === 'thinking' ? '💭' : state === 'working' ? '⚙️' : '🛋️',
     label: uiText(locale, `commandDeck.eventChip.states.${stateKey}`),
-    detail: localizedTool || agentTaskText(agent),
+    detail: localizedTool || agentTaskText(agent, locale),
   };
 }
 

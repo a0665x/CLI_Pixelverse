@@ -424,7 +424,7 @@ function dashboardEventCard(item = {}) {
 function dashboardAgentCard(agent = {}) {
   const room = getRoomCopy(agent.room_key, currentLocale);
   const roomName = room.name || agent.room_label || strings().unknownRoom;
-  const detail = agentTaskText(agent) || strings().idleFallback;
+  const detail = agentTaskText(agent, currentLocale) || strings().idleFallback;
   return dashboardCardItemMarkup({
     title: displayAgentName(agent),
     meta: `${roleLabel(agent.role)} · ${stateText(agent.state)} · ${roomName}`,
@@ -650,7 +650,7 @@ function updateCurrentAgentState(snapshot = {}) {
   const room = getRoomCopy(mainAgent.room_key, currentLocale);
   const roomName = room.name || mainAgent.room_label || copy.unknownRoom;
   const detail = agentConnectionStatusText(currentLocale, mainAgent)
-    || agentTaskText(mainAgent)
+    || agentTaskText(mainAgent, currentLocale)
     || activityHintForLocale(currentLocale, mainAgent, roomName);
   const presentation = currentAgentStatePresentation({
     name: displayAgentName(mainAgent), state: stateText(mainAgent.state), room: roomName, detail,
@@ -894,8 +894,8 @@ function renderInspector(agent) {
 
   const room = getRoomCopy(agent.room_key, currentLocale);
   const roomName = room.name || agent.room_label || copy.unknownRoom;
-  const currentTask = agentTaskText(agent) || copy.idleFallback;
-  const toolPill = agentToolText(agent, currentLocale) || agentTaskText(agent);
+  const currentTask = agentTaskText(agent, currentLocale) || copy.idleFallback;
+  const toolPill = agentToolText(agent, currentLocale) || agentTaskText(agent, currentLocale);
   dom.inspectorBody.className = '';
   dom.inspectorBody.innerHTML = `
     <div class="inspector-card">
@@ -1242,7 +1242,7 @@ function activateAgentDetail(agentId, { trigger = document.activeElement, publis
   if (!selectCommandDeck({ kind: 'agent', id: agentId }, { publish })) return false;
   const detail = buildAgentDetail(currentCommandDeckModel, agentId, { nowMs: Date.now() });
   if (!detail) return false;
-  agentDetailView.open(detail, trigger);
+  agentDetailView.open({ ...detail, task: agentTaskText({ task: detail.task }, currentLocale) }, trigger);
   villageFirstLayoutController.setDetailOpen(true);
   return true;
 }
@@ -1260,7 +1260,10 @@ function renderEvents(items = []) {
 
 function renderLiveMonitoring(snapshot = {}, nowMs = Date.now()) {
   const model = currentCommandDeckModel || buildCommandDeckModel(snapshot, { nowMs });
-  const rows = buildAgentRoster(model, { nowMs });
+  const rows = buildAgentRoster(model, { nowMs }).map((row) => ({
+    ...row,
+    externalTask: agentTaskText({ task: row.externalTask }, currentLocale),
+  }));
   if (dom.agentLiveList) {
     agentRosterView.render(rows, { selectedId: selectedAgentId });
     liveEcgController.sync(rows);
@@ -1268,7 +1271,7 @@ function renderLiveMonitoring(snapshot = {}, nowMs = Date.now()) {
   const openDetail = agentDetailView.current();
   if (openDetail) {
     const detail = buildAgentDetail(model, openDetail.id, { nowMs });
-    if (detail) agentDetailView.render(detail);
+    if (detail) agentDetailView.render({ ...detail, task: agentTaskText({ task: detail.task }, currentLocale) });
     else agentDetailView.close();
   }
   if (dom.needsAttentionCount) dom.needsAttentionCount.textContent = uiText(currentLocale, 'commandDeck.roster.needsYou', { count: model.situation.attentionCount });
@@ -1280,7 +1283,7 @@ function renderLiveMonitoring(snapshot = {}, nowMs = Date.now()) {
   if (dom.hookLiveSemantic) dom.hookLiveSemantic.textContent = commandText(`commandDeck.hook.semantic.${hook.semantic}`);
   if (dom.hookLiveBuilding) dom.hookLiveBuilding.textContent = roomCopy.name || hook.building;
   if (dom.hookLiveActivity) {
-    const externalActivity = String(hook.activity || '');
+    const externalActivity = agentTaskText({ task: hook.activity }, currentLocale);
     dom.hookLiveActivity.textContent = externalActivity || strings().idleFallback;
     if (externalActivity) dom.hookLiveActivity.dataset.externalCopy = 'true';
     else delete dom.hookLiveActivity.dataset.externalCopy;

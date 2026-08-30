@@ -15,6 +15,34 @@ test('normalizeLocale falls back to English', () => {
   assert.equal(normalizeLocale('en-US'), 'en-US');
 });
 
+test('known adapter lifecycle copy localizes without rewriting external task bytes', () => {
+  const expected = {
+    'en-US': ['CLI session started', 'CLI session running', 'CLI session completed'],
+    'zh-TW': ['CLI 工作階段已啟動', 'CLI 工作階段執行中', 'CLI 工作階段已完成'],
+    'ja-JP': ['CLI セッションを開始しました', 'CLI セッション実行中', 'CLI セッションが完了しました'],
+    'ko-KR': ['CLI 세션을 시작했습니다', 'CLI 세션 실행 중', 'CLI 세션을 완료했습니다'],
+  };
+  for (const [locale, copy] of Object.entries(expected)) {
+    assert.deepEqual([
+      uiStrings.agentTaskText({ task: 'CLI session started' }, locale),
+      uiStrings.agentTaskText({ task: 'CLI session running' }, locale),
+      uiStrings.agentTaskText({ task: 'CLI session completed' }, locale),
+    ], copy);
+    assert.equal(uiStrings.agentTaskText({ task: '使用者 authored task' }, locale), '使用者 authored task');
+  }
+});
+
+test('adapter lifecycle events render localized status instead of backend JSON summaries', () => {
+  const event = {
+    kind: 'agent.completed',
+    payload: { action: { type: 'status', state: 'idle', message: 'CLI session completed' } },
+    summary: '{"agent":"codex-cli:42","action":{"type":"status"}}',
+  };
+  assert.equal(uiStrings.eventSummaryForLocale(event, 'zh-TW'), '狀態：待命中｜CLI 工作階段已完成');
+  assert.equal(uiStrings.eventSummaryForLocale(event, 'ja-JP'), '状態：待機｜CLI セッションが完了しました');
+  assert.equal(uiStrings.eventSummaryForLocale(event, 'ko-KR'), '상태: 대기｜CLI 세션을 완료했습니다');
+});
+
 test('all supported locales contain complete Agent detail and village layout copy', () => {
   for (const locale of ['en-US', 'zh-TW', 'ja-JP', 'ko-KR']) {
     for (const key of [

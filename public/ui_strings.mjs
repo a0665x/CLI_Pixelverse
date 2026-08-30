@@ -303,11 +303,45 @@ export function uiText(locale, key, params = {}) {
   return value == null ? key : String(value).replace(/\{(\w+)\}/g, (_, name) => String(params[name] ?? ''));
 }
 
-// Tasks are external runtime payloads. Never reinterpret their bytes as a
-// product-owned tool identifier; only explicit tool_name/tool_label fields are
-// eligible for catalog translation.
-export function agentTaskText(agent = {}) {
-  if (agent.task !== undefined && agent.task !== null && agent.task !== '') return String(agent.task);
+const ADAPTER_LIFECYCLE_COPY = {
+  'en-US': {
+    'CLI session started': 'CLI session started',
+    'CLI session running': 'CLI session running',
+    'CLI session completed': 'CLI session completed',
+    'CLI session interrupted': 'CLI session interrupted',
+  },
+  'zh-TW': {
+    'CLI session started': 'CLI 工作階段已啟動',
+    'CLI session running': 'CLI 工作階段執行中',
+    'CLI session completed': 'CLI 工作階段已完成',
+    'CLI session interrupted': 'CLI 工作階段已中斷',
+  },
+  'ja-JP': {
+    'CLI session started': 'CLI セッションを開始しました',
+    'CLI session running': 'CLI セッション実行中',
+    'CLI session completed': 'CLI セッションが完了しました',
+    'CLI session interrupted': 'CLI セッションが中断されました',
+  },
+  'ko-KR': {
+    'CLI session started': 'CLI 세션을 시작했습니다',
+    'CLI session running': 'CLI 세션 실행 중',
+    'CLI session completed': 'CLI 세션을 완료했습니다',
+    'CLI session interrupted': 'CLI 세션이 중단되었습니다',
+  },
+};
+
+export function localizedRuntimeText(value, locale = 'en-US') {
+  const raw = String(value ?? '');
+  return ADAPTER_LIFECYCLE_COPY[normalizeLocale(locale)]?.[raw] || raw;
+}
+
+// Runtime tasks normally remain verbatim user/external payloads. Only the
+// adapter's exact built-in lifecycle messages are product-owned locale copy.
+export function agentTaskText(agent = {}, locale = '') {
+  if (agent.task !== undefined && agent.task !== null && agent.task !== '') {
+    const raw = String(agent.task);
+    return locale ? localizedRuntimeText(raw, locale) : raw;
+  }
   return '';
 }
 
@@ -327,7 +361,7 @@ export function agentToolText(agent = {}, locale = 'en-US') {
 }
 
 export function agentTooltipText(agent = {}, locale = 'en-US') {
-  const task = agentTaskText(agent);
+  const task = agentTaskText(agent, locale);
   const tool = agentToolText(agent, locale);
   return [task, tool && tool !== task ? tool : ''].filter(Boolean).join(' · ');
 }
@@ -1319,6 +1353,14 @@ export function eventSummaryForLocale(item = {}, locale = 'en-US') {
   const tool = localizeEventTool(action.tool_name) || copy.tool;
   const preview = action.preview || action.message || '';
   const separator = normalized === 'en-US' ? ' | ' : '｜';
+  const statusSummary = (stateValue, taskValue) => {
+    const state = strings.states?.[stateValue || 'idle'] || stateValue || strings.idleFallback;
+    const task = localizedRuntimeText(taskValue || strings.idleFallback, normalized);
+    if (normalized === 'ja-JP') return `状態：${state}｜${task}`;
+    if (normalized === 'ko-KR') return `상태: ${state}｜${task}`;
+    if (normalized === 'zh-TW') return `狀態：${state}｜${task}`;
+    return `State: ${state} | ${task}`;
+  };
   if (item.kind === 'main.task.started') return rawEventText(preview || copy.taskStarted);
   if (item.kind === 'main.reasoning') return rawEventText(preview || copy.reasoning);
   if (item.kind === 'main.tool.started') {
@@ -1332,16 +1374,14 @@ export function eventSummaryForLocale(item = {}, locale = 'en-US') {
     return [route, rawEventText(preview)].filter(Boolean).join(separator) || copy.route;
   }
   if (item.kind === 'main.task.completed') return rawEventText(preview || copy.taskCompleted);
+  if (String(item.kind || '').startsWith('agent.') && action.type === 'status') {
+    return statusSummary(action.state, action.message);
+  }
   if (item.kind === 'heartbeat') {
-    const state = strings.states?.[payload.state || 'idle'] || payload.state || strings.idleFallback;
-    const task = rawEventText(payload.task || strings.idleFallback);
-    if (normalized === 'ja-JP') return `状態：${state}｜${task}`;
-    if (normalized === 'ko-KR') return `상태: ${state}｜${task}`;
-    if (normalized === 'zh-TW') return `狀態：${state}｜${task}`;
-    return `State: ${state} | ${task}`;
+    return statusSummary(payload.state, payload.task);
   }
   if (item.kind === 'action') {
-    const raw = rawEventText(action.message || '');
+    const raw = localizedRuntimeText(action.message || '', normalized);
     if (action.type === 'tool') return `${copy.toolStep}：${raw || localizeEventTool(action.tool_name) || copy.tool}`;
     if (action.type === 'thought') return `${copy.thinking}：${raw || copy.reasoning}`;
     if (action.type === 'status') return `${copy.status}：${raw || copy.actionUpdate}`;

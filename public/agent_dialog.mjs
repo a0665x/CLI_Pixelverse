@@ -13,7 +13,7 @@ function latestAction(agent = {}) {
 }
 
 function taskLabel(agent = {}, locale = 'zh-TW') {
-  return agentTaskText(agent) || localizeToolSummary(agent.tool_label || '', locale) || agent.tool_label || '';
+  return agentTaskText(agent, locale) || localizeToolSummary(agent.tool_label || '', locale) || agent.tool_label || '';
 }
 
 function eventPreview(action = {}) {
