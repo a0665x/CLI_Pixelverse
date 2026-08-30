@@ -66,7 +66,7 @@ platform_command() {
 SAVED_PIXELVERSE_PORT=""
 SAVED_BRIDGE_PORT=""
 case "$COMMAND" in
-  start|stop|restart|down_up|status|log|logs|doctor|bridge-status|test-hook|smoke-furniture-drag|assets-status|down)
+  start|stop|restart|down_up|status|log|logs|doctor|bridge-status|test-hook|smoke-furniture-drag|assets-status|down|adapter|install-adapter|install-codex-hook|enable-shell-adapter)
     load_saved_port=1
     ;;
   *) load_saved_port=0 ;;
