@@ -150,6 +150,30 @@ def test_fastapi_lifecycle_stays_active_until_explicit_session_completion(monkey
     assert completed["room_key"] == "standby_dock"
 
 
+def test_fastapi_heartbeat_explicit_null_clears_previous_task(monkeypatch):
+    monkeypatch.setenv("PIXELVERSE_AGENT_KIND", "codex")
+    monkeypatch.setenv("PIXELVERSE_HERMES_ENABLE", "0")
+
+    import pixelverse_server
+    import pixelverse_fastapi
+
+    importlib.reload(pixelverse_server)
+    pixelverse_fastapi = importlib.reload(pixelverse_fastapi)
+
+    pixelverse_fastapi.heartbeat(pixelverse_fastapi.HeartbeatPayload(
+        agent="codex-clear-task",
+        state="working",
+        task="old task that must not survive",
+    ))
+    cleared = pixelverse_fastapi.heartbeat(pixelverse_fastapi.HeartbeatPayload(
+        agent="codex-clear-task",
+        state="idle",
+        task=None,
+    ))
+
+    assert cleared["agent"]["task"] is None
+
+
 def test_fastapi_counts_and_keeps_local_subagents_in_clone_bay(monkeypatch):
     monkeypatch.setenv("PIXELVERSE_AGENT_KIND", "codex")
     monkeypatch.setenv("PIXELVERSE_HERMES_ENABLE", "0")

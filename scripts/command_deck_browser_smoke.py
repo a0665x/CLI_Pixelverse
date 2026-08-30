@@ -1208,6 +1208,7 @@ def wait_agent_displacement(
 
 
 def locale_evidence(browser: ChromiumDevTools, locale: str) -> dict[str, Any]:
+    expected = EXPECTED_LOCALE_COPY[locale]
     browser.evaluate(f"""
       (() => {{
         const select = document.querySelector('#locale-select');
@@ -1217,8 +1218,14 @@ def locale_evidence(browser: ChromiumDevTools, locale: str) -> dict[str, Any]:
       }})()
     """)
     browser.wait_until(
-        f"document.body.dataset.locale === {json.dumps(locale)} && document.querySelector('#pixelworld-frame')?.contentDocument?.documentElement.lang === {json.dumps(locale)}",
-        f"{locale} shell and village locale switch",
+        f"""(() => {{
+          const child = document.querySelector('#pixelworld-frame')?.contentDocument;
+          return document.body.dataset.locale === {json.dumps(locale)}
+            && child?.documentElement.lang === {json.dumps(locale)}
+            && child?.querySelector('.world-building-label[data-building-id=\"rest-cabin\"]')?.textContent?.trim() === {json.dumps(expected["rest_cabin"])}
+            && child?.querySelector('.world-building-label[data-building-id=\"maker-workshop\"]')?.textContent?.trim() === {json.dumps(expected["maker_workshop"])};
+        }})()""",
+        f"{locale} shell and translated village locale switch",
     )
     expression = """
       (() => {
@@ -1248,7 +1255,7 @@ def locale_evidence(browser: ChromiumDevTools, locale: str) -> dict[str, Any]:
         ].filter(Boolean).join(' · ');
         const village = [...child.querySelectorAll('.world-building-label')].slice(0, 3)
           .map((node) => node.textContent).filter(Boolean).join(' · ');
-        const help = document.querySelector('#dashboard-help-btn');
+        const help = document.querySelector('#settings-open-help-btn');
         const helpCopy = { aria_label: help?.getAttribute('aria-label') || '',
           tooltip: help?.dataset.tooltip || '', title: help?.title || '' };
         const shellCopy = {

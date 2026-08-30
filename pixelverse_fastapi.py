@@ -193,7 +193,13 @@ async def stream_world(since: int = 0) -> StreamingResponse:
 
 @app.post("/api/heartbeat", tags=["events"])
 def heartbeat(payload: HeartbeatPayload) -> dict[str, Any]:
-    agent = WORLD.upsert_agent(_model_dump(payload))
+    data = _model_dump(payload)
+    fields_set = getattr(payload, "model_fields_set", None)
+    if fields_set is None:
+        fields_set = getattr(payload, "__fields_set__", set())
+    if "task" in fields_set:
+        data["task"] = payload.task
+    agent = WORLD.upsert_agent(data)
     return {"ok": True, "agent": agent.to_public()}
 
 

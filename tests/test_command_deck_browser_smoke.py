@@ -460,6 +460,24 @@ def test_cabin_furniture_is_explicitly_saved_before_its_screenshot_is_captured()
     assert saved < captured < grouped
 
 
+def test_locale_evidence_targets_help_inside_unified_settings():
+    source = SCRIPT.read_text(encoding="utf-8")
+    helper = source.split("def locale_evidence", 1)[1].split("\ndef ", 1)[0]
+
+    assert "#settings-open-help-btn" in helper
+    assert "#dashboard-help-btn" not in helper
+
+
+def test_locale_evidence_waits_for_translated_village_labels_before_capture():
+    source = SCRIPT.read_text(encoding="utf-8")
+    helper = source.split("def locale_evidence", 1)[1].split("\ndef ", 1)[0]
+
+    assert '.world-building-label[data-building-id=\\"rest-cabin\\"]' in helper
+    assert "rest_cabin" in helper
+    assert '.world-building-label[data-building-id=\\"maker-workshop\\"]' in helper
+    assert "maker_workshop" in helper
+
+
 def test_moving_subagent_is_sampled_before_waiting_for_the_main_route_and_screenshot_uses_roster():
     runner = SCRIPT.read_text(encoding="utf-8").split("def run_smoke", 1)[1]
 
