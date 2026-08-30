@@ -482,11 +482,7 @@ detect_agent_roots() {
       ;;
     hermes)
       local candidate
-      for candidate in \
-        "${HERMES_REPO:-}" \
-        "$HOME/Desktop/AI_AGX_WS/HermesAgent_OpenWebUI/hermes-agent" \
-        "$HOME/Desktop/AI_AGX_WS/hermes-agent" \
-        "$HOME/.hermes"; do
+      for candidate in "${HERMES_REPO:-}" "$HOME/.hermes"; do
         [[ -n "$candidate" && -e "$candidate" ]] && echo "- root: $candidate"
       done
       ;;
@@ -527,15 +523,9 @@ discover_agent_command() {
     "/usr/bin/$cmd"
   )
 
-  case "$kind" in
-    hermes)
-      candidates+=(
-        "${HERMES_REPO:-}/venv/bin/hermes"
-        "$HOME/Desktop/AI_AGX_WS/HermesAgent_OpenWebUI/hermes-agent/venv/bin/hermes"
-        "$HOME/Desktop/AI_AGX_WS/hermes-agent/venv/bin/hermes"
-      )
-      ;;
-  esac
+  if [[ "$kind" == "hermes" && -n "${HERMES_REPO:-}" ]]; then
+    candidates+=("${HERMES_REPO%/}/venv/bin/hermes")
+  fi
 
   for candidate in "${candidates[@]}"; do
     [[ -n "$candidate" && -x "$candidate" ]] || continue
@@ -831,8 +821,7 @@ install_hermes_hook() {
   echo "- $target/HOOK.yaml"
   echo "- $target/handler.py"
   echo
-  echo "Restart Hermes gateway/OpenWebUI bootstrap so gateway.hooks reloads this hook:"
-  echo "  ~/Desktop/AI_AGX_WS/HermesAgent_OpenWebUI/run.sh restart"
+  echo "Restart your Hermes gateway/OpenWebUI process so gateway.hooks reloads this hook."
   echo
   echo "The hook posts Hermes agent lifecycle events to:"
   echo "  ${PIXELVERSE_BRIDGE_URL:-http://localhost:${BRIDGE_PORT}}/hook"
@@ -1457,10 +1446,6 @@ case "$COMMAND" in
     ;;
   bridge-status)
     bridge_status
-    ;;
-  floorplans|prepare-floorplan|map-builder)
-    echo "The Phaser village uses a single built-in world; YAML floorplans are no longer supported." >&2
-    exit 2
     ;;
   adapter)
     adapter_command "${2:-}"

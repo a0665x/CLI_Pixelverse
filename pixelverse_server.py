@@ -45,12 +45,8 @@ ACTIVE_EVENT_HOLD_SECONDS = float(os.getenv("PIXELVERSE_ACTIVE_EVENT_HOLD", "8")
 HERMES_WEB_BASE = os.getenv("PIXELVERSE_HERMES_WEB_BASE", "http://127.0.0.1:9119").rstrip("/")
 HERMES_GATEWAY_HEALTH = os.getenv("PIXELVERSE_HERMES_GATEWAY_HEALTH", "http://127.0.0.1:8642/health/detailed")
 HERMES_API_TOKEN = os.getenv("PIXELVERSE_HERMES_API_TOKEN", "")
-HERMES_REPO = Path(
-    os.getenv(
-        "PIXELVERSE_HERMES_REPO",
-        "~/Desktop/AI_AGX_WS/HermesAgent_OpenWebUI/hermes-agent",
-    )
-).expanduser()
+HERMES_REPO_VALUE = os.getenv("PIXELVERSE_HERMES_REPO", "").strip()
+HERMES_REPO = Path(HERMES_REPO_VALUE).expanduser() if HERMES_REPO_VALUE else None
 HERMES_POLL_SECONDS = float(os.getenv("PIXELVERSE_HERMES_POLL_SECONDS", "2.0"))
 OLLAMA_BASE = os.getenv("PIXELVERSE_OLLAMA_BASE", "http://127.0.0.1:11434").rstrip("/")
 OLLAMA_POLL_SECONDS = float(os.getenv("PIXELVERSE_OLLAMA_POLL_SECONDS", "2.0"))
@@ -1059,7 +1055,7 @@ class HermesSource:
             return None
 
     def _ensure_repo_on_path(self) -> bool:
-        if not HERMES_REPO.exists():
+        if HERMES_REPO is None or not HERMES_REPO.exists():
             return False
         repo_str = str(HERMES_REPO)
         if repo_str not in sys.path:
