@@ -20,7 +20,7 @@ test('all supported locales contain complete Agent detail and village layout cop
     for (const key of [
       'agentDetail.title', 'agentDetail.close', 'agentDetail.currentTask', 'agentDetail.room',
       'agentDetail.tool', 'agentDetail.hook', 'agentDetail.lastSeen', 'agentDetail.process',
-      'agentDetail.session', 'agentDetail.recentEvents', 'agentDetail.noTask',
+      'agentDetail.session', 'agentDetail.project', 'agentDetail.recentEvents', 'agentDetail.noTask',
       'agentDetail.role.main_agent', 'agentDetail.role.subagent',
       'villageLayout.reset', 'villageLayout.resizeTop', 'villageLayout.resizeRoster',
       'villageLayout.resizeDetail', 'agentState.editing_files', 'agentState.offline',

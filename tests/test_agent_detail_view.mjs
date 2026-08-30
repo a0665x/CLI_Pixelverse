@@ -31,10 +31,11 @@ const detail = {
   id: 'main', name: 'RAW_NAME', role: 'main_agent', state: 'working', pixelState: 'editing_files',
   signal: { kind: 'busy' }, task: 'RAW_TASK', room: { key: 'code_workbench', label: 'rooms.code_workbench.name' },
   tool: 'apply_patch', hook: 'PostToolUse', processIdentity: 42, sessionIdentity: 'terminal-a', lastSeen: 9_950,
+  projectIdentity: '/home/user/Allen_CV',
   recentEvents: [{ id: 'evt-1', summary: 'RAW_EVENT' }], portraitInput: { role: 'main_agent' },
 };
 
-function fixture(mode = 'drawer') {
+function fixture(mode = 'drawer', eventTextFor = undefined) {
   const root = new Node('root');
   root.nodes = new Map([
     ['[data-agent-detail-panel]', new Node('panel')],
@@ -49,6 +50,7 @@ function fixture(mode = 'drawer') {
     ['[data-agent-detail-hook]', new Node('hook')],
     ['[data-agent-detail-process]', new Node('process')],
     ['[data-agent-detail-session]', new Node('session')],
+    ['[data-agent-detail-project]', new Node('project')],
     ['[data-agent-detail-last-seen]', new Node('last-seen')],
     ['[data-agent-detail-events]', new Node('events')],
     ['[data-agent-detail-ecg]', new Node('ecg')],
@@ -62,6 +64,7 @@ function fixture(mode = 'drawer') {
       textFor: (key) => key,
       spriteFor: () => ({ src: '/portrait.png', pixelClass: 'pixel' }),
       modeFor: () => mode,
+      eventTextFor,
     }),
   };
 }
@@ -91,6 +94,8 @@ test('updating an open detail preserves its original trigger and external-copy b
   assert.equal(root.dataset.agentDetailMode, 'drawer');
   assert.equal(root.nodes.get('[data-agent-detail-name]').dataset.externalCopy, 'true');
   assert.equal(root.nodes.get('[data-agent-detail-task]').dataset.externalCopy, 'true');
+  assert.equal(root.nodes.get('[data-agent-detail-project]').textContent, '/home/user/Allen_CV');
+  assert.equal(root.nodes.get('[data-agent-detail-project]').dataset.externalCopy, 'true');
   assert.equal(root.nodes.get('[data-agent-detail-ecg]').dataset.agentEcg, 'sub');
   view.close();
   assert.equal(firstTrigger.focusCalls, 1);
@@ -111,6 +116,14 @@ test('no-task product copy is not marked external while a genuine task is', () =
   view.open({ ...detail, task: '' });
   assert.equal(taskNode.textContent, 'agentDetail.noTask');
   assert.equal(taskNode.dataset.externalCopy, undefined);
+});
+
+test('recent events use the active locale formatter instead of backend display copy', () => {
+  const { root, view } = fixture('drawer', () => 'LOCALIZED_EVENT');
+
+  view.open(detail, new Node('trigger'));
+
+  assert.equal(root.nodes.get('[data-agent-detail-events]').children[0].textContent, 'LOCALIZED_EVENT');
 });
 
 test('closing skips a trigger that is no longer connected', () => {

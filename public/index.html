@@ -1747,12 +1747,14 @@
     .agent-roster-card[data-signal-kind='blocked'] { border-color: #e47272; }
     .agent-roster-card.selected { border-color: #72e2a5; box-shadow: inset 0 -3px #72e2a5; }
     .agent-roster-portrait { width: 34px; height: 34px; align-self: center; object-fit: contain; image-rendering: pixelated; }
-    .agent-roster-copy { display: grid; min-width: 0; grid-template-rows: auto auto minmax(0, 1fr) 22px; }
+    .agent-roster-copy { display: grid; min-width: 0; grid-template-rows: auto auto auto minmax(0, 1fr) 22px; }
     .agent-roster-name,
     .agent-roster-state,
+    .agent-roster-project,
     .agent-roster-task { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .agent-roster-name { font-size: 11px; }
     .agent-roster-state { color: #b9d4c4; font-size: 9px; }
+    .agent-roster-project { color: #9fc7ad; font-size: 9px; }
     .agent-roster-task { color: #8ea99a; font-size: 9px; }
     .agent-roster-ecg { width: 100%; height: 22px; overflow: visible; }
     .agent-roster-ecg path { fill: none; stroke: #5ce69a; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
@@ -1966,6 +1968,7 @@
           <dt data-i18n="agentDetail.hook"></dt><dd data-agent-detail-hook></dd>
           <dt data-i18n="agentDetail.process"></dt><dd data-agent-detail-process></dd>
           <dt data-i18n="agentDetail.session"></dt><dd data-agent-detail-session></dd>
+          <dt data-i18n="agentDetail.project"></dt><dd data-agent-detail-project></dd>
           <dt data-i18n="agentDetail.lastSeen"></dt><dd data-agent-detail-last-seen></dd>
         </dl>
         <section>

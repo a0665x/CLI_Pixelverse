@@ -9,9 +9,10 @@ test('detail projects identity state location tooling and only this Agent recent
     server_time_ms: 10_000,
     agents: [{
       agent: 'codex-cli:42', name: 'RAW_NAME', role: 'main_agent', state: 'working',
-      pixel_state: 'editing_files', task: 'RAW_TASK', room_key: 'code_workbench',
+      pixel_state: 'editing_files', task: 'RAW_TASK', room_key: 'code_workbench', room_label: '程式工作台',
       tool_name: 'apply_patch', hook: 'PostToolUse', process_id: 42,
-      instance_name: 'terminal-a', last_seen_ms: 9_950,
+      instance_name: 'terminal-a', project_path: '/home/user/Allen_CV',
+      project_name: 'Allen_CV', last_seen_ms: 9_950,
     }],
     events: [
       { id: 'own', agent: 'codex-cli:42', event: 'tool.started', preview: 'RAW_EVENT' },
@@ -24,12 +25,15 @@ test('detail projects identity state location tooling and only this Agent recent
   assert.equal(detail.id, 'codex-cli:42');
   assert.equal(detail.signal.kind, 'busy');
   assert.equal(detail.room.key, 'code_workbench');
+  assert.equal(detail.room.label, 'rooms.code_workbench.name');
   assert.equal(detail.tool, 'apply_patch');
   assert.equal(detail.processIdentity, 42);
   assert.equal(detail.sessionIdentity, 'terminal-a');
+  assert.equal(detail.projectIdentity, '/home/user/Allen_CV');
   assert.deepEqual(detail.recentEvents.map(({ id }) => id), ['own']);
   assert.deepEqual(detail.externalFields, [
-    'name', 'task', 'tool', 'hook', 'processIdentity', 'sessionIdentity', 'recentEvents',
+    'name', 'task', 'tool', 'hook', 'processIdentity', 'sessionIdentity', 'projectIdentity',
+    'recentEvents',
   ]);
 });
 

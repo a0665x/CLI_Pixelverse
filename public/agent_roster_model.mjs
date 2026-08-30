@@ -90,6 +90,7 @@ export function buildAgentRoster(model = {}, { nowMs = Date.now() } = {}) {
       state: agent.state || 'idle',
       pixelState: agent.pixelState || agent.pixel_state || agent.state || 'idle',
       roomKey: agent.buildingId || agent.targetRoom || agent.room_key || '',
+      projectName: String(agent.projectName || agent.project_name || ''),
       task: String(agent.task || ''),
       externalTask: String(agent.task || ''),
       needsAttention: signal.needsAttention,

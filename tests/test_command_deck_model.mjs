@@ -51,7 +51,8 @@ test('canonical agents retain normalized detail identity fields', () => {
   const [agent] = buildCommandDeckModel({ server_time_ms: 10_000, agents: [{
     agent: 'codex-cli:42', role: 'main_agent', state: 'working', pixel_state: 'editing_files',
     room_key: 'code_workbench', tool_name: 'apply_patch', process_id: 42,
-    instance_name: 'terminal-a', last_seen_ms: 9_950,
+    instance_name: 'terminal-a', project_path: '/home/user/Allen_CV',
+    project_name: 'Allen_CV', last_seen_ms: 9_950,
   }] }).agents;
 
   assert.deepEqual({
@@ -60,10 +61,13 @@ test('canonical agents retain normalized detail identity fields', () => {
     toolName: agent.toolName,
     processId: agent.processId,
     instanceName: agent.instanceName,
+    projectPath: agent.projectPath,
+    projectName: agent.projectName,
     lastSeenMs: agent.lastSeenMs,
   }, {
     pixelState: 'editing_files', roomKey: 'code_workbench', toolName: 'apply_patch',
-    processId: 42, instanceName: 'terminal-a', lastSeenMs: 9_950,
+    processId: 42, instanceName: 'terminal-a', projectPath: '/home/user/Allen_CV',
+    projectName: 'Allen_CV', lastSeenMs: 9_950,
   });
 });
 

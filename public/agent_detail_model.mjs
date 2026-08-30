@@ -17,19 +17,23 @@ export function buildAgentDetail(model = {}, agentId, { nowMs = Date.now() } = {
     task: String(agent.task || ''),
     room: {
       key: roomKey,
-      label: agent.roomLabel || agent.room_label || (roomKey ? `rooms.${roomKey}.name` : ''),
+      label: roomKey ? `rooms.${roomKey}.name` : agent.roomLabel || agent.room_label || '',
     },
     tool: String(agent.toolName || agent.tool_name || agent.tool || ''),
     hook: String(agent.hook || agent.source || agent.agent_kind || ''),
     processIdentity: agent.processId ?? agent.process_id ?? null,
     sessionIdentity: agent.instanceName || agent.instance_name || agent.sessionId || agent.session_id || null,
+    projectIdentity: String(
+      agent.projectPath || agent.project_path || agent.projectName || agent.project_name || '',
+    ),
     lastSeen: agent.lastSeenMs ?? agent.last_seen_ms ?? agent.freshness?.lastSeenMs ?? null,
     recentEvents: (model.events || []).filter((event) => (
       String(event.agentId || event.agent?.id || event.agent || '') === id
     )).slice(0, 8),
     portraitInput: agent,
     externalFields: [
-      'name', 'task', 'tool', 'hook', 'processIdentity', 'sessionIdentity', 'recentEvents',
+      'name', 'task', 'tool', 'hook', 'processIdentity', 'sessionIdentity', 'projectIdentity',
+      'recentEvents',
     ],
   };
 }

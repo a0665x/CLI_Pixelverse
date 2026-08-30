@@ -188,6 +188,8 @@ const makeAgent = (agent, nowMs) => {
     toolName: agent.tool_name || agent.tool || '',
     processId: agent.process_id ?? null,
     instanceName: agent.instance_name || agent.session_id || '',
+    projectPath: String(agent.project_path || ''),
+    projectName: String(agent.project_name || ''),
     lastSeenMs,
     hookSemantic: activity.semantic,
     semantic: activity.semantic,

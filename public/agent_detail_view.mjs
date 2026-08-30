@@ -6,6 +6,7 @@ export function createAgentDetailView({
   root,
   documentRef = globalThis.document,
   textFor = (key) => key,
+  eventTextFor = (event) => event.summary || event.preview || event.message || event.event || event.type,
   spriteFor = () => ({}),
   modeFor = () => (globalThis.innerWidth < 900 ? 'dialog' : 'drawer'),
   onClose = () => {},
@@ -46,6 +47,7 @@ export function createAgentDetailView({
     setText('[data-agent-detail-hook]', detail.hook, { external: Boolean(detail.hook) });
     setText('[data-agent-detail-process]', detail.processIdentity, { external: detail.processIdentity != null });
     setText('[data-agent-detail-session]', detail.sessionIdentity, { external: Boolean(detail.sessionIdentity) });
+    setText('[data-agent-detail-project]', detail.projectIdentity, { external: Boolean(detail.projectIdentity) });
     setText('[data-agent-detail-last-seen]', detail.lastSeen);
     const ecg = root.querySelector?.('[data-agent-detail-ecg]');
     if (ecg) {
@@ -57,8 +59,7 @@ export function createAgentDetailView({
       const events = (detail.recentEvents || []).map((event) => {
         const node = documentRef.createElement('article');
         node.className = 'agent-detail-event';
-        node.dataset.externalCopy = 'true';
-        node.textContent = valueText(event.summary || event.preview || event.message || event.event || event.type);
+        node.textContent = valueText(eventTextFor(event));
         return node;
       });
       eventRoot.replaceChildren(...events);

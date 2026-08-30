@@ -56,3 +56,13 @@ test('generated activity hints never become externally-owned roster task copy', 
   assert.equal(row.task, '');
   assert.equal(row.externalTask, '');
 });
+
+test('roster carries only the short runtime project name', () => {
+  const [row] = buildAgentRoster(buildCommandDeckModel({ agents: [{
+    agent: 'main', role: 'main_agent', state: 'working',
+    project_path: '/home/user/Allen_CV', project_name: 'Allen_CV',
+  }] }));
+
+  assert.equal(row.projectName, 'Allen_CV');
+  assert.equal('projectPath' in row, false);
+});

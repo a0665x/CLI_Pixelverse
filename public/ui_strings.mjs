@@ -160,25 +160,25 @@ export const UI_CATALOG = {
 
 const AGENT_DETAIL_COPY = {
   'en-US': {
-    agentDetail: { title: 'Agent detail', close: 'Close Agent detail', currentTask: 'Current task', room: 'Room', tool: 'Tool', hook: 'Hook', process: 'Process', session: 'Session', lastSeen: 'Last seen', recentEvents: 'Recent events', noTask: 'No current task', role: { main_agent: 'Main Agent', subagent: 'Subagent', branch_session: 'Branch session' } },
+    agentDetail: { title: 'Agent detail', close: 'Close Agent detail', currentTask: 'Current task', room: 'Room', tool: 'Tool', hook: 'Hook', process: 'Process', session: 'Session', project: 'Project', lastSeen: 'Last seen', recentEvents: 'Recent events', noTask: 'No current task', role: { main_agent: 'Main Agent', subagent: 'Subagent', branch_session: 'Branch session' } },
     villageLayout: { reset: 'Reset layout', resizeTop: 'Resize status area', resizeRoster: 'Resize Agent roster', resizeDetail: 'Resize Agent detail' },
     agentState: { idle: 'Idle', working: 'Working', thinking: 'Thinking', planning: 'Planning', editing_files: 'Editing files', executing: 'Executing', tool_call: 'Using tools', shell_command: 'Running shell command', external_tool: 'Using external tool', blocked: 'Blocked', awaiting_input: 'Awaiting input', offline: 'Offline', sleeping: 'Sleeping', responding: 'Responding', browsing: 'Browsing', reading_files: 'Reading files', collaborating: 'Collaborating', invoking_skill: 'Invoking skill', self_healing: 'Self-healing', initializing: 'Initializing' },
     agentConnection: { awaitingAttach: 'Waiting for a new CLI session', stale: 'No recent heartbeat from the main agent' },
   },
   'zh-TW': {
-    agentDetail: { title: '代理詳細資訊', close: '關閉代理詳細資訊', currentTask: '目前任務', room: '房間', tool: '工具', hook: 'Hook', process: '程序', session: '工作階段', lastSeen: '最後活動', recentEvents: '近期事件', noTask: '目前沒有任務', role: { main_agent: '主代理', subagent: '分身代理', branch_session: '分支工作階段' } },
+    agentDetail: { title: '代理詳細資訊', close: '關閉代理詳細資訊', currentTask: '目前任務', room: '房間', tool: '工具', hook: 'Hook', process: '程序', session: '工作階段', project: '專案', lastSeen: '最後活動', recentEvents: '近期事件', noTask: '目前沒有任務', role: { main_agent: '主代理', subagent: '分身代理', branch_session: '分支工作階段' } },
     villageLayout: { reset: '重設版面', resizeTop: '調整狀態區高度', resizeRoster: '調整代理人物列高度', resizeDetail: '調整代理詳細資訊寬度' },
     agentState: { idle: '待命', working: '工作中', thinking: '思考中', planning: '規劃中', editing_files: '編輯檔案', executing: '執行中', tool_call: '使用工具', shell_command: '執行 Shell 指令', external_tool: '使用外部工具', blocked: '受阻', awaiting_input: '等待輸入', offline: '離線', sleeping: '休眠', responding: '回覆中', browsing: '瀏覽中', reading_files: '讀取檔案', collaborating: '協作中', invoking_skill: '調用技能', self_healing: '自我修復', initializing: '初始化' },
     agentConnection: { awaitingAttach: '等待新的 CLI 工作階段', stale: '主代理最近沒有心跳' },
   },
   'ja-JP': {
-    agentDetail: { title: 'エージェント詳細', close: 'エージェント詳細を閉じる', currentTask: '現在のタスク', room: '部屋', tool: 'ツール', hook: 'Hook', process: 'プロセス', session: 'セッション', lastSeen: '最終活動', recentEvents: '最近のイベント', noTask: '現在のタスクはありません', role: { main_agent: 'メインエージェント', subagent: 'サブエージェント', branch_session: 'ブランチセッション' } },
+    agentDetail: { title: 'エージェント詳細', close: 'エージェント詳細を閉じる', currentTask: '現在のタスク', room: '部屋', tool: 'ツール', hook: 'Hook', process: 'プロセス', session: 'セッション', project: 'プロジェクト', lastSeen: '最終活動', recentEvents: '最近のイベント', noTask: '現在のタスクはありません', role: { main_agent: 'メインエージェント', subagent: 'サブエージェント', branch_session: 'ブランチセッション' } },
     villageLayout: { reset: 'レイアウトをリセット', resizeTop: 'ステータス領域の高さを変更', resizeRoster: 'エージェント一覧の高さを変更', resizeDetail: 'エージェント詳細の幅を変更' },
     agentState: { idle: '待機中', working: '作業中', thinking: '思考中', planning: '計画中', editing_files: 'ファイル編集中', executing: '実行中', tool_call: 'ツール使用中', shell_command: 'シェルコマンド実行中', external_tool: '外部ツール使用中', blocked: 'ブロック中', awaiting_input: '入力待ち', offline: 'オフライン', sleeping: '休止中', responding: '応答中', browsing: '閲覧中', reading_files: 'ファイル読取中', collaborating: '共同作業中', invoking_skill: 'スキル実行中', self_healing: '自己修復中', initializing: '初期化中' },
     agentConnection: { awaitingAttach: '新しい CLI セッションを待機中', stale: 'メインエージェントから最近のハートビートがありません' },
   },
   'ko-KR': {
-    agentDetail: { title: '에이전트 상세', close: '에이전트 상세 닫기', currentTask: '현재 작업', room: '방', tool: '도구', hook: 'Hook', process: '프로세스', session: '세션', lastSeen: '마지막 활동', recentEvents: '최근 이벤트', noTask: '현재 작업 없음', role: { main_agent: '메인 에이전트', subagent: '서브에이전트', branch_session: '브랜치 세션' } },
+    agentDetail: { title: '에이전트 상세', close: '에이전트 상세 닫기', currentTask: '현재 작업', room: '방', tool: '도구', hook: 'Hook', process: '프로세스', session: '세션', project: '프로젝트', lastSeen: '마지막 활동', recentEvents: '최근 이벤트', noTask: '현재 작업 없음', role: { main_agent: '메인 에이전트', subagent: '서브에이전트', branch_session: '브랜치 세션' } },
     villageLayout: { reset: '레이아웃 초기화', resizeTop: '상태 영역 높이 조절', resizeRoster: '에이전트 목록 높이 조절', resizeDetail: '에이전트 상세 너비 조절' },
     agentState: { idle: '대기 중', working: '작업 중', thinking: '생각 중', planning: '계획 중', editing_files: '파일 편집 중', executing: '실행 중', tool_call: '도구 사용 중', shell_command: '셸 명령 실행 중', external_tool: '외부 도구 사용 중', blocked: '차단됨', awaiting_input: '입력 대기', offline: '오프라인', sleeping: '절전 중', responding: '응답 중', browsing: '탐색 중', reading_files: '파일 읽는 중', collaborating: '협업 중', invoking_skill: '스킬 호출 중', self_healing: '자가 복구 중', initializing: '초기화 중' },
     agentConnection: { awaitingAttach: '새 CLI 세션을 기다리는 중', stale: '메인 에이전트에서 최근 하트비트가 없습니다' },

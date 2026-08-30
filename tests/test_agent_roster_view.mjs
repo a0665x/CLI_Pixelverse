@@ -62,6 +62,7 @@ documentRef.activeElement = documentRef.body;
 
 const row = {
   id: 'main', name: 'Codex', role: 'main_agent', roomKey: 'tool_forge', externalTask: 'RAW_TASK',
+  projectName: 'Allen_CV',
   signal: { kind: 'busy', tone: 'work' },
   portraitInput: { role: 'main_agent', state: 'working' },
 };
@@ -75,8 +76,8 @@ const options = {
 test('descriptor keeps identity, localized labels, sprite, and external task separate', () => {
   assert.deepEqual(agentRosterDescriptor(row, options), {
     id: 'main', selected: true, tone: 'work', signalKind: 'busy', portraitSrc: '/portrait.png',
-    portraitClass: 'pixel', name: 'Codex', signalLabel: 'Busy signal', externalTask: 'RAW_TASK',
-    ariaLabel: 'Inspect Codex',
+    portraitClass: 'pixel', name: 'Codex', signalLabel: 'Busy signal', projectName: 'Allen_CV',
+    externalTask: 'RAW_TASK', ariaLabel: 'Inspect Codex · Allen_CV',
   });
 });
 
@@ -95,18 +96,20 @@ test('view renders accessible selectable portrait cards and marks runtime tasks 
 
   const article = root.children[0];
   const [portrait, copy] = article.children;
-  const [name, state, task, svg] = copy.children;
+  const [name, state, project, task, svg] = copy.children;
   assert.equal(article.dataset.selectionKind, 'agent');
   assert.equal(article.dataset.selectionId, 'main');
   assert.equal(article.dataset.signalKind, 'busy');
   assert.equal(article.classList.contains('selected'), true);
-  assert.equal(article.getAttribute('aria-label'), 'Inspect Codex');
+  assert.equal(article.getAttribute('aria-label'), 'Inspect Codex · Allen_CV');
   assert.equal(portrait.src, '/portrait.png');
   assert.match(portrait.className, /pixel/);
   assert.equal(portrait.alt, '');
   assert.equal(name.textContent, 'Codex');
   assert.equal(name.dataset.externalCopy, 'true');
   assert.equal(state.textContent, 'Busy signal');
+  assert.equal(project.textContent, 'Allen_CV');
+  assert.equal(project.dataset.externalCopy, 'true');
   assert.equal(task.textContent, 'RAW_TASK');
   assert.equal(task.dataset.externalCopy, 'true');
   assert.equal(svg.dataset.agentEcg, 'main');
@@ -126,12 +129,27 @@ test('view removes the external marker when a refreshed row has no runtime task'
   const root = new FakeNode('div');
   const view = createAgentRosterView({ root, documentRef, spriteFor: options.spriteFor, textFor: options.textFor });
   view.render([row]);
-  const task = root.children[0].children[1].children[2];
+  const task = root.children[0].children[1].children[3];
   assert.equal(task.dataset.externalCopy, 'true');
 
   view.render([{ ...row, externalTask: '' }]);
   assert.equal(task.textContent, '');
   assert.equal(task.dataset.externalCopy, undefined);
+});
+
+test('view hides project metadata when a legacy Agent has no project identity', () => {
+  const root = new FakeNode('div');
+  const view = createAgentRosterView({ root, documentRef, spriteFor: options.spriteFor, textFor: options.textFor });
+  view.render([row]);
+  const project = root.children[0].children[1].children[2];
+  assert.equal(project.hidden, false);
+  assert.equal(project.dataset.externalCopy, 'true');
+
+  view.render([{ ...row, projectName: '' }]);
+
+  assert.equal(project.hidden, true);
+  assert.equal(project.textContent, '');
+  assert.equal(project.dataset.externalCopy, undefined);
 });
 
 test('click and keyboard activation pass the exact card trigger', () => {

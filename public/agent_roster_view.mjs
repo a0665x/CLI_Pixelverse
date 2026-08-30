@@ -15,8 +15,12 @@ export function agentRosterDescriptor(row, {
     portraitClass: sprite.pixelClass || '',
     name: row.name,
     signalLabel,
+    projectName: row.projectName || '',
     externalTask: row.externalTask,
-    ariaLabel: textFor?.('select', { name: row.name, signal: signalLabel }) || row.name,
+    ariaLabel: [
+      textFor?.('select', { name: row.name, signal: signalLabel }) || row.name,
+      row.projectName,
+    ].filter(Boolean).join(' · '),
   };
 }
 
@@ -44,6 +48,8 @@ export function createAgentRosterView({
     name.dataset.externalCopy = 'true';
     const state = documentRef.createElement('span');
     state.className = 'agent-roster-state';
+    const project = documentRef.createElement('span');
+    project.className = 'agent-roster-project';
     const task = documentRef.createElement('span');
     task.className = 'agent-roster-task';
     const svg = documentRef.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -52,7 +58,7 @@ export function createAgentRosterView({
     svg.dataset.agentEcg = '';
     const path = documentRef.createElementNS('http://www.w3.org/2000/svg', 'path');
     svg.append(path);
-    copy.append(name, state, task, svg);
+    copy.append(name, state, project, task, svg);
     article.append(portrait, copy);
 
     const activate = () => {
@@ -66,7 +72,7 @@ export function createAgentRosterView({
       event.preventDefault();
       activate();
     });
-    return { article, portrait, name, state, task, svg };
+    return { article, portrait, name, state, project, task, svg };
   };
 
   return {
@@ -91,6 +97,10 @@ export function createAgentRosterView({
         node.portrait.alt = '';
         node.name.textContent = item.name;
         node.state.textContent = item.signalLabel;
+        node.project.textContent = item.projectName;
+        node.project.hidden = !item.projectName;
+        if (item.projectName) node.project.dataset.externalCopy = 'true';
+        else delete node.project.dataset.externalCopy;
         node.task.textContent = item.externalTask;
         if (item.externalTask) node.task.dataset.externalCopy = 'true';
         else delete node.task.dataset.externalCopy;
