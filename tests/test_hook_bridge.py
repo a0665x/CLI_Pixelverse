@@ -24,10 +24,16 @@ set -euo pipefail
 printf '%s\\n' "$*" >> "$PIXELVERSE_TEST_CALL_LOG"
 if [[ "${1:-}" == "install-adapter" ]]; then
   mkdir -p "$(dirname "$0")/.pixelverse-service/bin"
+  cat > "$(dirname "$0")/.pixelverse-service/activate.sh" <<'ACTIVATE'
+export PIXELVERSE_URL="http://127.0.0.1:5999"
+export PIXELVERSE_BRIDGE_URL="http://127.0.0.1:4999"
+ACTIVATE
   wrapper="$(dirname "$0")/.pixelverse-service/bin/pixelverse-${2}"
   cat > "$wrapper" <<'WRAPPER'
 #!/usr/bin/env bash
-printf 'cwd=%s args=%s\\n' "$PWD" "$*" >> "$PIXELVERSE_TEST_LAUNCH_LOG"
+printf 'cwd=%s args=%s url=%s bridge=%s\\n' \
+  "$PWD" "$*" "${PIXELVERSE_URL:-}" "${PIXELVERSE_BRIDGE_URL:-}" \
+  >> "$PIXELVERSE_TEST_LAUNCH_LOG"
 WRAPPER
   chmod +x "$wrapper"
 fi
@@ -115,7 +121,8 @@ def test_launch_uses_observable_wrapper_in_target_directory(tmp_path: Path) -> N
 
     assert result.returncode == 0, result.stderr
     assert launch_log.read_text(encoding="utf-8").strip() == (
-        f"cwd={target.resolve()} args="
+        f"cwd={target.resolve()} args= "
+        "url=http://127.0.0.1:5999 bridge=http://127.0.0.1:4999"
     )
 
 

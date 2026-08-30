@@ -56,3 +56,28 @@ def test_explicit_adapter_ports_override_saved_ports(tmp_path: Path) -> None:
 
     assert 'PIXELVERSE_URL="http://127.0.0.1:6001"' in activation
     assert 'PIXELVERSE_BRIDGE_URL="http://127.0.0.1:5001"' in activation
+
+
+def test_activation_migrates_previous_default_service_url(tmp_path: Path) -> None:
+    state_dir = tmp_path / "state"
+    generate_activation(state_dir)
+
+    result = subprocess.run(
+        [
+            "bash",
+            "-c",
+            'source "$1"; printf "%s\\n" "$PIXELVERSE_URL"',
+            "bash",
+            str(state_dir / "activate.sh"),
+        ],
+        env={
+            **os.environ,
+            "PIXELVERSE_URL": "http://127.0.0.1:5660",
+        },
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "http://127.0.0.1:5999"

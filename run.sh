@@ -1041,7 +1041,7 @@ cat > "$activation" <<EOF
 # Source this file to make native agent CLI commands observable by Pixelverse.
 # It prepends local shim commands only; it does not modify or overwrite the original CLIs.
 case "\${PIXELVERSE_URL:-}" in
-  ""|"http://127.0.0.1:4321"|"http://localhost:4321")
+  ""|"http://127.0.0.1:4321"|"http://localhost:4321"|"http://127.0.0.1:5660"|"http://localhost:5660")
     export PIXELVERSE_URL="http://127.0.0.1:${PIXELVERSE_PORT}"
     ;;
 esac

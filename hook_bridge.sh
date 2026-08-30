@@ -107,6 +107,12 @@ if [[ ! -x "$wrapper_path" ]]; then
   exit 1
 fi
 
+activation_file="$ROOT/.pixelverse-service/activate.sh"
+if [[ -f "$activation_file" ]]; then
+  # Load the service ports written by run.sh while preserving explicit custom URLs.
+  source "$activation_file"
+fi
+
 echo "Launching $agent in $target ..."
 cd -- "$target"
 exec "$wrapper_path"
