@@ -27,7 +27,8 @@ See [verification notes](docs/reference/release-verification.md).
 - An inspector rabbit with WASD movement, R gait cycling, Space jumps and L flashlight.
 - Furniture collision, tiered indoor climbing, hourly day/night cycles and meteor arrival.
 - Left-drag map panning, right-drag orbit, and cursor-centered wheel zoom.
-- Agent portraits, project names, live/idle/offline state, and animated ECG.
+- View-aware Agent portraits, stable rabbit identity badges, project names, and animated ECG.
+- A shared 2D/3D Village guide with live house occupancy, work purpose, and explicit main/subagent links.
 - Clickable roster cards with the current task, process, hook, project path, and
   recent events.
 - Editable building interiors with furniture collision, placement validation,
@@ -37,6 +38,21 @@ See [verification notes](docs/reference/release-verification.md).
 - CLI adapters for Codex, Gemini CLI, Claude Code, Antigravity, Ollama, and
   Hermes, plus a generic HTTP event API.
 - Localhost, Tailscale, and ngrok exposure modes.
+
+## Find an Agent in the village
+
+Open **Village guide** in either view. Search by Agent name, project, or parent Agent;
+occupied houses appear first. House labels show actual indoor occupancy, and hovering
+shows the room's purpose and occupants. Select **Track** to keep the target house
+highlighted while walking as the inspector. The destination follows the Agent as it moves.
+
+Main and Subagent badges and the same short identity code appear in the roster and
+world labels. In 3D, roster portraits use the Honey rabbit appearance. Codex child hooks
+report `parent_agent_id` and project metadata; older records without that information
+remain unlinked until a new child hook arrives. Other integrations can send these
+fields through `/api/event`; sharing a project alone never establishes parenthood.
+
+![Project search showing a main Agent and its subagent, with live house occupancy](docs/reference/village-guide.jpg)
 
 ## Quick Start
 

@@ -3,6 +3,9 @@ import type { AgentWorldEvent, WorldEventKind } from '../world/types';
 export interface BackendAgentSnapshot {
   agent: string;
   name?: string;
+  project_path?: string;
+  project_name?: string;
+  parent_agent_id?: string;
   role?: 'main_agent' | 'subagent' | 'branch_session' | string;
   state?: string;
   pixel_state?: string;

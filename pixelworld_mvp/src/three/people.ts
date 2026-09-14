@@ -1,11 +1,12 @@
+import {rabbitIdentity,RABBIT_COATS} from '../../../public/agent_identity.mjs';
 import * as T from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {clone as cloneSkeleton} from 'three/addons/utils/SkeletonUtils.js';
 import {applyHoneyPose,bindHoneyPose,sampleHoneyPose,type RabbitGait,type HoneyPose} from './honeyMotion';
-const coats=[0xffffff,0xe4edff,0xffe0dc,0xe3f1d9,0xe9dcfa,0xf8e9c9];
+const coats=RABBIT_COATS.map(c=>Number.parseInt(c.slice(1),16));
 import {RABBIT_SCALE,GAIT_FREQUENCY} from '../player/rabbitGait';
 export {RABBIT_SCALE} from '../player/rabbitGait';
-export const humanVariant=(id:string,inspector=false)=>{const hash=[...id].reduce((n,c)=>(n*31+c.charCodeAt(0))>>>0,0),index=hash%coats.length;return {body:inspector?'honey-inspector':`honey-${index}`,tint:inspector?0xffffff:coats[index]!,phase:hash%100/100};};
+export const humanVariant=(id:string,inspector=false)=>{const hash=[...id].reduce((n,c)=>(n*31+c.charCodeAt(0))>>>0,0),index=rabbitIdentity(id).index;return {body:inspector?'honey-inspector':`honey-${index}`,tint:inspector?0xffffff:coats[index]!,phase:hash%100/100};};
 let template:T.Group|undefined,loading:Promise<void>|undefined,outlineMaterial:T.MeshBasicMaterial|undefined;
 const coatMaterials=new Map<number,T.MeshStandardMaterial>();
 export async function loadPeopleAssets(){

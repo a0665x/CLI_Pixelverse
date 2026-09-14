@@ -95,3 +95,18 @@ def test_codex_multi_agent_tool_routes_to_clone_bay():
 
     assert payload["state"] == "collaborating"
     assert payload["target_room"] == "clone_bay"
+
+
+def test_children_keep_explicit_parent_and_project(monkeypatch):
+    from scripts.codex_pixelverse_hook import build_events
+    monkeypatch.setenv('PIXELVERSE_AGENT_ID', 'codex-main:project-a')
+    monkeypatch.setenv('PIXELVERSE_PROJECT_PATH', '/workspace/project-a')
+    monkeypatch.setenv('PIXELVERSE_PROJECT_NAME', 'Project A')
+    for event in ['SubagentStart', 'SubagentStop']:
+        events = build_events({'hook_event_name': event, 'session_id': 'session-a', 'subagent_id': 'child-1'})
+        child = events[-1]
+        assert child['parent_agent_id'] == 'codex-main:project-a'
+        assert child['project_path'] == '/workspace/project-a'
+        assert child['project_name'] == 'Project A'
+    child = build_events({'hook_event_name': 'PreToolUse', 'session_id': 'session-a', 'subagent_id': 'child-1', 'tool_name': 'Read'})[0]
+    assert child['parent_agent_id'] == 'codex-main:project-a'

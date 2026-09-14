@@ -24,3 +24,17 @@ legitimate local copy and rebuilding; see `office-assets.md`.
 
 Real steer/interrupt requires a bound control connection. Merely receiving CLI
 hooks does not grant control over an arbitrary terminal or desktop session.
+
+## Village guide and occlusion follow-up
+
+- Frontend: 833 tests; Python: 238 passed, one optional skip; outer UI: 240 tests.
+- The new occlusion regression uses the populated village and 12 orbit samples.
+  The previous full-mesh query performed 6,755,616 triangle intersection calls;
+  pre-batched part bounds now require zero. This measures query work, not real FPS.
+  Anti-aliasing, lighting, and model quality settings remain unchanged.
+- Clean Docker build and default 3D startup verified again without private assets.
+- Browser: two explicitly named demo main Agents and one child; project search,
+  correct parent association, three occupants in a shared room, tracking through
+  Enter world, and matching 2D/3D identity labels verified on isolated port 5681.
+- Backend tests verify child project inheritance and role/parent retention when
+  subsequent heartbeats omit those fields. Existing unlinked history is not inferred.

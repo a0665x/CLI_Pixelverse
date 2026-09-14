@@ -4,6 +4,7 @@ WORKDIR /src
 COPY pixelworld_mvp/package.json pixelworld_mvp/package-lock.json ./
 RUN npm ci
 COPY pixelworld_mvp/ ./
+COPY public/agent_identity.mjs public/agent_identity.d.mts /public/
 RUN npm run build
 
 FROM python:3.11-slim

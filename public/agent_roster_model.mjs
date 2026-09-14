@@ -1,3 +1,4 @@
+import {agentIdentity} from './agent_identity.mjs';
 const ATTENTION_STATES = new Set(['blocked', 'awaiting_input']);
 const BUSY_PIXEL_STATES = new Set([
   'executing', 'tool_call', 'external_tool', 'self_healing', 'editing_files', 'shell_command',
@@ -85,6 +86,7 @@ export function buildAgentRoster(model = {}, { nowMs = Date.now() } = {}) {
     const role = agent.role || 'main_agent';
     return {
       id,
+      identity:agentIdentity(agent,model.agents||[]),
       role,
       name: displayName(agent),
       state: agent.state || 'idle',
@@ -101,6 +103,7 @@ export function buildAgentRoster(model = {}, { nowMs = Date.now() } = {}) {
       freshnessMs: signal.freshnessMs,
       signal,
       portraitInput: {
+        agent:id,
         role,
         state: agent.state || 'idle',
         color: agent.color || '',

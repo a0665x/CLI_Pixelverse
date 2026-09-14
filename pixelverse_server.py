@@ -632,6 +632,7 @@ class AgentState:
     instance_name: str | None = None
     project_path: str | None = None
     project_name: str | None = None
+    parent_agent_id: str | None = None
     route_evidence: dict[str, Any] | None = None
 
     def latest_recent_action(self) -> dict[str, Any] | None:
@@ -831,6 +832,12 @@ class WorldState:
                 agent.process_id = int(payload.get("process_id"))
             if payload.get("instance_name"):
                 agent.instance_name = trim_text(payload.get("instance_name"), 40)
+            if payload.get("parent_agent_id") and payload["parent_agent_id"] != agent_id:
+                agent.parent_agent_id = trim_text(payload["parent_agent_id"], 255)
+                parent = self.agents.get(agent.parent_agent_id)
+                if parent:
+                    agent.project_path = agent.project_path or parent.project_path
+                    agent.project_name = agent.project_name or parent.project_name
             if payload.get("project_path"):
                 agent.project_path = trim_text(payload.get("project_path"), 4096)
             if payload.get("project_name"):

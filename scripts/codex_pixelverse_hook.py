@@ -131,6 +131,9 @@ def build_events(data: dict[str, Any]) -> list[dict[str, Any]]:
         "name": os.getenv("PIXELVERSE_INSTANCE_NAME") or "Codex CLI",
         "event": hook or "status",
     }
+    project_path = os.getenv("PIXELVERSE_PROJECT_PATH") or data.get("cwd") or os.getcwd()
+    payload["project_path"] = str(project_path)
+    payload["project_name"] = os.getenv("PIXELVERSE_PROJECT_NAME") or os.path.basename(str(project_path).rstrip("/"))
     process_id = os.getenv("PIXELVERSE_PROCESS_ID")
     if process_id and process_id.isdigit():
         payload["process_id"] = int(process_id)
@@ -154,6 +157,7 @@ def build_events(data: dict[str, Any]) -> list[dict[str, Any]]:
                 agent=subagent_id,
                 name=subagent_name,
                 role="subagent",
+                parent_agent_id=agent,
                 color="#8b5cf6",
             )
         payload.update(
@@ -173,6 +177,7 @@ def build_events(data: dict[str, Any]) -> list[dict[str, Any]]:
             "event": "subagent.started",
             "state": "working",
             "role": "subagent",
+            "parent_agent_id": agent,
             "message": trim(data.get("prompt") or data.get("task") or data.get("goal") or f"{subagent_name} started", 160),
             "target_room": "clone_bay",
             "color": "#8b5cf6",
@@ -188,6 +193,7 @@ def build_events(data: dict[str, Any]) -> list[dict[str, Any]]:
             "event": "subagent.stopped",
             "state": "idle",
             "role": "subagent",
+            "parent_agent_id": agent,
             "message": trim(data.get("result") or data.get("summary") or f"{subagent_name} completed", 160),
             "target_room": "clone_bay",
             "color": "#8b5cf6",

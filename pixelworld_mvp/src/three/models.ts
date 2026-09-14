@@ -1,3 +1,4 @@
+import {occlusionBounds} from './occlusion';
 import {RoundedBoxGeometry} from 'three/addons/geometries/RoundedBoxGeometry.js';
 import {surfaceMaterial} from './surfaceMaterials';
 import * as T from 'three';
@@ -267,7 +268,7 @@ export function batchStatic(group:T.Group) {
   group.updateMatrixWorld(true);
   const buckets=new Map<T.Material,T.BufferGeometry[]>();
   group.traverse(o=>{if(o instanceof T.Mesh && !Array.isArray(o.material)){const geom=o.geometry.clone();geom.applyMatrix4(o.matrixWorld);const list=buckets.get(o.material)||[];list.push(geom);buckets.set(o.material,list);}});
-  const result=new T.Group();
+  const result=new T.Group();result.userData.occlusionBounds=occlusionBounds(group);
   for(const [mat,geoms] of buckets){
     // Extruded/rounded parts are non-indexed; preserve them alongside indexed primitives.
     if(geoms.some(g=>g.index))for(const g of geoms)if(!g.index)g.setIndex(Array.from({length:g.attributes.position!.count},(_,i)=>i));

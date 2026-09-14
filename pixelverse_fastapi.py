@@ -46,6 +46,7 @@ class HeartbeatPayload(BaseModel):
     instance_name: str | None = Field(None, description="Optional user-facing instance label.")
     project_path: str | None = Field(None, max_length=4096, description="Canonical Agent project path.")
     project_name: str | None = Field(None, max_length=255, description="Short Agent project directory name.")
+    parent_agent_id: str | None = Field(None, max_length=255, description="Explicit parent Agent identity for a spawned subagent.")
 
 
 class ActionPayload(BaseModel):
@@ -92,6 +93,7 @@ class GenericAgentEvent(BaseModel):
     instance_name: str | None = Field(None, description="Optional user-facing instance label.")
     project_path: str | None = Field(None, max_length=4096, description="Canonical Agent project path.")
     project_name: str | None = Field(None, max_length=255, description="Short Agent project directory name.")
+    parent_agent_id: str | None = Field(None, max_length=255, description="Explicit parent Agent identity for a spawned subagent.")
 
 
 app = FastAPI(
@@ -255,12 +257,13 @@ def generic_event(payload: GenericAgentEvent) -> dict[str, Any]:
             "task": task,
             "color": payload.color or _default_agent_color(payload.agent_type),
             "target_room": target_room,
-            "role": data.get("role") or "main_agent",
+            "role": data.get("role"),
             "source_placeholder": False,
             "process_id": data.get("process_id"),
             "instance_name": data.get("instance_name"),
             "project_path": data.get("project_path"),
             "project_name": data.get("project_name"),
+            "parent_agent_id": data.get("parent_agent_id"),
         }
     )
     data["target_room"] = target_room

@@ -1,3 +1,4 @@
+import {rabbitIdentity} from './agent_identity.mjs';
 import { getKenneyAgentSprite } from './kenney_assets.mjs';
 import {
   activityHintForLocale,
@@ -217,7 +218,7 @@ const villageFirstLayoutController = createVillageFirstLayoutController({
 const agentDetailView = createAgentDetailView({
   root: dom.agentDetail,
   documentRef: document,
-  spriteFor: getKenneyAgentSprite,
+  spriteFor: agent => document.body.dataset.worldView==='3d' ? {src:'/pixelworld/assets/honey-meshy/reference.png',pixelClass:`rabbit-portrait rabbit-coat-${rabbitIdentity(agent.agent||agent.id||'').index}`} : getKenneyAgentSprite(agent),
   textFor: (key, params = {}) => key.startsWith('rooms.')
     ? (getRoomCopy(key.split('.')[1], currentLocale).name || key)
     : uiText(currentLocale, key, params),
@@ -226,7 +227,7 @@ const agentDetailView = createAgentDetailView({
 });
 const agentRosterView = createAgentRosterView({
   root: dom.agentLiveList,
-  spriteFor: getKenneyAgentSprite,
+  spriteFor: agent => document.body.dataset.worldView==='3d' ? {src:'/pixelworld/assets/honey-meshy/reference.png',pixelClass:`rabbit-portrait rabbit-coat-${rabbitIdentity(agent.agent||agent.id||'').index}`} : getKenneyAgentSprite(agent),
   textFor: (key, params = {}) => key === 'select'
     ? uiText(currentLocale, 'commandDeck.inspector.liveDetail', params)
     : uiText(currentLocale, `commandDeck.roster.signal.${key}`, params),
@@ -1706,6 +1707,8 @@ initializeApp();
     if (event.data?.type === 'pixelverse.view.ready') send();
     if (event.data?.type === 'pixelverse.view.changed' && ['2d', '3d'].includes(event.data.mode)) {
       mode = event.data.mode;
+      document.body.dataset.worldView=mode;
+      renderLiveMonitoring();
       buttons.forEach(button => button.setAttribute('aria-pressed', String(button.dataset.worldView === mode)));
       try { localStorage.setItem('pixelverse:view', mode); } catch {}
     }

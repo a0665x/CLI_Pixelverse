@@ -14,6 +14,7 @@ export function agentRosterDescriptor(row, {
     portraitSrc: sprite.src || '',
     portraitClass: sprite.pixelClass || '',
     name: row.name,
+    ...(row.identity ? {identity:row.identity} : {}),
     signalLabel,
     projectName: row.projectName || '',
     externalTask: row.externalTask,
@@ -96,9 +97,11 @@ export function createAgentRosterView({
         node.portrait.className = `agent-roster-portrait ${item.portraitClass}`.trim();
         node.portrait.alt = '';
         node.name.textContent = item.name;
-        node.state.textContent = item.signalLabel;
-        node.project.textContent = item.projectName;
-        node.project.hidden = !item.projectName;
+        const roles=({'zh-TW':{main:'主 Agent',sub:'子 Agent',branch:'分支'},'ja-JP':{main:'メイン',sub:'サブ',branch:'分岐'},'ko-KR':{main:'메인',sub:'하위',branch:'분기'}})[documentRef.documentElement?.lang]||{main:'Main',sub:'Subagent',branch:'Branch'};
+        node.state.textContent = item.identity ? `${roles[item.identity.role]} #${item.identity.code} · ${item.signalLabel}` : item.signalLabel;
+        node.article.title=item.identity?[item.name,`${roles[item.identity.role]} #${item.identity.code}`,item.identity.parentName?`↳ ${item.identity.parentName}`:'',item.identity.project].filter(Boolean).join(' · '):item.name;
+        node.project.textContent = [item.projectName,item.identity?.parentName?`↳ ${item.identity.parentName}`:''].filter(Boolean).join(' · ');
+        node.project.hidden = !node.project.textContent;
         if (item.projectName) node.project.dataset.externalCopy = 'true';
         else delete node.project.dataset.externalCopy;
         node.task.textContent = item.externalTask;

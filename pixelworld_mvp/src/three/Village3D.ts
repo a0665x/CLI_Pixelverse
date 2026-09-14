@@ -1,3 +1,5 @@
+import {guideFor} from '../ui/VillageGuide';
+import {viewOccluded} from './occlusion';
 import {woodlandDetails} from './woodlandDetails';
 import {ShaderPass} from 'three/addons/postprocessing/ShaderPass.js';
 import {FXAAShader} from 'three/addons/shaders/FXAAShader.js';
@@ -291,13 +293,12 @@ for(let i=0;i<16;i++)box(staticWorld,bridge.x-.5+(i+.5)*bridge.width/16,.25,z,br
       this.camera.position.lerp(target.clone().add(normal),this.reduced.matches?1:1-Math.exp(-dt*8));this.camera.lookAt(target);
     }}
     if(state.active&&!this.inspectedScreen){
-      this.scene.updateMatrixWorld(true);
       const target=this.player.position.clone().add(new T.Vector3(0,.43,0)),direction=target.clone().sub(this.camera.position),distance=direction.length();
       const ray=new T.Raycaster(this.camera.position,direction.normalize(),.05,Math.max(.05,distance-.2));
       if(now-this.occlusionAt>100){
         this.occlusionAt=now;
-        // Test rendered geometry, including the full tree canopy, rather than approximate trunks.
-        this.root.dataset.occluded=String(ray.intersectObject(surface&&this.room?this.room:this.overview,true).length>0);
+        // Query pre-batched part bounds, including canopy volume, without scanning decorative triangles.
+        this.root.dataset.occluded=String(viewOccluded(surface&&this.room?this.room:this.overview,ray));
       }
       setRabbitOccluded(this.player,false);
     }else setRabbitOccluded(this.player,false);
@@ -307,8 +308,9 @@ for(let i=0;i<16;i++)box(staticWorld,bridge.x-.5+(i+.5)*bridge.width/16,.25,z,br
     const active=new Set<string>();
     const label=(id:string,text:string,point:T.Vector3,className:string,click?:()=>void)=>{active.add(id);let node=this.labelNodes.get(id);if(!node){node=document.createElement('button');(node as HTMLButtonElement).type='button';node.className=className;node.dataset.entity=id;this.labels.append(node);this.labelNodes.set(id,node);}if(node.textContent!==text)node.textContent=text;node.onclick=click||null;const p=point.project(this.camera);node.hidden=p.z>1||p.z<-1||Math.abs(p.x)>1||Math.abs(p.y)>1;node.style.left=`${(p.x*.5+.5)*100}%`;node.style.top=`${(-p.y*.5+.5)*100}%`;};
     if(this.immersion.viewState().active&&this.root.dataset.occluded==='true')label('inspector-position','◆ '+inspectionCopy().role,this.player.position.clone().add(new T.Vector3(0,.9,0)),'inspector-position-marker');
-    if(!this.room&&!this.immersion.viewState().active)for(const b of this.world.worldDefinition.buildings)label(b.id,copy.buildings[b.id as keyof typeof copy.buildings]||b.label,new T.Vector3(b.bounds.x+2,4.7,b.bounds.y+1.5),'house-3d-label',()=>this.world.immersionContext().cutaway?.open(b.id));
-    for(const [id,g] of this.actors)if(g.visible){const record=this.world.immersionContext().snapshot?.agents.find(a=>a.agent===id);label(`agent:${id}`,record?.name||id,g.position.clone().setY(1.9),'agent-3d-label');this.labelNodes.get(`agent:${id}`)!.dataset.activity=g.userData.activity;this.labelNodes.get(`agent:${id}`)!.dataset.model=g.userData.variant;}
+    const guide=guideFor(this.world);
+    if(!this.room)for(const b of this.world.worldDefinition.buildings){const info=guide?.buildingInfo(b.id);if(this.immersion.viewState().active&&!info?.tracked)continue;label(b.id,info?.label||b.label,new T.Vector3(b.bounds.x+2,4.7,b.bounds.y+1.5),'house-3d-label',()=>this.world.immersionContext().cutaway?.open(b.id));const node=this.labelNodes.get(b.id)!;if(node.title!==(info?.title||''))node.title=info?.title||'';node.classList.toggle('guide-tracked',Boolean(info?.tracked));}
+    for(const [id,g] of this.actors)if(g.visible){const record=this.world.immersionContext().snapshot?.agents.find(a=>a.agent===id);label(`agent:${id}`,guide?.agentLabel(id)||record?.name||id,g.position.clone().setY(1.25),'agent-3d-label');this.labelNodes.get(`agent:${id}`)!.title=guide?.agentTitle(id)||'';this.labelNodes.get(`agent:${id}`)!.dataset.activity=g.userData.activity;this.labelNodes.get(`agent:${id}`)!.dataset.model=g.userData.variant;}
     const nearest=this.nearbyScreen(),immersed=this.immersion.viewState().active;
     if(!this.inspectedScreen)for(const screen of this.workstations?.screens??[]){
       if(immersed&&screen.id!==nearest?.id)continue;
