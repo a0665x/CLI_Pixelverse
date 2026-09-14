@@ -45,22 +45,32 @@ async def run(args):
         for attempt in range(60):
             try:
                 owner = await CodexConnection(url).__aenter__()
-                if owner:
-                    method = 'thread/resume' if args.resume else 'thread/start'
-                    params = {'threadId': args.resume} if args.resume else {'cwd': os.getcwd()}
-                    thread = (await owner.call(method, params))['thread']['id']
                 break
             except Exception:
+                if owner:
+                    await owner.__aexit__(None, None, None)
+                    owner = None
                 if server.returncode is not None or attempt == 59: raise
                 await asyncio.sleep(.25)
+        if args.headless:
+            method = 'thread/resume' if args.resume else 'thread/start'
+            params = {'threadId': args.resume, 'excludeTurns': True} if args.resume else {'cwd': os.getcwd()}
+            thread = (await owner.call(method, params))['thread']['id']
+        else:
+            # Let the TUI own bootstrap. Preloading via a separate API client
+            # makes Codex 0.154 resume against a backend without list_turns.
+            env = {**os.environ, 'PIXELVERSE_AGENT_ID': agent, 'PIXELVERSE_URL': args.url}
+            command = [executable, '--remote', url]
+            if args.resume: command += ['resume', args.resume]
+            tui = await asyncio.create_subprocess_exec(*command, env=env)
+            thread = await wait_for_tui_thread(owner, tui, args.resume)
+            if thread is None:
+                return tui.returncode
         control = CodexControl(use_mailbox=False)
         control.binding = lambda _: {'url': url, 'thread_id': thread}
         base = dict(agent=agent, agent_type='codex', name=args.name, role='main_agent', session_id=thread,
                     project_path=os.getcwd(), project_name=Path.cwd().name, process_id=os.getpid())
         print(f'Village session: {thread}\nAgent: {agent}\nOpen {args.url} and approach this rabbit.', flush=True)
-        if not args.headless:
-            env = {**os.environ, 'PIXELVERSE_AGENT_ID': agent, 'PIXELVERSE_URL': args.url}
-            tui = await asyncio.create_subprocess_exec(executable, '--remote', url, 'resume', thread, env=env)
         last = 0
         last_state = None
         while tui is None or tui.returncode is None:
@@ -92,6 +102,7 @@ async def run(args):
                 except Exception:
                     pass
             await asyncio.sleep(.1)
+        return tui.returncode if tui else 0
     finally:
         (root / 'ready.json').unlink(missing_ok=True)
         if tui and tui.returncode is None:
@@ -101,11 +112,27 @@ async def run(args):
             server.terminate(); await server.wait()
 
 
+async def wait_for_tui_thread(connection, tui, resume, timeout=60):
+    """Discover only the TUI's thread on this launcher's dedicated App Server."""
+    async with asyncio.timeout(timeout):
+        while tui.returncode is None:
+            loaded = await connection.call('thread/loaded/list', {})
+            ids = loaded.get('data', [])
+            if resume:
+                if resume in ids: return resume
+            elif ids:
+                if len(ids) != 1 or loaded.get('nextCursor'):
+                    raise RuntimeError('Ambiguous Codex session; refusing to bind the wrong rabbit.')
+                return ids[0]
+            await asyncio.sleep(.1)
+    return None
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--url', default=os.getenv('PIXELVERSE_URL', 'http://127.0.0.1:5661'))
     parser.add_argument('--name', default='Codex World')
     parser.add_argument('--resume', help='Explicit saved session UUID to resume; close its previous CLI first.')
     parser.add_argument('--headless', action='store_true', help='Use only the village conversation UI; keep this launcher running.')
-    try: asyncio.run(run(parser.parse_args()))
-    except KeyboardInterrupt: pass
+    try: sys.exit(asyncio.run(run(parser.parse_args())))
+    except KeyboardInterrupt: sys.exit(130)

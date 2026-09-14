@@ -148,7 +148,9 @@ Keep the launcher running. Codex approval settings are preserved; approval promp
 may still require the terminal. This is a conversation viewer, not a raw terminal emulator.
 
 Requirements: a Codex CLI version supporting `--remote` and App Server, an existing
-Codex login, and Python 3.11+. The helper installs `websockets` into a local virtual
+Codex login, and Python 3.11+. Tested with Codex 0.154.0: the terminal owns
+session creation/resume, and the village binds its exact loaded session ID.
+The helper installs `websockets` into a local virtual
 environment if needed. With Docker, run the helper from the same checkout whose
 `.pixelverse-service/runtime` is mounted at `/app/runtime`.
 
@@ -164,6 +166,19 @@ Use the exact session ID shown in Agent details or Codex. Do not resume a differ
 project's session. Hook-only entries continue to say observation-only until launched
 with the shared control connection. History excludes private reasoning and is
 fetched on demand instead of being broadcast with every world snapshot.
+
+If an older checkout exits with `list_turns is not supported yet` during TUI
+bootstrap, update this checkout and rerun the same command. The launcher must not
+preload an empty session before the terminal attaches. No Codex reinstall or
+session deletion is needed.
+
+Maintainers can verify actual terminal startup, session resume, and a first
+village message with the opt-in integration check below. It requires an existing
+Codex login and sends one short verification prompt; it does not request tool use.
+
+```bash
+PIXELVERSE_TEST_CODEX_TUI=1 .venv/bin/python -m pytest tests/test_codex_world_session.py -q
+```
 
 ![Real Codex conversation read from inside the 3D village](docs/reference/village-conversation.jpg)
 

@@ -116,3 +116,63 @@ def test_bound_idle_session_accepts_next_conversation(control):
         assert result['accepted']
         assert FakeCodex.calls[-1][0] == 'turn/start'
     asyncio.run(run())
+
+
+def test_paginated_history_and_idle_start(control):
+    from agent_bridges.codex_control import CodexRpcError
+    class Paginated(FakeCodex):
+        async def call(self, method, params):
+            if method == 'thread/resume':
+                assert params['excludeTurns'] is True
+                return {}
+            if method == 'thread/read':
+                raise CodexRpcError(-32600, 'Full-history hydration is deprecated for paginated threads; use thread/turns/list.')
+            if method == 'thread/turns/list':
+                assert params['itemsView'] == 'full'
+                assert params['sortDirection'] == 'desc'
+                return {'data': [
+                    {'id': 'new', 'status': 'completed', 'items': [{'type': 'agentMessage', 'text': 'reply'}]},
+                    {'id': 'old', 'status': 'completed', 'items': [{'type': 'userMessage', 'content': [{'type': 'text', 'text': 'hello'}]}]},
+                ], 'nextCursor': 'older'}
+            return await super().call(method, params)
+    control.connector = Paginated
+    async def check():
+        session = await control.session('agent-a')
+        assert [m['text'] for m in session['messages']] == ['hello', 'reply']
+        assert session['state'] == 'idle'
+        assert (await control.execute('agent-a', 'start', 'next', '', 'paginated-next'))['accepted']
+    asyncio.run(check())
+
+
+def test_unmaterialized_history_is_empty_but_other_errors_propagate(control):
+    from agent_bridges.codex_control import CodexRpcError
+    class Empty(FakeCodex):
+        fail = False
+        async def call(self, method, params):
+            if self.fail: raise CodexRpcError(-32600, 'unrelated storage failure')
+            if method == 'thread/read':
+                raise CodexRpcError(-32600, 'thread thread-a is not materialized yet; includeTurns is unavailable before first user message')
+            raise CodexRpcError(-32600, 'thread thread-a is not materialized yet; thread/turns/list is unavailable before first user message')
+    control.connector = Empty
+    assert asyncio.run(control.session('agent-a'))['messages'] == []
+    Empty.fail = True
+    with pytest.raises(ControlError): asyncio.run(control.session('agent-a'))
+
+
+def test_fresh_tui_thread_without_turn_store_can_receive_first_message(control):
+    from agent_bridges.codex_control import CodexRpcError
+    class Fresh(FakeCodex):
+        preview = ''
+        async def call(self, method, params):
+            if method == 'thread/loaded/list': return {'data': ['thread-a']}
+            if method == 'thread/resume' or (method == 'thread/read' and params.get('includeTurns')):
+                raise CodexRpcError(-32601, 'list_turns is not supported yet')
+            if method == 'thread/read': return {'thread': {'preview': self.preview, 'status': {'type': 'idle'}}}
+            return await super().call(method, params)
+    control.connector = Fresh
+    async def check():
+        assert (await control.session('agent-a'))['messages'] == []
+        assert (await control.execute('agent-a', 'start', 'first message', '', 'fresh-first'))['accepted']
+        Fresh.preview = 'an existing conversation'
+        with pytest.raises(ControlError): await control.session('agent-a')
+    asyncio.run(check())

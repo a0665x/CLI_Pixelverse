@@ -21,6 +21,14 @@ class ControlError(Exception):
         self.status = status
 
 
+class CodexRpcError(ControlError):
+    """Keep protocol details for compatibility handling, not public error output."""
+    def __init__(self, code, message):
+        super().__init__('Codex 拒絕此操作；請回到原任務確認狀態後再試。')
+        self.code = code
+        self.rpc_message = message
+
+
 class CodexConnection:
     def __init__(self, url: str):
         self.url = url
@@ -62,7 +70,8 @@ class CodexConnection:
                 if message.get('id') != request_id or 'method' in message:
                     continue
                 if 'error' in message:
-                    raise ControlError('Codex 拒絕此操作；請回到原任務確認狀態後再試。')
+                    error = message['error']
+                    raise CodexRpcError(error.get('code'), error.get('message', ''))
                 return message.get('result', {})
 
     async def interrupted(self, turn_id: str):
@@ -99,10 +108,38 @@ class CodexControl:
             raise ControlError('本機 Codex 控制綁定設定無效。', 503)
 
     @staticmethod
-    async def active_turn(connection, thread_id: str):
-        result = await connection.call('thread/read', {'threadId': thread_id, 'includeTurns': True})
-        thread = result.get('thread', {})
-        return next((turn.get('id') for turn in reversed(thread.get('turns', [])) if turn.get('status') == 'inProgress'), None)
+    async def recent_turns(connection, thread_id: str):
+        # Legacy servers hydrate history; paginated sessions explicitly reject it.
+        try:
+            result = await connection.call('thread/read', {'threadId': thread_id, 'includeTurns': True})
+            return result.get('thread', {}).get('turns', [])[-20:]
+        except CodexRpcError as exc:
+            # 0.154 has no turn store until the first message. Confirm this is
+            # an empty, idle thread; never reinterpret other history failures.
+            if exc.code == -32601 and exc.rpc_message == 'list_turns is not supported yet':
+                metadata = (await connection.call('thread/read', {'threadId': thread_id, 'includeTurns': False})).get('thread', {})
+                if metadata.get('preview') == '' and metadata.get('status', {}).get('type') == 'idle':
+                    return []
+                raise
+            if exc.code != -32600 or not any(text in exc.rpc_message for text in (
+                'Full-history hydration is deprecated for paginated threads',
+                'includeTurns is unavailable before first user message',
+            )):
+                raise
+        try:
+            page = await connection.call('thread/turns/list', {
+                'threadId': thread_id, 'limit': 20, 'sortDirection': 'desc', 'itemsView': 'full',
+            })
+            return list(reversed(page.get('data', [])))
+        except CodexRpcError as exc:
+            if exc.code == -32600 and 'thread/turns/list is unavailable before first user message' in exc.rpc_message:
+                return []
+            raise
+
+    @classmethod
+    async def active_turn(cls, connection, thread_id: str):
+        turns = await cls.recent_turns(connection, thread_id)
+        return next((turn.get('id') for turn in reversed(turns) if turn.get('status') == 'inProgress'), None)
 
     async def capability(self, agent: str):
         if self.use_mailbox and control_mailbox.available(agent):
@@ -124,10 +161,9 @@ class CodexControl:
         if not binding:
             return {'available': False, 'messages': []}
         async with self.connector(binding['url']) as connection:
-            result = await connection.call('thread/read', {'threadId': binding['thread_id'], 'includeTurns': True})
-        thread = result.get('thread', {})
+            turns = await self.recent_turns(connection, binding['thread_id'])
         messages = []
-        for turn in thread.get('turns', [])[-20:]:
+        for turn in turns:
             for item in turn.get('items', []):
                 kind = item.get('type')
                 if kind == 'userMessage':
@@ -140,7 +176,7 @@ class CodexControl:
                 else:
                     continue
                 if text: messages.append({'role': role, 'text': text[-8000:]})
-        active = next((t['id'] for t in reversed(thread.get('turns', [])) if t.get('status') == 'inProgress'), None)
+        active = next((t['id'] for t in reversed(turns) if t.get('status') == 'inProgress'), None)
         return {'available': True, 'threadId': binding['thread_id'], 'state': 'working' if active else 'idle', 'turnId': active, 'messages': messages[-60:]}
 
     async def execute(self, agent: str, action: str, text: str, expected_turn_id: str, request_id: str):
@@ -173,7 +209,16 @@ class CodexControl:
                 async with self.connector(binding['url']) as connection:
                     thread_id = binding['thread_id']
                     # A read does not load a persisted thread into this connection.
-                    await connection.call('thread/resume', {'threadId': thread_id})
+                    try:
+                        await connection.call('thread/resume', {'threadId': thread_id, 'excludeTurns': True})
+                    except CodexRpcError as exc:
+                        if exc.code != -32601 or exc.rpc_message != 'list_turns is not supported yet':
+                            raise
+                        # The TUI already owns a fresh thread. Its first turn
+                        # can start without rehydrating a nonexistent history.
+                        loaded = await connection.call('thread/loaded/list', {})
+                        if thread_id not in loaded.get('data', []) or await self.recent_turns(connection, thread_id):
+                            raise
                     if await self.active_turn(connection, thread_id) != (expected_turn_id or None):
                         raise ControlError('Agent 的任務已改變，未送出指令；請返回選項重新確認。')
                     inputs = [{'type': 'text', 'text': text}]
