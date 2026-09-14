@@ -120,3 +120,53 @@ def test_conflicting_pixelverse_command_leaves_original_bytes_unchanged(tmp_path
         install_codex_hooks(project, Path("/new/scripts/codex_pixelverse_hook.py"))
 
     assert target.read_bytes() == original
+
+
+def test_existing_system_python_hook_is_preserved_without_duplicates(tmp_path: Path) -> None:
+    from scripts.codex_hook_installer import pixelverse_hook_document
+
+    project = tmp_path / 'consumer'
+    target = project / '.codex/hooks.json'
+    target.parent.mkdir(parents=True)
+    document = pixelverse_hook_document(HOOK_SCRIPT)
+    for groups in document['hooks'].values():
+        for group in groups:
+            group['hooks'][0]['command'] = f'/usr/bin/python3 "{HOOK_SCRIPT}"'
+    original = json.dumps(document).encode()
+    target.write_bytes(original)
+
+    result = install_codex_hooks(project, HOOK_SCRIPT)
+
+    assert not result.changed
+    assert result.backup is None
+    assert target.read_bytes() == original
+
+
+@pytest.mark.parametrize('suffix', [' --extra', ' && echo extra', '; echo extra'])
+def test_legacy_launcher_with_extra_commands_is_still_a_conflict(tmp_path: Path, suffix: str) -> None:
+    target = tmp_path / '.codex/hooks.json'
+    target.parent.mkdir()
+    original = json.dumps({'hooks': {'Stop': [{'hooks': [{'type': 'command',
+        'command': f'/usr/bin/python3 "{HOOK_SCRIPT}"{suffix}'}]}]}})
+    target.write_text(original)
+    with pytest.raises(HookConflict):
+        install_codex_hooks(tmp_path, HOOK_SCRIPT)
+    assert target.read_text() == original
+
+
+def test_partial_legacy_install_adds_missing_events_once(tmp_path: Path) -> None:
+    from scripts.codex_hook_installer import pixelverse_hook_document
+
+    target = tmp_path / '.codex/hooks.json'
+    target.parent.mkdir()
+    stop = pixelverse_hook_document(HOOK_SCRIPT)['hooks']['Stop']
+    stop[0]['hooks'][0]['command'] = f'/usr/bin/python3 "{HOOK_SCRIPT}"'
+    original = json.dumps({'hooks': {'Stop': stop}})
+    target.write_text(original)
+    result = install_codex_hooks(tmp_path, HOOK_SCRIPT)
+    assert result.changed
+    assert result.backup.read_text() == original
+    payload = json.loads(target.read_text())
+    assert payload['hooks']['Stop'] == stop
+    assert len(payload['hooks']) == 7
+    assert not install_codex_hooks(tmp_path, HOOK_SCRIPT).changed

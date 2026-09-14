@@ -1,3 +1,4 @@
+import { createRoomMemo } from './interiorRuntimeCache';
 import type { Facing, FurnitureDefinition, GridPoint, InteriorDefinition } from '../world/types';
 import type { InteriorAgentSnapshot, InteriorOccupantAssignment } from './interiorAssignment';
 import { navigationBlockedCellKeys } from './interiorPlacement';
@@ -9,6 +10,7 @@ export { interiorInteractionPoint } from './prefabGeometry';
 export type InteriorMotionPhase = 'ingress' | 'working';
 export interface InteriorMotionState {
   phase: InteriorMotionPhase;
+  furnitureId?: string;
   point: { x: number; y: number };
   path: GridPoint[];
   facing: Facing;
@@ -73,7 +75,7 @@ const appendOrthogonal = (
   return intermediate ? [...path, intermediate, { ...target }] : path;
 };
 
-export function interiorPath(
+function computeInteriorPath(
   interior: InteriorDefinition,
   from: GridPoint,
   to: GridPoint,
@@ -117,6 +119,11 @@ export function interiorPath(
   return [{ ...from }];
 }
 
+const pathMemo=createRoomMemo<GridPoint[]>();
+export function interiorPath(interior:InteriorDefinition,from:GridPoint,to:GridPoint,stationFurnitureId?:string):GridPoint[]{
+ return pathMemo(interior,JSON.stringify([from,to,stationFurnitureId]),()=>computeInteriorPath(interior,from,to,stationFurnitureId)).map(p=>({...p}));
+}
+
 const segmentDistance = (from: GridPoint, to: GridPoint): number => Math.hypot(to.x - from.x, to.y - from.y);
 
 export function interiorPathDistance(path: readonly GridPoint[]): number {
@@ -150,13 +157,7 @@ const facingToward = (from: InteriorMotionState['point'], to: InteriorMotionStat
 
 const lerp = (from: number, to: number, amount: number): number => from + (to - from) * amount;
 
-export function interiorMotionAt(
-  snapshot: InteriorAgentSnapshot,
-  interior: InteriorDefinition,
-  assignment: InteriorOccupantAssignment,
-  nowMs: number,
-): InteriorMotionState {
-  const elapsed = Math.max(0, snapshot.interiorElapsedMs ?? 10_000);
+function prepareMotion(snapshot:InteriorAgentSnapshot,interior:InteriorDefinition,assignment:InteriorOccupantAssignment){
   const route = interiorRouteFor(snapshot, interior, assignment);
   const door = { x: Math.floor(interior.width / 2), y: interior.height - 1 };
   const pointForRouteItem = (item: FurnitureDefinition): GridPoint => (
@@ -169,23 +170,6 @@ export function interiorMotionAt(
   const ingressDistance = interiorPathDistance(ingressPath);
   const ingressBlocked = distance(door, target) > 0 && ingressPath.length <= 1;
   const ingressDuration = ingressDistance / INTERIOR_CELLS_PER_SECOND * 1_000;
-  const bob = Math.sin(nowMs / 280) * 0.85;
-  const bubbleText = eventBubble(snapshot);
-  if (ingressBlocked) {
-    return {
-      phase: 'ingress', point: { ...door }, path: ingressPath.map((step) => ({ ...step })),
-      facing: 'up', bob: 0, bubbleText, walking: false, blocked: true,
-    };
-  }
-  if (elapsed < ingressDuration) {
-    const point = pointAtPathDistance(ingressPath, elapsed / 1_000 * INTERIOR_CELLS_PER_SECOND);
-    return {
-      phase: 'ingress', point, path: ingressPath.map((step) => ({ ...step })),
-      facing: facingToward(door, point, 'up'), bob: 0, bubbleText, walking: true, blocked: false,
-    };
-  }
-
-  const workElapsed = elapsed - ingressDuration;
   const segments = route.map((from, index) => {
     const to = route[(index + 1) % route.length]!;
     const fromPoint = pointForRouteItem(from);
@@ -195,6 +179,37 @@ export function interiorMotionAt(
     const pathDistance = interiorPathDistance(path);
     return { from, fromPoint, path, blocked, pathDistance, travelMs: pathDistance / INTERIOR_CELLS_PER_SECOND * 1_000 };
   });
+  return {door,ingressPath,ingressDistance,ingressBlocked,ingressDuration,segments};
+}
+const motionPlanMemo=createRoomMemo<ReturnType<typeof prepareMotion>>();
+
+export function interiorMotionAt(
+  snapshot: InteriorAgentSnapshot,
+  interior: InteriorDefinition,
+  assignment: InteriorOccupantAssignment,
+  nowMs: number,
+): InteriorMotionState {
+  const elapsed = Math.max(0, snapshot.interiorElapsedMs ?? 10_000);
+  const {door,ingressPath,ingressDistance,ingressBlocked,ingressDuration,segments}=motionPlanMemo(interior,JSON.stringify([snapshot.action,assignment.furnitureId,assignment.point,assignment.facing]),()=>prepareMotion(snapshot,interior,assignment));
+  const bob = Math.sin(nowMs / 280) * 0.85;
+  const bubbleText = eventBubble(snapshot);
+  if (ingressBlocked) {
+    return {
+      phase: 'ingress', point: { ...door }, path: ingressPath.map((step) => ({ ...step })),
+      facing: 'up', bob: 0, bubbleText, walking: false, blocked: true,
+    };
+  }
+  if (elapsed < ingressDuration) {
+    const travelled = elapsed / 1_000 * INTERIOR_CELLS_PER_SECOND;
+    const point = pointAtPathDistance(ingressPath, travelled);
+    const ahead = pointAtPathDistance(ingressPath, Math.min(ingressDistance, travelled + 0.05));
+    return {
+      phase: 'ingress', point, path: ingressPath.map((step) => ({ ...step })),
+      facing: facingToward(point, ahead, 'up'), bob: 0, bubbleText, walking: true, blocked: false,
+    };
+  }
+
+  const workElapsed = elapsed - ingressDuration;
   const firstBlocked = segments.findIndex(({ blocked }) => blocked);
   const cycleDuration = segments.reduce((total, { travelMs }) => total + WORK_STOP_MS + travelMs, 0);
   let timelineElapsed = firstBlocked >= 0 ? workElapsed : workElapsed % Math.max(WORK_STOP_MS, cycleDuration);
@@ -202,14 +217,14 @@ export function interiorMotionAt(
     const mappedPath = segment.path.map((step) => ({ ...step }));
     if (timelineElapsed < WORK_STOP_MS) {
       return {
-        phase: 'working', point: { ...segment.fromPoint }, path: mappedPath, facing: segment.from.facing,
+        phase: 'working', furnitureId: segment.from.id, point: { ...segment.fromPoint }, path: mappedPath, facing: segment.from.facing,
         bob, bubbleText, walking: false, blocked: false,
       };
     }
     timelineElapsed -= WORK_STOP_MS;
     if (segment.blocked) {
       return {
-        phase: 'working', point: { ...segment.fromPoint }, path: mappedPath, facing: segment.from.facing,
+        phase: 'working', furnitureId: segment.from.id, point: { ...segment.fromPoint }, path: mappedPath, facing: segment.from.facing,
         bob, bubbleText, walking: false, blocked: true,
       };
     }
@@ -226,7 +241,7 @@ export function interiorMotionAt(
   }
   const fallback = segments.at(-1)!;
   return {
-    phase: 'working', point: { ...fallback.fromPoint }, path: fallback.path.map((step) => ({ ...step })),
+    phase: 'working', furnitureId: fallback.from.id, point: { ...fallback.fromPoint }, path: fallback.path.map((step) => ({ ...step })),
     facing: fallback.from.facing, bob, bubbleText, walking: false, blocked: false,
   };
 }

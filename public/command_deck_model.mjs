@@ -92,7 +92,7 @@ export function normalizeAgentForWorld(agent = {}) {
       : activity.semantic === 'search'
         ? 'thinking'
         : activity.semantic === 'work'
-          ? 'responding'
+          ? ({ file_library: 'reading_files', code_workbench: 'editing_files', terminal_bay: 'shell_command', tool_forge: 'browsing', clone_bay: 'collaborating' }[activity.roomKey] || 'responding')
           : 'idle';
   return { ...agent, state: activity.state, pixel_state: pixelState, room_key: activity.roomKey };
 }

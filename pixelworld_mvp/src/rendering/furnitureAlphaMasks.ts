@@ -1,3 +1,4 @@
+import { VILLAGE_FURNITURE_MASKS } from './villageFurnitureCatalog';
 export type AlphaRun = readonly [y: number, startX: number, endXExclusive: number];
 
 export interface FurnitureAlphaMask {
@@ -90,7 +91,7 @@ export function furnitureAlphaMasksInstalled(): boolean {
 }
 
 export function furnitureAlphaMask(assetId: number): FurnitureAlphaMask | undefined {
-  return installedManifest?.assets.get(assetId);
+  return installedManifest?.assets.get(assetId) ?? VILLAGE_FURNITURE_MASKS.get(assetId);
 }
 
 function manifestVersion(manifest: FurnitureAlphaMaskManifest): string {
@@ -127,7 +128,7 @@ function transformedRunRectangles(
 ): { bounds: Rectangle; rectangles: Rectangle[] } {
   const asset = canonicalFurnitureAsset(item);
   if (!asset) throw new Error(`Furniture collision mask asset is unresolved for ${item.id}`);
-  if (mask.width !== 32 || mask.height !== 48) {
+  if (mask.width !== (asset.sourceWidth ?? 32) || mask.height !== (asset.sourceHeight ?? 48)) {
     throw new Error(`Furniture collision mask ${asset.id} has unsupported source dimensions`);
   }
   const source = asset.opaqueBounds;

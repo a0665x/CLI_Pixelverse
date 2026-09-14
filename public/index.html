@@ -1828,7 +1828,7 @@
       .top-status-bar { grid-column: 1; }
       .map-first-workspace .live-hud .brand { min-height: 72px; grid-template-columns: auto auto minmax(0, 1fr); gap: 5px 8px; }
       .live-hud #last-sync { grid-column: 1 / -1; justify-self: start; }
-      .map-first-workspace .world.map-stage { grid-column: 1; grid-row: 3; }
+      .map-first-workspace .world.map-stage { grid-column: 1; grid-row: 3; min-width: 0; }
       .agent-roster { grid-column: 1; grid-row: 2; padding: 6px 8px; }
       .agent-roster-card { min-width: 128px; }
       .agent-roster-counts output:nth-last-child(-n+2) { display: none; }
@@ -1843,12 +1843,20 @@
       .live-hud #last-sync { grid-column: 1 / -1; }
     }
     @media (prefers-reduced-motion: reduce) { .agent-roster-ecg { transition: none; } }
-  </style>
+  #world-view-switch button {border:0;border-radius:24px;color:#d6dfcf;background:transparent;padding:8px 18px;font:600 13px system-ui;cursor:pointer;min-height:36px}
+    #world-view-switch button[aria-pressed="true"] {background:#d8c28e;color:#243b32}
+    #world-view-switch button:focus-visible {outline:3px solid #f0d9a5}
+    @media(max-width:600px){#world-view-switch{top:62px!important;left:16px!important;transform:none!important}#world-view-switch button{padding:5px 15px}}
+    </style>
 </head>
 <body data-locale="en-US" data-mobile-mode="off" data-sidebar-open="true">
   <div class="app">
     <main class="map-first-workspace">
     <section class="world map-stage command-deck-region" id="world" data-command-region="center" data-i18n-aria-label="commandDeck.world.label">
+    <nav id="world-view-switch" aria-label="2D / 3D" style="position:absolute;top:16px;left:50%;transform:translateX(-50%);z-index:90;display:flex;gap:4px;padding:4px;border:1px solid #9aab8c66;border-radius:30px;background:#182c29e8;box-shadow:0 4px 18px #0003">
+      <button type="button" data-world-view="2d" aria-pressed="true">2D</button>
+      <button type="button" data-world-view="3d" aria-pressed="false">3D</button>
+    </nav>
       <iframe class="pixelworld-frame" id="pixelworld-frame" src="/pixelworld/index.html?embed=1"
         data-i18n-title="commandDeck.world.frameTitle" allow="fullscreen"></iframe>
     </section>

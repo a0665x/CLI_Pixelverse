@@ -240,3 +240,11 @@ test('situation exposes first-layer attention and liveness counts', () => {
     offlineAgentCount: model.situation.offlineAgentCount,
   }, { attentionCount: 1, busyAgentCount: 1, idleAgentCount: 1, offlineAgentCount: 1 });
 });
+
+test('generic working heartbeats preserve their authored work room in the embedded world', () => {
+  for (const [room_key, expected] of Object.entries({file_library:'reading_files',code_workbench:'editing_files',terminal_bay:'shell_command'})) {
+    const result=normalizeAgentForWorld({state:'working',pixel_state:'idle',room_key});
+    assert.equal(result.pixel_state,expected);
+    assert.equal(result.room_key,room_key);
+  }
+});

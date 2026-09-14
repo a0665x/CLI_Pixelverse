@@ -1,3 +1,4 @@
+import { createRoomMemo } from './interiorRuntimeCache';
 import type {
   AgentAction,
   FurnitureDefinition,
@@ -164,7 +165,7 @@ const explicitPointIsInvalid = (
   });
 };
 
-export function nearestSemanticStation(
+function computeNearestSemanticStation(
   room: InteriorDefinition,
   action: AgentAction,
   origin: GridPoint,
@@ -199,4 +200,11 @@ export function nearestSemanticStation(
       || first.point.y - second.point.y
       || first.point.x - second.point.x)[0];
   return nearest ? { furnitureId: nearest.furnitureId, point: { ...nearest.point } } : undefined;
+}
+
+const stationMemo=createRoomMemo<SemanticStation|undefined>();
+export function nearestSemanticStation(room:InteriorDefinition,action:AgentAction,origin:GridPoint,excludedPointKeys:ReadonlySet<string>=new Set(),excludedFurnitureIds:ReadonlySet<string>=new Set()):SemanticStation|undefined {
+ const key=JSON.stringify([action,origin,[...excludedPointKeys].sort(),[...excludedFurnitureIds].sort()]);
+ const result=stationMemo(room,key,()=>computeNearestSemanticStation(room,action,origin,excludedPointKeys,excludedFurnitureIds));
+ return result?{...result,point:{...result.point}}:undefined;
 }

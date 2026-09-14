@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { TILE_SIZE, WORLD_PIXELS, WORLD_TILES, displayScaleFor } from '../src/game/constants';
-// @ts-expect-error Node is Vitest's runtime but its ambient types are not part of this app.
 import { readFileSync } from 'node:fs';
 
 const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');

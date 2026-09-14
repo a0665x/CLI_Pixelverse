@@ -1,3 +1,5 @@
+import { mountWorldViews } from './three/mountWorldViews';
+import { ImmersionController } from './player/ImmersionController';
 import { createGame } from './game/createGame';
 import { connectProductionLocaleIngress } from './game/productionLocaleIngress';
 import type { WorldScene } from './scenes/WorldScene';
@@ -125,6 +127,8 @@ function mountViewportControls(viewport: VillageViewportController): void {
 createGame('game-root', (world: WorldScene) => {
   localeIngress.attachWorld(world);
   activeWorld = world;
+  const immersion = new ImmersionController(world);
+  mountWorldViews(world, immersion);
   const root = document.querySelector<HTMLElement>('#test-panel-root');
   if (!root) throw new Error('Missing #test-panel-root');
   const embedded = new URLSearchParams(window.location.search).get('embed') === '1';

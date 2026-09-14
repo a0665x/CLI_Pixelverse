@@ -58,7 +58,9 @@ describe('AgentController cancellation', () => {
     for (let index = 0; index < 20; index += 1) {
       agent.update(100);
       const current = { x: sprite.x, y: sprite.y };
-      expect(current.x === previous.x || current.y === previous.y).toBe(true);
+      // A frame can straddle a corner; travel still stays within its speed budget.
+      expect(Math.abs(current.x - previous.x) + Math.abs(current.y - previous.y)).toBeLessThanOrEqual(4.800001);
+      expect(NavigationGrid.fromWorld(WORLD_DEFINITION).isWalkable(agent.tilePosition())).toBe(true);
       previous = current;
     }
     expect(staleArrival).not.toHaveBeenCalled();

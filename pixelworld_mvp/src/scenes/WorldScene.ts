@@ -1,3 +1,4 @@
+import { VillageAtmosphere } from '../rendering/VillageAtmosphere';
 import Phaser from 'phaser';
 import { type VillageLocale, villageCopy } from '../i18n/villageLocale';
 import { AgentRegistry } from '../agents/AgentRegistry';
@@ -47,6 +48,7 @@ export class WorldScene extends Phaser.Scene {
   private allocator = new StationAllocator(WORLD_DEFINITION.stations);
   private agents!: AgentRegistry;
   private depthSystem!: DepthOcclusionSystem;
+  private atmosphere: VillageAtmosphere | undefined;
   private animalSystem: AmbientAnimalSystem | undefined;
   private cutawaySystem: InteriorCutawaySystem | undefined;
   private statusOverlay!: StatusOverlaySystem;
@@ -81,6 +83,7 @@ export class WorldScene extends Phaser.Scene {
     this.cameras.main.setBounds(0, 0, WORLD_PIXELS.width, WORLD_PIXELS.height).setRoundPixels(true);
     const village = new VillageRenderer(this, ensureWorldAtlasTexture(this)).render(this.worldDefinition);
     this.renderedForegrounds.push(...village.foregrounds);
+    this.atmosphere = new VillageAtmosphere(this, this.worldDefinition);
     this.animalSystem = new AmbientAnimalSystem(this, this.worldDefinition.scenery.animals);
     this.agents = new AgentRegistry(this, this.navigationGrid, this.worldDefinition.spawn);
     this.attachCutawaySystem(new InteriorCutawaySystem(
@@ -110,13 +113,22 @@ export class WorldScene extends Phaser.Scene {
     emitWorldReady(this.game.events, this);
   }
 
+  private previousViewFrame=0;
   update(_time: number, delta: number): void {
+    // 3D rendering may run below Phaser's smoothing target; use elapsed time so hooks keep moving.
+    const elapsed=this.previousViewFrame?_time-this.previousViewFrame:delta;
+    this.previousViewFrame=_time;
+    const threeView=typeof document!=='undefined' && document.documentElement?.dataset?.view==='3d';
+    if(threeView) delta=Math.min(Math.max(elapsed,0),250);
     this.agents?.update(delta);
+    if(!threeView){
     this.animalSystem?.update(delta);
-    if (this.depthSystem && this.agents) this.depthSystem.update(this.agents.selected());
+    this.atmosphere?.update(delta);
+    if (this.depthSystem && this.agents?.all().length) this.depthSystem.update(this.agents.selected());
     this.statusOverlay?.update(this.agents.all());
+    }
     this.cutawaySystem?.update(this.agents.all().map((agent) => agent.interiorSnapshot()));
-    this.debugOverlay?.update();
+    if(!threeView)this.debugOverlay?.update();
   }
 
   dispatchWorldEvent(event: AgentWorldEvent, options: { spawnClone?: boolean } = {}): { ok: boolean; reason?: string } {
@@ -304,6 +316,10 @@ export class WorldScene extends Phaser.Scene {
     return selectedAgent || selectedBuilding;
   }
 
+  immersionContext() {
+    return { agents: this.agents.all(), cutaway: this.cutawaySystem, snapshot: this.lastLiveSnapshot };
+  }
+
   selectedAgentId(): string { return this.sceneReady ? (this.agents?.selected()?.agentId ?? '') : ''; }
   selectedAgentPresence(): AgentPresence {
     return this.sceneReady && this.agents?.selected()
@@ -366,6 +382,8 @@ export class WorldScene extends Phaser.Scene {
     this.focusController?.destroy();
     this.statusFocusUnregister = undefined;
     this.statusOverlay?.destroy();
+    this.atmosphere?.destroy();
+    this.atmosphere = undefined;
     this.animalSystem?.destroy();
     this.animalSystem = undefined;
     this.agents?.destroy();

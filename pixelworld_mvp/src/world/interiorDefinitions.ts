@@ -1,3 +1,4 @@
+import { authoredVillageInterior } from './villageInteriors';
 import type {
   ActivityIconKind,
   AgentAction,
@@ -418,6 +419,8 @@ export const INTERIOR_DEFINITIONS = {
 } satisfies Record<BuildingThemeId, InteriorDefinition>;
 
 export function interiorDefinitionForBuilding(building: WorldBuilding): InteriorDefinition {
+  const authored = authoredVillageInterior(building);
+  if (authored) return authored;
   const source = building.interiorProfile === 'compact'
     ? COMPACT_INTERIOR_DEFINITIONS[building.themeId]
     : INTERIOR_DEFINITIONS[building.themeId];

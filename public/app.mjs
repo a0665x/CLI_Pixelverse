@@ -1692,3 +1692,22 @@ async function initializeApp() {
 }
 
 initializeApp();
+
+// Render mode changes presentation only; iframe simulation and hook transport stay connected.
+{
+  const frame = document.getElementById('pixelworld-frame');
+  const buttons = [...document.querySelectorAll('[data-world-view]')];
+  let mode = '3d';
+  try { mode = localStorage.getItem('pixelverse:view') === '2d' ? '2d' : '3d'; } catch {}
+  const send = () => frame?.contentWindow?.postMessage({ type: 'pixelverse.view.set', mode }, location.origin);
+  buttons.forEach(button => button.addEventListener('click', () => { mode = button.dataset.worldView; send(); frame?.focus(); }));
+  window.addEventListener('message', event => {
+    if (event.origin !== location.origin || event.source !== frame?.contentWindow) return;
+    if (event.data?.type === 'pixelverse.view.ready') send();
+    if (event.data?.type === 'pixelverse.view.changed' && ['2d', '3d'].includes(event.data.mode)) {
+      mode = event.data.mode;
+      buttons.forEach(button => button.setAttribute('aria-pressed', String(button.dataset.worldView === mode)));
+      try { localStorage.setItem('pixelverse:view', mode); } catch {}
+    }
+  });
+}

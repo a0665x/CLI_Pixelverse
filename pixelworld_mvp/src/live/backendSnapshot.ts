@@ -135,8 +135,10 @@ export function worldEventKindForBackendAgent(agent: BackendAgentSnapshot): Worl
   const state = normalized(agent.state);
   if (state === 'heartbeat') return 'heartbeat';
   const pixelState = normalized(agent.pixel_state);
-  if (PIXEL_EVENT_KINDS[pixelState]) return PIXEL_EVENT_KINDS[pixelState]!;
   const room = normalized(agent.room_key);
+  // Generic CLI heartbeats can carry an idle pixel fallback while the process is working.
+  if (state === 'working' && (!pixelState || pixelState === 'idle') && ROOM_EVENT_KINDS[room]) return ROOM_EVENT_KINDS[room]!;
+  if (PIXEL_EVENT_KINDS[pixelState]) return PIXEL_EVENT_KINDS[pixelState]!;
   if (state === 'working' && ROOM_EVENT_KINDS[room]) return ROOM_EVENT_KINDS[room]!;
   return PIXEL_EVENT_KINDS[state] ?? ROOM_EVENT_KINDS[room] ?? 'unknown';
 }

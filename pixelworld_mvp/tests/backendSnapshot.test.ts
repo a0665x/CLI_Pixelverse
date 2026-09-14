@@ -19,6 +19,10 @@ const agent = (overrides: Partial<BackendAgentSnapshot> = {}): BackendAgentSnaps
 });
 
 describe('backend snapshot event adapter', () => {
+  it('keeps a working CLI in its hook room when heartbeat pixel state falls back to idle',()=>{
+    expect(worldEventKindForBackendAgent(agent({state:'working',pixel_state:'idle',room_key:'file_library'}))).toBe('read');
+    expect(worldEventKindForBackendAgent(agent({state:'idle',pixel_state:'idle',room_key:'file_library'}))).toBe('idle');
+  });
   it.each([
     ['initializing', '', '', 'session_start'],
     ['thinking', '', '', 'think'],

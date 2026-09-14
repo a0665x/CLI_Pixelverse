@@ -1,22 +1,32 @@
 # CLI_Pixelverse
 
-Local pixel-village observability for AI agent CLIs.
+Explore your AI agents at work in a living 3D rabbit village.
 
-CLI_Pixelverse turns real CLI lifecycle events into characters, rooms, ECG
+CLI_Pixelverse turns real CLI lifecycle and hook events into rabbit characters, rooms, ECG
 activity, project-aware roster cards, and inspectable event timelines. It runs
 locally with Docker and does not replace your original Agent executables.
 
 ![CLI_Pixelverse live Agent roster, ECG, village, and detail panel](./cli_pixelverse_demo_1.png)
 
-*Live Agent roster, activity ECG, project state, village routing, and recent events.*
+*Walk through the village as the inspector. Agent activity determines where rabbits work.*
 
 ![CLI_Pixelverse editable room interior](./cli_pixelverse_demo_2.png)
 
-*Open a building to inspect an Agent and arrange its room with licensed furniture.*
+*Enter furnished rooms, jump onto platforms, and inspect workstation activity.*
+
+![Proximity interaction with a rabbit Agent](./cli_pixelverse_demo_3.png)
+
+*Approach an Agent to view work, steer, or interrupt when a control connection is available. Hook-only Agents expose activity without claiming task-control support.*
+
+Screenshots use a labelled documentation demo in an isolated local instance.
+See [verification notes](docs/reference/release-verification.md).
 
 ## What You Get
 
-- A 2D pixel village where Agent state determines room movement.
+- A 3D village by default, with an optional 2D pixel-art view sharing Agent state.
+- An inspector rabbit with WASD movement, R gait cycling, Space jumps and L flashlight.
+- Furniture collision, tiered indoor climbing, hourly day/night cycles and meteor arrival.
+- Left-drag map panning, right-drag orbit, and cursor-centered wheel zoom.
 - Agent portraits, project names, live/idle/offline state, and animated ECG.
 - Clickable roster cards with the current task, process, hook, project path, and
   recent events.
@@ -30,15 +40,14 @@ locally with Docker and does not replace your original Agent executables.
 
 ## Quick Start
 
-### 1. Clone and prepare the licensed asset
+### 1. Clone
 
 Prerequisites:
 
 - Docker Engine or Docker Desktop with Docker Compose
-- Git
+- Git and Python 3 (host-side launcher and hook installation)
 - At least one supported Agent CLI installed on the host
-- The separately purchased
-  [Modern Office - Revamped](https://limezu.itch.io/modernoffice) ZIP
+- No asset purchase is required for the default 3D world.
 
 Clone Pixelverse from any location and derive its path from the current shell:
 
@@ -46,22 +55,6 @@ Clone Pixelverse from any location and derive its path from the current shell:
 git clone https://github.com/a0665x/CLI_Pixelverse.git
 cd CLI_Pixelverse
 export PIXELVERSE_ROOT="$(pwd -P)"
-mkdir -p private_assets/modern-office
-```
-
-Place the original archive here without renaming it:
-
-```text
-private_assets/modern-office/Modern_Office_Revamped_v1.zip
-```
-
-The paid archive and prepared sprites are intentionally Git-ignored and are not
-included in this repository. If the ZIP is stored elsewhere, provide it only
-for the start command:
-
-```bash
-PIXELVERSE_MODERN_OFFICE_ZIP=/absolute/path/to/Modern_Office_Revamped_v1.zip \
-  PIXELVERSE_AGENT_KIND=codex ./run.sh --start
 ```
 
 ### 2. Start Pixelverse
@@ -72,13 +65,13 @@ From the clone root:
 PIXELVERSE_AGENT_KIND=codex ./run.sh --start
 ```
 
-The first start validates the archive, prepares the furniture and alpha
-collision masks, builds the local image, and starts the service. Later starts
-reuse valid prepared assets even if the original ZIP is no longer present.
+The first start builds the local image and starts the service using bundled 3D
+assets. It does not require Blender, Node.js on the host, or a paid 2D archive.
+The first build needs Internet access to download Docker images and dependencies.
 
-`./run.sh start` and `./run.sh --start` are equivalent. Do not bypass this
-provisioning step with a direct `docker compose build`. The resulting local
-image contains licensed sprites, so do not publish it to a public registry.
+`./run.sh start` and `./run.sh --start` are equivalent. If an optional licensed
+archive is provided, the launcher prepares it before building. An image with
+those paid sprites must not be published to a public registry.
 
 Open [http://localhost:5660](http://localhost:5660), or inspect the resolved
 address and saved ports:
@@ -187,6 +180,40 @@ Install or refresh adapters explicitly:
 The wrappers live only under `.pixelverse-service/bin/`. They locate and
 execute the original CLI, and they still launch it with a warning if Pixelverse
 is temporarily unavailable.
+
+## Optional 2D Assets And 3D Attribution
+
+The full 2D office editor uses the separately purchased
+[Modern Office - Revamped](https://limezu.itch.io/modernoffice) pack. Put
+`Modern_Office_Revamped_v1.zip` in `private_assets/modern-office/`, or run:
+
+```bash
+PIXELVERSE_MODERN_OFFICE_ZIP=/absolute/path/to/Modern_Office_Revamped_v1.zip \
+  PIXELVERSE_AGENT_KIND=codex ./run.sh --start
+```
+
+See [asset preparation](docs/reference/office-assets.md). The ZIP and extracted
+sprites are excluded from Git. Without them, use the default 3D view; the 2D
+view displays an installation notice and has incomplete office artwork.
+
+Village geometry, furniture and procedural surface textures are authored in
+this project. The Honey rabbit was generated with **Meshy**, then rigged and
+animated here. Its **CC BY 4.0** attribution must be retained; it is not a
+copyright-free asset. See [3D asset credits](pixelworld_mvp/public/assets/honey-meshy/ATTRIBUTION.md).
+
+## Controls
+
+| Input | Action |
+| --- | --- |
+| WASD | Move and face the direction relative to the camera |
+| R | Walk → hop → bound |
+| Space | Jump; land before jumping again; climb supported furniture |
+| L | Equip / put away the flashlight |
+| Left drag / right drag | Pan / orbit the overview |
+| Wheel | Zoom; in inspector mode keep the character framed |
+| Approach an Agent | Reveal interaction choices without taking movement focus |
+| Enter, then ← / → and Enter | Focus the choices, choose, confirm |
+| Esc | Close interaction or leave an interior |
 
 ## Ports And Remote Access
 
@@ -297,6 +324,9 @@ The main components are:
 - `pixelworld_mvp/`: Phaser village, interiors, movement, and editor
 - `tests/`: Python and Node release contracts
 
+The [RPG village presentation guide](./docs/reference/village-art-direction.md)
+explains the room presets, palette, furniture geometry, and movement contracts.
+
 ## Assets And Licenses
 
 The paid Modern Office pack is not redistributable through this repository.
@@ -310,3 +340,12 @@ Bundled redistributable assets retain their license and attribution files under
 [Pixelworld attribution](./pixelworld_mvp/ATTRIBUTION.md), and
 [asset sources](./pixelworld_mvp/public/assets/ASSET_SOURCES.md) before
 redistributing a modified build.
+
+### 身歷其境
+
+點村莊左上角「身歷其境」，以召喚空降方式進場，使用 WASD 移動並進出房屋。
+靠近 Agent 自動出現「查看工作／插入指令／打斷並改派」，支援滑鼠、左右鍵與 Enter。
+Hook-only Agent 可查看工作；真正的 steer / interrupt 必須先綁定本機 Codex App Server。
+設定與驗證範圍見 [身歷其境說明](docs/reference/immersion-mode.md)。
+
+2D / 3D views, the shared hourly day/night cycle, zero-cost art sources and controls: [3D village](docs/reference/3d-village.md).

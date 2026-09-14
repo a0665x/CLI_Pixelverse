@@ -7,6 +7,7 @@ import {
   SERENE_VILLAGE_ASSETS,
   installVillageCollisionMasks,
   preloadVillageAssets,
+  licensedOfficeAvailable,
 } from '../src/rendering/assetManifest';
 import { clearFurnitureAlphaMasksForTests, furnitureAlphaMask } from '../src/rendering/furnitureAlphaMasks';
 import { MODERN_OFFICE_ASSETS } from '../src/rendering/modernOfficeManifest';
@@ -67,10 +68,11 @@ describe('curated village asset manifest', () => {
     };
 
     preloadVillageAssets(scene as never);
-    expect(json).toHaveBeenCalledWith(
+    if (licensedOfficeAvailable()) expect(json).toHaveBeenCalledWith(
       MODERN_OFFICE_COLLISION_MASKS.key,
       MODERN_OFFICE_COLLISION_MASKS.path,
     );
+    else expect(json).not.toHaveBeenCalled();
     installVillageCollisionMasks(scene as never);
     expect(furnitureAlphaMask(1)?.width).toBe(32);
     expect(furnitureAlphaMask(339)?.height).toBe(48);

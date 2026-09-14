@@ -51,7 +51,7 @@ def test_beginner_quick_start_explains_when_the_character_appears() -> None:
     quick_start = readme[
         readme.index("## Quick Start") : readme.index("## Agent Integration Coverage")
     ]
-    assert "Modern_Office_Revamped_v1.zip" in quick_start
+    assert "No asset purchase is required" in quick_start
     assert "./run.sh --start" in quick_start
     assert '"$PIXELVERSE_ROOT/hook_bridge.sh" --agent codex --launch' in quick_start
     assert "real CLI session" in quick_start

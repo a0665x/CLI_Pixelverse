@@ -9,9 +9,11 @@ from __future__ import annotations
 
 import asyncio
 import json
+from urllib.parse import urlsplit
+from agent_bridges.codex_control import CONTROL, ControlError
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -165,6 +167,35 @@ def update_exposure(payload: ExposurePayload) -> dict[str, Any]:
 @app.get("/api/agents", tags=["world"])
 def get_agents() -> dict[str, Any]:
     return {"agents": WORLD.public_snapshot()["agents"]}
+
+
+class AgentControlPayload(BaseModel):
+    action: str = Field(..., pattern="^(steer|interrupt)$")
+    text: str = Field(..., min_length=1, max_length=12000)
+    expected_turn_id: str = Field(..., min_length=1, max_length=200)
+    request_id: str = Field(..., min_length=8, max_length=100)
+
+
+@app.get("/api/agent-control/{agent}", tags=["control"])
+async def agent_control_capability(agent: str):
+    try:
+        return await CONTROL.capability(agent)
+    except ControlError as exc:
+        raise HTTPException(exc.status, str(exc)) from exc
+
+
+@app.post("/api/agent-control/{agent}", tags=["control"])
+async def agent_control(agent: str, payload: AgentControlPayload, request: Request):
+    # This first control integration is deliberately restricted to the local UI.
+    origin = urlsplit(request.headers.get('origin', ''))
+    host = urlsplit(str(request.url))
+    if (origin.scheme not in {'http', 'https'} or origin.netloc != host.netloc
+            or host.hostname not in {'localhost', '127.0.0.1', '::1'}):
+        raise HTTPException(403, 'Agent 控制僅接受本機同來源介面的操作。')
+    try:
+        return await CONTROL.execute(agent, payload.action, payload.text.strip(), payload.expected_turn_id, payload.request_id)
+    except ControlError as exc:
+        raise HTTPException(exc.status, str(exc)) from exc
 
 
 @app.get("/api/inbox", tags=["world"])

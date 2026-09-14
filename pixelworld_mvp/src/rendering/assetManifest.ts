@@ -1,3 +1,6 @@
+import { installRiverArt } from './riverArt';
+import { completeVillageBed } from './villageBed';
+import { VILLAGE_FURNITURE_CATALOG } from './villageFurnitureCatalog';
 import type Phaser from 'phaser';
 import type { Facing } from '../world/types';
 import { MODERN_OFFICE_ASSETS } from './modernOfficeManifest';
@@ -146,7 +149,7 @@ export function agentFrameIndex(skin: AgentSkin, facing: Facing, row: number = s
 }
 
 export function preloadVillageAssets(scene: Phaser.Scene): void {
-  scene.load.json(MODERN_OFFICE_COLLISION_MASKS.key, MODERN_OFFICE_COLLISION_MASKS.path);
+  if (licensedOfficeAvailable()) scene.load.json(MODERN_OFFICE_COLLISION_MASKS.key, MODERN_OFFICE_COLLISION_MASKS.path);
   [
     WORLD_ATLAS,
     ...Object.values(SERENE_VILLAGE_ASSETS),
@@ -155,25 +158,40 @@ export function preloadVillageAssets(scene: Phaser.Scene): void {
     MODERN_OFFICE_ASSETS.atlas,
     MODERN_OFFICE_ASSETS.roomBuilder,
   ].forEach((asset) => {
-    scene.load.spritesheet(asset.key, asset.path, { frameWidth: asset.frameWidth, frameHeight: asset.frameHeight });
+    if (!asset.path.includes('/private/') || licensedOfficeAvailable()) scene.load.spritesheet(asset.key, asset.path, { frameWidth: asset.frameWidth, frameHeight: asset.frameHeight });
   });
   [
     ...Object.values(ANIMAL_ASSETS),
     ...Object.values(HOUSE_ASSETS),
     ...Object.values(MODERN_OFFICE_ASSETS.furniture),
     ...MODERN_OFFICE_CATALOG,
+    ...VILLAGE_FURNITURE_CATALOG,
   ].forEach((asset) => {
-    scene.load.image(asset.key, asset.path);
+    if (!asset.path.includes('/private/') || licensedOfficeAvailable()) scene.load.image(asset.key, asset.path);
   });
 }
 
 export function installVillageCollisionMasks(scene: Phaser.Scene): void {
+  if (!licensedOfficeAvailable()) {
+    // Public builds use rectangular geometry, without copying licensed sprite pixels.
+    installFurnitureAlphaMasks({schemaVersion:1,alphaThreshold:1,assets:new Map(MODERN_OFFICE_CATALOG.map(asset=>{
+      const b=asset.opaqueBounds;
+      return [asset.id,{width:asset.sourceWidth??32,height:asset.sourceHeight??48,
+        runs:Array.from({length:b.height},(_,y)=>[b.y+y,b.x,b.x+b.width] as const)}];
+    }))});
+    completeVillageBed(scene);installRiverArt(scene);return;
+  }
   const rawManifest = scene.cache.json.get(MODERN_OFFICE_COLLISION_MASKS.key) as unknown;
   const manifest = parseFurnitureAlphaMaskManifest(rawManifest, {
     requiredAssetIds: MODERN_OFFICE_CATALOG.map(({ id }) => id),
   });
   installFurnitureAlphaMasks(manifest);
+  completeVillageBed(scene);
+  installRiverArt(scene);
 }
+
+declare const __LICENSED_OFFICE__:boolean;
+export function licensedOfficeAvailable():boolean {return typeof __LICENSED_OFFICE__==='undefined'||__LICENSED_OFFICE__;}
 
 export const WORLD_ATLAS_FALLBACK_KEY = 'puny-world-missing';
 

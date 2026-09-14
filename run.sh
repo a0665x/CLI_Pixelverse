@@ -212,6 +212,10 @@ compose() {
 }
 
 provision_modern_office_assets() {
+  if [[ -z "${PIXELVERSE_MODERN_OFFICE_ZIP:-}" && ! -f "$ROOT/private_assets/modern-office/Modern_Office_Revamped_v1.zip" && ! -f "$ROOT/pixelworld_mvp/public/assets/private/modern-office-v1.2/.prepared-assets.json" ]]; then
+    echo "Starting with bundled 3D assets. Optional licensed 2D office pack: see docs/reference/office-assets.md."
+    return 0
+  fi
   python3 "$ROOT/scripts/provision_modern_office_assets.py"
 }
 

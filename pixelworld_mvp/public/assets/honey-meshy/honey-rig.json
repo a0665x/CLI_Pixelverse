@@ -1,0 +1,208 @@
+{
+  "joints": {
+    "body": {
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "parent": null
+    },
+    "pelvis": {
+      "position": [
+        0,
+        0.34,
+        0
+      ],
+      "parent": "body"
+    },
+    "spine": {
+      "position": [
+        0,
+        0.59,
+        0
+      ],
+      "parent": "pelvis"
+    },
+    "chest": {
+      "position": [
+        0,
+        0.75,
+        0
+      ],
+      "parent": "spine"
+    },
+    "neck": {
+      "position": [
+        0,
+        0.87,
+        0.02
+      ],
+      "parent": "chest"
+    },
+    "head": {
+      "position": [
+        0,
+        1.19,
+        0.04
+      ],
+      "parent": "neck"
+    },
+    "tail": {
+      "position": [
+        0,
+        0.23,
+        -0.3
+      ],
+      "parent": "pelvis"
+    },
+    "earL": {
+      "position": [
+        -0.35,
+        1.48,
+        -0.04
+      ],
+      "parent": "head"
+    },
+    "earMidL": {
+      "position": [
+        -0.52,
+        1.08,
+        -0.03
+      ],
+      "parent": "earL"
+    },
+    "earTipL": {
+      "position": [
+        -0.59,
+        0.66,
+        -0.01
+      ],
+      "parent": "earMidL"
+    },
+    "armL": {
+      "position": [
+        -0.26,
+        0.78,
+        0.14
+      ],
+      "parent": "chest"
+    },
+    "forearmL": {
+      "position": [
+        -0.32,
+        0.67,
+        0.28
+      ],
+      "parent": "armL"
+    },
+    "handL": {
+      "position": [
+        -0.24,
+        0.64,
+        0.39
+      ],
+      "parent": "forearmL"
+    },
+    "legL": {
+      "position": [
+        -0.16,
+        0.35,
+        0.02
+      ],
+      "parent": "pelvis"
+    },
+    "shinL": {
+      "position": [
+        -0.19,
+        0.2,
+        0.12
+      ],
+      "parent": "legL"
+    },
+    "footL": {
+      "position": [
+        -0.18,
+        0.07,
+        0.18
+      ],
+      "parent": "shinL"
+    },
+    "earR": {
+      "position": [
+        0.35,
+        1.48,
+        -0.04
+      ],
+      "parent": "head"
+    },
+    "earMidR": {
+      "position": [
+        0.52,
+        1.08,
+        -0.03
+      ],
+      "parent": "earR"
+    },
+    "earTipR": {
+      "position": [
+        0.59,
+        0.66,
+        -0.01
+      ],
+      "parent": "earMidR"
+    },
+    "armR": {
+      "position": [
+        0.26,
+        0.78,
+        0.14
+      ],
+      "parent": "chest"
+    },
+    "forearmR": {
+      "position": [
+        0.32,
+        0.67,
+        0.28
+      ],
+      "parent": "armR"
+    },
+    "handR": {
+      "position": [
+        0.24,
+        0.64,
+        0.39
+      ],
+      "parent": "forearmR"
+    },
+    "legR": {
+      "position": [
+        0.16,
+        0.35,
+        0.02
+      ],
+      "parent": "pelvis"
+    },
+    "shinR": {
+      "position": [
+        0.19,
+        0.2,
+        0.12
+      ],
+      "parent": "legR"
+    },
+    "footR": {
+      "position": [
+        0.18,
+        0.07,
+        0.18
+      ],
+      "parent": "shinR"
+    }
+  },
+  "height": 1.6778230667114258,
+  "vertices": 33399,
+  "triangles": 52000,
+  "method": "Region-painted skin weights on original Meshy mesh; articulated spine, shoulder, elbow, hip, knee and three ear segments"
+}

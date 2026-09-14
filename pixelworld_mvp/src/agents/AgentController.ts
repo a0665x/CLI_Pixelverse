@@ -1,3 +1,4 @@
+import { AgentGroundEffects } from '../rendering/AgentGroundEffects';
 import Phaser from 'phaser';
 import { TILE_SIZE } from '../game/constants';
 import { findPathVia } from '../navigation/aStar';
@@ -14,6 +15,7 @@ import type { InteriorAgentSnapshot } from '../rendering/interiorAssignment';
 export class AgentController {
   readonly sprite: Phaser.GameObjects.Image;
   readonly actions: ActionController;
+  private readonly groundEffects: AgentGroundEffects;
   readonly role: 'main' | 'subagent';
   currentEvent?: AgentWorldEvent;
   currentRoute?: BehaviorRoute;
@@ -46,6 +48,7 @@ export class AgentController {
       this.frameFor(this.facing, false),
     ).setOrigin(0.5, 0.82).setScale(this.skin.renderScale ?? 1);
     this.actions = new ActionController(scene, this.sprite);
+    this.groundEffects = new AgentGroundEffects(scene);
   }
 
   tilePosition(): GridPoint {
@@ -115,7 +118,7 @@ export class AgentController {
     }
     this.follower.setPath(path, { preservePosition });
     this.preservePositionOnNextDispatch = false;
-    this.walkClockMs = 0;
+    if (!preservePosition) this.walkClockMs = 0;
     this.moving = preservePosition || path.length > 1;
     if (!this.moving) this.arrive();
     return true;
@@ -152,6 +155,7 @@ export class AgentController {
       if (snapshot.arrived) this.arrive();
     }
     this.actions.update();
+    this.groundEffects.update(this.sprite, deltaMs, this.moving);
   }
 
   destroy(): void {
@@ -162,6 +166,7 @@ export class AgentController {
     this.preservePositionOnNextDispatch = false;
     this.walkClockMs = 0;
     this.clearRenderOffset();
+    this.groundEffects.destroy();
     this.actions.destroy();
     this.sprite.destroy();
   }

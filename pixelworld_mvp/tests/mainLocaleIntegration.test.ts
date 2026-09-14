@@ -10,6 +10,8 @@ vi.mock('../src/game/createGame', () => ({
     return {};
   }),
 }));
+vi.mock('../src/three/mountWorldViews', () => ({ mountWorldViews: vi.fn() }));
+vi.mock('../src/player/ImmersionController', () => ({ ImmersionController: class {} }));
 vi.mock('../src/ui/TestPanel', () => ({ mountTestPanel: vi.fn() }));
 
 describe('main locale integration', () => {

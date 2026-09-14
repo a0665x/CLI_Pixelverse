@@ -394,8 +394,9 @@ def test_run_and_docker_wire_preparation_before_the_local_image_build() -> None:
     assert provision_call in run_script
     assert run_script.index(provision_call) < run_script.index("stop_legacy_local_processes", run_script.index("start_service()"))
     assert "PIXELVERSE_MODERN_OFFICE_ASSET_DIR_HOST" not in compose
-    assert "collision-masks.json" in dockerfile
-    assert "Modern_Office_Singles_339.png" in dockerfile
+    assert "Starting with bundled 3D assets" in run_script
+    assert "RUN test -f public/assets/private" not in dockerfile
+    assert "RUN npm run build" in dockerfile
 
 
 def test_assets_status_reports_ready_without_requiring_the_zip(tmp_path: Path) -> None:
@@ -446,18 +447,16 @@ def test_readme_documents_portable_licensed_asset_quickstart() -> None:
 
     for required in (
         "https://limezu.itch.io/modernoffice",
-        "mkdir -p private_assets/modern-office",
-        "private_assets/modern-office/Modern_Office_Revamped_v1.zip",
+        "private_assets/modern-office/",
         "PIXELVERSE_MODERN_OFFICE_ZIP=/absolute/path/to/Modern_Office_Revamped_v1.zip",
         "./run.sh assets-status",
         "./run.sh start",
         "./run.sh restart",
-        "docker compose build",
         "public registry",
     ):
         assert required in readme
     assert ("/home/" + "a0665x") not in readme
-    assert readme.index("https://limezu.itch.io/modernoffice") < readme.index("./run.sh start")
+    assert "No asset purchase is required" in readme
 
 
 def test_git_tracks_no_proprietary_modern_office_assets() -> None:

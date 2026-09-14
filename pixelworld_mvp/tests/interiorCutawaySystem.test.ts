@@ -1,3 +1,4 @@
+import { INTERIOR_DEFINITIONS } from '../src/world/interiorDefinitions';
 import { describe, expect, it, vi } from 'vitest';
 import {
   InteriorCutawaySystem,
@@ -367,7 +368,7 @@ describe('InteriorCutawaySystem', () => {
     cutaway.open('rest-cabin');
     capture.handlers().toggleEdit();
     const sofa = fake.objects.find(({ texture, interactive, destroyed }) => (
-      texture === 'modern-office-v1.2-single-200' && interactive && !destroyed
+      texture === 'village-furniture-sofa' && interactive && !destroyed
     ))!;
 
     sofa.emit('pointerdown', viewportPointerAt(sofa.x, sofa.y, 2));
@@ -1475,8 +1476,9 @@ describe('InteriorCutawaySystem', () => {
         applyRoomViewport(): void;
         renderFurniture(interior: InteriorDefinition, layout: ReturnType<typeof cutawayLayoutForViewport>): void;
       };
-      internal.selectedFurnitureId = 'rest-blocked-board';
-      internal.selectedFurnitureIds.add('rest-blocked-board');
+      const board = internal.activeInterior.furniture.find(item => item.kind === 'planning-board')!;
+      internal.selectedFurnitureId = board.id;
+      internal.selectedFurnitureIds.add(board.id);
       internal.renderFurniture(internal.activeInterior, internal.currentLayout);
       const beforeSelection = internal.overlayModel().selectionBounds!;
       const beforeLabel = labelLayer.children.find((label) => label.dataset.expanded === 'true');
@@ -1861,7 +1863,7 @@ describe('InteriorCutawaySystem', () => {
     cutaway.open('rest-cabin');
     const furnitureKeys = (fake.scene.add.image.mock.calls as unknown[][]).map((call) => call[2]);
     expect(furnitureKeys.length).toBeGreaterThan(0);
-    expect(furnitureKeys.every((key) => String(key).startsWith('modern-office-v1.2-'))).toBe(true);
+    expect(furnitureKeys.every((key) => /^(modern-office|village-furniture)/.test(String(key)))).toBe(true);
     cutaway.open('rest-cabin');
     cutaway.update([idleInside]);
 
@@ -1983,11 +1985,11 @@ describe('InteriorCutawaySystem', () => {
     expect(cutaway.isOpen()).toBe(false);
   });
 
-  it('renders furniture from the licensed Modern Office family', () => {
+  it('renders bundled village furniture alongside licensed office tools', () => {
     const fake = fakeScene();
     const cutaway = new InteriorCutawaySystem(fake.scene as never, WORLD_DEFINITION, () => ({ width: 1_280, height: 720 }));
     cutaway.open('rest-cabin');
-    const sprites = fake.objects.filter(({ texture }) => texture.startsWith('modern-office'));
+    const sprites = fake.objects.filter(({ texture }) => /^(modern-office|village-furniture)/.test(texture));
     expect(sprites.length).toBeGreaterThan(5);
     expect(sprites.every(({ destroyed }) => !destroyed)).toBe(true);
   });
@@ -3011,6 +3013,7 @@ describe('InteriorCutawaySystem', () => {
       selectedFurnitureId?: string;
       undoStore: { reset(layout: InteriorDefinition['furniture']): void; canUndo: boolean };
     };
+    internal.activeInterior.furniture = structuredClone(INTERIOR_DEFINITIONS['research-library'].furniture);
     const bench = internal.activeInterior.furniture.filter(({ prefabInstanceId }) => (
       prefabInstanceId?.includes('bench-four-1')
     ));

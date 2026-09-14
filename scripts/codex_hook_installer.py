@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import json
+import copy
 import os
+import shlex
 import shutil
 import sys
 import tempfile
@@ -38,6 +40,28 @@ class InstallResult:
 
 def _command(hook_script: Path) -> str:
     return f'/usr/bin/env python3 "{hook_script.resolve()}"'
+
+
+def _same_hook_command(command: str, hook_script: Path) -> bool:
+    """Recognize our legacy system-Python launcher without executing shell text."""
+    try:
+        parts = shlex.split(command)
+    except ValueError:
+        return False
+    script = str(hook_script.resolve())
+    return parts in (
+        ['/usr/bin/env', 'python3', script],
+        ['/usr/bin/python3', script],
+    )
+
+
+def _comparable_group(group: dict[str, Any], hook_script: Path) -> dict[str, Any]:
+    normalized = copy.deepcopy(group)
+    for hook in normalized.get('hooks', []):
+        if isinstance(hook, dict) and isinstance(hook.get('command'), str):
+            if _same_hook_command(hook['command'], hook_script):
+                hook['command'] = _command(hook_script)
+    return normalized
 
 
 def _event_group(event: str, command: str) -> dict[str, Any]:
@@ -85,9 +109,8 @@ def merge_codex_hooks(
     hook_script: Path,
 ) -> tuple[dict[str, Any], bool]:
     merged = dict(existing or {})
-    expected = _command(hook_script)
     for command in _commands(merged):
-        if "codex_pixelverse_hook.py" in command and command != expected:
+        if "codex_pixelverse_hook.py" in command and not _same_hook_command(command, hook_script):
             raise HookConflict(f"conflicting Pixelverse hook command: {command}")
 
     current_hooks = merged.get("hooks", {})
@@ -98,7 +121,7 @@ def merge_codex_hooks(
     for event, desired_groups in desired["hooks"].items():
         groups = hooks.setdefault(event, [])
         for group in desired_groups:
-            if group not in groups:
+            if not any(_comparable_group(current, hook_script) == group for current in groups):
                 groups.append(group)
                 changed = True
     merged["hooks"] = hooks

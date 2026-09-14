@@ -66,10 +66,10 @@ describe('four-direction A*', () => {
     const grid = NavigationGrid.fromWorld(WORLD_DEFINITION);
 
     expect(grid.costAt({ x: 1, y: 1 })).toBe(5);
-    expect(grid.costAt({ x: 15, y: 6 })).toBe(1);
+    expect(grid.costAt(WORLD_DEFINITION.buildings[0]!.entrance.outside)).toBe(1);
     expect(grid.costAt({ x: 17, y: 18 })).toBe(5);
-    expect(grid.costAt({ x: 3, y: 5 })).toBe(5);
-    expect(grid.costAt({ x: 1, y: 2 })).toBeUndefined();
+    expect(grid.costAt(WORLD_DEFINITION.buildings[0]!.entrance.threshold)).toBe(5);
+    expect(grid.costAt(WORLD_DEFINITION.buildings[0]!.bounds)).toBeUndefined();
     expect(grid.costAt({ x: -1, y: 1 })).toBeUndefined();
   });
 
@@ -96,12 +96,12 @@ describe('four-direction A*', () => {
   });
 
   it('concatenates routes through each waypoint without duplicate junctions', () => {
-    const path = findPathVia(grid, { x: 16, y: 13 }, [{ x: 17, y: 13 }, { x: 18, y: 13 }]);
+    const path = findPathVia(grid, { x: 19, y: 14 }, [{ x: 20, y: 14 }, { x: 21, y: 14 }]);
 
-    expect(path).toEqual([{ x: 16, y: 13 }, { x: 17, y: 13 }, { x: 18, y: 13 }]);
+    expect(path).toEqual([{ x: 19, y: 14 }, { x: 20, y: 14 }, { x: 21, y: 14 }]);
   });
 
   it('returns null when any waypoint segment is impossible', () => {
-    expect(findPathVia(grid, { x: 16, y: 13 }, [{ x: 2, y: 3 }])).toBeNull();
+    expect(findPathVia(grid, { x: 19, y: 14 }, [{ x: 2, y: 3 }])).toBeNull();
   });
 });

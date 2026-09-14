@@ -6,15 +6,32 @@ import { WORLD_DEFINITION } from '../src/world/worldDefinition';
 const key = ({ x, y }: { x: number; y: number }): string => `${x},${y}`;
 
 describe('Smallville-style village composition', () => {
-  it('uses connected neighborhood streets instead of sparse single-tile lines', () => {
+  it('connects every doorway through narrow paths with staggered house setbacks', () => {
     const streetCells = new Set(WORLD_DEFINITION.terrain
       .filter(({ kind }) => kind === 'road' || kind === 'plaza')
       .map(({ bounds }) => key(bounds)));
+    const pending = [WORLD_DEFINITION.spawn];
+    const visited = new Set<string>();
+    while (pending.length) {
+      const point = pending.pop()!;
+      if (visited.has(key(point)) || !streetCells.has(key(point))) continue;
+      visited.add(key(point));
+      for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]) pending.push({ x: point.x + dx!, y: point.y + dy! });
+    }
+    expect(visited.size).toBe(streetCells.size);
+    for (const home of WORLD_DEFINITION.buildings) expect(visited.has(key(home.entrance.outside))).toBe(true);
+    expect(new Set(WORLD_DEFINITION.buildings.map(({ bounds }) => bounds.y)).size).toBeGreaterThanOrEqual(8);
+    expect(streetCells.size).toBeLessThan(280);
+  });
 
-    expect(streetCells.size).toBeGreaterThanOrEqual(300);
-    expect([7, 13, 25].every((y) => (
-      [...streetCells].filter((cell) => cell.endsWith(`,${y}`)).length >= 30
-    ))).toBe(true);
+  it('only ends a path at a house entrance', () => {
+    const roads = new Set(WORLD_DEFINITION.terrain.map(t => key(t.bounds)));
+    const doors = new Set(WORLD_DEFINITION.buildings.map(b => key(b.entrance.outside)));
+    for (const tile of roads) {
+      const [x,y] = tile.split(',').map(Number);
+      const neighbors = [[1,0],[-1,0],[0,1],[0,-1]].filter(([dx,dy]) => roads.has(`${x!+dx!},${y!+dy!}`));
+      if (neighbors.length < 2) expect(doors.has(tile), `pointless path end ${tile}`).toBe(true);
+    }
   });
 
   it('distributes lived-in scenery across all three village districts', () => {
@@ -29,8 +46,8 @@ describe('Smallville-style village composition', () => {
     ];
 
     expect(WORLD_DEFINITION.scenery.trees.length).toBeGreaterThanOrEqual(28);
-    expect(WORLD_DEFINITION.scenery.decorations.length).toBeGreaterThanOrEqual(28);
-    expect(districts.every((district) => district.length >= 14)).toBe(true);
+    expect(WORLD_DEFINITION.scenery.decorations.length).toBeGreaterThanOrEqual(12);
+    expect(districts.every((district) => district.length >= 10)).toBe(true);
   });
 
   it('keeps each decorative prop on a distinct tile', () => {

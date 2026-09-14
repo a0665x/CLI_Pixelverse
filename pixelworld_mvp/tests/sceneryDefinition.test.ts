@@ -32,7 +32,7 @@ describe('village scenery definition', () => {
     expect(decorations.length).toBeGreaterThanOrEqual(12);
     expect(kinds).toEqual(new Set(['campfire', 'bench', 'signboard', 'crate', 'rock', 'flowers']));
     for (const { point } of decorations) {
-      expect(terrainPoints.has(`${point.x},${point.y}`)).toBe(false);
+      expect(terrainPoints.has(`${point.x},${point.y}`), `${point.x},${point.y}`).toBe(false);
       expect(entrancePoints.has(`${point.x},${point.y}`)).toBe(false);
     }
   });
@@ -76,7 +76,7 @@ describe('village scenery definition', () => {
     const blocked = NavigationGrid.fromWorld(WORLD_DEFINITION).blockedPoints();
 
     for (const point of blocked) {
-      expect(terrainPoints.has(`${point.x},${point.y}`)).toBe(false);
+      expect(terrainPoints.has(`${point.x},${point.y}`), `${point.x},${point.y}`).toBe(false);
       expect(entrances.has(`${point.x},${point.y}`)).toBe(false);
     }
   });

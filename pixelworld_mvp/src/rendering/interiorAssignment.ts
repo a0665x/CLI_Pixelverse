@@ -1,3 +1,4 @@
+import { createRoomMemo } from './interiorRuntimeCache';
 import type {
   ActivityIconKind,
   AgentAction,
@@ -80,7 +81,7 @@ const stableEntrancePoints = (interior: InteriorDefinition, entrance: GridPoint)
   return [...unique.values()].filter((point) => reachable.has(pointKey(point)));
 };
 
-export function assignInteriorOccupants(
+function computeInteriorOccupants(
   interior: InteriorDefinition,
   snapshots: readonly InteriorAgentSnapshot[],
   buildingId: string = interior.id,
@@ -128,4 +129,12 @@ export function assignInteriorOccupants(
       });
   }
   return ordered.map(({ agentId }) => assignments.get(agentId)!);
+}
+
+const assignmentMemo=createRoomMemo<InteriorOccupantAssignment[]>();
+export function assignInteriorOccupants(interior:InteriorDefinition,snapshots:readonly InteriorAgentSnapshot[],buildingId:string=interior.id):InteriorOccupantAssignment[]{
+ const key=JSON.stringify([buildingId,snapshots.map(s=>[s.agentId,s.role,s.buildingId,s.action]).sort((a,b)=>String(a[0]).localeCompare(String(b[0])))]);
+ const result=assignmentMemo(interior,key,()=>computeInteriorOccupants(interior,snapshots,buildingId));
+ const current=new Map(snapshots.map(s=>[s.agentId,s]));
+ return result.map(a=>({...a,...current.get(a.agentId)!,point:{...a.point}}));
 }

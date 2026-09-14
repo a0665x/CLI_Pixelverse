@@ -1,7 +1,9 @@
+import { VILLAGE_FURNITURE_CATALOG } from './villageFurnitureCatalog';
 import type { FurnitureSemantic } from '../world/types';
 
 export type ModernOfficeCategory = 'surfaces' | 'seating-plants' | 'screens-electronics' | 'storage-partitions' | 'workstations';
 export interface ModernOfficeCatalogItem {
+  sourceWidth?: number; sourceHeight?: number;
   id: number; key: string; path: string; category: ModernOfficeCategory; label: string;
   opaqueBounds: { x: number; y: number; width: number; height: number };
   footprint: { width: number; height: number }; visualOffset: { x: number; y: number };
@@ -349,7 +351,7 @@ export const MODERN_OFFICE_CATALOG: readonly ModernOfficeCatalogItem[] = [
   { id: 339, key: "modern-office-v1.2-single-339", path: `${ROOT}/Modern_Office_Singles_339.png`, category: "workstations", label: "Office 339", opaqueBounds: { x: 1, y: 23, width: 31, height: 25 }, footprint: { width: 2, height: 2 }, visualOffset: { x: 0.5, y: 11.5 } },
 ];
 export const catalogCategories = (): ModernOfficeCategory[] => ["surfaces", "seating-plants", "screens-electronics", "storage-partitions", "workstations"];
-export const catalogItem = (id: number): ModernOfficeCatalogItem | undefined => MODERN_OFFICE_CATALOG.find((item) => item.id === id);
+export const catalogItem = (id: number): ModernOfficeCatalogItem | undefined => MODERN_OFFICE_CATALOG.find((item) => item.id === id) ?? VILLAGE_FURNITURE_CATALOG.find(item => item.id === id);
 
 const assetRange = (start: number, end: number): number[] => (
   Array.from({ length: end - start + 1 }, (_, index) => start + index)
@@ -389,7 +391,7 @@ const SEMANTIC_BY_ASSET_ID = new Map<number, FurnitureSemantic>(
 );
 
 export const catalogFurnitureSemantic = (assetId: number): FurnitureSemantic | undefined => (
-  SEMANTIC_BY_ASSET_ID.get(assetId)
+  ({ 1001: 'rest', 1002: 'search', 1004: 'rest', 1006: 'rest', 1007: 'work' } as Record<number, FurnitureSemantic>)[assetId] ?? SEMANTIC_BY_ASSET_ID.get(assetId)
 );
 
 export type ModernOfficeCatalogRole = 'floor' | 'surface' | 'support' | 'free';

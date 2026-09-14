@@ -1,3 +1,6 @@
+import { installVillagePaths, PATH_TEXTURE } from './villagePaths';
+import { riverBankMask, riverTexture, bridgeTexture } from './riverArt';
+import { buildingPalette, grassTint } from './villageArtDirection';
 import Phaser from 'phaser';
 import { TILE_SIZE } from '../game/constants';
 import type { GridPoint, TerrainArea, WorldBuilding, WorldDefinition } from '../world/types';
@@ -151,6 +154,7 @@ function buildingCommands(building: WorldBuilding): {
           frame: frameAt(localX, localY),
           buildingId: building.id,
           buildingRole: 'roof',
+          tint: buildingPalette(building.id).roof,
           foregroundKind: 'roof',
           foregroundGroup: roofGroup,
         },
@@ -217,7 +221,7 @@ export function buildVillageRenderPlan(world: WorldDefinition): VillageRenderPla
   const commands: AtlasTileCommand[] = [];
   for (let y = 0; y < world.height; y += 1) {
     for (let x = 0; x < world.width; x += 1) {
-      commands.push(tileCommand('grass', 'grassPlain', { x, y }, -1_000));
+      commands.push(tileCommand('grass', 'grassPlain', { x, y }, -1_000, { tint: grassTint(x, y) }));
     }
   }
 
@@ -227,14 +231,17 @@ export function buildVillageRenderPlan(world: WorldDefinition): VillageRenderPla
   const uniqueRoadTiles = [...new Map(roadTiles.map((point) => [`${point.x},${point.y}`, point])).values()];
   const roadSet = new Set(uniqueRoadTiles.map(gridKey));
   const plazaSet = new Set(world.terrain.filter(({ kind }) => kind === 'plaza').flatMap(pointsInArea).map(gridKey));
-  uniqueRoadTiles.forEach((point) => commands.push(tileCommand('roads', roadRegion(point, roadSet, plazaSet), point, -900)));
+  // Include adjacent transparent frames so broad bends are never clipped at cell edges.
+  const paintedCells = new Map(uniqueRoadTiles.flatMap(p => [-1,0,1].flatMap(dx => [-1,0,1].map(dy => ({x:p.x+dx,y:p.y+dy}))))
+    .filter(p => p.x>=0 && p.y>=0 && p.x<world.width && p.y<world.height).map(p => [gridKey(p),p]));
+  paintedCells.forEach((point) => commands.push(tileCommand('roads', roadRegion(point, roadSet, plazaSet), point, -900, { textureKey: PATH_TEXTURE, frame: point.y * world.width + point.x })));
 
   const riverPoints = [...new Map(world.scenery.river
     .flatMap((bounds) => pointsInArea({ kind: 'grass', cost: 1, bounds }))
     .map((point) => [gridKey(point), point])).values()];
   const riverSet = new Set(riverPoints.map(gridKey));
   riverPoints.forEach((point) => commands.push(tileCommand(
-    'waterAndDecorations', waterRegion(point, riverSet), point, -800, { sceneryRole: 'river' },
+    'waterAndDecorations', waterRegion(point, riverSet), point, -800, { sceneryRole: 'river', textureKey: riverTexture(riverBankMask(point, riverSet)), frame: 0 },
   )));
   for (const pasture of world.scenery.pastures) {
     for (const point of pointsInArea({ kind: 'grass', cost: 2, bounds: pasture })) {
@@ -259,7 +266,7 @@ export function buildVillageRenderPlan(world: WorldDefinition): VillageRenderPla
     for (const point of pointsInArea({ kind: 'road', cost: 1, bounds: bridge })) {
       commands.push(tileCommand(
         'waterAndDecorations', point.x === bridge.x ? 'timberBridgeLeft' : 'timberBridgeRight',
-        point, -760, { sceneryRole: 'bridge' },
+        point, -760, { sceneryRole: 'bridge', textureKey: bridgeTexture(point.x === bridge.x ? 'left' : point.x === bridge.x + bridge.width - 1 ? 'right' : 'middle'), frame: 0 },
       ));
     }
   }
@@ -330,13 +337,6 @@ export function buildVillageRenderPlan(world: WorldDefinition): VillageRenderPla
   }
   commands.push(...buildingTiles);
 
-  commands.push(
-    tileCommand('trunksAndWorkZones', 'bench', { x: 13, y: 12 }, 12 * TILE_SIZE + 12, { sceneryRole: 'prop' }),
-    tileCommand('trunksAndWorkZones', 'bench', { x: 16, y: 12 }, 12 * TILE_SIZE + 12, { sceneryRole: 'prop' }),
-    tileCommand('trunksAndWorkZones', 'supplyCrate', { x: 24, y: 7 }, 7 * TILE_SIZE + 12, { sceneryRole: 'prop' }),
-    tileCommand('trunksAndWorkZones', 'supplyCrate', { x: 37, y: 17 }, 17 * TILE_SIZE + 12, { sceneryRole: 'prop' }),
-    tileCommand('waterAndDecorations', 'rock', { x: 21, y: 18 }, -770, { sceneryRole: 'prop' }),
-  );
 
   return {
     commands,
@@ -363,6 +363,7 @@ export class VillageRenderer {
 
   render(world: WorldDefinition): RenderedVillage {
     const plan = buildVillageRenderPlan(world);
+    installVillagePaths(this.scene, world, plan.roadTiles);
     const groupedImages = new Map<string, Phaser.GameObjects.Image[]>();
     for (const command of plan.commands) {
       const textureKey = command.textureKey ?? this.atlasTextureKey;

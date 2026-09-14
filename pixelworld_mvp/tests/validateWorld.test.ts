@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ROUTE_DESTINATIONS } from '../src/events/behaviorRouter';
+import * as interiorModule from '../src/world/interiorDefinitions';
 import { INTERIOR_DEFINITIONS } from '../src/world/interiorDefinitions';
 import { WORLD_DEFINITION } from '../src/world/worldDefinition';
 import { validateWorld } from '../src/world/validateWorld';
@@ -85,8 +86,10 @@ describe('WORLD_DEFINITION', () => {
     station.interactionSlots[0]!.action = 'read';
     station.interactionSlots[1]!.action = 'signal';
     const authored = INTERIOR_DEFINITIONS['maker-workshop'];
-    const interior = vi.spyOn(INTERIOR_DEFINITIONS, 'maker-workshop', 'get')
-      .mockReturnValue({ ...authored, furniture: [] });
+    const resolve = interiorModule.interiorDefinitionForBuilding;
+    const interior = vi.spyOn(interiorModule, 'interiorDefinitionForBuilding')
+      .mockImplementation(building => building.id === 'maker-workshop'
+        ? { ...authored, furniture: [] } : resolve(building));
     try {
       expect(validateWorld(world).filter((error) => error === 'missing furniture semantic: maker-workshop@search'))
         .toHaveLength(1);

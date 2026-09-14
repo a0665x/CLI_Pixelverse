@@ -38,3 +38,18 @@ describe('PathFollower', () => {
     expect(Math.max(...snapshots.map((snapshot) => snapshot.position.x))).toBeLessThan(40);
   });
 });
+
+describe('continuous RPG walking', () => {
+  it('covers the same distance around corners at different frame rates', () => {
+    const path = [{ x: 1, y: 1 }, { x: 2, y: 1 }, { x: 2, y: 2 }, { x: 3, y: 2 }];
+    const slow = new PathFollower(16, 32);
+    const fast = new PathFollower(16, 32);
+    slow.setPath(path); fast.setPath(path);
+    const oneFrame = slow.update(1250);
+    let manyFrames = fast.update(0);
+    for (let i = 0; i < 125; i++) manyFrames = fast.update(10);
+    expect(manyFrames.position.x).toBeCloseTo(oneFrame.position.x);
+    expect(manyFrames.position.y).toBeCloseTo(oneFrame.position.y);
+    expect(oneFrame.position).toEqual({ x: 48, y: 40 });
+  });
+});

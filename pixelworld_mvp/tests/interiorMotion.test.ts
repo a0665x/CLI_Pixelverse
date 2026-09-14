@@ -261,3 +261,16 @@ describe('interior motion timeline', () => {
     }
   });
 });
+
+it('faces the next path segment during ingress instead of facing back toward the door', () => {
+  const interior = { ...INTERIOR_DEFINITIONS['maker-workshop'], furniture: [] };
+  const assignment = { ...toolSnapshot(0), point: { x: 2, y: 2 }, facing: 'up' as const, icon: 'tool' as const, seated: false };
+  for (let elapsed = 100; elapsed < 5000; elapsed += 100) {
+    const motion = interiorMotionAt(toolSnapshot(elapsed), interior, assignment, elapsed);
+    if (motion.phase !== 'ingress' || !motion.walking) continue;
+    const ahead = pointAtPathDistance(motion.path, elapsed / 1000 * INTERIOR_CELLS_PER_SECOND + .05);
+    const dx = ahead.x - motion.point.x, dy = ahead.y - motion.point.y;
+    const expected = Math.abs(dx) > Math.abs(dy) ? (dx < 0 ? 'left' : 'right') : (dy < 0 ? 'up' : 'down');
+    expect(motion.facing).toBe(expected);
+  }
+});

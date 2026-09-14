@@ -43,3 +43,15 @@ describe('WorldScene live roster reconciliation', () => {
     expect(remove).toHaveBeenCalledWith('reviewer');
   });
 });
+
+it('keeps rendering an empty live village without selecting a missing agent', () => {
+  const selected = vi.fn(() => { throw new Error('AgentRegistry has no agents'); });
+  const status = vi.fn();
+  const scene = Object.assign(Object.create(WorldScene.prototype), {
+    agents: { update: vi.fn(), all: () => [], selected },
+    depthSystem: { update: vi.fn() }, statusOverlay: { update: status },
+  }) as WorldScene;
+  expect(() => scene.update(0, 16)).not.toThrow();
+  expect(selected).not.toHaveBeenCalled();
+  expect(status).toHaveBeenCalledWith([]);
+});

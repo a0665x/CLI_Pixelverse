@@ -1,3 +1,4 @@
+import { VILLAGE_FURNITURE_CATALOG } from '../src/rendering/villageFurnitureCatalog';
 import { describe, expect, it, vi } from 'vitest';
 import {
   AGENT_ATLAS,
@@ -13,6 +14,7 @@ import {
   agentSkinFor,
   ensureWorldAtlasTexture,
   preloadVillageAssets,
+  licensedOfficeAvailable,
 } from '../src/rendering/assetManifest';
 import { MODERN_OFFICE_ASSETS } from '../src/rendering/modernOfficeManifest';
 import { MODERN_OFFICE_CATALOG } from '../src/rendering/modernOfficeCatalog';
@@ -40,30 +42,33 @@ describe('village asset manifest', () => {
 
     preloadVillageAssets({ load: { spritesheet, image, json } } as never);
 
-    expect(json).toHaveBeenCalledWith(
+    if (licensedOfficeAvailable()) expect(json).toHaveBeenCalledWith(
       MODERN_OFFICE_COLLISION_MASKS.key,
       MODERN_OFFICE_COLLISION_MASKS.path,
     );
+    else expect(json).not.toHaveBeenCalled();
 
     expect([...spritesheet.mock.calls, ...image.mock.calls].map((call) => String(call[1])))
       .not.toEqual(expect.arrayContaining([
-        expect.stringMatching(/modern-interiors-free\/(?:Interiors|Room_Builder|sofa|bed|bookcase|table|board|computer|chair)/),
+        expect.stringMatching(/modern-interiors-free\/(?:Interiors|Room_Builder)/),
       ]));
 
-    expect(spritesheet).toHaveBeenCalledTimes(12);
+    expect(spritesheet).toHaveBeenCalledTimes(licensedOfficeAvailable()?12:10);
     expect(spritesheet).toHaveBeenCalledWith('puny-world', '/assets/puny-world/punyworld-overworld-tileset.png', { frameWidth: 16, frameHeight: 16 });
     expect(spritesheet).toHaveBeenCalledWith('ninja-blue', '/assets/ninja-adventure/ninja-blue.png', { frameWidth: 16, frameHeight: 16 });
     expect(spritesheet).toHaveBeenCalledWith('samurai-blue', '/assets/ninja-adventure/samurai-blue.png', { frameWidth: 16, frameHeight: 16 });
     expect(spritesheet).toHaveBeenCalledWith('samurai-green', '/assets/ninja-adventure/samurai-green.png', { frameWidth: 16, frameHeight: 16 });
     expect(spritesheet).toHaveBeenCalledWith(SERENE_VILLAGE_ASSETS.atlas.key, SERENE_VILLAGE_ASSETS.atlas.path, { frameWidth: 16, frameHeight: 16 });
     expect(spritesheet).toHaveBeenCalledWith(MODERN_INTERIOR_ASSETS.agent.key, MODERN_INTERIOR_ASSETS.agent.path, { frameWidth: 16, frameHeight: 32 });
-    expect(spritesheet).toHaveBeenCalledWith(MODERN_OFFICE_ASSETS.roomBuilder.key, MODERN_OFFICE_ASSETS.roomBuilder.path, { frameWidth: 16, frameHeight: 16 });
+    if(licensedOfficeAvailable()) expect(spritesheet).toHaveBeenCalledWith(MODERN_OFFICE_ASSETS.roomBuilder.key, MODERN_OFFICE_ASSETS.roomBuilder.path, { frameWidth: 16, frameHeight: 16 });
     expect(image).toHaveBeenCalledTimes(
       Object.keys(ANIMAL_ASSETS).length + Object.keys(HOUSE_ASSETS).length
-        + Object.keys(MODERN_OFFICE_ASSETS.furniture).length + MODERN_OFFICE_CATALOG.length,
+        + (licensedOfficeAvailable()?Object.keys(MODERN_OFFICE_ASSETS.furniture).length + MODERN_OFFICE_CATALOG.length:0) + VILLAGE_FURNITURE_CATALOG.length,
     );
+    for (const asset of VILLAGE_FURNITURE_CATALOG) expect(image).toHaveBeenCalledWith(asset.key, asset.path);
     expect(image).toHaveBeenCalledWith('animal-cow', '/assets/kenney/tiny-farm/cow.png');
-    expect(image).toHaveBeenCalledWith('modern-office-v1.2-computer', '/assets/private/modern-office-v1.2/Modern_Office_Singles_225.png');
+    if(licensedOfficeAvailable()) expect(image).toHaveBeenCalledWith('modern-office-v1.2-computer', '/assets/private/modern-office-v1.2/Modern_Office_Singles_225.png');
+    if(!licensedOfficeAvailable()) expect([...image.mock.calls,...spritesheet.mock.calls].some(call=>String(call[1]).includes('/private/'))).toBe(false);
     expect(image).toHaveBeenCalledWith('tiny-town-wall-brown-door', '/assets/kenney/tiny-town/wall-brown-door.png');
   });
 

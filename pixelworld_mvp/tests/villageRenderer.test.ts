@@ -124,24 +124,23 @@ describe('Puny village renderer contracts', () => {
 
   });
 
-  it('uses a clean horizontal avenue at the Maker entrance instead of a broken cap cell', () => {
+  it('connects the Maker doorway to the continuous path texture', () => {
     const plan = buildVillageRenderPlan(WORLD_DEFINITION);
     const maker = WORLD_DEFINITION.buildings.find(({ id }) => id === 'maker-workshop')!;
     const outside = plan.commands.find(({ layer, x, y }) => (
       layer === 'roads' && x === maker.entrance.outside.x * TILE_SIZE && y === maker.entrance.outside.y * TILE_SIZE
     ));
 
-    expect(outside?.region).toBe('dirtHorizontal');
+    expect(outside?.textureKey).toBe('village-continuous-paths');
+    expect(outside?.frame).toBe(maker.entrance.outside.y * WORLD_DEFINITION.width + maker.entrance.outside.x);
   });
 
   it('uses dedicated timber bridge deck tiles instead of house-wall fragments', () => {
     const bridges = buildVillageRenderPlan(WORLD_DEFINITION).commands.filter(({ sceneryRole }) => sceneryRole === 'bridge');
-    expect(bridges).toHaveLength(6);
-    expect(bridges.map(({ region }) => region)).toEqual([
-      'timberBridgeLeft', 'timberBridgeRight',
-      'timberBridgeLeft', 'timberBridgeRight',
-      'timberBridgeLeft', 'timberBridgeRight',
-    ]);
+    expect(bridges).toHaveLength(9);
+    expect(bridges.map(({ textureKey }) => textureKey)).toEqual(Array.from({ length: 3 }, () => [
+      'village-footbridge-left', 'village-footbridge-middle', 'village-footbridge-right',
+    ]).flat());
   });
 
   it('keeps a lively mixed herd in the village pasture', () => {
@@ -262,15 +261,15 @@ describe('Puny village renderer contracts', () => {
     expect([...new Set(roads.map(({ region }) => region))]).toEqual(expect.arrayContaining([
       'dirtHorizontal', 'dirtVertical', 'dirtJunction', 'dirtPlaza',
     ]));
-    expect(roads.find(({ x, y }) => x === 14 * TILE_SIZE && y === 6 * TILE_SIZE)?.region).toBe('dirtHorizontal');
+    expect(roads.find(({ x, y }) => x === 14 * TILE_SIZE && y === 9 * TILE_SIZE)?.region).toBe('dirtHorizontal');
     expect(roads.find(({ x, y }) => x === 16 * TILE_SIZE && y === 18 * TILE_SIZE)?.region).toBe('dirtVertical');
-    expect(roads.find(({ x, y }) => x === 38 * TILE_SIZE && y === 14 * TILE_SIZE)?.region).toBe('dirtJunction');
+    expect(roads.find(({ x, y }) => x === 16 * TILE_SIZE && y === 9 * TILE_SIZE)?.region).toBe('dirtJunction');
   });
 
   it('renders winding water, three bridges, crops, pasture, and farm details from world data', () => {
     const plan = buildVillageRenderPlan(WORLD_DEFINITION);
     const roles = plan.commands.map(({ sceneryRole }) => sceneryRole);
-    expect(roles.filter((role) => role === 'bridge')).toHaveLength(6);
+    expect(roles.filter((role) => role === 'bridge')).toHaveLength(9);
     expect(roles).toContain('river');
     expect(roles).toContain('crop');
     expect(roles).toContain('pasture');
@@ -289,8 +288,8 @@ describe('Puny village renderer contracts', () => {
     expect(new Set(commandsAt('grass').map(({ depth }) => depth))).toEqual(new Set([-1_000]));
     expect(new Set(commandsAt('roads').map(({ depth }) => depth))).toEqual(new Set([-900]));
     expect(new Set(research.filter(({ buildingRole }) => buildingRole === 'wall').map(({ depth }) => depth))).toEqual(new Set([-700]));
-    expect(new Set(research.filter(({ buildingRole }) => buildingRole === 'roof').map(({ depth }) => depth))).toEqual(new Set([80]));
-    expect(research.find(({ buildingRole }) => buildingRole === 'door-frame')?.depth).toBe(96);
+    expect(new Set(research.filter(({ buildingRole }) => buildingRole === 'roof').map(({ depth }) => depth))).toEqual(new Set([96]));
+    expect(research.find(({ buildingRole }) => buildingRole === 'door-frame')?.depth).toBe(112);
     expect(research.find(({ buildingRole }) => buildingRole === 'signboard')).toBeUndefined();
   });
 
