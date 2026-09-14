@@ -122,7 +122,16 @@ const CATALOG: Record<VillageLocale, readonly string[]> = {
     "← → 선택 · Enter 확인"
   ]
 };
+const EXTRA:Record<string,Record<string,string>>={
+ '繼續對話':{'en-US':'Continue conversation','ja-JP':'会話を続ける','ko-KR':'대화 계속'},
+ '送出對話':{'en-US':'Send message','ja-JP':'メッセージを送信','ko-KR':'메시지 보내기'},
+ '等待下一輪對話':{'en-US':'Waiting for your next message','ja-JP':'次のメッセージを待っています','ko-KR':'다음 메시지 대기 중'},
+ '正在執行':{'en-US':'Working','ja-JP':'実行中','ko-KR':'작업 중'},
+ '對話已送出':{'en-US':'Message accepted','ja-JP':'メッセージを受け付けました','ko-KR':'메시지가 접수되었습니다'},
+ '請以可對話模式啟動 Codex':{'en-US':'Launch Codex with village conversation enabled','ja-JP':'村の会話モードで Codex を起動してください','ko-KR':'마을 대화 모드로 Codex를 시작하세요'}
+};
 export function immersionText(source: string, locale = typeof document === 'undefined' ? 'en-US' : document.documentElement.lang): string {
+ if(EXTRA[source])return locale==='zh-TW'?source:EXTRA[source]![locale]||EXTRA[source]!['en-US']!;
  const index = SOURCE.indexOf(source as typeof SOURCE[number]);
  return index < 0 ? source : (CATALOG[locale as VillageLocale] || CATALOG['en-US'])[index]!;
 }

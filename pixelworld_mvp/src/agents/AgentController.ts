@@ -29,6 +29,10 @@ export class AgentController {
   private preservePositionOnNextDispatch = false;
   private presenceState: AgentPresence = { kind: 'outside' };
   private destinationBuilding: AgentTravelPlan['destinationBuilding'];
+  private conversationHeld = false;
+  private pendingDispatch: (()=>void) | undefined;
+  setConversationHeld(held:boolean):void {this.conversationHeld=held;if(!held){const pending=this.pendingDispatch;this.pendingDispatch=undefined;pending?.();}}
+  isConversationHeld():boolean {return this.conversationHeld;}
   private walkClockMs = 0;
   private interiorElapsedMs = 0;
 
@@ -93,6 +97,7 @@ export class AgentController {
     onArrive?: () => void,
     travelPlan: AgentTravelPlan = { waypoints: [assignment.point], stayInside: false },
   ): boolean {
+    if(this.conversationHeld){this.pendingDispatch=()=>{this.dispatch(event,assignment,route,onArrive,travelPlan);};return true;}
     if (travelPlan.stayInside) return this.dispatchInside(event, assignment, route, onArrive, travelPlan);
 
     const departurePresence = this.presenceState;
@@ -127,6 +132,7 @@ export class AgentController {
   heartbeat(): void { this.actions.pulse(); }
 
   cancel(): void {
+    this.pendingDispatch=undefined;
     this.actions.stop();
     this.clearRenderOffset();
     const frozen = { x: this.sprite.x, y: this.sprite.y };
@@ -143,6 +149,7 @@ export class AgentController {
   }
 
   update(deltaMs: number): void {
+    if(this.conversationHeld)return;
     if (this.presenceState.kind === 'inside') this.interiorElapsedMs += Math.max(0, deltaMs);
     if (this.moving) {
       this.walkClockMs += Math.max(0, deltaMs);
@@ -159,6 +166,7 @@ export class AgentController {
   }
 
   destroy(): void {
+    this.pendingDispatch=undefined;
     this.arriveCallback = undefined;
     this.moving = false;
     this.currentPath = [];

@@ -46,6 +46,8 @@ class HeartbeatPayload(BaseModel):
     instance_name: str | None = Field(None, description="Optional user-facing instance label.")
     project_path: str | None = Field(None, max_length=4096, description="Canonical Agent project path.")
     project_name: str | None = Field(None, max_length=255, description="Short Agent project directory name.")
+    session_id: str | None = Field(None, max_length=255)
+    conversation: list[dict] | None = Field(None, max_length=60)
     parent_agent_id: str | None = Field(None, max_length=255, description="Explicit parent Agent identity for a spawned subagent.")
 
 
@@ -93,6 +95,8 @@ class GenericAgentEvent(BaseModel):
     instance_name: str | None = Field(None, description="Optional user-facing instance label.")
     project_path: str | None = Field(None, max_length=4096, description="Canonical Agent project path.")
     project_name: str | None = Field(None, max_length=255, description="Short Agent project directory name.")
+    session_id: str | None = Field(None, max_length=255)
+    conversation: list[dict] | None = Field(None, max_length=60)
     parent_agent_id: str | None = Field(None, max_length=255, description="Explicit parent Agent identity for a spawned subagent.")
 
 
@@ -172,9 +176,9 @@ def get_agents() -> dict[str, Any]:
 
 
 class AgentControlPayload(BaseModel):
-    action: str = Field(..., pattern="^(steer|interrupt)$")
+    action: str = Field(..., pattern="^(steer|interrupt|start)$")
     text: str = Field(..., min_length=1, max_length=12000)
-    expected_turn_id: str = Field(..., min_length=1, max_length=200)
+    expected_turn_id: str | None = Field(None, max_length=200)
     request_id: str = Field(..., min_length=8, max_length=100)
 
 
@@ -182,6 +186,18 @@ class AgentControlPayload(BaseModel):
 async def agent_control_capability(agent: str):
     try:
         return await CONTROL.capability(agent)
+    except ControlError as exc:
+        raise HTTPException(exc.status, str(exc)) from exc
+
+
+@app.get("/api/agent-session/{agent}", tags=["control"])
+async def agent_session(agent: str):
+    try:
+        session = await CONTROL.session(agent)
+        if not session['available']:
+            record = WORLD.agents.get(agent)
+            session.update(messages=getattr(record, 'conversation', []) if record else [], threadId=getattr(record, 'session_id', None) if record else None)
+        return session
     except ControlError as exc:
         raise HTTPException(exc.status, str(exc)) from exc
 
@@ -195,7 +211,7 @@ async def agent_control(agent: str, payload: AgentControlPayload, request: Reque
             or host.hostname not in {'localhost', '127.0.0.1', '::1'}):
         raise HTTPException(403, 'Agent 控制僅接受本機同來源介面的操作。')
     try:
-        return await CONTROL.execute(agent, payload.action, payload.text.strip(), payload.expected_turn_id, payload.request_id)
+        return await CONTROL.execute(agent, payload.action, payload.text.strip(), payload.expected_turn_id or '', payload.request_id)
     except ControlError as exc:
         raise HTTPException(exc.status, str(exc)) from exc
 
@@ -264,6 +280,8 @@ def generic_event(payload: GenericAgentEvent) -> dict[str, Any]:
             "project_path": data.get("project_path"),
             "project_name": data.get("project_name"),
             "parent_agent_id": data.get("parent_agent_id"),
+            "session_id": data.get("session_id"),
+            "conversation": data.get("conversation"),
         }
     )
     data["target_room"] = target_room

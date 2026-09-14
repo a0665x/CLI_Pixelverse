@@ -119,7 +119,7 @@ export class WorldScene extends Phaser.Scene {
     const elapsed=this.previousViewFrame?_time-this.previousViewFrame:delta;
     this.previousViewFrame=_time;
     const threeView=typeof document!=='undefined' && document.documentElement?.dataset?.view==='3d';
-    if(threeView) delta=Math.min(Math.max(elapsed,0),250);
+    if(threeView) delta=Math.min(Math.max(elapsed,0),100);
     this.agents?.update(delta);
     if(!threeView){
     this.animalSystem?.update(delta);
@@ -280,6 +280,7 @@ export class WorldScene extends Phaser.Scene {
     if (!this.sceneReady) return false;
     const selected = this.agents?.select(agentId) ?? false;
     if (selected) {
+      if(typeof window!=='undefined')window.dispatchEvent(new CustomEvent('pixelverse:track-agent',{detail:{id:agentId}}));
       this.notifyRoster();
       if (announce) this.notifyCommandSelection({ kind: 'agent', id: agentId });
     }

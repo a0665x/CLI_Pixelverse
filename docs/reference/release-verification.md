@@ -38,3 +38,26 @@ hooks does not grant control over an arbitrary terminal or desktop session.
   Enter world, and matching 2D/3D identity labels verified on isolated port 5681.
 - Backend tests verify child project inheritance and role/parent retention when
   subsequent heartbeats omit those fields. Existing unlinked history is not inferred.
+
+## Conversation and wayfinding follow-up
+
+- Fixed the two independently paced outdoor movement systems: 3D now renders the
+  authoritative planned outdoor position instead of following it at 1.8 cells/s
+  while the shared controller arrives at 3 cells/s. Building entry follows that
+  controller's doorway arrival. Long 3D update deltas are capped at 100 ms.
+- Encounter hold regression verifies a retargeted Agent stays put until released.
+- Roster selection draws a traversable navigation route; house labels show rabbit
+  counts and resident names, with the full list available in the guide/hover text.
+- A real isolated Codex session accepted a village `start` request and returned
+  `PIXELVERSE_CONTROL_OK`; `/api/agent-session` retrieved both public messages and
+  the idle state. Initial real testing caught `thread not found`: `thread/read`
+  does not load a persisted session, so control now resumes before submitting.
+- Existing terminal sessions were not interrupted or taken over during verification.
+  The new launcher uses a shared runtime mailbox and a local App Server; it keeps
+  the original Codex approval configuration.
+
+Final follow-up checks: 834 frontend tests, 243 Python tests (one optional skip),
+240 outer UI tests. Browser submission initially exposed a null idle-turn ID
+validation bug; the API regression now covers that exact payload. After the fix,
+the 3D form received Message accepted, displayed VILLAGE_UI_OK in the same session
+history, and the rabbit kept identical coordinates before/after submission.

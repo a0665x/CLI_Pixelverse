@@ -37,6 +37,8 @@ export class Village3D {
   private scene=new T.Scene();
   private camera=new T.PerspectiveCamera(44,1,.1,250);
   private renderer:T.WebGLRenderer;
+  private guideLine=new T.Line(new T.BufferGeometry(),new T.LineBasicMaterial({color:0xffdf83,depthTest:false,transparent:true,opacity:.9}));
+  private guideLineAt=0;
   private composer:EffectComposer;
   private edgeSmoothing=new ShaderPass(FXAAShader);
   private controls:OrbitControls;
@@ -162,7 +164,8 @@ export class Village3D {
     this.scene.background=new T.Color(0xa7bec1);this.scene.fog=new T.FogExp2(0xa7bec1,.009);
     this.sun.position.set(12,30,14);this.sun.castShadow=true;this.sun.shadow.mapSize.set(software?1024:2048,software?1024:2048);
     Object.assign(this.sun.shadow.camera,{left:-32,right:32,top:24,bottom:-24,near:1,far:100});this.sun.shadow.bias=-.0004;this.sun.shadow.normalBias=.035;
-    this.sun.target.position.set(24,0,14);this.scene.add(this.sun,this.sun.target,this.sky,this.overview,this.player,this.torch,this.torch.target,this.indoorLight,this.fx);
+    this.sun.target.position.set(24,0,14);this.guideLine.renderOrder=900;this.scene.add(this.guideLine);
+    this.scene.add(this.sun,this.sun.target,this.sky,this.overview,this.player,this.torch,this.torch.target,this.indoorLight,this.fx);
     this.torch.castShadow=true;this.torch.shadow.mapSize.set(512,512);this.torch.shadow.bias=-.0005;this.player.visible=false;
     this.buildVillage();
     this.beam.rotation.x=-Math.PI/2;this.beam.position.set(.14,.27,3.5);this.player.add(this.beam);
@@ -273,7 +276,13 @@ for(let i=0;i<16;i++)box(staticWorld,bridge.x-.5+(i+.5)*bridge.width/16,.25,z,br
       const indoor=surface?.agents.find(a=>a.id===actor.agentId);g.visible=surface?Boolean(indoor):actor.presence().kind==='outside';if(!g.visible)continue;
       const desired={x:indoor?.motion?.point.x??indoor?.x??actor.sprite.x/16-.5,y:indoor?.motion?.point.y??indoor?.y??actor.sprite.y/16-.5};
       if(g.userData.navigation!==nav){g.userData.navigation=nav;g.userData.walker=new ActorWalker(nav,desired);}
-      const movement=(g.userData.walker as ActorWalker).step(desired,dt),{x,y:z}=movement.point,moved=movement.moving;
+      // Outdoor position is authoritative: a second slower planner used to lag behind
+      // the door arrival and disappear mid-path when the 2D controller entered.
+      const dx=desired.x-g.position.x,dz=desired.y-g.position.z;
+      const movement=actor.isConversationHeld()?{point:{x:g.position.x,y:g.position.z},moving:false,heading:g.rotation.y}
+        :surface?(g.userData.walker as ActorWalker).step(desired,dt)
+        :{point:desired,moving:Math.hypot(dx,dz)>.001,heading:Math.atan2(dx,dz)};
+      const {x,y:z}=movement.point,moved=movement.moving;
       g.position.set(x,surface?.02:this.groundHeight(x,z),z);
       const working=Boolean(indoor)&&!moved&&!['rest','offline','queue'].includes(actor.interiorSnapshot().action);
       g.userData.activity=moved?'walking':actor.interiorSnapshot().action;
@@ -283,6 +292,17 @@ for(let i=0;i<16;i++)box(staticWorld,bridge.x-.5+(i+.5)*bridge.width/16,.25,z,br
       // Stand at a collision-safe workstation approach. Seating needs an explicit seat contact,
       // not merely a furniture assignment (which previously raised actors into empty space).
       animateHuman(g,now/1000,moved,working,false,dt);
+    }
+    const guide=guideFor(this.world),tracked=guide?.trackedAgent();
+    this.guideLine.visible=Boolean(tracked)&&!surface;
+    if(this.guideLine.visible&&now-this.guideLineAt>500){
+      this.guideLineAt=now;
+      const building=this.world.worldDefinition.buildings.find(b=>b.id===guide?.trackedBuilding());
+      const targetActor=context.agents.find(a=>a.agentId===tracked);
+      const end=building?.entrance.outside??(targetActor?{x:targetActor.sprite.x/16-.5,y:targetActor.sprite.y/16-.5}:undefined);
+      const start=state.active?state.point:this.world.worldDefinition.spawn;
+      const points=end?nav.route(start,end):[];
+      this.guideLine.geometry.dispose();this.guideLine.geometry=new T.BufferGeometry().setFromPoints(points.map(q=>new T.Vector3(q.x,this.groundHeight(q.x,q.y)+.12,q.y)));
     }
     this.immersion.setVisibleActors([...this.actors].filter(([,g])=>g.visible).map(([id,g])=>({id,x:g.position.x,y:g.position.z})));
     if(now-this.actorTelemetryAt>1000){this.actorTelemetryAt=now;this.root.dataset.actors=JSON.stringify(context.agents.map(a=>{const g=this.actors.get(a.agentId);return {id:a.agentId,presence:a.presence(),visible:g?.visible,position:g?.position.toArray(),activity:g?.userData.activity};}));}
@@ -309,7 +329,7 @@ for(let i=0;i<16;i++)box(staticWorld,bridge.x-.5+(i+.5)*bridge.width/16,.25,z,br
     const label=(id:string,text:string,point:T.Vector3,className:string,click?:()=>void)=>{active.add(id);let node=this.labelNodes.get(id);if(!node){node=document.createElement('button');(node as HTMLButtonElement).type='button';node.className=className;node.dataset.entity=id;this.labels.append(node);this.labelNodes.set(id,node);}if(node.textContent!==text)node.textContent=text;node.onclick=click||null;const p=point.project(this.camera);node.hidden=p.z>1||p.z<-1||Math.abs(p.x)>1||Math.abs(p.y)>1;node.style.left=`${(p.x*.5+.5)*100}%`;node.style.top=`${(-p.y*.5+.5)*100}%`;};
     if(this.immersion.viewState().active&&this.root.dataset.occluded==='true')label('inspector-position','◆ '+inspectionCopy().role,this.player.position.clone().add(new T.Vector3(0,.9,0)),'inspector-position-marker');
     const guide=guideFor(this.world);
-    if(!this.room)for(const b of this.world.worldDefinition.buildings){const info=guide?.buildingInfo(b.id);if(this.immersion.viewState().active&&!info?.tracked)continue;label(b.id,info?.label||b.label,new T.Vector3(b.bounds.x+2,4.7,b.bounds.y+1.5),'house-3d-label',()=>this.world.immersionContext().cutaway?.open(b.id));const node=this.labelNodes.get(b.id)!;if(node.title!==(info?.title||''))node.title=info?.title||'';node.classList.toggle('guide-tracked',Boolean(info?.tracked));}
+    if(!this.room)for(const b of this.world.worldDefinition.buildings){const info=guide?.buildingInfo(b.id);if(this.immersion.viewState().active&&!info?.tracked)continue;label(b.id,info?info.label+(info.residents?'\n'+info.residents:''):b.label,new T.Vector3(b.bounds.x+2,4.7,b.bounds.y+1.5),'house-3d-label',()=>this.world.immersionContext().cutaway?.open(b.id));const node=this.labelNodes.get(b.id)!;if(node.title!==(info?.title||''))node.title=info?.title||'';node.classList.toggle('guide-tracked',Boolean(info?.tracked));}
     for(const [id,g] of this.actors)if(g.visible){const record=this.world.immersionContext().snapshot?.agents.find(a=>a.agent===id);label(`agent:${id}`,guide?.agentLabel(id)||record?.name||id,g.position.clone().setY(1.25),'agent-3d-label');this.labelNodes.get(`agent:${id}`)!.title=guide?.agentTitle(id)||'';this.labelNodes.get(`agent:${id}`)!.dataset.activity=g.userData.activity;this.labelNodes.get(`agent:${id}`)!.dataset.model=g.userData.variant;}
     const nearest=this.nearbyScreen(),immersed=this.immersion.viewState().active;
     if(!this.inspectedScreen)for(const screen of this.workstations?.screens??[]){

@@ -13,6 +13,8 @@ Options:
   --target DIR   Agent project directory. Default: current directory.
   --agent KIND   codex, gemini-cli, claude-code, antigravity, ollama,
                  hermes, or generic. Default: codex.
+  --resume UUID  Resume a saved Codex session with --control --launch.
+  --control      Share one Codex session between the terminal and village conversation UI.
   --launch       Start the observable Agent CLI after binding.
   -h, --help     Show this help.
 
@@ -32,6 +34,8 @@ usage_error() {
 target="$PWD"
 agent="codex"
 launch=0
+control=0
+resume_session=""
 
 while (($#)); do
   case "$1" in
@@ -44,6 +48,15 @@ while (($#)); do
       [[ $# -ge 2 ]] || usage_error "--agent requires a value"
       agent="$2"
       shift 2
+      ;;
+    --resume)
+      [[ $# -ge 2 ]] || usage_error "--resume requires a session UUID"
+      resume_session="$2"
+      shift 2
+      ;;
+    --control)
+      control=1
+      shift
       ;;
     --launch)
       launch=1
@@ -111,6 +124,21 @@ activation_file="$ROOT/.pixelverse-service/activate.sh"
 if [[ -f "$activation_file" ]]; then
   # Load the service ports written by run.sh while preserving explicit custom URLs.
   source "$activation_file"
+fi
+
+if [[ "$control" == "1" ]]; then
+  [[ "$agent" == "codex" ]] || usage_error "--control currently supports Codex."
+  cd -- "$target"
+  python="$ROOT/.venv/bin/python"
+  [[ -x "$python" ]] || python=python3
+  if ! "$python" -c 'import websockets' >/dev/null 2>&1; then
+    python3 -m venv "$ROOT/.pixelverse-service/control-venv"
+    python="$ROOT/.pixelverse-service/control-venv/bin/python"
+    "$python" -m pip install 'websockets>=12,<17'
+  fi
+  control_args=()
+  [[ -z "$resume_session" ]] || control_args+=(--resume "$resume_session")
+  exec "$python" "$ROOT/scripts/codex_world_session.py" "${control_args[@]}"
 fi
 
 echo "Launching $agent in $target ..."

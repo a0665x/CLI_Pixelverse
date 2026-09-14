@@ -128,6 +128,7 @@ def build_events(data: dict[str, Any]) -> list[dict[str, Any]]:
     payload: dict[str, Any] = {
         "agent_type": "codex",
         "agent": agent,
+        "session_id": session_id,
         "name": os.getenv("PIXELVERSE_INSTANCE_NAME") or "Codex CLI",
         "event": hook or "status",
     }
@@ -220,12 +221,40 @@ def post_event(payload: dict[str, Any]) -> None:
         pass
 
 
+def public_history(session_id):
+    import re
+    from pathlib import Path
+    if not re.fullmatch(r'[a-fA-F0-9-]{32,36}', session_id): return []
+    root = Path(os.getenv('CODEX_HOME', str(Path.home() / '.codex'))) / 'sessions'
+    paths = list(root.glob('**/*' + session_id + '.jsonl'))
+    if not paths: return []
+    messages = []
+    try:
+        with paths[-1].open('rb') as stream:
+            stream.seek(max(0, paths[-1].stat().st_size - 256000))
+            for line in stream:
+                try: row = json.loads(line)
+                except (ValueError, UnicodeError): continue
+                payload = row.get('payload', {})
+                if row.get('type') != 'event_msg': continue
+                kind = payload.get('type')
+                if kind not in {'user_message', 'agent_message'}: continue
+                text = payload.get('message')
+                if isinstance(text, str): messages.append({'role': 'user' if kind == 'user_message' else 'assistant', 'text': text[-8000:]})
+    except OSError: return []
+    return messages[-40:]
+
+
 def main() -> int:
     try:
         data = json.load(sys.stdin)
     except Exception:
         return 0
     for payload in build_events(data):
+        # Only public user/assistant events, never internal reasoning or arbitrary paths.
+        if payload.get('role') != 'subagent':
+            history = public_history(str(data.get('session_id') or ''))
+            if history: payload['conversation'] = history
         post_event(payload)
     return 0
 

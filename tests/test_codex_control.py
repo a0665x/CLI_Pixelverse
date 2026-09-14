@@ -59,13 +59,13 @@ def test_steer_targets_exact_turn_and_preserves_input(control):
 def test_stale_turn_never_receives_command(control):
     with pytest.raises(ControlError, match='任務已改變'):
         asyncio.run(control.execute('agent-a', 'interrupt', 'new task', 'stale', 'request-1'))
-    assert [m for m, _ in FakeCodex.calls] == ['thread/read']
+    assert [m for m, _ in FakeCodex.calls] == ['thread/resume', 'thread/read']
 
 
 def test_interrupt_waits_for_confirmation_before_new_turn(control):
     result = asyncio.run(control.execute('agent-a', 'interrupt', 'new task', 'turn-1', 'request-1'))
     assert result['accepted']
-    assert [m for m, _ in FakeCodex.calls] == ['thread/read', 'turn/interrupt', 'confirmed', 'thread/read', 'turn/start']
+    assert [m for m, _ in FakeCodex.calls] == ['thread/resume', 'thread/read', 'turn/interrupt', 'confirmed', 'thread/read', 'turn/start']
 
 
 def test_unconfirmed_interrupt_does_not_start_new_work(control):
@@ -104,5 +104,15 @@ def test_real_json_rpc_transport_confirms_interrupt_before_start(tmp_path, monke
             monkeypatch.setenv('PIXELVERSE_CODEX_CONTROL_BINDINGS', str(config))
             control = CodexControl(CodexConnection)
             assert (await control.execute('agent-a', 'interrupt', 'new instructions', 'turn-1', 'request-rpc'))['accepted']
-        assert methods == ['initialize', 'initialized', 'thread/read', 'turn/interrupt', 'thread/read', 'turn/start']
+        assert methods == ['initialize', 'initialized', 'thread/resume', 'thread/read', 'turn/interrupt', 'thread/read', 'turn/start']
+    asyncio.run(run())
+
+
+def test_bound_idle_session_accepts_next_conversation(control):
+    FakeCodex.active = None
+    async def run():
+        assert (await control.capability('agent-a'))['available']
+        result = await control.execute('agent-a', 'start', 'continue the conversation', '', 'idle-start')
+        assert result['accepted']
+        assert FakeCodex.calls[-1][0] == 'turn/start'
     asyncio.run(run())

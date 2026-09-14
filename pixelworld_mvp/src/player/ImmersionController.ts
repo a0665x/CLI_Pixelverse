@@ -14,7 +14,7 @@ import type { Facing } from '../world/types';
 import { choiceIndex, clearSight, movePlayer, type PlayerPoint } from './playerMotion';
 
 type Choice = 'inspect' | 'steer' | 'interrupt';
-interface Capability { available: boolean; turnId?: string; reason?: string }
+interface Capability { state?:string; available: boolean; turnId?: string; reason?: string }
 const labels = ['查看工作','插入指令','打斷並改派'];
 const actions: Choice[] = ['inspect','steer','interrupt'];
 const skin = AGENT_SKINS.main;
@@ -69,6 +69,7 @@ export class ImmersionController {
   private landingDeadline=0;
   private facing: Facing='down';
   private keys=new Set<string>();
+  private sessionTimer:ReturnType<typeof setTimeout>|undefined;
   private target='';
   private dismissed='';
   private selected=0;
@@ -201,11 +202,7 @@ export class ImmersionController {
       return;
     }
     const context=this.world.immersionContext();
-    if(this.modal && this.clock>this.inspectAt) {
-      const bubble=this.content.querySelector('.immersion-speech');
-      if(bubble) {const text=this.workText();if(bubble.textContent!==text)bubble.textContent=text;}
-      this.inspectAt=this.clock+500;
-    }
+
     const surface=context.cutaway?.visitorSurface();
     if(surface) {
       if(this.roomId!==surface.buildingId) {
@@ -293,18 +290,20 @@ export class ImmersionController {
     this.root.dataset.playerX=String(p.x);this.root.dataset.playerY=String(p.y);this.root.dataset.room=this.roomId;
   }
   private showTarget(id:string):void {
+    if(this.target!==id)this.world.immersionContext().agents.find(a=>a.agentId===this.target)?.setConversationHeld(false);
+    this.world.immersionContext().agents.find(a=>a.agentId===id)?.setConversationHeld(true);
     this.target=id;this.selected=0;this.menuFocused=false;this.panel.hidden=false;this.options.hidden=false;this.content.hidden=true;this.modal=false;
     const agent=this.world.immersionContext().snapshot?.agents.find(a=>a.agent===id);
     this.title.textContent=`${inspectionCopy().event} · ${agent?.name||id}`;this.interactionQuestion.textContent=`${inspectionCopy().ask} ${t('← → 選擇，Enter 確認')}`;
     this.markChoice();this.capability={available:false,reason:t('正在確認控制連線…')};
     const version=++this.generation;
     this.capabilityReady=fetch(`/api/agent-control/${encodeURIComponent(id)}`).then(async r=>{if(!r.ok)throw new Error();return r.json();})
-      .then((cap:Capability)=>{if(this.generation===version)this.capability=cap;})
+      .then((cap:Capability)=>{if(this.generation===version){this.capability=cap;const buttons=this.options.querySelectorAll('button');buttons[1]!.textContent=t(cap.available&&!cap.turnId?'繼續對話':'插入指令');buttons[2]!.disabled=cap.available&&!cap.turnId;}})
       .catch(()=>{if(this.generation===version)this.capability={available:false,reason:t('此 Agent 尚未連接控制通道，目前可查看工作。')};});
   }
   private markChoice():void { [...this.options.querySelectorAll('button')].forEach((b,i)=>{b.setAttribute('aria-pressed',String(i===this.selected));b.tabIndex=i===this.selected?0:-1;}); }
-  private hidePanel():void {this.generation++;this.target='';this.modal=false;this.panel.hidden=true;this.content.replaceChildren();this.keys.clear();}
-  private closeContent():void {if(this.busy)return;this.modal=false;this.content.hidden=true;this.options.hidden=false;this.keys.clear();if(this.target){this.showTarget(this.target);this.options.querySelector<HTMLButtonElement>('[aria-pressed="true"]')?.focus();}}
+  private hidePanel():void {clearTimeout(this.sessionTimer);this.world.immersionContext().agents.find(a=>a.agentId===this.target)?.setConversationHeld(false);this.generation++;this.target='';this.modal=false;this.panel.hidden=true;this.content.replaceChildren();this.keys.clear();}
+  private closeContent():void {if(this.busy)return;clearTimeout(this.sessionTimer);this.modal=false;this.content.hidden=true;this.options.hidden=false;this.keys.clear();if(this.target){this.showTarget(this.target);this.options.querySelector<HTMLButtonElement>('[aria-pressed="true"]')?.focus();}}
   private workText():string {
     const agent=this.world.immersionContext().snapshot?.agents.find(a=>a.agent===this.target);
     return agent?[agent.task||agent.activity_hint||agent.status_label||agent.state||t('目前沒有工作摘要'),
@@ -318,32 +317,41 @@ export class ImmersionController {
     if(choice==='inspect') {
       const text=document.createElement('p');text.className='immersion-speech';text.setAttribute('role','status');
       text.textContent=this.workText();
-      this.content.append(text,back);return;
+      this.content.append(text,back);
+      const target=this.target,version=this.generation;
+      const refresh=async()=>{try{const response=await fetch(`/api/agent-session/${encodeURIComponent(target)}`);if(!response.ok)throw new Error();const session=await response.json();if(version!==this.generation||!this.modal)return;
+        const messages=(session.messages||[]).map((m:{role:string;text:string})=>`${m.role}: ${m.text}`).join('\n\n');
+        text.textContent=[session.threadId?`Session: ${session.threadId}`:'',session.available?t(session.state==='idle'?'等待下一輪對話':'正在執行'):t('此 Agent 僅支援查看，尚未綁定控制通道。'),messages||this.workText()].filter(Boolean).join('\n\n');
+      }catch{if(version===this.generation)text.textContent=this.workText();}finally{if(version===this.generation&&this.modal)this.sessionTimer=setTimeout(refresh,3000);}};
+      void refresh();return;
     }
     const version=this.generation;
     await this.capabilityReady;
     if(version!==this.generation||!this.modal)return;
+    const action=this.capability.available&&!this.capability.turnId?'start':choice;
     const form=document.createElement('form');const label=document.createElement('label');
-    const caption=document.createElement('span');copyTo(caption,choice==='steer'?'補充這一輪的工作指令':'中斷目前工作後的新指令');label.append(caption);
+    const caption=document.createElement('span');copyTo(caption,action==='start'?'繼續對話':choice==='steer'?'補充這一輪的工作指令':'中斷目前工作後的新指令');label.append(caption);
     const input=document.createElement('textarea');input.rows=3;input.maxLength=12000;input.required=true;input.placeholder=t('輸入要交給這位 Agent 的指令…');input.dataset.copy='輸入要交給這位 Agent 的指令…';label.append(input);
     const status=document.createElement('p');status.setAttribute('role','status');
-    const submit=document.createElement('button');submit.type='submit';copyTo(submit,choice==='steer'?'送出插入指令':'送出並打斷');
-    submit.disabled=!this.capability.available;copyTo(status,this.capability.available?(choice==='interrupt'?'送出後才中斷；已完成的檔案修改不會自動撤回。':'插入當前工作，不另開對話。'):'此 Agent 僅支援查看，尚未綁定控制通道。');
-    const target=this.target,turnId=this.capability.turnId;
+    const submit=document.createElement('button');submit.type='submit';copyTo(submit,action==='start'?'送出對話':choice==='steer'?'送出插入指令':'送出並打斷');
+    submit.disabled=!this.capability.available;copyTo(status,this.capability.available?(action==='start'?'等待下一輪對話':choice==='interrupt'?'送出後才中斷；已完成的檔案修改不會自動撤回。':'插入當前工作，不另開對話。'):'此 Agent 僅支援查看，尚未綁定控制通道。');
+    const target=this.target,turnId=this.capability.turnId||'';
     form.onsubmit=async e=>{
       e.preventDefault();if(this.busy||!input.value.trim()||submit.disabled)return;
       this.busy=true;submit.disabled=true;back.disabled=true;this.toggle.disabled=true;copyTo(status,'正在等候 Agent 確認…');
       try {
-        const response=await fetch(`/api/agent-control/${encodeURIComponent(target)}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:choice,text:input.value.trim(),expected_turn_id:turnId,request_id:crypto.randomUUID()})});
+        const response=await fetch(`/api/agent-control/${encodeURIComponent(target)}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,text:input.value.trim(),expected_turn_id:turnId,request_id:crypto.randomUUID()})});
         const result=await response.json();
         if(!response.ok)throw new Error(t('未能送達，請重新確認 Agent 狀態。'));
-        copyTo(status,choice==='steer'?'Agent 已接受補充指令。':'已確認中斷，並送入新指令。');input.disabled=true;
+        copyTo(status,action==='start'?'對話已送出':choice==='steer'?'Agent 已接受補充指令。':'已確認中斷，並送入新指令。');input.disabled=true;
       } catch(error) {copyTo(status,'未能送達，請重新確認 Agent 狀態。');}
       finally {this.busy=false;back.disabled=false;this.toggle.disabled=false;}
     };
+    if(!this.capability.available){const help=document.createElement('p');help.textContent=t('請以可對話模式啟動 Codex')+' — hook_bridge.sh --agent codex --control --launch';form.append(help);}
     form.append(label,status,submit);this.content.append(form,back);input.focus();
   }
   destroy():void {
+    this.hidePanel();
     window.removeEventListener('pixelverse:locale',this.localize);
     delete document.documentElement.dataset.immersion;
     this.generation++;window.removeEventListener('keydown',this.keydown,true);window.removeEventListener('keyup',this.keyup);window.removeEventListener('blur',this.blur);document.removeEventListener('visibilitychange',this.blur);

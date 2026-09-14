@@ -129,6 +129,46 @@ cd /path/to/your-project
 "$PIXELVERSE_ROOT/hook_bridge.sh" --agent codex
 ```
 
+## Talk to Codex from the village
+
+For a **shared terminal + village conversation**, run this once inside your project:
+
+```bash
+export PIXELVERSE_URL=http://127.0.0.1:5661
+/path/to/CLI_Pixelverse/hook_bridge.sh --agent codex --control --launch
+```
+
+This starts one Codex App Server session and opens its terminal UI. Click its roster
+card to draw a route to the rabbit's house, enter the world, and approach the rabbit.
+**View work** shows the session's recent public conversation and command output (up to 60 items). While idle,
+**Continue conversation** sends the next message; while working, **Steer** supplements
+the current turn and **Interrupt** replaces it after interruption is confirmed.
+The character stays in place during the encounter and resumes its route afterwards.
+Keep the launcher running. Codex approval settings are preserved; approval prompts
+may still require the terminal. This is a conversation viewer, not a raw terminal emulator.
+
+Requirements: a Codex CLI version supporting `--remote` and App Server, an existing
+Codex login, and Python 3.11+. The helper installs `websockets` into a local virtual
+environment if needed. With Docker, run the helper from the same checkout whose
+`.pixelverse-service/runtime` is mounted at `/app/runtime`.
+
+Existing hook-only terminals cannot be silently taken over. Updated hooks publish
+public user/assistant history when their JSONL transcript is available. To continue
+an older saved session in controllable mode, first exit its original CLI, then run:
+
+```bash
+/path/to/CLI_Pixelverse/hook_bridge.sh --agent codex --control --launch --resume YOUR_SESSION_UUID
+```
+
+Use the exact session ID shown in Agent details or Codex. Do not resume a different
+project's session. Hook-only entries continue to say observation-only until launched
+with the shared control connection. History excludes private reasoning and is
+fetched on demand instead of being broadcast with every world snapshot.
+
+![Real Codex conversation read from inside the 3D village](docs/reference/village-conversation.jpg)
+
+Protocol reference: [Codex App Server](https://learn.chatgpt.com/docs/app-server).
+
 ## Agent Integration Coverage
 
 | Agent | `--agent` value | Integration level |

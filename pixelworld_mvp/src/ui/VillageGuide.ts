@@ -13,19 +13,22 @@ export const guideFor=(world:WorldScene)=>guides.get(world);
 export class VillageGuide {
  private root=document.createElement('aside');private toggle=document.createElement('button');private panel=document.createElement('section');private search=document.createElement('input');private list=document.createElement('div');private tracking=document.createElement('button');
  private rows:Array<ReturnType<typeof agentIdentity>&{building:string;destination:string;task:string}>=[];
- private infos=new Map<string,{label:string;title:string}>();
+ private infos=new Map<string,{label:string;title:string;residents:string}>();
  private last=0;private signature='';private selected='';
  constructor(private world:WorldScene){
   guides.set(world,this);this.root.className='village-guide';this.toggle.setAttribute('aria-expanded','false');this.panel.hidden=true;this.search.type='search';this.list.className='village-guide-list';this.tracking.hidden=true;
   this.toggle.onclick=()=>{this.panel.hidden=!this.panel.hidden;this.toggle.setAttribute('aria-expanded',String(!this.panel.hidden));if(!this.panel.hidden)this.search.focus();};this.search.oninput=()=>this.render();
   this.tracking.onclick=()=>{this.selected='';this.tracking.hidden=true;this.render();};this.panel.append(this.search,this.list);this.root.append(this.toggle,this.tracking,this.panel);document.querySelector('#app-shell')?.append(this.root);
-  world.events.on('postupdate',this.update);world.events.once('shutdown',()=>{world.events.off('postupdate',this.update);this.root.remove();guides.delete(world);});
+  window.addEventListener('pixelverse:track-agent',this.track);
+  world.events.on('postupdate',this.update);world.events.once('shutdown',()=>{world.events.off('postupdate',this.update);this.root.remove();window.removeEventListener('pixelverse:track-agent',this.track);guides.delete(world);});
  }
+ private track=(event:Event)=>{this.selected=(event as CustomEvent).detail.id;this.signature='';};
+ trackedAgent(){return this.selected;}
  private copy(){return texts[document.documentElement.lang as keyof typeof texts]||texts['en-US'];}
  private name(id:string){const copy=villageCopy(document.documentElement.lang as VillageLocale);return copy.buildings[id as keyof typeof copy.buildings]||id;}
  private purpose(id:string){const copy=villageCopy(document.documentElement.lang as VillageLocale);return [...new Set(this.world.worldDefinition.stations.filter(s=>s.buildingId===id).flatMap(s=>s.interactionSlots.map(slot=>copy.actions[slot.action])))].filter(Boolean).join(' · ');}
  private detail(row:typeof this.rows[number]){const c=this.copy();return `${c[row.role]} · ${row.name} #${row.code}\n${c.project}: ${row.project||c.unknown}${row.role==='sub'?`\n${c.parent}: ${row.parentName||c.unknown}`:''}${row.task?`\n${row.task}`:''}`;}
- buildingInfo(id:string){let info=this.infos.get(id);if(!info){const occupants=this.rows.filter(r=>r.building===id);info={label:`${this.name(id)} · ${occupants.length}`,title:[this.name(id),this.purpose(id),occupants.length?occupants.map(r=>this.detail(r)).join('\n\n'):this.copy().empty].join('\n')};this.infos.set(id,info);}return {...info,tracked:this.trackedBuilding()===id};}
+ buildingInfo(id:string){let info=this.infos.get(id);if(!info){const occupants=this.rows.filter(r=>r.building===id);info={label:`${this.name(id)} · 🐇 ${occupants.length}`,residents:occupants.slice(0,3).map(r=>`${this.copy()[r.role]} · ${r.name}`).join(' / ')+(occupants.length>3?` +${occupants.length-3}`:''),title:[this.name(id),this.purpose(id),occupants.length?occupants.map(r=>this.detail(r)).join('\n\n'):this.copy().empty].join('\n')};this.infos.set(id,info);}return {...info,tracked:this.trackedBuilding()===id};}
  agentLabel(id:string){const r=this.rows.find(r=>r.id===id);return r?`${this.copy()[r.role]} · ${r.name} #${r.code}`:id;}
  agentTitle(id:string){const r=this.rows.find(r=>r.id===id);return r?this.detail(r):id;}
  trackedBuilding(){const row=this.rows.find(r=>r.id===this.selected);return row?.building||row?.destination||'';}

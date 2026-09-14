@@ -12,6 +12,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 import websockets
+from . import control_mailbox
 
 
 class ControlError(Exception):
@@ -71,7 +72,8 @@ class CodexConnection:
 
 
 class CodexControl:
-    def __init__(self, connector=CodexConnection):
+    def __init__(self, connector=CodexConnection, use_mailbox=True):
+        self.use_mailbox = use_mailbox
         self.connector = connector
         self.locks: dict[str, asyncio.Lock] = {}
         self.requests: dict[tuple[str, str], tuple[tuple, asyncio.Task]] = {}
@@ -103,18 +105,47 @@ class CodexControl:
         return next((turn.get('id') for turn in reversed(thread.get('turns', [])) if turn.get('status') == 'inProgress'), None)
 
     async def capability(self, agent: str):
+        if self.use_mailbox and control_mailbox.available(agent):
+            return await control_mailbox.request(agent, 'capability')
         binding = self.binding(agent)
         if not binding:
             return {'available': False, 'reason': '此 Agent 目前透過 Hook 回報狀態，尚未綁定 Codex 控制通道。'}
         try:
             async with self.connector(binding['url']) as connection:
                 turn_id = await self.active_turn(connection, binding['thread_id'])
-            return {'available': bool(turn_id), 'turnId': turn_id,
-                    'reason': '' if turn_id else '此 Agent 目前沒有可插入或中斷的執行中任務。'}
+            return {'available': True, 'turnId': turn_id, 'state': 'working' if turn_id else 'idle', 'reason': ''}
         except Exception:
             return {'available': False, 'reason': '無法確認 Codex 控制連線；目前只提供查看工作。'}
 
+    async def session(self, agent: str):
+        if self.use_mailbox and control_mailbox.available(agent):
+            return await control_mailbox.request(agent, 'session')
+        binding = self.binding(agent)
+        if not binding:
+            return {'available': False, 'messages': []}
+        async with self.connector(binding['url']) as connection:
+            result = await connection.call('thread/read', {'threadId': binding['thread_id'], 'includeTurns': True})
+        thread = result.get('thread', {})
+        messages = []
+        for turn in thread.get('turns', [])[-20:]:
+            for item in turn.get('items', []):
+                kind = item.get('type')
+                if kind == 'userMessage':
+                    text = '\n'.join(c.get('text', '') for c in item.get('content', []) if c.get('type') == 'text')
+                    role = 'user'
+                elif kind == 'agentMessage':
+                    text, role = item.get('text', ''), 'assistant'
+                elif kind == 'commandExecution':
+                    text, role = (str(item.get('command', '')) + '\n' + (item.get('aggregatedOutput') or '')), 'tool'
+                else:
+                    continue
+                if text: messages.append({'role': role, 'text': text[-8000:]})
+        active = next((t['id'] for t in reversed(thread.get('turns', [])) if t.get('status') == 'inProgress'), None)
+        return {'available': True, 'threadId': binding['thread_id'], 'state': 'working' if active else 'idle', 'turnId': active, 'messages': messages[-60:]}
+
     async def execute(self, agent: str, action: str, text: str, expected_turn_id: str, request_id: str):
+        if self.use_mailbox and control_mailbox.available(agent):
+            return await control_mailbox.request(agent, 'execute', action=action, text=text, expected_turn_id=expected_turn_id, request_id=request_id)
         fingerprint = (action, text, expected_turn_id)
         key = (agent, request_id)
         if key in self.requests:
@@ -132,7 +163,7 @@ class CodexControl:
         return await asyncio.shield(task)
 
     async def _execute(self, agent, action, text, expected_turn_id):
-        if action not in {'steer', 'interrupt'} or not text.strip() or not expected_turn_id:
+        if action not in {'steer', 'interrupt', 'start'} or not text.strip() or (action != 'start' and not expected_turn_id):
             raise ControlError('請提供有效指令與目前任務識別。', 422)
         binding = self.binding(agent)
         if not binding:
@@ -141,10 +172,16 @@ class CodexControl:
             try:
                 async with self.connector(binding['url']) as connection:
                     thread_id = binding['thread_id']
-                    if await self.active_turn(connection, thread_id) != expected_turn_id:
+                    # A read does not load a persisted thread into this connection.
+                    await connection.call('thread/resume', {'threadId': thread_id})
+                    if await self.active_turn(connection, thread_id) != (expected_turn_id or None):
                         raise ControlError('Agent 的任務已改變，未送出指令；請返回選項重新確認。')
                     inputs = [{'type': 'text', 'text': text}]
-                    if action == 'steer':
+                    if action == 'start':
+                        result = await connection.call('turn/start', {'threadId': thread_id, 'input': inputs})
+                        if not result.get('turn', {}).get('id'):
+                            raise ControlError('New turn was not acknowledged.')
+                    elif action == 'steer':
                         result = await connection.call('turn/steer', {'threadId': thread_id, 'expectedTurnId': expected_turn_id, 'input': inputs})
                         if result.get('turnId') != expected_turn_id:
                             raise ControlError('未取得指定任務的接受確認，請檢查原任務。')

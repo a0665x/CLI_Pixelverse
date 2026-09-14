@@ -35,3 +35,16 @@ def test_subagent_parent_and_project_survive_heartbeats(monkeypatch):
         assert child.parent_agent_id == 'beta'
         assert child.project_name == 'beta'
         assert child.project_path == '/projects/beta'
+
+
+def test_idle_conversation_accepts_null_turn_id(monkeypatch):
+    import pixelverse_fastapi
+    recorded = []
+    async def execute(*args):
+        recorded.append(args)
+        return {'accepted': True}
+    monkeypatch.setattr(pixelverse_fastapi.CONTROL, 'execute', execute)
+    with TestClient(app, base_url='http://127.0.0.1') as client:
+        result = client.post('/api/agent-control/idle', json={'action':'start', 'text':'hello', 'expected_turn_id':None, 'request_id':'idle-ui-message'}, headers={'Origin':'http://127.0.0.1'})
+        assert result.status_code == 200
+        assert recorded == [('idle', 'start', 'hello', '', 'idle-ui-message')]

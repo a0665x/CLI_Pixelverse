@@ -633,6 +633,8 @@ class AgentState:
     project_path: str | None = None
     project_name: str | None = None
     parent_agent_id: str | None = None
+    session_id: str | None = None
+    conversation: list[dict[str, str]] = field(default_factory=list)
     route_evidence: dict[str, Any] | None = None
 
     def latest_recent_action(self) -> dict[str, Any] | None:
@@ -709,6 +711,7 @@ class AgentState:
 
     def to_public(self) -> dict[str, Any]:
         data = asdict(self)
+        data.pop("conversation", None)
         effective_state = self.effective_state()
         effective_task = self.effective_task()
         room_hint = self.effective_room_hint(effective_state)
@@ -832,6 +835,10 @@ class WorldState:
                 agent.process_id = int(payload.get("process_id"))
             if payload.get("instance_name"):
                 agent.instance_name = trim_text(payload.get("instance_name"), 40)
+            if payload.get("session_id"):
+                agent.session_id = trim_text(payload['session_id'], 255)
+            if isinstance(payload.get('conversation'), list):
+                agent.conversation = [{'role': m['role'], 'text': str(m.get('text', ''))[-8000:]} for m in payload['conversation'][-60:] if isinstance(m, dict) and m.get('role') in {'user', 'assistant', 'tool'}]
             if payload.get("parent_agent_id") and payload["parent_agent_id"] != agent_id:
                 agent.parent_agent_id = trim_text(payload["parent_agent_id"], 255)
                 parent = self.agents.get(agent.parent_agent_id)

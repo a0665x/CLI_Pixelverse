@@ -196,3 +196,16 @@ describe('AgentController building presence', () => {
     expect(sprites[1]!.x).toBe(threshold.x * 16 + 8);
   });
 });
+
+it('does not advance or depart while the inspector is conversing', async()=>{
+ const {agent}=await harness();
+ agent.dispatch(event('walk'),assignment({x:4,y:1}),route);
+ agent.update(100);
+ const point=agent.tilePosition();
+ agent.setConversationHeld(true);
+ agent.dispatch(event('retarget'),assignment({x:8,y:1}),route);
+ agent.update(2000);
+ expect(agent.tilePosition()).toEqual(point);
+ agent.setConversationHeld(false);agent.update(2000);
+ expect(agent.tilePosition()).not.toEqual(point);
+});
