@@ -10,7 +10,7 @@ export function mountWorldViews(world:WorldScene,immersion:ImmersionController) 
   const notice=document.createElement('p');notice.className='view-error';notice.hidden=true;notice.setAttribute('role','status');document.querySelector('#app-shell')?.append(notice);
   new VillageGuide(world);
   const localError=()=>({'zh-TW':'這個裝置無法啟用 3D，已保留 2D 視角。','en-US':'3D is unavailable on this device. The 2D view is still available.','ja-JP':'この端末では 3D を利用できません。2D を表示します。','ko-KR':'이 기기에서 3D 를 사용할 수 없습니다. 2D 를 표시합니다.'} as Record<string,string>)[document.documentElement.lang]||'3D unavailable. Please use 2D.';
-  const publish=(mode:string)=>{window.parent.postMessage({type:'pixelverse.view.changed',mode,officePack:licensedOfficeAvailable()?'modern-office':'free'},window.location.origin);document.documentElement.dataset.view=mode;};
+  const publish=(mode:string)=>{lastPortraits='';window.parent.postMessage({type:'pixelverse.view.changed',mode,officePack:licensedOfficeAvailable()?'modern-office':'free'},window.location.origin);document.documentElement.dataset.view=mode;};
   const switchView=async(mode:string)=>{
     if(mode!=='2d'&&mode!=='3d')return;requested=mode;const version=++generation;notice.hidden=true;
     if(mode==='2d'){view?.setEnabled(false);publish('2d');return;}
@@ -26,8 +26,15 @@ export function mountWorldViews(world:WorldScene,immersion:ImmersionController) 
   if(window.parent===window){standalone=document.createElement('nav');standalone.className='standalone-view-switch';for(const mode of ['2d','3d']){const b=document.createElement('button');b.textContent=mode.toUpperCase();b.onclick=()=>void switchView(mode);standalone.append(b);}document.querySelector('#app-shell')?.append(standalone);}
   // Phaser overlay stays in world coordinates, so light follows player and camera zoom.
   const night=world.add.graphics().setDepth(8990);
-  let last=0;
+  let last=0,lastPortraits='';
   const tick=(time:number)=>{if(time-last<100)return;last=time;night.clear();if(requested==='3d')return;
+    if(!licensedOfficeAvailable()){
+      const context=world.immersionContext();
+      const sprites=new Map(context.agents.map(a=>[a.agentId,{id:a.agentId,sheet:a.sprite.texture.key,frame:Number(a.sprite.frame.name)}]));
+      for(const item of context.cutaway?.portraitFrames()??[])sprites.set(item.id,item);
+      const frames=[...sprites.values()],signature=JSON.stringify(frames);
+      if(signature!==lastPortraits){lastPortraits=signature;window.parent.postMessage({type:'pixelverse.rabbit.frames',frames},location.origin);}
+    }
     const cycle=dayNightAt(Date.now()),s=immersion.viewState();if(cycle.daylight>=1||s.roomId)return;
     const alpha=(1-cycle.daylight)*.5,w=world.worldDefinition.width*16,h=world.worldDefinition.height*16;
     if(!s.active){night.fillStyle(0x14233f,alpha).fillRect(0,0,w,h);return;}

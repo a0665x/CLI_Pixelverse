@@ -1,3 +1,4 @@
+import {applyAgentPortrait} from './agent_portrait.mjs';
 import {createSessionProjection} from './agent_session_projection.mjs';
 const valueText = (value, fallback = '—') => (
   value === undefined || value === null || value === '' ? fallback : String(value)
@@ -37,7 +38,8 @@ export function createAgentDetailView({
     const portrait = root.querySelector?.('[data-agent-detail-portrait]');
     const sprite = spriteFor(detail.portraitInput) || {};
     if (portrait) {
-      portrait.src = sprite.src || '';
+      portrait.dataset.agentPortraitId=detail.id;
+      applyAgentPortrait(portrait,sprite);
       portrait.alt = '';
       portrait.className = `agent-detail-portrait ${sprite.pixelClass || ''}`.trim();
     }

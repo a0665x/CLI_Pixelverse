@@ -1,6 +1,8 @@
+import {applyAgentPortrait} from './agent_portrait.mjs';
+const rabbitLiveFrames=new Map();
 import {rabbitIdentity,worldSpritePortrait} from './agent_identity.mjs';
 let rabbitPortraitSources=[];
-const villagePortrait=agent=>{if(document.body.dataset.worldView!=='3d')return worldSpritePortrait(agent,document.body.dataset.officePack==='free');const index=rabbitIdentity(agent.agent||agent.id||'').index;return {src:rabbitPortraitSources[index]||'/pixelworld/assets/honey-meshy/reference.png',pixelClass:rabbitPortraitSources[index]?'rabbit-portrait':`rabbit-portrait rabbit-coat-${index}`};};
+const villagePortrait=agent=>{if(document.body.dataset.worldView!=='3d')return worldSpritePortrait(agent,document.body.dataset.officePack==='free',rabbitLiveFrames.get(agent.agent||agent.id||''));const index=rabbitIdentity(agent.agent||agent.id||'').index;return {src:rabbitPortraitSources[index]||'/pixelworld/assets/honey-meshy/reference.png',pixelClass:rabbitPortraitSources[index]?'rabbit-portrait':`rabbit-portrait rabbit-coat-${index}`};};
 import {
   activityHintForLocale,
   agentConnectionStatusText,
@@ -1705,6 +1707,11 @@ initializeApp();
   buttons.forEach(button => button.addEventListener('click', () => { mode = button.dataset.worldView; send(); frame?.focus(); }));
   window.addEventListener('message', event => {
     if (event.origin !== location.origin || event.source !== frame?.contentWindow) return;
+    if(event.data?.type==='pixelverse.rabbit.frames'&&mode==='2d'&&Array.isArray(event.data.frames)){
+      rabbitLiveFrames.clear();
+      for(const item of event.data.frames){if(typeof item?.id==='string'&&/^woodland-rabbit-[0-5]$/.test(item.sheet)&&Number.isInteger(item.frame)&&item.frame>=0&&item.frame<32)rabbitLiveFrames.set(item.id,item);}
+      for(const image of document.querySelectorAll('[data-agent-portrait-id]'))applyAgentPortrait(image,villagePortrait({agent:image.dataset.agentPortraitId}));
+    }
     if(event.data?.type==='pixelverse.rabbit.portraits'&&Array.isArray(event.data.sources)&&event.data.sources.length===6&&event.data.sources.every(s=>typeof s==='string'&&s.startsWith('data:image/png;base64,')&&s.length<200000)){rabbitPortraitSources=event.data.sources;renderLiveMonitoring();}
     if (event.data?.type === 'pixelverse.view.ready') send();
     if (event.data?.type === 'pixelverse.view.changed' && ['2d', '3d'].includes(event.data.mode)) {

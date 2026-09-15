@@ -24,3 +24,5 @@ actual game geometry after changing the palette or models. GLBs embed no third-p
 Version 1.1 separates desk, monitor, keyboard, papers, lamp and divider sprites to avoid duplicate workstation drawings. `python private_assets/free-office/generate_rabbits.py` regenerates six original rabbit coats, directional walk/rest sheets and matching roster portraits. Free-mode inspectors and agents share the same scale. Beds and sofas allow 2D resting; hard furniture retains collision.
 
 The 2D rabbits use upright ears, round faces and dark outlines. Office sprites use matching dark contours to separate furniture from wood floors; their placement and animation sheet dimensions remain unchanged.
+
+Sprite Sheet layout: 4 direction columns × 8 action rows, 64×64 per frame (256×512 per coat). See `rabbit-sheet.json` for the row names. Roster/detail portraits crop the exact world sprite frame sent at up to 10 Hz; they do not simulate motion independently. 3D mode retains its model-rendered portraits.

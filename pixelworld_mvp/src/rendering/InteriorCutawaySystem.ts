@@ -946,7 +946,7 @@ export class InteriorCutawaySystem {
       }
       view.motion = motion;
       if(threeView)return; // 3D consumes motion directly; hidden sprites and DOM need no repaint.
-      const frame = !motion.walking&&view.restId&&skin.sheet.startsWith('woodland-rabbit-')&&restSurfaceAt(interior,motion.point)?.id===view.restId?20:agentFrameForSkin(skin, motion.facing, motion.walking, this.scene.time.now);
+      const frame = !motion.walking&&view.restId&&skin.sheet.startsWith('woodland-rabbit-')&&restSurfaceAt(interior,motion.point)?.id===view.restId?20:!motion.walking&&motion.phase==='working'&&skin.sheet.startsWith('woodland-rabbit-')&&Math.floor(this.scene.time.now/450)%2?28+({down:0,up:1,left:2,right:3}[motion.facing]):agentFrameForSkin(skin, motion.facing, motion.walking, this.scene.time.now);
       view.sprite.setTexture(skin.sheet, frame);
       const point = roomScreenPoint(this.roomOrigin, motion.point, this.roomCell);
       const pixelScale = this.roomCell / BASE_ROOM_CELL;
@@ -996,6 +996,8 @@ export class InteriorCutawaySystem {
       window.removeEventListener('resize', this.resizeHandler);
     }
   }
+
+  portraitFrames(){return [...this.occupantViews].map(([id,v])=>({id,sheet:v.sprite.texture.key,frame:Number(v.sprite.frame.name)}));}
 
   visitorSurface() {
     if (!this.openId || !this.activeInterior || !this.furnitureLayer) return undefined;

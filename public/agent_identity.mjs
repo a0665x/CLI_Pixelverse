@@ -17,8 +17,8 @@ export function worldSkinIndex(id=''){
  const sequence=String(id).match(/(\d+)$/)?.[1];if(sequence)return (Math.max(1,Number(sequence))-1)%3;
  let hash=2166136261;for(const c of String(id)){hash^=c.charCodeAt(0);hash=Math.imul(hash,16777619);}return (hash>>>0)%3;
 }
-export function worldSpritePortrait(agent={},free=false){
- if(free)return {src:`/pixelworld/assets/free-office/rabbit-portrait-${rabbitIdentity(agent.agent||agent.id||'').index}.svg`,pixelClass:'rabbit-portrait'};
+export function worldSpritePortrait(agent={},free=false,live){
+ if(free){const index=live&&/^woodland-rabbit-[0-5]$/.test(live.sheet)?Number(live.sheet.slice(-1)):rabbitIdentity(agent.agent||agent.id||'').index;return {src:`/pixelworld/assets/free-office/rabbit-${index}.svg`,frame:Number.isInteger(live?.frame)&&live.frame>=0&&live.frame<32?live.frame:0,pixelClass:'rabbit-portrait'};}
  const sub=['subagent','branch_session','sub','branch'].includes(agent.role);
  if(!sub)return {src:'/pixelworld/assets/limezu/modern-interiors-free/Adam_16x16.png',pixelClass:'world-adam-portrait'};
  const file=['ninja-blue','samurai-blue','samurai-green'][worldSkinIndex(agent.agent||agent.id||'')];

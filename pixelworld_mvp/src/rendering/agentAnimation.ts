@@ -20,7 +20,7 @@ export function agentFrameForSkin(
   elapsedMs: number,
 ): number {
   if (skin.animation === 'adam-16x32') return agentAnimationFrame(facing, walking, elapsedMs);
-  if (!walking) return agentFrameIndex(skin, facing);
+  if (!walking) return agentFrameIndex(skin, facing,skin.sheet.startsWith('woodland-rabbit-')&&elapsedMs%3600>3380?6:skin.idleRow);
   const step = Math.floor(Math.max(0, elapsedMs) / WALK_FRAME_MS) % skin.walkRows.length;
   return agentFrameIndex(skin, facing, skin.walkRows[step]);
 }

@@ -1,3 +1,4 @@
+import {applyAgentPortrait} from './agent_portrait.mjs';
 import {activityLabel} from './agent_activity.mjs';
 export function agentRosterDescriptor(row, {
   selectedId = '',
@@ -13,6 +14,7 @@ export function agentRosterDescriptor(row, {
     tone: row.signal?.tone || 'rest',
     signalKind,
     portraitSrc: sprite.src || '',
+    ...(Number.isInteger(sprite.frame)?{portraitFrame:sprite.frame}:{}),
     portraitClass: sprite.pixelClass || '',
     name: row.name,
     ...(row.identity ? {identity:row.identity} : {}),
@@ -99,7 +101,8 @@ export function createAgentRosterView({
         if(row.activity){node.activity.dataset.activity=row.activity.kind;node.glyph.textContent=row.activity.icon;node.activityText.textContent=activityLabel(row.activity,documentRef.documentElement?.lang);node.activity.title=[node.activityText.textContent,row.activity.tool].filter(Boolean).join(' · ');}
         node.article.classList.toggle('selected', item.selected);
         node.article.setAttribute('aria-label', item.ariaLabel);
-        node.portrait.src = item.portraitSrc;
+        node.portrait.dataset.agentPortraitId=item.id;
+        applyAgentPortrait(node.portrait,{src:item.portraitSrc,frame:item.portraitFrame});
         node.portrait.className = `agent-roster-portrait ${item.portraitClass}`.trim();
         node.portrait.alt = '';
         node.name.textContent = item.name;

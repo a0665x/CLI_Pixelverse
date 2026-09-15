@@ -1,0 +1,29 @@
+{
+  "frameWidth": 64,
+  "frameHeight": 64,
+  "columns": [
+    "down",
+    "up",
+    "left",
+    "right"
+  ],
+  "rows": [
+    "idle",
+    "walk-contact-left",
+    "walk-pass-left",
+    "walk-contact-right",
+    "walk-pass-right",
+    "rest",
+    "blink",
+    "working"
+  ],
+  "coats": [
+    "#ffe5ae",
+    "#cadbee",
+    "#f3bcbc",
+    "#c8dda5",
+    "#dac7ec",
+    "#e9cb9c"
+  ],
+  "outline": "#56504b"
+}

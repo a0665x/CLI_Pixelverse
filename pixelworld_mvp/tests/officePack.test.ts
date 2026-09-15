@@ -6,7 +6,7 @@ it('ships a versioned common art palette for both views',()=>{expect(OFFICE_PACK
 
 import {licensedOfficeAvailable,agentSkinFor,AGENT_ATLAS,MODERN_INTERIOR_ASSETS} from '../src/rendering/assetManifest';
 import {worldSpritePortrait} from '../../public/agent_identity.mjs';
-it('roster matches the world rabbit coat in free mode and paid sprites otherwise',()=>{for(const id of ['worker1','worker2','alpha','child-17'])for(const role of ['main','subagent'] as const){const skin=agentSkinFor(id,role);if(!licensedOfficeAvailable()){const index=skin.sheet.split('-').at(-1);expect(worldSpritePortrait({agent:id,role},true).src).toBe(`/pixelworld/assets/free-office/rabbit-portrait-${index}.svg`);}else{const asset=[MODERN_INTERIOR_ASSETS.agent,...Object.values(AGENT_ATLAS)].find(a=>a.key===skin.sheet)!;expect(worldSpritePortrait({agent:id,role}).src).toBe('/pixelworld'+asset.path);}}});
+it('roster matches the world rabbit coat in free mode and paid sprites otherwise',()=>{for(const id of ['worker1','worker2','alpha','child-17'])for(const role of ['main','subagent'] as const){const skin=agentSkinFor(id,role);if(!licensedOfficeAvailable()){const index=skin.sheet.split('-').at(-1);expect(worldSpritePortrait({agent:id,role},true).src).toBe(`/pixelworld/assets/free-office/rabbit-${index}.svg`);}else{const asset=[MODERN_INTERIOR_ASSETS.agent,...Object.values(AGENT_ATLAS)].find(a=>a.key===skin.sheet)!;expect(worldSpritePortrait({agent:id,role}).src).toBe('/pixelworld'+asset.path);}}});
 it('keeps workstation components separate instead of stacking full computers',()=>{for(const [id,family] of [[247,'desk'],[121,'display'],[125,'display'],[124,'keyboard'],[153,'papers'],[141,'lamp'],[207,'divider'],[208,'divider']] as const)expect(officeFamily(catalogItem(id)!)).toBe(family);});
 
 import {freeOfficePresentation} from '../src/rendering/freeOfficePresentation';
@@ -21,4 +21,12 @@ it('aligns standalone monitor feet with the desk top without commercial crop off
  expect(Math.abs(papers.x-desk.x)+papers.width/2).toBeLessThan(desk.width/2);
  const neighbour=freeOfficePresentation({kind:'desk',assetId:247,point:{x:5,y:4},...authoredPlacement(247)});
  expect(neighbour.x-neighbour.width/2).toBeGreaterThanOrEqual(desk.x+desk.width/2);
+});
+
+import {agentFrameForSkin} from '../src/rendering/agentAnimation';
+it('uses the authored direction columns, walk rows and blink row for free rabbits',()=>{
+ const skin={sheet:'woodland-rabbit-0',idleRow:0 as const,walkRows:[1,2,3,4] as const};
+ expect(agentFrameForSkin(skin,'left',false,0)).toBe(2);
+ expect(agentFrameForSkin(skin,'left',false,3500)).toBe(26);
+ expect([0,120,240,360].map(t=>agentFrameForSkin(skin,'right',true,t))).toEqual([7,11,15,19]);
 });
