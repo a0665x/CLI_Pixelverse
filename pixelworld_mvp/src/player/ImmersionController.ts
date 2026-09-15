@@ -5,14 +5,13 @@ import {playerHeading} from './playerHeading';
 import {PlatformMotion} from './platformMotion';
 import {GAIT_SPEED,nextRabbitGait,type RabbitGait} from './rabbitGait';
 import {villagePlayerAllowed} from './villageCollision';
-import {roomBodyAllowed} from './furniturePhysics';
+import {roomBodyAllowed,room2DBodyAllowed,restSurfaceAt} from './furniturePhysics';
 import { inspectionCopy } from '../i18n/inspectionLocale';
 import { immersionText as t } from '../i18n/immersionLocale';
 import type Phaser from 'phaser';
 import type { WorldScene } from '../scenes/WorldScene';
-import { AGENT_SKINS } from '../rendering/assetManifest';
+import { agentSkinFor } from '../rendering/assetManifest';
 import { agentFrameForSkin } from '../rendering/agentAnimation';
-import { navigationBlockedCellKeys } from '../rendering/interiorPlacement';
 import type { Facing } from '../world/types';
 import { choiceIndex, clearSight, movePlayer, type PlayerPoint } from './playerMotion';
 
@@ -20,7 +19,7 @@ type Choice = 'inspect' | 'steer' | 'interrupt';
 interface Capability { state?:string; available: boolean; turnId?: string; reason?: string }
 const labels = ['查看工作','插入指令','打斷並改派'];
 const actions: Choice[] = ['inspect','steer','interrupt'];
-const skin = AGENT_SKINS.main;
+const skin = agentSkinFor('inspector','main');
 function copyTo(node:HTMLElement,source:string):void {node.dataset.copy=source;node.textContent=t(source);}
 const SUMMON_MS = 1600;
 
@@ -98,8 +97,6 @@ export class ImmersionController {
   private options=document.createElement('div');
   private content=document.createElement('div');
   private hint=document.createElement('p');
-  private roomCollision=new Set<string>();
-  private collisionAt=0;
   private lastTick=0;
   private readonly tick=(time:number,delta:number)=>{
     const elapsed=this.lastTick?time-this.lastTick:delta;this.lastTick=time;
@@ -229,10 +226,7 @@ export class ImmersionController {
       if(this.roomId!==surface.buildingId) {
         this.clearVisitor();this.roomId=surface.buildingId;
         this.elevation=0;this.jumpRequested=false;
-        this.roomPoint={x:Math.floor(surface.interior.width/2),y:surface.interior.height-1};this.collisionAt=0;this.hidePanel();
-      }
-      if(this.clock>this.collisionAt) {
-        this.roomCollision=navigationBlockedCellKeys(surface.interior.furniture, {x:-10,y:-10});this.collisionAt=this.clock+250;
+        this.roomPoint={x:Math.floor(surface.interior.width/2),y:surface.interior.height-1};this.hidePanel();
       }
       if(this.visitorParent!==surface.parent || !this.visitor?.scene) {
         this.visitor?.destroy();
@@ -267,7 +261,7 @@ export class ImmersionController {
 
     if(walking)this.heading=playerHeading(this.heading,inputX,inputY,this.cameraYaw);
     if(walking) this.facing=Math.abs(dx)>Math.abs(dy)?(dx<0?'left':'right'):(dy<0?'up':'down');
-    const indoorAllowed=(p:PlayerPoint)=>document.documentElement.dataset.view==='3d'&&surface?(roomBodyAllowed(surface.interior,p)&&(this.gait!=='bound'||roomBodyAllowed(surface.interior,{x:p.x+Math.sin(this.heading)*.28,y:p.y+Math.cos(this.heading)*.28}))):Boolean(surface && p.x>=0 && p.y>=0 && p.x<surface.interior.width-.5 && p.y<surface.interior.height-.5 && !this.roomCollision.has(`${Math.round(p.x)},${Math.round(p.y)}`));
+    const indoorAllowed=(p:PlayerPoint)=>document.documentElement.dataset.view==='3d'&&surface?(roomBodyAllowed(surface.interior,p)&&(this.gait!=='bound'||roomBodyAllowed(surface.interior,{x:p.x+Math.sin(this.heading)*.28,y:p.y+Math.cos(this.heading)*.28}))):Boolean(surface && room2DBodyAllowed(surface.interior,p));
     if(surface && this.roomPoint) {
       if(document.documentElement.dataset.view==='3d'){
         this.platform??=new PlatformMotion(surface.interior,this.roomPoint);
@@ -277,7 +271,7 @@ export class ImmersionController {
       const p=this.roomPoint;
       this.visitor!.setPosition(surface.origin.x+(p.x+.5)*surface.cell,surface.origin.y+(p.y+.5)*surface.cell)
         .setScale((skin.renderScale??1)*this.foodScale*surface.cell/22).setDepth(3000+surface.origin.y+(p.y+.5)*surface.cell+.999)
-        .setFrame(agentFrameForSkin(skin,this.facing,walking,this.clock));
+        .setFrame(!walking&&skin.sheet.startsWith('woodland-rabbit-')&&restSurfaceAt(surface.interior,p)?20:agentFrameForSkin(skin,this.facing,walking,this.clock));
       if(walking && dy>0 && p.y>surface.interior.height-1.2 && Math.abs(p.x-Math.floor(surface.interior.width/2))<.65) context.cutaway?.close();
     } else {
       if(walking) this.point=movePlayer(this.point,dx,dy,dt*.001*speed,p=>this.allowed(p)&&bodyAllowed(this.point,p));

@@ -266,9 +266,12 @@ is temporarily unavailable.
 
 ## Optional 2D Assets And 3D Attribution
 
-The 2D office editor defaults to the bundled **Woodland Office 1.0** set in
+The 2D office editor defaults to the bundled **Woodland Office 1.1** set in
 [`private_assets/free-office`](private_assets/free-office/). Editable SVGs and a shared
 2D/3D palette are included; [preview the pack](private_assets/free-office/preview.svg).
+Free mode uses matching rabbit coats for 2D agents, the inspector and roster portraits.
+Desk components are aligned independently. Hard furniture blocks movement; walk onto a bed
+or sofa and release WASD to rest, then use WASD to get up.
 No asset purchase is required. All existing furniture placements and editing controls remain available.
 Select the free pack explicitly with
 `PIXELVERSE_OFFICE_PACK=free PIXELVERSE_AGENT_KIND=codex ./run.sh --start`.

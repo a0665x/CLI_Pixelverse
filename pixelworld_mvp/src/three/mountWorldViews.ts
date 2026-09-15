@@ -1,3 +1,4 @@
+import {licensedOfficeAvailable} from '../rendering/assetManifest';
 import {VillageGuide} from '../ui/VillageGuide';
 import type { WorldScene } from '../scenes/WorldScene';
 import type { ImmersionController } from '../player/ImmersionController';
@@ -9,7 +10,7 @@ export function mountWorldViews(world:WorldScene,immersion:ImmersionController) 
   const notice=document.createElement('p');notice.className='view-error';notice.hidden=true;notice.setAttribute('role','status');document.querySelector('#app-shell')?.append(notice);
   new VillageGuide(world);
   const localError=()=>({'zh-TW':'這個裝置無法啟用 3D，已保留 2D 視角。','en-US':'3D is unavailable on this device. The 2D view is still available.','ja-JP':'この端末では 3D を利用できません。2D を表示します。','ko-KR':'이 기기에서 3D 를 사용할 수 없습니다. 2D 를 표시합니다.'} as Record<string,string>)[document.documentElement.lang]||'3D unavailable. Please use 2D.';
-  const publish=(mode:string)=>{window.parent.postMessage({type:'pixelverse.view.changed',mode},window.location.origin);document.documentElement.dataset.view=mode;};
+  const publish=(mode:string)=>{window.parent.postMessage({type:'pixelverse.view.changed',mode,officePack:licensedOfficeAvailable()?'modern-office':'free'},window.location.origin);document.documentElement.dataset.view=mode;};
   const switchView=async(mode:string)=>{
     if(mode!=='2d'&&mode!=='3d')return;requested=mode;const version=++generation;notice.hidden=true;
     if(mode==='2d'){view?.setEnabled(false);publish('2d');return;}

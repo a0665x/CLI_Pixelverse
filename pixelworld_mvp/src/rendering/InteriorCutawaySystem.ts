@@ -1,6 +1,6 @@
 import {characterMoveAllowed,type CharacterBody} from '../player/characterCollision';
 import {ActorNavigation,ActorWalker} from '../player/actorNavigation';
-import {roomBodyAllowed} from '../player/furniturePhysics';
+import {roomBodyAllowed,room2DBodyAllowed,restSurfaceAt} from '../player/furniturePhysics';
 import { paintInteriorRoom } from './interiorRoomArt';
 import { buildingPalette } from './villageArtDirection';
 import type Phaser from 'phaser';
@@ -17,7 +17,8 @@ import type {
 } from '../world/types';
 import { interiorDefinitionForBuilding } from '../world/interiorDefinitions';
 import { CUTAWAY_OPEN_EVENT, publishCutawayState } from '../ui/TestPanel';
-import { agentSkinFor } from './assetManifest';
+import {freeOfficePresentation} from './freeOfficePresentation';
+import { agentSkinFor,licensedOfficeAvailable } from './assetManifest';
 import { agentFrameForSkin } from './agentAnimation';
 import { modernOfficeAsset, type ModernOfficeFurnitureKind } from './modernOfficeManifest';
 import {
@@ -48,7 +49,7 @@ import {
 import { isBuiltInOfficePrefabId } from './builtInOfficePrefabs';
 import {
   commitPlacementCandidate,
-  furniturePointFromRenderPoint,
+  furniturePointFromRenderPoint as authoredFurniturePointFromRenderPoint,
   furnitureRenderGeometry,
   resolvePlacementCandidate,
   resolvedFurnitureAsset,
@@ -253,6 +254,11 @@ export function furnitureRenderScreenGeometry(
   furniture: Pick<FurnitureDefinition, 'kind' | 'point' | 'assetId' | 'rotation' | 'scale' | 'footprint' | 'visualOffset'>,
   cell: number,
 ): { point: GridPoint; bounds: { x: number; y: number; width: number; height: number }; baselineY: number } {
+  if(!licensedOfficeAvailable()){
+    const visual=freeOfficePresentation(furniture),width=visual.width*cell,height=visual.height*cell;
+    const point={x:roomOrigin.x+visual.x*cell,y:roomOrigin.y+visual.y*cell};
+    return {point,bounds:{x:point.x-width/2,y:point.y-height/2,width,height},baselineY:roomOrigin.y+(furniture.point.y+.5)*cell};
+  }
   const geometry = furnitureRenderGeometry(furniture);
   const bounds = {
     x: roomOrigin.x + geometry.bounds.x * cell,
@@ -271,6 +277,11 @@ export function dragPreviewScreenPoint(roomOrigin: GridPoint, point: GridPoint, 
   return roomScreenPoint(roomOrigin, point, cell);
 }
 
+function furniturePointFromRenderPoint(item:FurnitureDefinition,point:GridPoint):GridPoint {
+ if(licensedOfficeAvailable())return authoredFurniturePointFromRenderPoint(item,point);
+ const visual=freeOfficePresentation(item);
+ return {x:point.x-(visual.x-item.point.x-.5),y:point.y-(visual.y-item.point.y-.5)};
+}
 export function prefabGhostScreenPoint(
   prefab: OfficePrefabDefinition,
   item: FurnitureDefinition,
@@ -278,7 +289,8 @@ export function prefabGhostScreenPoint(
   cell = BASE_ROOM_CELL,
 ): GridPoint {
   const local = prefabMemberLocalOffset(prefab, item);
-  const { offset } = furnitureRenderGeometry(item);
+  const visual=freeOfficePresentation(item);
+  const offset=licensedOfficeAvailable()?furnitureRenderGeometry(item).offset:{x:visual.x-item.point.x-.5,y:visual.y-item.point.y-.5};
   return {
     x: screenAnchor.x + (local.x + offset.x) * cell,
     y: screenAnchor.y + (local.y + offset.y) * cell,
@@ -448,6 +460,7 @@ export class InteriorCutawaySystem {
     sprite: Phaser.GameObjects.Image;
     motion?: ReturnType<typeof interiorMotionAt>;
     walker?:ActorWalker;
+    restId?:string|undefined;
     icon: Phaser.GameObjects.Text;
     bubble: Phaser.GameObjects.Text;
     name: Phaser.GameObjects.Text;
@@ -921,6 +934,10 @@ export class InteriorCutawaySystem {
       if(!threeView){
         const bodies:CharacterBody[]=[...this.occupantViews].filter(([id,v])=>id!==assignment.agentId&&v.walker).map(([id,v])=>({id,roomId:building.id,...v.walker!.point}));
         if(this.visitorBody)bodies.push(this.visitorBody);
+        const restFurniture=interior.furniture.find(f=>f.id===motion.furnitureId&&['bed','sofa'].includes(f.kind));
+        const restId=restFurniture?.id??(view.walker&&restSurfaceAt(interior,view.walker.point)?.id===view.restId?view.restId:undefined);
+        if(view.restId!==restId){const point=view.walker?.point??motion.point;view.restId=restId;const nav=new ActorNavigation(interior.width,interior.height,p=>room2DBodyAllowed(interior,p,restId??''));view.walker=new ActorWalker(nav,point);if(nav.allowed(point))view.walker.point={...point};}
+        if(restFurniture&&motion.phase==='working')motion.point={...restFurniture.point};
         view.walker??=new ActorWalker(this.bodyNavigation!.nav,motion.point,p=>characterMoveAllowed({id:assignment.agentId,roomId:building.id,...p},p,bodies));
         const prior=view.walker.point;
         const result=view.walker.step(motion.point,snapshot.conversationHeld?0:seconds,(from,to)=>characterMoveAllowed({id:assignment.agentId,roomId:building.id,...from},to,bodies));
@@ -929,7 +946,7 @@ export class InteriorCutawaySystem {
       }
       view.motion = motion;
       if(threeView)return; // 3D consumes motion directly; hidden sprites and DOM need no repaint.
-      const frame = agentFrameForSkin(skin, motion.facing, motion.walking, this.scene.time.now);
+      const frame = !motion.walking&&view.restId&&skin.sheet.startsWith('woodland-rabbit-')&&restSurfaceAt(interior,motion.point)?.id===view.restId?20:agentFrameForSkin(skin, motion.facing, motion.walking, this.scene.time.now);
       view.sprite.setTexture(skin.sheet, frame);
       const point = roomScreenPoint(this.roomOrigin, motion.point, this.roomCell);
       const pixelScale = this.roomCell / BASE_ROOM_CELL;
@@ -1100,7 +1117,8 @@ export class InteriorCutawaySystem {
         const scale = furnitureSpriteScalesById.get(id);
         const depth = furnitureSpriteDepthsById.get(id);
         if (!sprite || scale === undefined || depth === undefined) continue;
-        sprite.setScale(scale * presentation.scale).setAlpha(presentation.alpha);
+        const item=interior.furniture.find(f=>f.id===id);const visual=!licensedOfficeAvailable()&&item?freeOfficePresentation(item):undefined;
+        sprite.setScale(scale * presentation.scale,scale* presentation.scale*(visual?visual.height/visual.width:1)).setAlpha(presentation.alpha);
         if (presentation.tone === 'neutral') sprite.setTint(buildingPalette(this.openId ?? '').furniture).setDepth(depth);
         else sprite.setTint(presentation.tone === 'valid' ? 0x65d47e : 0xe05b54).setDepth(depth + 10_000);
       }
@@ -1146,17 +1164,17 @@ export class InteriorCutawaySystem {
       const geometry = furnitureRenderScreenGeometry(this.roomOrigin, furniture, this.roomCell);
       const point = geometry.point;
       const catalog = resolvedFurnitureAsset(furniture);
-      const assetKey = (catalog?.id === 1001 && this.scene.textures?.exists?.('village-furniture-bed-complete') ? 'village-furniture-bed-complete' : catalog?.key) ?? modernOfficeAsset(modernOfficeKindForFurniture(furniture.kind)).key;
-      const originX = catalog ? (catalog.opaqueBounds.x + catalog.opaqueBounds.width / 2) / (catalog.sourceWidth ?? 32) : 0.5;
-      const originY = catalog ? (catalog.opaqueBounds.y + catalog.opaqueBounds.height / 2) / (catalog.sourceHeight ?? 48) : 0.5;
-      const spriteScale = normalizeFurnitureScale(furniture.scale) * this.roomCell / BASE_ROOM_CELL;
+      const assetKey = !licensedOfficeAvailable()?freeOfficePresentation(furniture).texture:(catalog?.id === 1001 && this.scene.textures?.exists?.('village-furniture-bed-complete') ? 'village-furniture-bed-complete' : catalog?.key) ?? modernOfficeAsset(modernOfficeKindForFurniture(furniture.kind)).key;
+      const originX = licensedOfficeAvailable()&&catalog ? (catalog.opaqueBounds.x + catalog.opaqueBounds.width / 2) / (catalog.sourceWidth ?? 32) : 0.5;
+      const originY = licensedOfficeAvailable()&&catalog ? (catalog.opaqueBounds.y + catalog.opaqueBounds.height / 2) / (catalog.sourceHeight ?? 48) : 0.5;
+      const spriteScale = licensedOfficeAvailable()?normalizeFurnitureScale(furniture.scale) * this.roomCell / BASE_ROOM_CELL:geometry.bounds.width/64;
       const sprite = this.scene.add.image(point.x, point.y, assetKey).setPosition(point.x, point.y).setOrigin(originX, originY)
-        .setScale(spriteScale)
+        .setScale(spriteScale,licensedOfficeAvailable()?spriteScale:geometry.bounds.height/64)
         .setAngle(furniture.rotation ?? 0).setDepth(interiorFurnitureRenderDepth(furniture, geometry.baselineY));
       sprite.setTint(buildingPalette(this.openId ?? '').furniture);
       furnitureLayer.add(sprite);
       if (!this.editMode) continue;
-      const hitArea = catalog
+      const hitArea = !licensedOfficeAvailable()?{x:0,y:0,width:64,height:64}:catalog
         ? { ...catalog.opaqueBounds }
         : { x: 0, y: 0, width: 32, height: 48 };
       sprite.setInteractive({
@@ -1322,11 +1340,11 @@ export class InteriorCutawaySystem {
       const geometry = furnitureRenderScreenGeometry(this.roomOrigin, furniture, this.roomCell);
       const point = geometry.point;
       const catalog = resolvedFurnitureAsset(furniture);
-      const assetKey = (catalog?.id === 1001 && this.scene.textures?.exists?.('village-furniture-bed-complete') ? 'village-furniture-bed-complete' : catalog?.key) ?? modernOfficeAsset(modernOfficeKindForFurniture(furniture.kind)).key;
-      const originX = catalog ? (catalog.opaqueBounds.x + catalog.opaqueBounds.width / 2) / (catalog.sourceWidth ?? 32) : 0.5;
-      const originY = catalog ? (catalog.opaqueBounds.y + catalog.opaqueBounds.height / 2) / (catalog.sourceHeight ?? 48) : 0.5;
+      const assetKey = !licensedOfficeAvailable()?freeOfficePresentation(furniture).texture:(catalog?.id === 1001 && this.scene.textures?.exists?.('village-furniture-bed-complete') ? 'village-furniture-bed-complete' : catalog?.key) ?? modernOfficeAsset(modernOfficeKindForFurniture(furniture.kind)).key;
+      const originX = licensedOfficeAvailable()&&catalog ? (catalog.opaqueBounds.x + catalog.opaqueBounds.width / 2) / (catalog.sourceWidth ?? 32) : 0.5;
+      const originY = licensedOfficeAvailable()&&catalog ? (catalog.opaqueBounds.y + catalog.opaqueBounds.height / 2) / (catalog.sourceHeight ?? 48) : 0.5;
       furnitureLayer.add(this.scene.add.image(point.x, point.y, assetKey).setOrigin(originX, originY)
-        .setScale(normalizeFurnitureScale(furniture.scale) * this.roomCell / BASE_ROOM_CELL)
+        .setScale(licensedOfficeAvailable()?normalizeFurnitureScale(furniture.scale) * this.roomCell / BASE_ROOM_CELL:geometry.bounds.width/64,licensedOfficeAvailable()?normalizeFurnitureScale(furniture.scale) * this.roomCell / BASE_ROOM_CELL:geometry.bounds.height/64)
         .setAngle(furniture.rotation ?? 0).setDepth(interiorFurnitureRenderDepth(furniture, geometry.baselineY)).setAlpha(0.36));
     }
     furnitureLayer.sort('depth');
@@ -1365,9 +1383,9 @@ export class InteriorCutawaySystem {
     const missingRequired = required.filter(({ placed }) => !placed);
     missingRequired.slice(0, 12).forEach(({ furniture }, index) => {
       const catalog = resolvedFurnitureAsset(furniture);
-      const assetKey = (catalog?.id === 1001 && this.scene.textures?.exists?.('village-furniture-bed-complete') ? 'village-furniture-bed-complete' : catalog?.key) ?? modernOfficeAsset(modernOfficeKindForFurniture(furniture.kind)).key;
-      const originX = catalog ? (catalog.opaqueBounds.x + catalog.opaqueBounds.width / 2) / (catalog.sourceWidth ?? 32) : 0.5;
-      const originY = catalog ? (catalog.opaqueBounds.y + catalog.opaqueBounds.height / 2) / (catalog.sourceHeight ?? 48) : 0.5;
+      const assetKey = !licensedOfficeAvailable()?freeOfficePresentation(furniture).texture:(catalog?.id === 1001 && this.scene.textures?.exists?.('village-furniture-bed-complete') ? 'village-furniture-bed-complete' : catalog?.key) ?? modernOfficeAsset(modernOfficeKindForFurniture(furniture.kind)).key;
+      const originX = licensedOfficeAvailable()&&catalog ? (catalog.opaqueBounds.x + catalog.opaqueBounds.width / 2) / (catalog.sourceWidth ?? 32) : 0.5;
+      const originY = licensedOfficeAvailable()&&catalog ? (catalog.opaqueBounds.y + catalog.opaqueBounds.height / 2) / (catalog.sourceHeight ?? 48) : 0.5;
       const itemX = startX + index * slotSpacing;
       const item = this.scene.add.image(itemX, shelfY, assetKey)
         .setPosition(itemX, shelfY).setOrigin(originX, originY).setScale(0.68).setTint(0xffd36b);

@@ -1,4 +1,4 @@
-# Woodland Office 1.0
+# Woodland Office 1.1
 
 An original office set designed for Pixelverse's woodland village. The set covers desks,
 computers, displays, chairs, sofas, bookcases, cabinets, boards, plants, beds, printers
@@ -20,3 +20,5 @@ shared manifest palette; no Blender installation is required.
 `models/*.glb` contains the matching 12 standalone meshes, importable directly in Blender.
 Run `node private_assets/free-office/export-models.mjs` to regenerate them from the
 actual game geometry after changing the palette or models. GLBs embed no third-party textures.
+
+Version 1.1 separates desk, monitor, keyboard, papers, lamp and divider sprites to avoid duplicate workstation drawings. `python private_assets/free-office/generate_rabbits.py` regenerates six original rabbit coats, directional walk/rest sheets and matching roster portraits. Free-mode inspectors and agents share the same scale. Beds and sofas allow 2D resting; hard furniture retains collision.

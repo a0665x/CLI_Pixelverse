@@ -53,7 +53,7 @@ describe('village asset manifest', () => {
         expect.stringMatching(/modern-interiors-free\/(?:Interiors|Room_Builder)/),
       ]));
 
-    expect(spritesheet).toHaveBeenCalledTimes(licensedOfficeAvailable()?12:10);
+    expect(spritesheet).toHaveBeenCalledTimes(licensedOfficeAvailable()?12:16);
     expect(spritesheet).toHaveBeenCalledWith('puny-world', '/assets/puny-world/punyworld-overworld-tileset.png', { frameWidth: 16, frameHeight: 16 });
     expect(spritesheet).toHaveBeenCalledWith('ninja-blue', '/assets/ninja-adventure/ninja-blue.png', { frameWidth: 16, frameHeight: 16 });
     expect(spritesheet).toHaveBeenCalledWith('samurai-blue', '/assets/ninja-adventure/samurai-blue.png', { frameWidth: 16, frameHeight: 16 });
@@ -66,7 +66,7 @@ describe('village asset manifest', () => {
         + (licensedOfficeAvailable()?Object.keys(MODERN_OFFICE_ASSETS.furniture).length + MODERN_OFFICE_CATALOG.length:0) + (licensedOfficeAvailable()?VILLAGE_FURNITURE_CATALOG.length:0),
     );
     if(licensedOfficeAvailable())for (const asset of VILLAGE_FURNITURE_CATALOG) expect(image).toHaveBeenCalledWith(asset.key, asset.path);
-    if(!licensedOfficeAvailable()){expect(svg).toHaveBeenCalledTimes(12);expect(svg).toHaveBeenCalledWith('woodland-office-bookcase','/assets/free-office/bookcase.svg',{width:64,height:64});}
+    if(!licensedOfficeAvailable()){expect(svg).toHaveBeenCalledTimes(16);expect(svg).toHaveBeenCalledWith('woodland-office-bookcase','/assets/free-office/bookcase.svg',{width:64,height:64});}
     expect(image).toHaveBeenCalledWith('animal-cow', '/assets/kenney/tiny-farm/cow.png');
     if(licensedOfficeAvailable()) expect(image).toHaveBeenCalledWith('modern-office-v1.2-computer', '/assets/private/modern-office-v1.2/Modern_Office_Singles_225.png');
     if(!licensedOfficeAvailable()) expect([...image.mock.calls,...spritesheet.mock.calls].some(call=>String(call[1]).includes('/private/'))).toBe(false);
@@ -83,16 +83,17 @@ describe('village asset manifest', () => {
   });
 
   it('assigns stable varied character sheets by agent identity', () => {
-    expect(agentSkinFor('main', 'main')).toBe(AGENT_SKINS.main);
-    expect(agentSkinFor('reviewer-2', 'subagent')).toBe(agentSkinFor('reviewer-2', 'subagent'));
+    if(licensedOfficeAvailable())expect(agentSkinFor('main', 'main')).toBe(AGENT_SKINS.main);else expect(agentSkinFor('main','main').sheet).toMatch(/^woodland-rabbit-/);
+    expect(agentSkinFor('reviewer-2', 'subagent')).toEqual(agentSkinFor('reviewer-2', 'subagent'));
     const sheets = new Set(Array.from({ length: 18 }, (_, index) => (
       agentSkinFor(`subagent-${index + 1}`, 'subagent').sheet
     )));
-    expect(sheets).toEqual(new Set([
+    if(licensedOfficeAvailable())expect(sheets).toEqual(new Set([
       AGENT_SKINS.ninja.sheet,
       AGENT_SKINS.subagent.sheet,
       AGENT_SKINS.branch.sheet,
     ]));
+    if(!licensedOfficeAvailable())expect(sheets.size).toBe(6);
     expect(new Set(['subagent-1', 'subagent-2', 'subagent-3'].map((id) => (
       agentSkinFor(id, 'subagent').sheet
     ))).size).toBe(3);

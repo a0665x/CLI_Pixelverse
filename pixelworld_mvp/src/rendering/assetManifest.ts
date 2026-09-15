@@ -1,4 +1,4 @@
-import {worldSkinIndex} from '../../../public/agent_identity.mjs';
+import {worldSkinIndex,rabbitIdentity} from '../../../public/agent_identity.mjs';
 import {OFFICE_PACK,freeOfficeTexture} from './officePack';
 import {installFreeOfficeArt} from './freeOfficeArt';
 import { installRiverArt } from './riverArt';
@@ -20,7 +20,7 @@ export interface SpriteSheetAsset {
 export interface AgentSkin {
   sheet: string;
   idleRow: 0;
-  walkRows: readonly [0, 1, 2, 3];
+  walkRows: readonly [number, number, number, number];
   facingFrames?: Readonly<Record<Facing, number>>;
   animation?: 'adam-16x32';
   renderScale?: number;
@@ -132,6 +132,7 @@ export const AGENT_SKINS = {
 const SUBAGENT_SKINS = [AGENT_SKINS.ninja, AGENT_SKINS.subagent, AGENT_SKINS.branch] as const;
 
 export function agentSkinFor(agentId: string, role: 'main' | 'subagent'): AgentSkin {
+  if(!licensedOfficeAvailable())return {sheet:`woodland-rabbit-${agentId==='inspector'?0:rabbitIdentity(agentId).index}`,idleRow:0,walkRows:[1,2,3,4],renderScale:.42};
   if (role === 'main') return AGENT_SKINS.main;
   return SUBAGENT_SKINS[worldSkinIndex(agentId)]!;
 }
@@ -145,6 +146,7 @@ export function agentFrameIndex(skin: AgentSkin, facing: Facing, row: number = s
 }
 
 export function preloadVillageAssets(scene: Phaser.Scene): void {
+  if(!licensedOfficeAvailable())for(let i=0;i<6;i++)scene.load.spritesheet(`woodland-rabbit-${i}`,`/assets/free-office/rabbit-${i}.svg`,{frameWidth:64,frameHeight:64});
   if(!licensedOfficeAvailable())for(const family of OFFICE_PACK.families)scene.load.svg?.(freeOfficeTexture(family),`/assets/free-office/${family}.svg`,{width:64,height:64});
   if (licensedOfficeAvailable()) scene.load.json(MODERN_OFFICE_COLLISION_MASKS.key, MODERN_OFFICE_COLLISION_MASKS.path);
   [

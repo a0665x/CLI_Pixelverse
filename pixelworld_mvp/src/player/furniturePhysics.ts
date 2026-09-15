@@ -28,3 +28,11 @@ function landingPoint(f:FurnitureDefinition){const b=furnitureBody(f)!;const off
 export function perchTarget(room:InteriorDefinition,p:PlayerPoint){
  return room.furniture.filter(f=>['bed','chair','office-chair','sofa'].includes(f.kind)).map(f=>({id:f.id,point:landingPoint(f),height:f.kind==='bed'?.76:f.kind==='sofa'?.72:.56,distance:Math.hypot(p.x-f.point.x,p.y-f.point.y)})).filter(t=>t.distance<=1.8&&t.distance>.25&&Array.from({length:21},(_,i)=>({x:p.x+(t.point.x-p.x)*i/20,y:p.y+(t.point.y-p.y)*i/20})).every(q=>roomBodyAllowed(room,q,t.id))).sort((a,b)=>a.distance-b.distance)[0];
 }
+
+export function restSurfaceAt(room:InteriorDefinition,p:PlayerPoint){
+ return room.furniture.find(f=>['bed','sofa'].includes(f.kind)&&bodyOverlaps(p,furnitureBody(f)!, .05));
+}
+export function room2DBodyAllowed(room:InteriorDefinition,p:PlayerPoint,restId='*'){
+ const furniture=room.furniture.filter(f=>!(['bed','sofa'].includes(f.kind)&&(restId==='*'||f.id===restId)));
+ return roomBodyAllowed({...room,furniture},p);
+}

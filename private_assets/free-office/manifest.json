@@ -1,6 +1,6 @@
 {
   "id": "woodland-office",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "name": "Woodland Office",
   "license": "CC0-1.0",
   "palette": {
@@ -12,6 +12,24 @@
     "screen": "#344c47"
   },
   "families": [
+    "desk",
+    "computer",
+    "display",
+    "chair",
+    "sofa",
+    "bookcase",
+    "cabinet",
+    "board",
+    "plant",
+    "bed",
+    "printer",
+    "coffee",
+    "papers",
+    "keyboard",
+    "lamp",
+    "divider"
+  ],
+  "modelFamilies": [
     "desk",
     "computer",
     "display",

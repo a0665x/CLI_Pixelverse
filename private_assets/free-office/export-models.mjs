@@ -18,7 +18,7 @@ try{
  const {furnishing}=await import(pathToFileURL(output).href);
  const manifest=JSON.parse(await readFile(path.join(here,'manifest.json'),'utf8'));
  await mkdir(path.join(here,'models'),{recursive:true});
- for(const family of manifest.families){const kind=({chair:'office-chair',board:'planning-board',coffee:'beverage-station'})[family]||family;
+ for(const family of (manifest.modelFamilies||manifest.families)){const kind=({chair:'office-chair',board:'planning-board',coffee:'beverage-station'})[family]||family;
   const scene=new T.Scene();furnishing(scene,{id:family,kind,point:{x:0,y:0},footprint:{width:1,height:1}});scene.updateMatrixWorld(true);
   const data=await new GLTFExporter().parseAsync(scene,{binary:true});await writeFile(path.join(here,'models',`${family}.glb`),Buffer.from(data));
  }

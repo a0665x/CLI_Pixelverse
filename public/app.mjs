@@ -1,6 +1,6 @@
 import {rabbitIdentity,worldSpritePortrait} from './agent_identity.mjs';
 let rabbitPortraitSources=[];
-const villagePortrait=agent=>{if(document.body.dataset.worldView!=='3d')return worldSpritePortrait(agent);const index=rabbitIdentity(agent.agent||agent.id||'').index;return {src:rabbitPortraitSources[index]||'/pixelworld/assets/honey-meshy/reference.png',pixelClass:rabbitPortraitSources[index]?'rabbit-portrait':`rabbit-portrait rabbit-coat-${index}`};};
+const villagePortrait=agent=>{if(document.body.dataset.worldView!=='3d')return worldSpritePortrait(agent,document.body.dataset.officePack==='free');const index=rabbitIdentity(agent.agent||agent.id||'').index;return {src:rabbitPortraitSources[index]||'/pixelworld/assets/honey-meshy/reference.png',pixelClass:rabbitPortraitSources[index]?'rabbit-portrait':`rabbit-portrait rabbit-coat-${index}`};};
 import {
   activityHintForLocale,
   agentConnectionStatusText,
@@ -1709,7 +1709,7 @@ initializeApp();
     if (event.data?.type === 'pixelverse.view.ready') send();
     if (event.data?.type === 'pixelverse.view.changed' && ['2d', '3d'].includes(event.data.mode)) {
       mode = event.data.mode;
-      document.body.dataset.worldView=mode;
+      document.body.dataset.worldView=mode;document.body.dataset.officePack=event.data.officePack||'modern-office';
       renderLiveMonitoring();
       buttons.forEach(button => button.setAttribute('aria-pressed', String(button.dataset.worldView === mode)));
       try { localStorage.setItem('pixelverse:view', mode); } catch {}

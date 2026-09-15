@@ -27,6 +27,9 @@ export function drawFreeOffice(c:CanvasRenderingContext2D,item:ModernOfficeCatal
 export function installFreeOfficeArt(scene:Phaser.Scene){
  if(!scene.textures?.createCanvas)return;
  const paint=(c:CanvasRenderingContext2D,item:ModernOfficeCatalogItem)=>{const source=scene.textures.get?.(freeOfficeTexture(officeFamily(item)))?.getSourceImage();if(source){const b=item.opaqueBounds;c.drawImage(source as HTMLImageElement,b.x,b.y,b.width,b.height);}else drawFreeOffice(c,item);};
- for(const item of [...MODERN_OFFICE_CATALOG,...VILLAGE_FURNITURE_CATALOG]){if(scene.textures.exists(item.key))continue;const texture=scene.textures.createCanvas(item.key,item.sourceWidth??32,item.sourceHeight??48);if(texture){paint(texture.context,item);texture.refresh();}}
+ for(const item of [...MODERN_OFFICE_CATALOG,...VILLAGE_FURNITURE_CATALOG]){
+ const key=`woodland-piece-${item.id}`;
+ if(!scene.textures.exists(key)){const source=scene.textures.get?.(freeOfficeTexture(officeFamily(item)))?.getSourceImage();const texture=scene.textures.createCanvas(key,64,64);if(texture&&source){texture.context.drawImage(source as HTMLImageElement,0,0,64,64);texture.refresh();}}
+if(scene.textures.exists(item.key))continue;const texture=scene.textures.createCanvas(item.key,item.sourceWidth??32,item.sourceHeight??48);if(texture){paint(texture.context,item);texture.refresh();}}
  for(const asset of Object.values(MODERN_OFFICE_ASSETS.furniture)){if(scene.textures.exists(asset.key))continue;const id=Number(asset.path.match(/Singles_(\d+)/)?.[1]);const item=MODERN_OFFICE_CATALOG.find(x=>x.id===id);if(item){const texture=scene.textures.createCanvas(asset.key,item.sourceWidth??32,item.sourceHeight??48);if(texture){paint(texture.context,item);texture.refresh();}}}
 }

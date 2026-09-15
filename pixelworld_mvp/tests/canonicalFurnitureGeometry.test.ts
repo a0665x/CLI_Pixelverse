@@ -1,3 +1,5 @@
+import {licensedOfficeAvailable} from '../src/rendering/assetManifest';
+import {freeOfficePresentation} from '../src/rendering/freeOfficePresentation';
 import { describe, expect, it } from 'vitest';
 import { BUILT_IN_OFFICE_PREFABS } from '../src/rendering/builtInOfficePrefabs';
 import { rotatePrefab } from '../src/rendering/prefabGeometry';
@@ -60,8 +62,8 @@ describe('canonical furniture geometry', () => {
 
     expect(collisionBounds.width).toBeCloseTo(canonical.width);
     expect(collisionBounds.height).toBeCloseTo(canonical.height);
-    expect(rendered.bounds.width / 22).toBeCloseTo(canonical.width);
-    expect(rendered.bounds.height / 22).toBeCloseTo(canonical.height);
+    expect(rendered.bounds.width / 22).toBeCloseTo(licensedOfficeAvailable()?canonical.width:freeOfficePresentation(legacyDesk).width);
+    expect(rendered.bounds.height / 22).toBeCloseTo(licensedOfficeAvailable()?canonical.height:freeOfficePresentation(legacyDesk).height);
   });
 
   it('translates a built-in composite without changing member geometry or pairwise offsets', () => {
