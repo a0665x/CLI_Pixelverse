@@ -19,6 +19,9 @@ export function box(parent:T.Object3D,x:number,y:number,z:number,w:number,h:numb
   const mesh=new T.Mesh((Math.min(w,h,d)>.06&&Math.max(w,h,d)<30?new RoundedBoxGeometry(w,h,d,1,Math.min(.065,Math.min(w,h,d)*.22)):new T.BoxGeometry(w,h,d)),material(color,glow));
   mesh.position.set(x,y,z);mesh.castShadow=true;mesh.receiveShadow=true;parent.add(mesh);return mesh;
 }
+function upholstered(parent:T.Object3D,x:number,y:number,z:number,w:number,h:number,d:number,color:number){
+ const mesh=new T.Mesh(new RoundedBoxGeometry(w,h,d,3,Math.min(.13,Math.min(w,h,d)*.45)),material(color));mesh.position.set(x,y,z);mesh.castShadow=true;mesh.receiveShadow=true;parent.add(mesh);return mesh;
+}
 export function cylinder(parent:T.Object3D,x:number,y:number,z:number,r:number,h:number,color:number,top=r) {
   const mesh=new T.Mesh(new T.CylinderGeometry(top,r,h,16),material(color));mesh.position.set(x,y,z);mesh.castShadow=true;mesh.receiveShadow=true;parent.add(mesh);return mesh;
 }
@@ -103,9 +106,13 @@ function desk(parent:T.Object3D,kind:string) {
   const lamp=cylinder(parent,-.61,1.5,-.27,.16,.12,0xd0b16c,.06);lamp.rotation.z=-.3;
 }
 function chair(parent:T.Object3D) {
-  cylinder(parent,0,.28,0,.045,.5,0x41494a);box(parent,0,.48,0,.5,.12,.5,0x647878);box(parent,0,.77,.22,.5,.5,.1,0x647878);
-  for(let i=0;i<5;i++){const b=box(parent,0,.08,0,.08,.07,.65,0x3c4547);b.rotation.y=i*Math.PI/5;}
-  for(const x of [-.3,.3])box(parent,x,.65,0,.055,.1,.4,0x434d4d);
+  cylinder(parent,0,.25,0,.045,.43,0x655b49);
+  const cushion=orb(parent,0,.50,0,.34,0x82958a);cushion.scale.set(1,.28,.96);
+  const back=orb(parent,0,.79,.22,.35,0x718b7c);back.scale.set(1,.94,.25);back.rotation.x=-.14;
+  for(const x of [-.22,.22]){const post=cylinder(parent,x,.68,.24,.025,.48,0x8b7354);post.rotation.x=-.14;}
+  for(let i=0;i<5;i++){const a=i*Math.PI*2/5,leg=cylinder(parent,Math.sin(a)*.15,.095,Math.cos(a)*.15,.025,.32,0x655b49);leg.rotation.set(Math.cos(a)*Math.PI/2,0,-Math.sin(a)*Math.PI/2);const wheel=orb(parent,Math.sin(a)*.29,.065,Math.cos(a)*.29,.055,0x424f48);wheel.scale.y=.8;}
+  for(const x of [-.28,.28]){cylinder(parent,x,.60,0,.022,.26,0x8b7354);const arm=orb(parent,x,.73,0,.18,0x9c8967);arm.scale.set(.30,.25,1);}
+
 }
 export function furnishing(parent:T.Object3D,f:FurnitureDefinition) {
   const g=new T.Group();g.position.set(f.point.x,0,f.point.y);g.rotation.y=(f.rotation||0)*Math.PI/180;parent.add(g);
@@ -124,12 +131,12 @@ export function furnishing(parent:T.Object3D,f:FurnitureDefinition) {
     for(const x of [-.65,.65])box(g,x,.95,0,.08,1.9,.6,0x9a8869);
     for(let row=0;row<4;row++) {box(g,0,.12+row*.5,0,1.3,.06,.6,0x9a8869);for(let j=0;j<7;j++)box(g,-.5+j*.16,.32+row*.5,.02,.115,.3+(j%3)*.03,.35,[0x667e7e,0xa77a5b,0x9c9c72,0xd0c3a1][(j+row)%4]!);}
   } else if(k==='sofa') {
-    box(g,0,.35,0,1.8,.5,.8,0x68847a);box(g,0,.8,-.34,1.8,.6,.18,0x58776d);
-    for(const x of [-.83,.83])box(g,x,.6,0,.18,.45,.9,0x58776d);
-    for(const x of [-.4,.4])box(g,x,.64,0,.74,.1,.63,0x83a090);
-    box(g,.55,.85,-.1,.36,.35,.14,0xc7ac72);
+    upholstered(g,0,.35,0,1.8,.5,.8,0x68847a);upholstered(g,0,.8,-.34,1.8,.6,.18,0x58776d);
+    for(const x of [-.83,.83])upholstered(g,x,.6,0,.18,.45,.9,0x58776d);
+    for(const x of [-.4,.4])upholstered(g,x,.64,0,.74,.1,.63,0x83a090);
+    upholstered(g,.55,.85,-.1,.36,.35,.14,0xc7ac72);
   } else if(k==='bed') {
-    box(g,0,.25,0,1.3,.4,2,0x877052);box(g,0,.53,0,1.25,.2,1.95,0xe1d8bf);box(g,0,.66,-.64,.95,.18,.4,0xf1e8cd);box(g,0,.66,.35,1.25,.06,1.15,0x6f9391);
+    upholstered(g,0,.25,0,1.3,.4,2,0x877052);upholstered(g,0,.53,0,1.25,.2,1.95,0xe1d8bf);upholstered(g,0,.66,-.64,.95,.18,.4,0xf1e8cd);upholstered(g,0,.66,.35,1.25,.06,1.15,0x6f9391);
   } else if(k==='planning-board'||k==='tool-wall') {
     box(g,0,1.8,0,1.7,1,.1,0x8e7659);box(g,0,1.8,.065,1.56,.87,.02,0xd6d8c5);
     for(let i=0;i<6;i++)box(g,-.55+(i%3)*.45,1.55+Math.floor(i/3)*.37,.085,.28,.21,.01,[0xc5ad68,0x82a5a0,0xb99783][i%3]!);
@@ -181,7 +188,7 @@ export function roomModel(interior:InteriorDefinition,index:number) {
   box(g,3.5,.027,d>9?8:6,4.5,.02,2.6,0x6e8880);
   for(const x of [1.3,5.7])box(g,x,.04,d>9?8:6,.05,.007,2.5,0xc5c1a3);
   for(const z of [(d>9?8:6)-1.22,(d>9?8:6)+1.22])box(g,3.5,.04,z,4.4,.007,.05,0xc5c1a3);
-  for(const z of [2.8,d-3])box(g,w/2-.5,3.18,z,w,.18,.17,villageTimber);
+  // Open cutaway ceiling: no cross beams over the playable room.
   const seats=[...workstationSeats(interior).values()];
   for(let x=3;x<w-1;x+=5){box(g,x,3.18,2,.9,.09,.3,0x485653);box(g,x,3.12,2,.78,.025,.22,0xffe9bc,true);}
   interior.furniture.forEach(f=>{

@@ -24,7 +24,9 @@ See [verification notes](docs/reference/release-verification.md).
 ## What You Get
 
 - A 3D village by default, with an optional 2D pixel-art view sharing Agent state.
-- An inspector rabbit with WASD movement, R gait cycling, Space jumps and L flashlight.
+- Summon an inspector rabbit with WASD movement, R gait cycling, Space jumps and L flashlight.
+- Feed carrots for a 30-second speed boost or licorice hay for a 30-second growth effect.
+  Refeeding refreshes the timer; both effects can coexist.
 - Furniture and character-body collision, tiered indoor climbing, hourly day/night cycles and meteor arrival.
 - Left-drag map panning, right-drag orbit, and cursor-centered wheel zoom.
 - View-aware Agent portraits, stable rabbit identity badges, project names, and animated ECG.
@@ -46,7 +48,7 @@ See [verification notes](docs/reference/release-verification.md).
 Open **Village guide** in either view. Search by Agent name, project, or parent Agent;
 occupied houses appear first. House labels show actual indoor occupancy, and hovering
 shows the room's purpose and occupants. Select **Track** to keep the target house
-highlighted while walking as the inspector. The destination follows the Agent as it moves.
+highlighted with a soft smoke trail in 3D while walking as the inspector. The destination follows the Agent as it moves.
 
 Main and Subagent badges and the same short identity code appear in the roster and
 world labels. In 3D, roster portraits use the Honey rabbit appearance. Codex child hooks

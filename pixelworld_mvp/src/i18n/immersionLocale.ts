@@ -123,6 +123,15 @@ const CATALOG: Record<VillageLocale, readonly string[]> = {
   ]
 };
 const EXTRA:Record<string,Record<string,string>>={
+ '降臨審查員':{'en-US':'Summon inspector','ja-JP':'巡回員を召喚','ko-KR':'순찰원 소환'},
+ '✦ 降臨審查員':{'en-US':'✦ Summon inspector','ja-JP':'✦ 巡回員を召喚','ko-KR':'✦ 순찰원 소환'},
+ '離開巡檢':{'en-US':'Leave inspection','ja-JP':'巡回を終了','ko-KR':'순찰 종료'},
+ '投餵食物':{'en-US':'Feed inspector','ja-JP':'食べ物をあげる','ko-KR':'먹이 주기'},
+ '胡蘿蔔 · 加速 30 秒':{'en-US':'Carrot · speed boost 30s','ja-JP':'ニンジン · 加速 30秒','ko-KR':'당근 · 가속 30초'},
+ '甘草堆 · 變大 30 秒':{'en-US':'Licorice hay · grow for 30s','ja-JP':'甘草の束 · 巨大化 30秒','ko-KR':'감초 더미 · 커지기 30초'},
+ '加速中':{'en-US':'Speed boost','ja-JP':'加速中','ko-KR':'가속 중'},
+ '變大中':{'en-US':'Growing boost','ja-JP':'巨大化中','ko-KR':'커진 상태'},
+
  '繼續對話':{'en-US':'Continue conversation','ja-JP':'会話を続ける','ko-KR':'대화 계속'},
  '送出對話':{'en-US':'Send message','ja-JP':'メッセージを送信','ko-KR':'메시지 보내기'},
  '等待下一輪對話':{'en-US':'Waiting for your next message','ja-JP':'次のメッセージを待っています','ko-KR':'다음 메시지 대기 중'},

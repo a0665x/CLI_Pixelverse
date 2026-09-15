@@ -1,3 +1,4 @@
+import {FoodEffects} from './foodEffects';
 import {characterMoveAllowed,characterSupport,type CharacterBody} from './characterCollision';
 import {playerHeading} from './playerHeading';
 import {PlatformMotion} from './platformMotion';
@@ -24,6 +25,12 @@ const SUMMON_MS = 1600;
 
 export class ImmersionController {
   private active=false;
+  private foodEffects=new FoodEffects();
+  private foodScale=1;
+  private feeding=document.createElement('div');
+  private feedToggle=document.createElement('button');
+  private feedMenu=document.createElement('div');
+  private feedStatus=document.createElement('span');
   private interactionQuestion=document.createElement('p');
   private cameraYaw=0;
   private visibleActors:CharacterBody[]=[];
@@ -42,14 +49,15 @@ export class ImmersionController {
   private inspectionOpen=false;
   setInspectionOpen(open:boolean):void {this.inspectionOpen=open;this.keys.clear();this.walking=false;if(open)this.hidePanel();}
   setCameraYaw(yaw:number):void {this.cameraYaw=yaw;}
-  viewState() {return {active:this.active, point:{...(this.roomPoint||this.point)}, summonPoint:this.summonPoint,impactAge:performance.now()-(this.landingDeadline-SUMMON_MS*.45),roomId:this.roomId, facing:this.facing, walking:this.walking, gait:this.gait, heading:this.heading, elevation:this.elevation, flashlight:this.flashlight, landing:this.landing/SUMMON_MS, target:this.target};}
+  viewState() {return {food:this.foodEffects.sample(performance.now()),foodScale:this.foodScale,active:this.active, point:{...(this.roomPoint||this.point)}, summonPoint:this.summonPoint,impactAge:performance.now()-(this.landingDeadline-SUMMON_MS*.45),roomId:this.roomId, facing:this.facing, walking:this.walking, gait:this.gait, heading:this.heading, elevation:this.elevation, flashlight:this.flashlight, landing:this.landing/SUMMON_MS, target:this.target};}
   private readonly localize=()=>{
-    this.root.setAttribute('aria-label',t('身歷其境'));
-    this.toggle.textContent=this.active?t('離開身歷其境'):t('✦ 身歷其境');
+    this.root.setAttribute('aria-label',t('降臨審查員'));
+    this.toggle.textContent=this.active?t('離開巡檢'):t('✦ 降臨審查員');
     this.options.setAttribute('aria-label',t('選擇互動'));
     this.options.querySelectorAll('button').forEach((b,i)=>b.textContent=t(labels[i]!));
     if(this.target&&!this.busy&&!this.modal)this.showTarget(this.target);
     if(this.target){const agent=this.world.immersionContext().snapshot?.agents.find(a=>a.agent===this.target);this.title.textContent=`${inspectionCopy().event} · ${agent?.name||this.target}`;this.interactionQuestion.textContent=`${inspectionCopy().ask} ${t('← → 選擇，Enter 確認')}`;}
+    this.feeding.querySelectorAll<HTMLElement>('[data-copy]').forEach(node=>node.textContent=t(node.dataset.copy!));
     this.content.querySelectorAll<HTMLElement>('[data-copy]').forEach(node=>{
       const source=node.dataset.copy!;
       if(node instanceof HTMLTextAreaElement)node.placeholder=t(source);
@@ -125,8 +133,8 @@ export class ImmersionController {
   };
   constructor(private readonly world: WorldScene) {
     this.point={...world.worldDefinition.spawn};
-    this.root.id='immersion-ui'; this.root.setAttribute('aria-label',t('身歷其境'));
-    this.toggle.type='button';this.toggle.id='immersion-toggle';this.toggle.textContent=t('✦ 身歷其境');
+    this.root.id='immersion-ui'; this.root.setAttribute('aria-label',t('降臨審查員'));
+    this.toggle.type='button';this.toggle.id='immersion-toggle';this.toggle.textContent=t('✦ 降臨審查員');
     this.toggle.setAttribute('aria-pressed','false');this.toggle.onclick=()=>this.setActive(!this.active);
     this.panel.className='immersion-panel';this.panel.hidden=true;
     this.options.className='immersion-options';this.options.setAttribute('role','group');this.options.setAttribute('aria-label',t('選擇互動'));
@@ -146,6 +154,15 @@ export class ImmersionController {
       button.onpointerup=release;button.onpointercancel=release;button.onlostpointercapture=release;
       this.controls.append(button);
     }
+    this.feeding.className='inspector-feeding';this.feedToggle.type='button';copyTo(this.feedToggle,'投餵食物');
+    this.feedMenu.hidden=true;this.feedMenu.className='inspector-food-menu';this.feedToggle.setAttribute('aria-expanded','false');
+    this.feedToggle.onclick=()=>{this.feedMenu.hidden=!this.feedMenu.hidden;this.feedToggle.setAttribute('aria-expanded',String(!this.feedMenu.hidden));this.feedToggle.blur();};
+    for(const [food,label,icon] of [['carrot','胡蘿蔔 · 加速 30 秒','🥕'],['hay','甘草堆 · 變大 30 秒','🌾']] as const){
+      const button=document.createElement('button');button.type='button';copyTo(button,label);button.dataset.food=food;button.title=icon;
+      button.onclick=()=>{if(!this.active)return;this.foodEffects.feed(food,performance.now());this.feedMenu.hidden=true;this.feedToggle.setAttribute('aria-expanded','false');button.blur();};this.feedMenu.append(button);
+    }
+    this.feeding.append(this.feedToggle,this.feedMenu,this.feedStatus);this.feeding.hidden=true;
+    this.root.append(this.feeding);
     this.root.append(this.toggle,this.hint,this.panel,this.controls);document.querySelector('#app-shell')?.append(this.root);
     this.outside=world.add.image(0,0,skin.sheet,3).setOrigin(.5,.82).setScale(1.1).setTint(0xffe0a3).setVisible(false);
     this.effects=world.add.graphics().setDepth(9000);
@@ -155,8 +172,8 @@ export class ImmersionController {
   }
   private setActive(active:boolean):void {
     if(this.busy) return;
-    this.active=active;document.documentElement.dataset.immersion=String(active);this.toggle.setAttribute('aria-pressed',String(active));
-    this.toggle.textContent=active?t('離開身歷其境'):t('✦ 身歷其境');this.keys.clear();
+    this.active=active;this.feeding.hidden=!active;if(!active){this.foodEffects.clear();this.foodScale=1;this.feedMenu.hidden=true;this.feedToggle.setAttribute('aria-expanded','false');}document.documentElement.dataset.immersion=String(active);this.toggle.setAttribute('aria-pressed',String(active));
+    this.toggle.textContent=active?t('離開巡檢'):t('✦ 降臨審查員');this.keys.clear();
     this.controls.hidden=!active;this.hopTime=0;this.idleTime=0;this.hint.hidden=!active;this.outside.setVisible(active);this.effects.clear();
     if(active) {
       const enteredRoom=this.world.immersionContext().cutaway?.visitorSurface();
@@ -234,7 +251,12 @@ export class ImmersionController {
     const dy=-inputX*Math.sin(this.cameraYaw)+inputY*Math.cos(this.cameraYaw);
     const walking=!this.modal && !this.inspectionOpen && Boolean(dx||dy);
     this.walking=walking;
-    const speed=document.documentElement.dataset.view==='3d'?GAIT_SPEED[this.gait]:3.5;
+    const food=this.foodEffects.sample(performance.now());
+    this.foodScale+=(food.size-this.foodScale)*(1-Math.exp(-dt*.008));
+    this.feedStatus.textContent=[food.speedSeconds?`🥕 ${t('加速中')} ${food.speedSeconds}s`:'',food.sizeSeconds?`🌾 ${t('變大中')} ${food.sizeSeconds}s`:''].filter(Boolean).join(' · ');
+    const speed=(document.documentElement.dataset.view==='3d'?GAIT_SPEED[this.gait]:3.5)*food.speed;
+    this.outside.setScale((skin.renderScale??1)*this.foodScale);
+
     const before={...(this.roomPoint||this.point)};
     const bodyRoom=surface?.buildingId??'';
     const bodies:CharacterBody[]=document.documentElement.dataset.view==='3d'?this.visibleActors:surface?surface.agents.map(a=>({...a,roomId:bodyRoom})):context.agents.filter(a=>a.presence().kind==='outside').map(a=>({id:a.agentId,roomId:'',x:a.sprite.x/16-.5,y:a.sprite.y/16-.5}));
@@ -251,7 +273,7 @@ export class ImmersionController {
       }else{this.platform=undefined;if(walking)this.roomPoint=movePlayer(this.roomPoint,dx,dy,dt*.001*speed*3/3.5,p=>indoorAllowed(p)&&bodyAllowed(this.roomPoint!,p));}
       const p=this.roomPoint;
       this.visitor!.setPosition(surface.origin.x+(p.x+.5)*surface.cell,surface.origin.y+(p.y+.5)*surface.cell)
-        .setScale(1.1*surface.cell/16).setDepth(3000+surface.origin.y+(p.y+.5)*surface.cell+.999)
+        .setScale((skin.renderScale??1)*this.foodScale*surface.cell/22).setDepth(3000+surface.origin.y+(p.y+.5)*surface.cell+.999)
         .setFrame(agentFrameForSkin(skin,this.facing,walking,this.clock));
       if(walking && dy>0 && p.y>surface.interior.height-1.2 && Math.abs(p.x-Math.floor(surface.interior.width/2))<.65) context.cutaway?.close();
     } else {

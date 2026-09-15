@@ -1,3 +1,4 @@
+import {createGuideSmoke,smokeRoute} from './guideSmoke';
 import {characterMoveAllowed,type CharacterBody} from '../player/characterCollision';
 import {guideFor} from '../ui/VillageGuide';
 import {viewOccluded} from './occlusion';
@@ -38,7 +39,7 @@ export class Village3D {
   private scene=new T.Scene();
   private camera=new T.PerspectiveCamera(44,1,.1,250);
   private renderer:T.WebGLRenderer;
-  private guideLine=new T.Line(new T.BufferGeometry(),new T.LineBasicMaterial({color:0xffdf83,depthTest:false,transparent:true,opacity:.9}));
+  private guideLine=createGuideSmoke();
   private guideLineAt=0;
   private composer:EffectComposer;
   private edgeSmoothing=new ShaderPass(FXAAShader);
@@ -117,6 +118,9 @@ export class Village3D {
 
   private actors=new Map<string,T.Group>();
   private player=createHuman('inspector',true);
+  private snack=new T.Group();
+  private snackCarrot=new T.Group();
+  private snackHay=new T.Group();
   private sun=new T.DirectionalLight(0xffe7b3,3);
   private sky=new T.HemisphereLight(0xb3cbd2,0x616b44,2);
   private flashlightModel!:T.Mesh;
@@ -169,6 +173,10 @@ export class Village3D {
     this.scene.add(this.sun,this.sun.target,this.sky,this.overview,this.player,this.torch,this.torch.target,this.indoorLight,this.fx);
     this.torch.castShadow=true;this.torch.shadow.mapSize.set(512,512);this.torch.shadow.bias=-.0005;this.player.visible=false;
     this.buildVillage();
+    const carrot=cylinder(this.snackCarrot,0,0,0,.07,.32,0xea963c,.012);carrot.rotation.z=-.4;
+    for(let i=0;i<3;i++){const leaf=cylinder(this.snackCarrot,(i-1)*.035,-.20,0,.015,.14,0x77935b);leaf.rotation.z=(i-1)*.4;}
+    for(let i=0;i<8;i++){const stalk=cylinder(this.snackHay,(i%3-1)*.028,0,Math.floor(i/3)*.02,.012,.25,0xccb86d);stalk.rotation.z=(i%3-1)*.12;}
+    this.snack.add(this.snackCarrot,this.snackHay);this.player.add(this.snack);
     this.beam.rotation.x=-Math.PI/2;this.beam.position.set(.14,.27,3.5);this.player.add(this.beam);
     const flashlight=cylinder(this.scene,0,0,0,.045,.18,0x4b514b);flashlight.rotation.x=Math.PI/2;this.flashlightModel=flashlight;flashlight.visible=false;
     this.meteor=new T.Mesh(new T.IcosahedronGeometry(.68,0),material(0xb98750));this.fx.add(this.meteor);
@@ -252,7 +260,8 @@ for(let i=0;i<16;i++)box(staticWorld,bridge.x-.5+(i+.5)*bridge.width/16,.25,z,br
     if(this.water&&!this.reduced.matches)this.water.position.y=Math.sin(now*.0007)*.006;
     this.controls.enabled=!state.active&&!this.inspectedScreen;if(state.active&&!this.wasActive){const offset=this.camera.position.clone().sub(this.controls.target);this.cameraDistance=T.MathUtils.clamp(offset.length(),2,60);this.yaw=Math.atan2(offset.x,offset.z);this.pitch=T.MathUtils.clamp(Math.atan2(offset.y,Math.hypot(offset.x,offset.z)),.15,1.45);}this.wasActive=state.active;
     const p=new T.Vector3(state.point.x,surface?.02+state.elevation:this.groundHeight(state.point.x,state.point.y)+state.elevation,state.point.y),angles={up:Math.PI,down:0,left:-Math.PI/2,right:Math.PI/2};
-    this.player.visible=state.active;this.player.position.copy(p);this.playerFacing.setFromAxisAngle(this.upAxis,state.heading);this.player.quaternion.slerp(this.playerFacing,this.reduced.matches?1:1-Math.exp(-dt*20));this.root.dataset.playerHeading=String(state.heading);this.root.dataset.playerYaw=String(Math.atan2(2*(this.player.quaternion.w*this.player.quaternion.y),1-2*this.player.quaternion.y*this.player.quaternion.y));animateHuman(this.player,now/1000,state.walking,false,false,dt,state.gait);
+    this.player.scale.setScalar(state.foodScale);this.player.visible=state.active;this.player.position.copy(p);this.playerFacing.setFromAxisAngle(this.upAxis,state.heading);this.player.quaternion.slerp(this.playerFacing,this.reduced.matches?1:1-Math.exp(-dt*20));this.root.dataset.playerHeading=String(state.heading);this.root.dataset.playerYaw=String(Math.atan2(2*(this.player.quaternion.w*this.player.quaternion.y),1-2*this.player.quaternion.y*this.player.quaternion.y));animateHuman(this.player,now/1000,state.walking,state.food.eating>0,false,dt,state.gait);
+    this.snack.visible=state.food.eating>0;this.snackCarrot.visible=state.food.food==='carrot';this.snackHay.visible=!this.snackCarrot.visible;this.snack.position.set(.08,.43,.23);this.snack.scale.setScalar(Math.min(1,state.food.eating*2));this.snack.rotation.z=Math.sin(now*.024)*.12;
     const fall=Math.max(0,1-Math.pow(Math.min(1,(1-state.landing)/.55),2));if(state.active)this.player.position.y+=fall*14;
     this.fx.visible=state.active&&!surface&&(state.landing>0||state.impactAge<4000)&&!this.reduced.matches;
     if(this.fx.visible){const origin=new T.Vector3(state.summonPoint.x,.04,state.summonPoint.y);this.meteor.visible=fall>0;this.meteor.position.copy(this.player.position).add(new T.Vector3(0,.7,0));const impact=T.MathUtils.clamp(state.impactAge/720,0,1);this.shock.position.copy(origin).setY(.06);this.shock.scale.setScalar(.4+impact*4);(this.shock.material as T.MeshBasicMaterial).opacity=fall>0?0:1-impact;
@@ -304,6 +313,7 @@ for(let i=0;i<16;i++)box(staticWorld,bridge.x-.5+(i+.5)*bridge.width/16,.25,z,br
       animateHuman(g,now/1000,moved,working,false,dt);
     }
     const guide=guideFor(this.world),tracked=guide?.trackedAgent();
+    this.guideLine.material.uniforms.time!.value=now/1000;this.guideLine.material.uniforms.motion!.value=this.reduced.matches?0:1;
     this.guideLine.visible=Boolean(tracked)&&!surface;
     if(this.guideLine.visible&&now-this.guideLineAt>500){
       this.guideLineAt=now;
@@ -312,7 +322,7 @@ for(let i=0;i<16;i++)box(staticWorld,bridge.x-.5+(i+.5)*bridge.width/16,.25,z,br
       const end=building?.entrance.outside??(targetActor?{x:targetActor.sprite.x/16-.5,y:targetActor.sprite.y/16-.5}:undefined);
       const start=state.active?state.point:this.world.worldDefinition.spawn;
       const points=end?nav.route(start,end):[];
-      this.guideLine.geometry.dispose();this.guideLine.geometry=new T.BufferGeometry().setFromPoints(points.map(q=>new T.Vector3(q.x,this.groundHeight(q.x,q.y)+.12,q.y)));
+      this.guideLine.geometry.dispose();this.guideLine.geometry=smokeRoute(points.map(q=>new T.Vector3(q.x,this.groundHeight(q.x,q.y)+.12,q.y)));
     }
     this.immersion.setVisibleActors([...this.actors].filter(([,g])=>g.visible).map(([id,g])=>({id,x:g.position.x,y:g.position.z,roomId:surface?.buildingId??'',height:0})));
     if(now-this.actorTelemetryAt>1000){this.actorTelemetryAt=now;this.root.dataset.actors=JSON.stringify(context.agents.map(a=>{const g=this.actors.get(a.agentId);return {id:a.agentId,presence:a.presence(),visible:g?.visible,position:g?.position.toArray(),activity:g?.userData.activity};}));}
@@ -349,5 +359,5 @@ for(let i=0;i<16;i++)box(staticWorld,bridge.x-.5+(i+.5)*bridge.width/16,.25,z,br
     }
     for(const [id,node] of this.labelNodes)if(!active.has(id)){node.remove();this.labelNodes.delete(id);}
   }
-  destroy(){this.setEnabled(false);this.closeScreen();window.removeEventListener('keydown',this.screenKey,true);this.workstations?.dispose();this.resizeObserver.disconnect();this.controls.dispose();this.composer.passes.forEach(p=>p.dispose());this.composer.dispose();disposeGroup(this.scene);this.scene.traverse(o=>{if(o instanceof T.Mesh){const mats=Array.isArray(o.material)?o.material:[o.material];for(const m of mats){if(m instanceof T.MeshStandardMaterial)m.map?.dispose();m.dispose();}}});this.sun.shadow.dispose();this.torch.shadow.dispose();disposeModelMaterials();disposePeopleAssets();disposeSurfaceMaterials();this.renderer.dispose();this.root.remove();}
+  destroy(){this.guideLine.geometry.dispose();this.guideLine.material.dispose();this.setEnabled(false);this.closeScreen();window.removeEventListener('keydown',this.screenKey,true);this.workstations?.dispose();this.resizeObserver.disconnect();this.controls.dispose();this.composer.passes.forEach(p=>p.dispose());this.composer.dispose();disposeGroup(this.scene);this.scene.traverse(o=>{if(o instanceof T.Mesh){const mats=Array.isArray(o.material)?o.material:[o.material];for(const m of mats){if(m instanceof T.MeshStandardMaterial)m.map?.dispose();m.dispose();}}});this.sun.shadow.dispose();this.torch.shadow.dispose();disposeModelMaterials();disposePeopleAssets();disposeSurfaceMaterials();this.renderer.dispose();this.root.remove();}
 }
