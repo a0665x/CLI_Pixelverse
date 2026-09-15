@@ -1,3 +1,4 @@
+import {FrameProbe} from '../diagnostics/frameProbe';
 import {rabbitPortraits} from './rabbitPortraits';
 import {FoodRain} from './foodRain';
 import {createGuideSmoke,smokeRoute} from './guideSmoke';
@@ -164,14 +165,14 @@ export class Village3D {
     this.proximity.className='inspection-event';this.proximity.hidden=true;this.proximity.setAttribute('aria-live','polite');
     this.proximityInspect.type=this.proximityDismiss.type='button';this.proximity.append(this.proximityTitle,this.proximityQuestion,this.proximityInspect,this.proximityDismiss);this.root.append(this.proximity);
     this.focusRing.rotation.x=-Math.PI/2;this.focusRing.visible=false;this.scene.add(this.focusRing);
-    this.renderer=new T.WebGLRenderer({antialias:true,alpha:false,stencil:true,powerPreference:'high-performance'});
+    this.renderer=new T.WebGLRenderer({antialias:false,alpha:false,stencil:true,powerPreference:'high-performance'});
     const gl=this.renderer.getContext(),debug=gl.getExtension('WEBGL_debug_renderer_info');
     const software=debug&&/swiftshader|llvmpipe|software/i.test(String(gl.getParameter(debug.UNMASKED_RENDERER_WEBGL)));
     window.parent.postMessage({type:'pixelverse.rabbit.portraits',sources:rabbitPortraits(this.renderer)},location.origin);
-    this.renderer.setPixelRatio(software?.85:Math.min(window.devicePixelRatio,2));this.renderer.shadowMap.enabled=!software;this.root.dataset.renderQuality=software?'software':'full';
-    this.renderer.shadowMap.type=T.PCFShadowMap;this.renderer.toneMapping=T.ACESFilmicToneMapping;this.renderer.toneMappingExposure=1.1;
+    this.renderer.setPixelRatio(software?.85:Math.min(window.devicePixelRatio,1.5));this.renderer.shadowMap.enabled=!software;this.root.dataset.renderQuality=software?'software':'full';
+    this.renderer.info.autoReset=false;this.renderer.shadowMap.type=T.PCFShadowMap;this.renderer.toneMapping=T.ACESFilmicToneMapping;this.renderer.toneMappingExposure=1.1;
     this.scene.background=new T.Color(0xa7bec1);this.scene.fog=new T.FogExp2(0xa7bec1,.009);
-    this.sun.position.set(12,30,14);this.sun.castShadow=true;this.sun.shadow.mapSize.set(software?1024:2048,software?1024:2048);
+    this.sun.position.set(12,30,14);this.sun.castShadow=true;this.sun.shadow.mapSize.set(1024,1024);
     Object.assign(this.sun.shadow.camera,{left:-32,right:32,top:24,bottom:-24,near:1,far:100});this.sun.shadow.bias=-.0004;this.sun.shadow.normalBias=.035;
     this.sun.target.position.set(24,0,14);this.guideLine.renderOrder=900;this.scene.add(this.guideLine,this.foodRain.group);
     this.scene.add(this.sun,this.sun.target,this.sky,this.overview,this.player,this.torch,this.torch.target,this.indoorLight,this.fx);
@@ -189,7 +190,7 @@ export class Village3D {
     for(let i=0;i<20;i++){const m=new T.Mesh(new T.IcosahedronGeometry(.07+i%3*.035,0),material(i%2?0xa88b61:0xe0bd7b));this.fragments.push(m);this.fx.add(m);}
     this.camera.position.set(29,35,44);this.controls=new OrbitControls(this.camera,this.renderer.domElement);this.controls.target.set(23,0,14);this.controls.enableDamping=true;this.controls.dampingFactor=.08;this.controls.maxPolarAngle=Math.PI*.46;this.controls.minDistance=5;this.controls.maxDistance=68;
     this.controls.mouseButtons={LEFT:T.MOUSE.PAN,MIDDLE:T.MOUSE.DOLLY,RIGHT:T.MOUSE.ROTATE};this.controls.screenSpacePanning=false;this.controls.zoomToCursor=true;this.controls.update();
-    this.composer=new EffectComposer(this.renderer);this.composer.renderTarget1.stencilBuffer=true;this.composer.renderTarget2.stencilBuffer=true;if(!software){this.composer.renderTarget1.samples=4;this.composer.renderTarget2.samples=4;}this.composer.addPass(new RenderPass(this.scene,this.camera));if(!software)this.composer.addPass(new UnrealBloomPass(new T.Vector2(800,600),.18,.5,1.05));this.composer.addPass(new OutputPass());this.composer.addPass(this.edgeSmoothing);
+    this.composer=new EffectComposer(this.renderer);this.composer.renderTarget1.stencilBuffer=true;this.composer.renderTarget2.stencilBuffer=true;this.composer.addPass(new RenderPass(this.scene,this.camera));if(!software)this.composer.addPass(new UnrealBloomPass(new T.Vector2(800,600),.18,.5,1.05));this.composer.addPass(new OutputPass());this.composer.addPass(this.edgeSmoothing);
     this.labels.className='village-3d-labels';this.hud.className='village-3d-hud';this.close.type='button';this.close.onclick=()=>world.immersionContext().cutaway?.close();
     const reset=document.createElement('button');reset.type='button';reset.dataset.cameraReset='true';reset.textContent=({'zh-TW':'重設視角','ja-JP':'視点を戻す','ko-KR':'시점 초기화'} as Record<string,string>)[document.documentElement.lang]||'Reset camera';reset.onclick=()=>{this.yaw=0;this.pitch=.65;this.cameraDistance=16;if(!this.immersion.viewState().active){const center=this.room?this.controls.target.clone().setY(0):new T.Vector3(23,0,14);this.controls.target.copy(center);this.camera.position.copy(center).add(this.room?new T.Vector3(0,16,15):new T.Vector3(6,35,30));this.controls.update();}};this.hud.append(this.clock,reset,this.close);this.help.className='village-3d-help';
     this.screenDialog.className='workstation-dialog';this.screenDialog.setAttribute('aria-labelledby','workstation-title');this.screenTitle.id='workstation-title';
@@ -245,7 +246,9 @@ for(let i=0;i<16;i++)box(staticWorld,bridge.x-.5+(i+.5)*bridge.width/16,.25,z,br
   }
   setEnabled(enabled:boolean){if(this.enabled===enabled)return;this.enabled=enabled;this.world.sys.setVisible(!enabled);this.root.hidden=!enabled;this.pointer=undefined;
     if(enabled){this.resize();this.last=performance.now();this.frame=requestAnimationFrame(this.update);}else{this.closeScreen();cancelAnimationFrame(this.frame);this.immersion.setCameraYaw(0);}}
+  private frameProbe=new FrameProbe();
   private readonly update=(now:number)=>{
+    const started=performance.now(),interval=now-this.last;
     if(!this.enabled)return;
     const dt=Math.min((now-this.last)/1000,.05);this.last=now;
     const state=this.immersion.viewState(),context=this.world.immersionContext(),surface=context.cutaway?.visitorSurface();
@@ -347,7 +350,7 @@ for(let i=0;i<16;i++)box(staticWorld,bridge.x-.5+(i+.5)*bridge.width/16,.25,z,br
       }
       setRabbitOccluded(this.player,false);
     }else setRabbitOccluded(this.player,false);
-    this.updateProximity(now);this.syncLabels(copy);this.composer.render();this.frame=requestAnimationFrame(this.update);
+    this.updateProximity(now);this.syncLabels(copy);this.renderer.info.reset();this.composer.render();const metrics=this.frameProbe.record(interval,performance.now()-started,now);if(metrics)this.root.dataset.performance=JSON.stringify({...metrics,drawCalls:this.renderer.info.render.calls,triangles:this.renderer.info.render.triangles});this.frame=requestAnimationFrame(this.update);
   };
   private syncLabels(copy:ReturnType<typeof villageCopy>){
     const active=new Set<string>();

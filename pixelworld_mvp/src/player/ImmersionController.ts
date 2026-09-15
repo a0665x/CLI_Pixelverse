@@ -158,7 +158,7 @@ export class ImmersionController {
     this.feeding.append(this.feedToggle,this.feedStatus);this.feeding.hidden=true;
     this.root.append(this.feeding);
     this.root.append(this.toggle,this.hint,this.panel,this.controls);document.querySelector('#app-shell')?.append(this.root);
-    this.outside=world.add.image(0,0,skin.sheet,3).setOrigin(.5,.82).setScale(1.1).setTint(0xffe0a3).setVisible(false);
+    this.outside=world.add.image(0,0,skin.sheet,3).setOrigin(.5,.82).setScale(skin.renderScale??1).setTint(0xffe0a3).setVisible(false);
     this.dropArt=world.add.graphics().setDepth(8900);
     this.effects=world.add.graphics().setDepth(9000);
     window.addEventListener('keydown',this.keydown,true);window.addEventListener('keyup',this.keyup);window.addEventListener('blur',this.blur);document.addEventListener('visibilitychange',this.blur);
@@ -167,6 +167,7 @@ export class ImmersionController {
   }
   private setActive(active:boolean):void {
     if(this.busy) return;
+    this.outside.setScale((skin.renderScale??1)*(active?this.foodScale:1));
     this.active=active;this.feeding.hidden=!active;if(!active){this.foodEffects.clear();this.foodScale=1;}document.documentElement.dataset.immersion=String(active);this.toggle.setAttribute('aria-pressed',String(active));
     this.toggle.textContent=active?t('離開巡檢'):t('✦ 降臨審查員');this.keys.clear();
     this.controls.hidden=!active;this.hopTime=0;this.idleTime=0;this.hint.hidden=!active;this.outside.setVisible(active);this.effects.clear();
@@ -194,6 +195,7 @@ export class ImmersionController {
     }
     const dt=Math.min(Math.max(delta,0),150);this.clock+=dt;
     this.effects.clear();
+    this.root.dataset.spriteScale=String(this.outside.scaleX);
     if(this.landing>0) {
       this.landing=Math.max(0,this.landingDeadline-performance.now());
       const progress=1-this.landing/SUMMON_MS,x=this.point.x*16+8,y=this.point.y*16+8;

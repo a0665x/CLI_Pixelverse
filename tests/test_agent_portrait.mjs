@@ -13,3 +13,8 @@ test('missing live frames use a matching idle rabbit and reject invalid frame nu
  assert.equal(worldSpritePortrait({agent:'a'},true).frame,0);
  assert.equal(worldSpritePortrait({agent:'a'},true,{sheet:'woodland-rabbit-2',frame:88}).frame,0);
 });
+test('moving the crop does not reload the same atlas image each animation frame',()=>{
+ let assignments=0,src='';const image={style:{},get src(){return src;},set src(value){src=value;assignments++;},getAttribute(){return src;}};
+ for(let frame=0;frame<32;frame++)applyAgentPortrait(image,{src:'/atlas.svg',frame});
+ assert.equal(assignments,1);
+});

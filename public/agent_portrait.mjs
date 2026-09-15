@@ -1,6 +1,7 @@
 /** Crop the actual game atlas frame; never run an independent portrait animation. */
 export function applyAgentPortrait(image, sprite = {}) {
-  image.src = sprite.src || '';
+  const src=sprite.src||'';
+  if((image.getAttribute?.('src')??image.src)!==src)image.src=src;
   if (!image.style) return;
   const frame = sprite.frame;
   if (Number.isInteger(frame) && frame >= 0 && frame < 32) {

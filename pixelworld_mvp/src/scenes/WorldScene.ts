@@ -1,3 +1,5 @@
+import {withRoomMemoFrame} from '../rendering/interiorRuntimeCache';
+import {FrameProbe} from '../diagnostics/frameProbe';
 import {characterMoveAllowed,type CharacterBody} from '../player/characterCollision';
 import { VillageAtmosphere } from '../rendering/VillageAtmosphere';
 import Phaser from 'phaser';
@@ -116,7 +118,10 @@ export class WorldScene extends Phaser.Scene {
 
   visitorBody:CharacterBody|undefined;
   private previousViewFrame=0;
+  private frameProbe=new FrameProbe();
   update(_time: number, delta: number): void {
+    withRoomMemoFrame(()=>{
+    const started=performance.now();
     // 3D rendering may run below Phaser's smoothing target; use elapsed time so hooks keep moving.
     const elapsed=this.previousViewFrame?_time-this.previousViewFrame:delta;
     this.previousViewFrame=_time;
@@ -138,6 +143,9 @@ export class WorldScene extends Phaser.Scene {
     }
     this.cutawaySystem?.update(this.agents.all().map((agent) => agent.interiorSnapshot()));
     if(!threeView)this.debugOverlay?.update();
+    const metrics=this.frameProbe?.record(elapsed,performance.now()-started,started);
+    if(metrics&&typeof document!=='undefined')document.documentElement.dataset.worldPerformance=JSON.stringify(metrics);
+    });
   }
 
   dispatchWorldEvent(event: AgentWorldEvent, options: { spawnClone?: boolean } = {}): { ok: boolean; reason?: string } {
