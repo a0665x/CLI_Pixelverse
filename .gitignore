@@ -1,5 +1,7 @@
 .pixelverse-service/
-private_assets/
+private_assets/*
+!private_assets/free-office/
+pixelworld_mvp/public/assets/free-office/
 pixelworld_mvp/public/assets/private/
 
 .cache/

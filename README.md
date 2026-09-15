@@ -266,14 +266,22 @@ is temporarily unavailable.
 
 ## Optional 2D Assets And 3D Attribution
 
-The 2D office editor works out of the box with original procedural furniture.
+The 2D office editor defaults to the bundled **Woodland Office 1.0** set in
+[`private_assets/free-office`](private_assets/free-office/). Editable SVGs and a shared
+2D/3D palette are included; [preview the pack](private_assets/free-office/preview.svg).
 No asset purchase is required. All existing furniture placements and editing controls remain available.
+Select the free pack explicitly with
+`PIXELVERSE_OFFICE_PACK=free PIXELVERSE_AGENT_KIND=codex ./run.sh --start`.
+The installer saves your choice and rebuilds when it changes. `auto` is available
+for the old automatic detection behavior. Selection never resets saved room layouts.
+
 You can optionally replace the default office artwork with the separately purchased
 [Modern Office - Revamped](https://limezu.itch.io/modernoffice) pack. Put
 `Modern_Office_Revamped_v1.zip` in `private_assets/modern-office/`, or run:
 
 ```bash
-PIXELVERSE_MODERN_OFFICE_ZIP=/absolute/path/to/Modern_Office_Revamped_v1.zip \
+PIXELVERSE_OFFICE_PACK=modern-office \
+  PIXELVERSE_MODERN_OFFICE_ZIP=/absolute/path/to/Modern_Office_Revamped_v1.zip \
   PIXELVERSE_AGENT_KIND=codex ./run.sh --start
 ```
 

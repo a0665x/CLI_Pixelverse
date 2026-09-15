@@ -1,3 +1,5 @@
+import {worldSkinIndex} from '../../../public/agent_identity.mjs';
+import {OFFICE_PACK,freeOfficeTexture} from './officePack';
 import {installFreeOfficeArt} from './freeOfficeArt';
 import { installRiverArt } from './riverArt';
 import { completeVillageBed } from './villageBed';
@@ -131,14 +133,7 @@ const SUBAGENT_SKINS = [AGENT_SKINS.ninja, AGENT_SKINS.subagent, AGENT_SKINS.bra
 
 export function agentSkinFor(agentId: string, role: 'main' | 'subagent'): AgentSkin {
   if (role === 'main') return AGENT_SKINS.main;
-  const sequence = agentId.match(/(\d+)$/)?.[1];
-  if (sequence) return SUBAGENT_SKINS[(Math.max(1, Number(sequence)) - 1) % SUBAGENT_SKINS.length]!;
-  let hash = 2166136261;
-  for (const character of agentId) {
-    hash ^= character.charCodeAt(0);
-    hash = Math.imul(hash, 16777619);
-  }
-  return SUBAGENT_SKINS[(hash >>> 0) % SUBAGENT_SKINS.length]!;
+  return SUBAGENT_SKINS[worldSkinIndex(agentId)]!;
 }
 
 const FACING_FRAME_COLUMNS: Record<Facing, number> = { down: 0, up: 1, left: 2, right: 3 };
@@ -150,6 +145,7 @@ export function agentFrameIndex(skin: AgentSkin, facing: Facing, row: number = s
 }
 
 export function preloadVillageAssets(scene: Phaser.Scene): void {
+  if(!licensedOfficeAvailable())for(const family of OFFICE_PACK.families)scene.load.svg?.(freeOfficeTexture(family),`/assets/free-office/${family}.svg`,{width:64,height:64});
   if (licensedOfficeAvailable()) scene.load.json(MODERN_OFFICE_COLLISION_MASKS.key, MODERN_OFFICE_COLLISION_MASKS.path);
   [
     WORLD_ATLAS,
@@ -168,6 +164,7 @@ export function preloadVillageAssets(scene: Phaser.Scene): void {
     ...MODERN_OFFICE_CATALOG,
     ...VILLAGE_FURNITURE_CATALOG,
   ].forEach((asset) => {
+    if(!licensedOfficeAvailable()&&VILLAGE_FURNITURE_CATALOG.some(item=>item.key===asset.key))return;
     if (!asset.path.includes('/private/') || licensedOfficeAvailable()) scene.load.image(asset.key, asset.path);
   });
 }

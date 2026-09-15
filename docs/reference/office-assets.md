@@ -25,3 +25,12 @@ redistributed.
 
 Other bundled LimeZu, Kenney, Puny World, and Ninja Adventure files keep their
 own license and attribution notes under `pixelworld_mvp/public/assets/`.
+
+## Explicit pack selection
+
+`PIXELVERSE_OFFICE_PACK=free` is the default and uses Woodland Office from
+`private_assets/free-office/`. This directory is intentionally tracked in Git.
+`PIXELVERSE_OFFICE_PACK=modern-office` requires your own installed ZIP and fails
+clearly if it is missing. `auto` keeps the previous file-detection behavior.
+The selected value is saved in the local installer configuration and passed to the Docker build.
+Both views preserve furniture IDs; 3D uses the shared woodland palette and semantic models.

@@ -396,7 +396,7 @@ def test_run_and_docker_wire_preparation_before_the_local_image_build() -> None:
     assert "PIXELVERSE_MODERN_OFFICE_ASSET_DIR_HOST" not in compose
     assert "Starting with bundled 2D and 3D assets" in run_script
     assert "RUN test -f public/assets/private" not in dockerfile
-    assert "RUN npm run build" in dockerfile
+    assert "RUN PIXELVERSE_OFFICE_PACK=$PIXELVERSE_OFFICE_PACK npm run build" in dockerfile
 
 
 def test_assets_status_reports_ready_without_requiring_the_zip(tmp_path: Path) -> None:

@@ -1,3 +1,4 @@
+import {rabbitPortraits} from './rabbitPortraits';
 import {FoodRain} from './foodRain';
 import {createGuideSmoke,smokeRoute} from './guideSmoke';
 import {characterMoveAllowed,type CharacterBody} from '../player/characterCollision';
@@ -166,6 +167,7 @@ export class Village3D {
     this.renderer=new T.WebGLRenderer({antialias:true,alpha:false,stencil:true,powerPreference:'high-performance'});
     const gl=this.renderer.getContext(),debug=gl.getExtension('WEBGL_debug_renderer_info');
     const software=debug&&/swiftshader|llvmpipe|software/i.test(String(gl.getParameter(debug.UNMASKED_RENDERER_WEBGL)));
+    window.parent.postMessage({type:'pixelverse.rabbit.portraits',sources:rabbitPortraits(this.renderer)},location.origin);
     this.renderer.setPixelRatio(software?.85:Math.min(window.devicePixelRatio,2));this.renderer.shadowMap.enabled=!software;this.root.dataset.renderQuality=software?'software':'full';
     this.renderer.shadowMap.type=T.PCFShadowMap;this.renderer.toneMapping=T.ACESFilmicToneMapping;this.renderer.toneMappingExposure=1.1;
     this.scene.background=new T.Color(0xa7bec1);this.scene.fog=new T.FogExp2(0xa7bec1,.009);

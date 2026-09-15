@@ -1,0 +1,28 @@
+{
+  "id": "woodland-office",
+  "version": "1.0.0",
+  "name": "Woodland Office",
+  "license": "CC0-1.0",
+  "palette": {
+    "wood": "#b99b70",
+    "frame": "#665643",
+    "trim": "#dbc69b",
+    "fabric": "#789785",
+    "cushion": "#a8bba2",
+    "screen": "#344c47"
+  },
+  "families": [
+    "desk",
+    "computer",
+    "display",
+    "chair",
+    "sofa",
+    "bookcase",
+    "cabinet",
+    "board",
+    "plant",
+    "bed",
+    "printer",
+    "coffee"
+  ]
+}

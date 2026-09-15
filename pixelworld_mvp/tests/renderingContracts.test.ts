@@ -38,9 +38,9 @@ describe('village asset manifest', () => {
   it('loads the Serene, Modern Interiors, world, and Agent sprite sheets', () => {
     const spritesheet = vi.fn();
     const image = vi.fn();
-    const json = vi.fn();
+    const json = vi.fn();const svg=vi.fn();
 
-    preloadVillageAssets({ load: { spritesheet, image, json } } as never);
+    preloadVillageAssets({ load: { spritesheet, image, json, svg } } as never);
 
     if (licensedOfficeAvailable()) expect(json).toHaveBeenCalledWith(
       MODERN_OFFICE_COLLISION_MASKS.key,
@@ -63,9 +63,10 @@ describe('village asset manifest', () => {
     if(licensedOfficeAvailable()) expect(spritesheet).toHaveBeenCalledWith(MODERN_OFFICE_ASSETS.roomBuilder.key, MODERN_OFFICE_ASSETS.roomBuilder.path, { frameWidth: 16, frameHeight: 16 });
     expect(image).toHaveBeenCalledTimes(
       Object.keys(ANIMAL_ASSETS).length + Object.keys(HOUSE_ASSETS).length
-        + (licensedOfficeAvailable()?Object.keys(MODERN_OFFICE_ASSETS.furniture).length + MODERN_OFFICE_CATALOG.length:0) + VILLAGE_FURNITURE_CATALOG.length,
+        + (licensedOfficeAvailable()?Object.keys(MODERN_OFFICE_ASSETS.furniture).length + MODERN_OFFICE_CATALOG.length:0) + (licensedOfficeAvailable()?VILLAGE_FURNITURE_CATALOG.length:0),
     );
-    for (const asset of VILLAGE_FURNITURE_CATALOG) expect(image).toHaveBeenCalledWith(asset.key, asset.path);
+    if(licensedOfficeAvailable())for (const asset of VILLAGE_FURNITURE_CATALOG) expect(image).toHaveBeenCalledWith(asset.key, asset.path);
+    if(!licensedOfficeAvailable()){expect(svg).toHaveBeenCalledTimes(12);expect(svg).toHaveBeenCalledWith('woodland-office-bookcase','/assets/free-office/bookcase.svg',{width:64,height:64});}
     expect(image).toHaveBeenCalledWith('animal-cow', '/assets/kenney/tiny-farm/cow.png');
     if(licensedOfficeAvailable()) expect(image).toHaveBeenCalledWith('modern-office-v1.2-computer', '/assets/private/modern-office-v1.2/Modern_Office_Singles_225.png');
     if(!licensedOfficeAvailable()) expect([...image.mock.calls,...spritesheet.mock.calls].some(call=>String(call[1]).includes('/private/'))).toBe(false);

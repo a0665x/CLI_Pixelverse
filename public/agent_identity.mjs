@@ -12,3 +12,14 @@ export function agentIdentity(agent={},agents=[]) {
   project:String(agent.project_name||agent.projectName||parent?.project_name||parent?.projectName||''),
   projectPath:String(agent.project_path||agent.projectPath||parent?.project_path||''),...rabbitIdentity(id)};
 }
+
+export function worldSkinIndex(id=''){
+ const sequence=String(id).match(/(\d+)$/)?.[1];if(sequence)return (Math.max(1,Number(sequence))-1)%3;
+ let hash=2166136261;for(const c of String(id)){hash^=c.charCodeAt(0);hash=Math.imul(hash,16777619);}return (hash>>>0)%3;
+}
+export function worldSpritePortrait(agent={}){
+ const sub=['subagent','branch_session','sub','branch'].includes(agent.role);
+ if(!sub)return {src:'/pixelworld/assets/limezu/modern-interiors-free/Adam_16x16.png',pixelClass:'world-adam-portrait'};
+ const file=['ninja-blue','samurai-blue','samurai-green'][worldSkinIndex(agent.agent||agent.id||'')];
+ return {src:`/pixelworld/assets/ninja-adventure/${file}.png`,pixelClass:'world-ninja-portrait'};
+}

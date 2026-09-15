@@ -1,5 +1,6 @@
-import {rabbitIdentity} from './agent_identity.mjs';
-import { getKenneyAgentSprite } from './kenney_assets.mjs';
+import {rabbitIdentity,worldSpritePortrait} from './agent_identity.mjs';
+let rabbitPortraitSources=[];
+const villagePortrait=agent=>{if(document.body.dataset.worldView!=='3d')return worldSpritePortrait(agent);const index=rabbitIdentity(agent.agent||agent.id||'').index;return {src:rabbitPortraitSources[index]||'/pixelworld/assets/honey-meshy/reference.png',pixelClass:rabbitPortraitSources[index]?'rabbit-portrait':`rabbit-portrait rabbit-coat-${index}`};};
 import {
   activityHintForLocale,
   agentConnectionStatusText,
@@ -218,7 +219,7 @@ const villageFirstLayoutController = createVillageFirstLayoutController({
 const agentDetailView = createAgentDetailView({
   root: dom.agentDetail,
   documentRef: document,
-  spriteFor: agent => document.body.dataset.worldView==='3d' ? {src:'/pixelworld/assets/honey-meshy/reference.png',pixelClass:`rabbit-portrait rabbit-coat-${rabbitIdentity(agent.agent||agent.id||'').index}`} : getKenneyAgentSprite(agent),
+  spriteFor: villagePortrait,
   textFor: (key, params = {}) => key.startsWith('rooms.')
     ? (getRoomCopy(key.split('.')[1], currentLocale).name || key)
     : uiText(currentLocale, key, params),
@@ -227,7 +228,7 @@ const agentDetailView = createAgentDetailView({
 });
 const agentRosterView = createAgentRosterView({
   root: dom.agentLiveList,
-  spriteFor: agent => document.body.dataset.worldView==='3d' ? {src:'/pixelworld/assets/honey-meshy/reference.png',pixelClass:`rabbit-portrait rabbit-coat-${rabbitIdentity(agent.agent||agent.id||'').index}`} : getKenneyAgentSprite(agent),
+  spriteFor: villagePortrait,
   textFor: (key, params = {}) => key === 'select'
     ? uiText(currentLocale, 'commandDeck.inspector.liveDetail', params)
     : uiText(currentLocale, `commandDeck.roster.signal.${key}`, params),
@@ -1704,6 +1705,7 @@ initializeApp();
   buttons.forEach(button => button.addEventListener('click', () => { mode = button.dataset.worldView; send(); frame?.focus(); }));
   window.addEventListener('message', event => {
     if (event.origin !== location.origin || event.source !== frame?.contentWindow) return;
+    if(event.data?.type==='pixelverse.rabbit.portraits'&&Array.isArray(event.data.sources)&&event.data.sources.length===6&&event.data.sources.every(s=>typeof s==='string'&&s.startsWith('data:image/png;base64,')&&s.length<200000)){rabbitPortraitSources=event.data.sources;renderLiveMonitoring();}
     if (event.data?.type === 'pixelverse.view.ready') send();
     if (event.data?.type === 'pixelverse.view.changed' && ['2d', '3d'].includes(event.data.mode)) {
       mode = event.data.mode;

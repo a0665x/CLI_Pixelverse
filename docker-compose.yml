@@ -4,6 +4,7 @@ services:
     build:
       context: .
       args:
+        PIXELVERSE_OFFICE_PACK: ${PIXELVERSE_OFFICE_PACK:-free}
         PIXELVERSE_BUILD_REVISION: ${PIXELVERSE_BUILD_REVISION:-unknown}
         PIXELVERSE_BUILD_FINGERPRINT: ${PIXELVERSE_BUILD_FINGERPRINT:-unknown}
     image: cli-pixelverse:local

@@ -1,3 +1,4 @@
+import {OFFICE_PACK} from '../rendering/officePack';
 import {occlusionBounds} from './occlusion';
 import {RoundedBoxGeometry} from 'three/addons/geometries/RoundedBoxGeometry.js';
 import {surfaceMaterial} from './surfaceMaterials';
@@ -11,6 +12,8 @@ const villageWalls=[0xe0d0ab,0xd2d5b7,0xd8c9b7,0xc9d3ce];
 const villageTimber=0x715744;
 const materials = new Map<string,T.MeshStandardMaterial>();
 export function material(color:number, glow=false) {
+  const palette=OFFICE_PACK.palette;const shared:Record<number,string>={0xa58c64:palette.wood,0x88775e:palette.frame,0x9a8869:palette.wood,0x68847a:palette.fabric,0x83a090:palette.cushion,0x82958a:palette.cushion,0x718b7c:palette.fabric};
+  if(shared[color])color=Number.parseInt(shared[color]!.slice(1),16);
   const key=`${color}:${glow}`;
   if(!materials.has(key)) materials.set(key,new T.MeshStandardMaterial({color,roughness:.78,metalness:glow?.1:0,emissive:glow?color:0,emissiveIntensity:glow?1:0}));
   return materials.get(key)!;
@@ -86,7 +89,7 @@ export function house(parent:T.Object3D,b:WorldBuilding,index:number) {
   return g;
 }
 function desk(parent:T.Object3D,kind:string) {
-  box(parent,0,.78,0,1.8,.12,.85,0xa58c64);
+  upholstered(parent,0,.78,0,1.8,.12,.85,0xa58c64);
   for(const x of [-.72,.72]) {box(parent,x,.38,0,.09,.75,.65,0x3d4949);box(parent,x,.08,0,.35,.07,.7,0x3d4949);}
   if(!['meeting-table','map-table','desk'].includes(kind)) {
     box(parent,0,1.17,-.14,.79,.5,.065,0x263333);box(parent,0,1.18,-.098,.69,.39,.01,0x609caa,true);
@@ -100,6 +103,7 @@ function desk(parent:T.Object3D,kind:string) {
     box(parent,0,.86,0,1.25,.02,.55,0xd9d4bc);
     for(let i=0;i<5;i++)box(parent,-.5+i*.2,.877,.02,.09,.005,.34,0xa8b4a0);
   }
+  if(kind==='reading-desk'){for(const x of [-.12,.12]){const page=box(parent,x-.48,.90,.18,.23,.025,.28,0xe8dfc0);page.rotation.z=x<0?.10:-.10;}box(parent,-.48,.91,.18,.012,.016,.27,0xb89b6d);}
   cylinder(parent,.65,.93,.18,.065,.16,0xe5d7bb);
   for(let i=0;i<3;i++)box(parent,-.62,.86+i*.012,.08,.27,.009,.34,0xd7d2bb);
   cylinder(parent,-.7,1.2,-.27,.023,.68,0x384747);
@@ -126,10 +130,14 @@ export function furnishing(parent:T.Object3D,f:FurnitureDefinition) {
   else if(k==='cabinet'&&f.layer==='surface') {
     box(g,0,1.12,0,1.25,.48,.08,0x718c88);
     box(g,0,1.38,0,1.3,.04,.1,0x93a59a);
-  } else if(k==='bookcase'||k==='cabinet') {
+  } else if(k==='bookcase'||(k==='cabinet'&&[179,181].includes(f.assetId??0))) {
     box(g,0,.95,-.25,1.35,1.9,.12,0x88775e);box(g,0,1.92,0,1.43,.06,.6,0x9a8869);
+    archPanel(g,0,1.32,-.30,1.43,.8,.12,0x9a8869);
     for(const x of [-.65,.65])box(g,x,.95,0,.08,1.9,.6,0x9a8869);
     for(let row=0;row<4;row++) {box(g,0,.12+row*.5,0,1.3,.06,.6,0x9a8869);for(let j=0;j<7;j++)box(g,-.5+j*.16,.32+row*.5,.02,.115,.3+(j%3)*.03,.35,[0x667e7e,0xa77a5b,0x9c9c72,0xd0c3a1][(j+row)%4]!);}
+  } else if(k==='cabinet') {
+    box(g,0,.95,0,1.3,1.9,.6,0x88775e);box(g,0,1.92,0,1.4,.06,.64,0x9a8869);
+    for(const x of [-.31,.31]){box(g,x,.95,.315,.59,1.73,.04,0xa58c64);box(g,x+(x<0?.2:-.2),1.02,.35,.025,.21,.035,0xd2bf8d);}
   } else if(k==='sofa') {
     upholstered(g,0,.35,0,1.8,.5,.8,0x68847a);upholstered(g,0,.8,-.34,1.8,.6,.18,0x58776d);
     for(const x of [-.83,.83])upholstered(g,x,.6,0,.18,.45,.9,0x58776d);
@@ -140,7 +148,10 @@ export function furnishing(parent:T.Object3D,f:FurnitureDefinition) {
   } else if(k==='planning-board'||k==='tool-wall') {
     box(g,0,1.8,0,1.7,1,.1,0x8e7659);box(g,0,1.8,.065,1.56,.87,.02,0xd6d8c5);
     for(let i=0;i<6;i++)box(g,-.55+(i%3)*.45,1.55+Math.floor(i/3)*.37,.085,.28,.21,.01,[0xc5ad68,0x82a5a0,0xb99783][i%3]!);
-  } else if(k==='beverage-station'||k==='printer') {
+  } else if(k==='beverage-station') {
+    box(g,0,.5,0,.8,1,.65,0xa58c64);box(g,0,1.24,0,.68,.48,.48,0x344c47);box(g,0,1.4,.245,.5,.1,.02,0x789785);
+    box(g,0,1.11,.27,.5,.05,.33,0x665643);cylinder(g,0,1.23,.28,.10,.18,0xe7d8b5);cylinder(g,0,1.34,.20,.025,.10,0xcab27e);
+  } else if(k==='printer') {
     box(g,0,.5,0,.8,1,.65,0xb9beb0);box(g,0,1.15,0,.65,.3,.5,0x414e4b);box(g,0,1.32,.1,.47,.02,.31,0xe1dfce);cylinder(g,.15,1.45,-.1,.12,.24,0x9bafa5);
   } else if(k==='display') {
     box(g,0,1.2,0,.75,.5,.08,0x263333);box(g,0,1.2,.045,.65,.4,.01,0x172b33);
@@ -202,7 +213,7 @@ export function roomModel(interior:InteriorDefinition,index:number) {
   });
   if(typeof document!=='undefined')g.traverse(o=>{if(o instanceof T.Mesh&&o.material instanceof T.MeshStandardMaterial){
     const color=o.material.color.getHex();
-    if([0xa58c64,0x9a8869,0x88775e,0x877052].includes(color))o.material=surfaceMaterial('wood',color,1,.5);
+    if([0xa58c64,0x9a8869,0x88775e,0x877052,...[OFFICE_PACK.palette.wood,OFFICE_PACK.palette.frame,OFFICE_PACK.palette.trim].map(c=>Number.parseInt(c.slice(1),16))].includes(color))o.material=surfaceMaterial('wood',color,1,.5);
     else if([0x647878,0x68847a,0x58776d,0x83a090].includes(color))o.material=surfaceMaterial('fabric',color,2,2);
     else if(color===wall)o.material=surfaceMaterial('plaster',wall,2,2);
   }});

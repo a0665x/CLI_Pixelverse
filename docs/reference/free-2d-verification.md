@@ -6,7 +6,9 @@ The village uses bundled, attributed outdoor/character assets. The optional paid
 pack previously left unresolved texture keys when omitted. `freeOfficeArt.ts` now draws
 original furniture into those keys using canvas primitives. No paid pixels are sampled.
 Existing room placements, stacking, editor IDs and collision envelopes are preserved.
-Paid pack detection remains automatic, so an owner can retain their preferred artwork.
+The default is now the versioned Woodland Office pack. Set PIXELVERSE_OFFICE_PACK=modern-office
+to retain owned commercial artwork, or auto to request the old automatic detection behavior.
+The bundled SVG sources and matching GLB meshes live in private_assets/free-office/.
 `PIXELVERSE_FREE_2D=1 npm run build` in `pixelworld_mvp` forces the free renderer for testing.
 This switch affects the build; it does not delete installed assets.
 

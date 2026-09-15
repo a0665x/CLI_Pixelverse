@@ -20,6 +20,7 @@ BUILD_INPUTS = (
     "pixelverse_fastapi.py",
     "bridge.py",
     "public",
+    "private_assets/free-office",
     "agent_bridges",
     "scripts",
     "pixelworld_mvp/package.json",

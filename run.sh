@@ -130,6 +130,7 @@ Common service flows:
   ./run.sh log
   ./run.sh doctor
 
+Office artwork: PIXELVERSE_OFFICE_PACK=free (default), modern-office, or auto
 Licensed Modern Office assets:
   Place Modern_Office_Revamped_v1.zip at:
     private_assets/modern-office/Modern_Office_Revamped_v1.zip
@@ -212,6 +213,10 @@ compose() {
 }
 
 provision_modern_office_assets() {
+  if [[ "${PIXELVERSE_OFFICE_PACK:-auto}" == "free" ]]; then
+    echo "Using bundled Woodland Office (free) artwork."
+    return 0
+  fi
   if [[ -z "${PIXELVERSE_MODERN_OFFICE_ZIP:-}" && ! -f "$ROOT/private_assets/modern-office/Modern_Office_Revamped_v1.zip" && ! -f "$ROOT/pixelworld_mvp/public/assets/private/modern-office-v1.2/.prepared-assets.json" ]]; then
     echo "Starting with bundled 2D and 3D assets. Optional licensed 2D office pack: see docs/reference/office-assets.md."
     return 0
@@ -383,6 +388,7 @@ write_env_file() {
   fi
   cat > "$ENV_FILE" <<EOF
 PIXELVERSE_AGENT_KIND=$agent_kind
+PIXELVERSE_OFFICE_PACK=${PIXELVERSE_OFFICE_PACK:-free}
 PIXELVERSE_DOCKER_PLATFORM=$PIXELVERSE_DOCKER_PLATFORM
 PIXELVERSE_PORT=$PIXELVERSE_PORT
 PIXELVERSE_PUBLIC_PORT=$PIXELVERSE_PORT
@@ -630,6 +636,7 @@ prepare_docker_build_metadata() {
   PIXELVERSE_BUILD_REVISION="$(python3 "$ROOT/scripts/docker_build_metadata.py" revision)"
   PIXELVERSE_BUILD_FINGERPRINT="$(python3 "$ROOT/scripts/docker_build_metadata.py" fingerprint \
     --prepared-metadata "$ROOT/pixelworld_mvp/public/assets/private/modern-office-v1.2/.prepared-assets.json")"
+  PIXELVERSE_BUILD_FINGERPRINT="${PIXELVERSE_BUILD_FINGERPRINT}-${PIXELVERSE_OFFICE_PACK:-free}"
   export PIXELVERSE_BUILD_REVISION PIXELVERSE_BUILD_FINGERPRINT
 }
 
@@ -645,6 +652,12 @@ start_service() {
   if [[ "$exposure_mode" != "tailscale" && -z "${PIXELVERSE_TAILSCALE_ENABLE_SET:-}" ]]; then
     PIXELVERSE_TAILSCALE_ENABLE=0
   fi
+  local saved_pack
+  saved_pack="$(saved_env_value PIXELVERSE_OFFICE_PACK || true)"
+  PIXELVERSE_OFFICE_PACK="${PIXELVERSE_OFFICE_PACK:-${saved_pack:-free}}"
+  case "$PIXELVERSE_OFFICE_PACK" in free|modern-office|auto) ;; *) echo "Choose PIXELVERSE_OFFICE_PACK=free or modern-office" >&2; return 1 ;; esac
+  export PIXELVERSE_OFFICE_PACK
+  if [[ "$PIXELVERSE_OFFICE_PACK" != "${saved_pack:-free}" ]]; then PIXELVERSE_REBUILD=1; fi
   write_env_file "$agent_kind" "$exposure_mode"
   install_agent_adapter "$agent_kind" "$ROOT" optional
   if [[ "$agent_kind" != "generic" && "${PIXELVERSE_AUTO_ENABLE_SHELL_ADAPTER:-1}" != "0" ]]; then
