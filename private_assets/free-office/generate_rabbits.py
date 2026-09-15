@@ -1,25 +1,37 @@
+"""Original upright-ear rabbit sheets: idle, four walk beats and resting pose."""
 from pathlib import Path
 p=Path(__file__).parent/'sprites'
-coats=['#d8ac73','#b6ab93','#d3a091','#b1b18a','#b9a19c','#d5b984']
+coats=['#ffe5ae','#cadbee','#f3bcbc','#c8dda5','#dac7ec','#e9cb9c']
+outline='#25272b'
+def ellipse(x,y,rx,ry,fill,stroke=True):
+ return f'<ellipse cx="{x}" cy="{y}" rx="{rx}" ry="{ry}" fill="{fill}" stroke="{outline if stroke else "none"}" stroke-width="2.8"/>'
 for index,fur in enumerate(coats):
  frames=[]
  for row in range(6):
   for facing in range(4):
-   x=facing*64;y=row*64;step=0 if row in (0,5) else [0,-2,0,2][row-1];back=facing==1;side=facing in (2,3)
-   body=f'<ellipse cx="32" cy="56" rx="18" ry="4" fill="#354c42" opacity=".16"/>'
-   body+=f'<g transform="translate(0 {abs(step)*-.4})'+ (' rotate(-75 32 39)' if row==5 else '')+'">'
-   body+=f'<ellipse cx="32" cy="42" rx="15" ry="16" fill="{fur}"/><ellipse cx="32" cy="44" rx="10" ry="10" fill="#e9cf9e"/>'
-   body+=f'<path d="M21 32 Q32 38 43 32 L44 47 Q35 52 32 45 Q25 52 20 47Z" fill="#738065"/><path d="M32 35V47" stroke="#c5bb83" stroke-width="1.5"/>'
-   body+=f'<ellipse cx="24" cy="56" rx="7" ry="4" fill="{fur}" transform="translate(0 {step})"/><ellipse cx="40" cy="56" rx="7" ry="4" fill="{fur}" transform="translate(0 {-step})"/>'
-   body+=f'<ellipse cx="32" cy="23" rx="17" ry="15" fill="{fur}"/><ellipse cx="13" cy="25" rx="6" ry="18" fill="{fur}" transform="rotate(20 13 25)"/><ellipse cx="51" cy="25" rx="6" ry="18" fill="{fur}" transform="rotate(-20 51 25)"/>'
+   step=0 if row in (0,5) else [0,-2,0,2][row-1]
+   back=facing==1;side=facing in (2,3)
+   body='<ellipse cx="32" cy="58" rx="16" ry="3" fill="#25272b" opacity=".18"/>'
+   # Keep every pose inside its 64 px cell, including ears while resting.
+   transform='translate(0 -1) rotate(-75 32 34)' if row==5 else f'translate(0 {-abs(step)*.3})'
+   body+=f'<g transform="{transform}" stroke-linejoin="round" stroke-linecap="round">'
+   body+=ellipse(25,13,5,10,fur)+ellipse(39,13,5,10,fur)
+   body+=ellipse(25,12,2,6,'#eaafa5',False)+ellipse(39,12,2,6,'#eaafa5',False)
+   body+=ellipse(32,44,13,12,fur)+ellipse(32,46,8,7,'#fff7df',False)
+   body+=ellipse(24,56+step,6,3,fur)+ellipse(40,56-step,6,3,fur)
+   body+=ellipse(32,30,17,14,fur)
    if not back:
     eyes=[25,39] if not side else ([23] if facing==2 else [41])
-    for eye in eyes:body+=f'<circle cx="{eye}" cy="23" r="6.2" fill="none" stroke="#635443" stroke-width="1.5"/><ellipse cx="{eye}" cy="23" rx="2" ry="3" fill="#37312b"/><circle cx="{eye-.6}" cy="22" r=".7" fill="#fff7da"/>'
-    if not side:body+='<path d="M31 23H33" stroke="#635443" stroke-width="1.5"/>'
-    nose=32 if not side else (16 if facing==2 else 48)
-    body+=f'<ellipse cx="{nose}" cy="31" rx="7" ry="5" fill="#ead2a6"/><path d="M{nose-2} 29 Q{nose} 27 {nose+2} 29 L{nose} 31Z" fill="#8c6a50"/>'
-   else:body+='<ellipse cx="32" cy="49" rx="5" ry="5" fill="#eee0b9"/>'
-   body+='</g>';frames.append(f'<g transform="translate({x} {y})">{body}</g>')
+    for eye in eyes:
+     body+=ellipse(eye,29,2.6,3.5,outline,False)+ellipse(eye-.7,27.8,.8,1,'#ffffff',False)
+    if not side:
+     body+=ellipse(21,35,3,1.6,'#e9a398',False)+ellipse(43,35,3,1.6,'#e9a398',False)
+    nose=32 if not side else (17 if facing==2 else 47)
+    body+=f'<path d="M{nose-1.5} 34 Q{nose} 32 {nose+1.5} 34 L{nose} 36 M{nose} 36 q-2 3-4 0 M{nose} 36 q2 3 4 0" fill="none" stroke="{outline}" stroke-width="1.6"/>'
+    body+=f'<path d="M22 43 Q32 47 42 43 L39 48 L33 47 L29 52 L26 47Z" fill="#66968d" stroke="{outline}" stroke-width="2"/>'
+    body+=ellipse(20,47,3,5,fur)+ellipse(44,47,3,5,fur)
+   else:body+=ellipse(32,49,5,5,'#fff7df')
+   body+='</g>'
+   frames.append(f'<g transform="translate({facing*64} {row*64})">{body}</g>')
  (p/f'rabbit-{index}.svg').write_text('<svg xmlns="http://www.w3.org/2000/svg" width="256" height="384" viewBox="0 0 256 384">'+''.join(frames)+'</svg>')
-
  (p/f'rabbit-portrait-{index}.svg').write_text('<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">'+frames[0]+'</svg>')

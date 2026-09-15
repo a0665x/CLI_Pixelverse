@@ -22,3 +22,5 @@ Run `node private_assets/free-office/export-models.mjs` to regenerate them from 
 actual game geometry after changing the palette or models. GLBs embed no third-party textures.
 
 Version 1.1 separates desk, monitor, keyboard, papers, lamp and divider sprites to avoid duplicate workstation drawings. `python private_assets/free-office/generate_rabbits.py` regenerates six original rabbit coats, directional walk/rest sheets and matching roster portraits. Free-mode inspectors and agents share the same scale. Beds and sofas allow 2D resting; hard furniture retains collision.
+
+The 2D rabbits use upright ears, round faces and dark outlines. Office sprites use matching dark contours to separate furniture from wood floors; their placement and animation sheet dimensions remain unchanged.
