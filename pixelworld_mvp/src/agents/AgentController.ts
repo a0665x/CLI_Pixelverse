@@ -35,6 +35,7 @@ export class AgentController {
   isConversationHeld():boolean {return this.conversationHeld;}
   private walkClockMs = 0;
   private interiorElapsedMs = 0;
+  movementAllowed:(from:{x:number;y:number},to:{x:number;y:number})=>boolean=()=>true;
 
   constructor(
     scene: Phaser.Scene,
@@ -68,6 +69,7 @@ export class AgentController {
   interiorSnapshot(): InteriorAgentSnapshot {
     return {
       agentId: this.agentId,
+      conversationHeld: this.conversationHeld,
       role: this.role,
       buildingId: this.presenceState.kind === 'inside' ? this.presenceState.buildingId : undefined,
       action: this.currentRoute?.action ?? this.currentAssignment?.action ?? 'arrive',
@@ -153,11 +155,11 @@ export class AgentController {
     if (this.presenceState.kind === 'inside') this.interiorElapsedMs += Math.max(0, deltaMs);
     if (this.moving) {
       this.walkClockMs += Math.max(0, deltaMs);
-      const snapshot = this.follower.update(deltaMs);
+      const snapshot = this.follower.update(deltaMs,(a,b)=>this.movementAllowed({x:a.x/16-.5,y:a.y/16-.5},{x:b.x/16-.5,y:b.y/16-.5}));
       this.facing = snapshot.facing;
       this.sprite.setPosition(snapshot.position.x, snapshot.position.y).setTexture(
         this.skin.sheet,
-        this.frameFor(this.facing, true),
+        this.frameFor(this.facing, snapshot.moving),
       );
       if (snapshot.arrived) this.arrive();
     }

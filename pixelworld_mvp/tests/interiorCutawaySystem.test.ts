@@ -1901,7 +1901,7 @@ describe('InteriorCutawaySystem', () => {
     expect(internal.occupantViews.get('main')!.sprite).not.toBe(firstSprite);
   });
 
-  it('keeps distinct agent identities and advances walk frames inside the room', () => {
+  it('keeps distinct identities without walking in place while the motion clock is stationary', () => {
     const fake = fakeScene();
     const cutaway = new InteriorCutawaySystem(fake.scene as never, WORLD_DEFINITION, () => ({ width: 1_280, height: 720 }));
     cutaway.open('network-lab');
@@ -1926,7 +1926,7 @@ describe('InteriorCutawaySystem', () => {
 
     fake.scene.time.now = 120;
     cutaway.update(snapshots);
-    expect(firstView.sprite.frame).not.toBe(firstFrame);
+    expect(firstView.sprite.frame).toBe(firstFrame);
   });
 
   it('emits one open transition, keeps focus during building switches, and emits close once', () => {

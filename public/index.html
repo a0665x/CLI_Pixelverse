@@ -1849,6 +1849,22 @@
     #world-view-switch button[aria-pressed="true"] {background:#d8c28e;color:#243b32}
     #world-view-switch button:focus-visible {outline:3px solid #f0d9a5}
     @media(max-width:600px){#world-view-switch{top:62px!important;left:16px!important;transform:none!important}#world-view-switch button{padding:5px 15px}}
+
+      .agent-roster-activity { display:flex;align-items:center;gap:7px;color:#d2efda;font-size:12px;min-height:23px; }
+      .activity-glyph { display:inline-grid;place-items:center;width:23px;height:23px;font-size:17px;position:relative; }
+      [data-activity='reading'] .activity-glyph::after { content:'';position:absolute;top:6px;left:12px;width:7px;height:11px;background:#f5e8c1;transform-origin:left;border-left:1px solid #806c4a;animation:activity-page 1.4s ease-in-out infinite; }
+      [data-activity='working'] .activity-glyph,[data-activity='command'] .activity-glyph { animation:activity-turn 3s linear infinite; }
+      [data-activity='mcp'] .activity-glyph,[data-activity='skill'] .activity-glyph { animation:activity-pulse 1.05s ease-in-out infinite; }
+      [data-activity='thinking'] .activity-glyph,[data-activity='responding'] .activity-glyph { animation:activity-pulse 2.4s ease-in-out infinite; }
+      @keyframes activity-page { 0%,15% {transform:perspective(30px) rotateY(0deg)} 80%,100% {transform:perspective(30px) rotateY(-170deg)} }
+      @keyframes activity-turn { to {transform:rotate(360deg)} }
+      @keyframes activity-pulse { 0%,100% {transform:scale(.9);opacity:.65} 45% {transform:scale(1.08);opacity:1} }
+      .agent-session-projection { display:grid;gap:8px;margin:12px 0;padding:12px;background:#081510;border:1px solid #325043;border-radius:10px; }
+      .projection-status,.projection-note {font-size:11px;line-height:1.5;color:#9ab7a8;}
+      .projection-output {margin:0;padding:10px;min-height:150px;height:clamp(160px,29vh,330px);overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;background:#050d09;color:#cfebd7;border-radius:6px;font:12px/1.65 ui-monospace,monospace;tab-size:2;}
+      .agent-session-projection[data-connected='false'] .projection-status {color:#e5b887;}
+      .agent-session-projection button {background:#213f30;color:#d8f3df;border:1px solid #4c705c;border-radius:5px;padding:6px;cursor:pointer;}
+      @media (prefers-reduced-motion:reduce) {.activity-glyph,.activity-glyph::after {animation:none!important;}}
     </style>
 </head>
 <body data-locale="en-US" data-mobile-mode="off" data-sidebar-open="true">
@@ -1970,6 +1986,7 @@
           </div>
           <button type="button" class="agent-detail-close" data-agent-detail-close data-i18n-aria-label="agentDetail.close">×</button>
         </header>
+        <section data-agent-session-projection></section>
         <svg class="agent-detail-ecg" data-agent-detail-ecg data-agent-ecg viewBox="0 0 176 32" aria-hidden="true"><path></path></svg>
         <dl class="agent-detail-fields">
           <dt data-i18n="agentDetail.currentTask"></dt><dd data-agent-detail-task></dd>

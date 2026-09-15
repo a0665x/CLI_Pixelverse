@@ -6,7 +6,7 @@ export class ActorNavigation {
  constructor(width:number,height:number,readonly allowed:(p:PlayerPoint)=>boolean){
   for(let y=0;y<height*2;y++)for(let x=0;x<width*2;x++){const p={x:x/2,y:y/2};if(allowed(p)){this.cells.set(`${x},${y}`,this.nodes.length);this.nodes.push(p);}}
  }
- nearest(p:PlayerPoint):PlayerPoint {return this.nodes.reduce((best,q)=>Math.hypot(q.x-p.x,q.y-p.y)<Math.hypot(best.x-p.x,best.y-p.y)?q:best,this.nodes[0]??p);}
+ nearest(p:PlayerPoint,allowed:(p:PlayerPoint)=>boolean=()=>true):PlayerPoint {return this.nodes.filter(allowed).reduce((best,q)=>Math.hypot(q.x-p.x,q.y-p.y)<Math.hypot(best.x-p.x,best.y-p.y)?q:best,this.nodes.find(allowed)??p);}
  route(from:PlayerPoint,to:PlayerPoint):PlayerPoint[]{
   const start=this.nearest(from),goal=this.nearest(to);
   const id=(p:PlayerPoint)=>this.cells.get(`${Math.round(p.x*2)},${Math.round(p.y*2)}`)!;
@@ -23,13 +23,13 @@ export class ActorNavigation {
 }
 export class ActorWalker {
  point:PlayerPoint;private path:PlayerPoint[]=[];private elapsed=1;private goal='';
- constructor(private nav:ActorNavigation,start:PlayerPoint){this.point={...nav.nearest(start)};}
- step(target:PlayerPoint,dt:number){
+ constructor(private nav:ActorNavigation,start:PlayerPoint,allowed:(p:PlayerPoint)=>boolean=()=>true){this.point={...nav.nearest(start,allowed)};}
+ step(target:PlayerPoint,dt:number,bodyAllowed:(from:PlayerPoint,to:PlayerPoint)=>boolean=()=>true){
   this.elapsed+=dt;const key=`${Math.round(target.x*2)},${Math.round(target.y*2)}`;
   if(this.elapsed>=.5&&key!==this.goal){this.goal=key;this.path=this.nav.route(this.point,target);this.elapsed=0;}
   const before={...this.point};let budget=Math.min(dt,.1)*1.8;
   while(budget>0&&this.path.length){const p=this.path[0]!,distance=Math.hypot(p.x-this.point.x,p.y-this.point.y);if(distance<.01){this.path.shift();continue;}
-   const step=Math.min(budget,distance),next=movePlayer(this.point,p.x-this.point.x,p.y-this.point.y,step,this.nav.allowed);
+   const step=Math.min(budget,distance),next=movePlayer(this.point,p.x-this.point.x,p.y-this.point.y,step,q=>this.nav.allowed(q)&&bodyAllowed(this.point,q));
    if(Math.hypot(next.x-this.point.x,next.y-this.point.y)<.00001)break;
    this.point=next;budget-=step;
   }

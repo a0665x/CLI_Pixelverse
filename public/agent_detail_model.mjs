@@ -19,7 +19,7 @@ export function buildAgentDetail(model = {}, agentId, { nowMs = Date.now() } = {
       key: roomKey,
       label: roomKey ? `rooms.${roomKey}.name` : agent.roomLabel || agent.room_label || '',
     },
-    tool: String(agent.toolName || agent.tool_name || agent.tool || ''),
+    tool: String(agent.toolName || agent.tool_name || agent.tool_label || agent.recent_actions?.[0]?.tool_name || agent.tool || ''),
     hook: String(agent.hook || agent.source || agent.agent_kind || ''),
     processIdentity: agent.processId ?? agent.process_id ?? null,
     sessionIdentity: agent.instanceName || agent.instance_name || agent.sessionId || agent.session_id || null,

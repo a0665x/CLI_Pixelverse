@@ -7,8 +7,8 @@ const defaultPathFor = (row, nowMs) => buildHeartbeatPath({
   signalKind: row.signal?.kind || row.signalKind,
   heartbeatTone: row.signal?.tone || row.tone,
   heartbeatLoad: row.signal?.load ?? row.load,
-  heartbeatRate: row.signal?.rate ?? row.rate,
-  heartbeatAmplitude: row.signal?.amplitude ?? row.amplitude,
+  heartbeatRate: row.activity?.rate ?? row.signal?.rate ?? row.rate,
+  heartbeatAmplitude: row.activity?.amplitude ?? row.signal?.amplitude ?? row.amplitude,
 }, nowMs, 160, 176);
 
 export function createLiveEcgController({

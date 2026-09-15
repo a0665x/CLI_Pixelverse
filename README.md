@@ -25,12 +25,14 @@ See [verification notes](docs/reference/release-verification.md).
 
 - A 3D village by default, with an optional 2D pixel-art view sharing Agent state.
 - An inspector rabbit with WASD movement, R gait cycling, Space jumps and L flashlight.
-- Furniture collision, tiered indoor climbing, hourly day/night cycles and meteor arrival.
+- Furniture and character-body collision, tiered indoor climbing, hourly day/night cycles and meteor arrival.
 - Left-drag map panning, right-drag orbit, and cursor-centered wheel zoom.
 - View-aware Agent portraits, stable rabbit identity badges, project names, and animated ECG.
 - A shared 2D/3D Village guide with live house occupancy, work purpose, and explicit main/subagent links.
 - Clickable roster cards with the current task, process, hook, project path, and
-  recent events.
+  a scrolling work projection that refreshes every 1.5 seconds.
+- Activity labels, animated icons, and distinct ECG rhythms for reading, commands,
+  MCP tools, skills, ordinary work, and waiting for input.
 - Editable building interiors with furniture collision, placement validation,
   undo, and per-room saved layouts.
 - A settings panel for English, Traditional Chinese, Japanese, and Korean UI
@@ -51,6 +53,13 @@ world labels. In 3D, roster portraits use the Honey rabbit appearance. Codex chi
 report `parent_agent_id` and project metadata; older records without that information
 remain unlinked until a new child hook arrives. Other integrations can send these
 fields through `/api/event`; sharing a project alone never establishes parenthood.
+
+Click a roster card to open **Work projection**. It shows public conversation and
+tool output supplied by the session connection; hook-only Agents show only the
+history/events actually received. Scroll up to read without being pulled back by
+new output, then choose **Follow latest** to resume following. Activity icons and
+ECG rhythms describe reported work types, not CPU usage or hidden reasoning. A
+Skill indicator requires an explicit skill activity event from the integration.
 
 ![Project search showing a main Agent and its subagent, with live house occupancy](docs/reference/village-guide.jpg)
 

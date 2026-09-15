@@ -1,3 +1,4 @@
+import {createSessionProjection} from './agent_session_projection.mjs';
 const valueText = (value, fallback = '—') => (
   value === undefined || value === null || value === '' ? fallback : String(value)
 );
@@ -15,6 +16,7 @@ export function createAgentDetailView({
   let opened = false;
   let currentDetail = null;
   const panel = root?.querySelector?.('[data-agent-detail-panel]');
+  const projection=createSessionProjection({root:root?.querySelector?.('[data-agent-session-projection]'),locale:()=>documentRef.documentElement?.lang||'en-US'});
   const closeButton = root?.querySelector?.('[data-agent-detail-close]');
 
   const setText = (selector, value, { external = false } = {}) => {
@@ -28,6 +30,7 @@ export function createAgentDetailView({
   const render = (detail) => {
     if (!detail || !root) return;
     currentDetail = detail;
+    if(opened)projection.select(detail);
     root.dataset.agentId = detail.id;
     root.dataset.agentDetailMode = modeFor();
     root.dataset.signalKind = detail.signal?.kind || 'idle';
@@ -69,6 +72,7 @@ export function createAgentDetailView({
   const close = () => {
     if (!opened) return;
     opened = false;
+    projection.close();
     currentDetail = null;
     root.hidden = true;
     root.setAttribute?.('aria-hidden', 'true');
@@ -115,6 +119,7 @@ export function createAgentDetailView({
     current: () => currentDetail,
     destroy() {
       close();
+      projection.destroy();
       closeButton?.removeEventListener?.('click', close);
       root?.removeEventListener?.('click', onRootClick);
       root?.removeEventListener?.('keydown', onRootKeydown);

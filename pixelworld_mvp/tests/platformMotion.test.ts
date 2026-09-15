@@ -25,3 +25,13 @@ it('walks off a platform and falls to the floor without trapping movement',()=>{
  for(let i=0;i<200;i++)p.step(0,1,2,.01,false);
  expect(p.height).toBe(0);expect(p.point.y).toBeGreaterThan(8);expect(p.grounded).toBe(true);
 });
+it('lands above a character and falls once that support moves away',async()=>{
+ const {characterSupport}=await import('../src/player/characterCollision');
+ const p=new PlatformMotion({width:12,height:10,furniture:[]} as unknown as InteriorDefinition,{x:5,y:5});
+ p.height=1.3;p.grounded=false;
+ const support=(point:{x:number;y:number},height:number)=>characterSupport({id:'inspector',roomId:'room',...point},height,[{id:'agent',roomId:'room',x:5,y:5}]);
+ for(let i=0;i<100;i++)p.step(0,0,0,.016,false,()=>true,support);
+ expect(p.height).toBe(.95);expect(p.support).toBe('character');
+ for(let i=0;i<100;i++)p.step(0,0,0,.016,false);
+ expect(p.height).toBe(0);
+});

@@ -21,15 +21,15 @@ export class PlatformMotion {
  }
  private contains(p:PlayerPoint,b:Body){return bodyOverlaps(p,b,.01);}
  private allowed=(p:PlayerPoint)=>p.x>=-.5+BODY_RADIUS&&p.y>=-.5+BODY_RADIUS&&p.x<=this.room.width-.5-BODY_RADIUS&&p.y<=this.room.height-.5-BODY_RADIUS&&!this.solids.some(b=>this.height<b.height-.015&&bodyOverlaps(p,b)&&!(bodyOverlaps(this.point,b)&&Math.hypot(p.x-b.x,p.y-b.z)>Math.hypot(this.point.x-b.x,this.point.y-b.z)+.000001));
- step(dx:number,dy:number,speed:number,seconds:number,jump:boolean){
+ step(dx:number,dy:number,speed:number,seconds:number,jump:boolean,bodyAllowed:(from:PlayerPoint,to:PlayerPoint,height:number)=>boolean=()=>true,bodySupport:(point:PlayerPoint,previousHeight:number)=>number=()=>0){
   if(jump&&this.grounded){this.velocity=JUMP_SPEED;this.grounded=false;}
   let left=Math.min(seconds,.15);
   while(left>0){const dt=Math.min(left,1/120);left-=dt;
    const previous=this.height;this.velocity-=GRAVITY*dt;this.height+=this.velocity*dt;
-   let floor=0,support='';
+   let floor=bodySupport(this.point,previous),support=floor?'character':'';
    for(const b of this.solids)if(b.stand&&this.contains(this.point,b)&&previous>=b.height-.015&&b.height>floor){floor=b.height;support=b.id;}
    if(this.height<=floor&&this.velocity<=0){this.height=floor;this.velocity=0;this.grounded=true;this.support=support;}else{this.grounded=false;this.support='';}
-   this.point=movePlayer(this.point,dx,dy,speed*dt,this.allowed);
+   this.point=movePlayer(this.point,dx,dy,speed*dt,p=>this.allowed(p)&&bodyAllowed(this.point,p,this.height));
   }
   if(this.grounded&&this.height===0)this.groundPoint={...this.point};
   return this;

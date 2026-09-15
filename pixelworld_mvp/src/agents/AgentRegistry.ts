@@ -25,6 +25,12 @@ export class AgentRegistry {
     if (existing) return { agent: existing, created: false };
     if (this.agents.size >= MAX_AGENTS) return undefined;
 
+    const occupied=this.all().filter(a=>a.presence().kind==='outside');
+    const candidates:GridPoint[]=[];
+    for(let r=0;r<=8;r++)for(let y=-r;y<=r;y++)for(let x=-r;x<=r;x++)if(Math.max(Math.abs(x),Math.abs(y))===r)candidates.push({x:spawn.x+x,y:spawn.y+y});
+    const free=candidates.find(p=>this.grid.isWalkable(p)&&occupied.every(a=>Math.hypot(a.sprite.x/16-.5-p.x,a.sprite.y/16-.5-p.y)>=.7));
+    if(!free)return undefined;
+    spawn=free;
     const skin = agentSkinFor(agentId, role);
     const agent = new AgentController(this.scene, agentId, role, spawn, this.grid, skin);
     this.agents.set(agentId, agent);

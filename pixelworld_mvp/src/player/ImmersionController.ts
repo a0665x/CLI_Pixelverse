@@ -1,3 +1,4 @@
+import {characterMoveAllowed,characterSupport,type CharacterBody} from './characterCollision';
 import {playerHeading} from './playerHeading';
 import {PlatformMotion} from './platformMotion';
 import {GAIT_SPEED,nextRabbitGait,type RabbitGait} from './rabbitGait';
@@ -25,8 +26,8 @@ export class ImmersionController {
   private active=false;
   private interactionQuestion=document.createElement('p');
   private cameraYaw=0;
-  private visibleActors:{id:string;x:number;y:number}[]=[];
-  setVisibleActors(actors:{id:string;x:number;y:number}[]):void {this.visibleActors=actors;}
+  private visibleActors:CharacterBody[]=[];
+  setVisibleActors(actors:CharacterBody[]):void {this.visibleActors=actors;}
 
   private walking=false;
   private gait:RabbitGait='walk';
@@ -164,7 +165,7 @@ export class ImmersionController {
       this.point=[{x:this.point.x+1,y:this.point.y},{x:this.point.x-1,y:this.point.y},this.point].find(p=>this.allowed(p)&&agents.every(a=>a.presence().kind==='inside'||Math.hypot(a.sprite.x/16-.5-p.x,a.sprite.y/16-.5-p.y)>.7))||this.point;
       this.summonPoint={...this.point};this.effects.setDepth(9000);this.landing=this.reduced.matches||enteredRoom?1:SUMMON_MS;this.landingDeadline=performance.now()+this.landing;this.clock=0;this.roomId='';
       this.hint.textContent=t('召喚中…');
-    } else {this.clearVisitor();this.hidePanel();this.world.immersionContext().cutaway?.close();}
+    } else {this.world.visitorBody=undefined;this.world.immersionContext().cutaway?.setVisitorBody(undefined);this.clearVisitor();this.hidePanel();this.world.immersionContext().cutaway?.close();}
     this.toggle.blur();
   }
   private allowed=(p:PlayerPoint)=>document.documentElement.dataset.view==='3d'?(villagePlayerAllowed(this.world.worldDefinition,this.world.navigationGrid,p)&&(this.gait!=='bound'||villagePlayerAllowed(this.world.worldDefinition,this.world.navigationGrid,{x:p.x+Math.sin(this.heading)*.28,y:p.y+Math.cos(this.heading)*.28}))):this.world.navigationGrid.isWalkable({x:Math.round(p.x),y:Math.round(p.y)});
@@ -235,22 +236,26 @@ export class ImmersionController {
     this.walking=walking;
     const speed=document.documentElement.dataset.view==='3d'?GAIT_SPEED[this.gait]:3.5;
     const before={...(this.roomPoint||this.point)};
+    const bodyRoom=surface?.buildingId??'';
+    const bodies:CharacterBody[]=document.documentElement.dataset.view==='3d'?this.visibleActors:surface?surface.agents.map(a=>({...a,roomId:bodyRoom})):context.agents.filter(a=>a.presence().kind==='outside').map(a=>({id:a.agentId,roomId:'',x:a.sprite.x/16-.5,y:a.sprite.y/16-.5}));
+    const bodyAllowed=(from:PlayerPoint,to:PlayerPoint,height=this.elevation)=>characterMoveAllowed({id:'inspector',roomId:bodyRoom,...from,height},to,bodies);
+
     if(walking)this.heading=playerHeading(this.heading,inputX,inputY,this.cameraYaw);
     if(walking) this.facing=Math.abs(dx)>Math.abs(dy)?(dx<0?'left':'right'):(dy<0?'up':'down');
     const indoorAllowed=(p:PlayerPoint)=>document.documentElement.dataset.view==='3d'&&surface?(roomBodyAllowed(surface.interior,p)&&(this.gait!=='bound'||roomBodyAllowed(surface.interior,{x:p.x+Math.sin(this.heading)*.28,y:p.y+Math.cos(this.heading)*.28}))):Boolean(surface && p.x>=0 && p.y>=0 && p.x<surface.interior.width-.5 && p.y<surface.interior.height-.5 && !this.roomCollision.has(`${Math.round(p.x)},${Math.round(p.y)}`));
     if(surface && this.roomPoint) {
       if(document.documentElement.dataset.view==='3d'){
         this.platform??=new PlatformMotion(surface.interior,this.roomPoint);
-        this.platform.step(walking?dx:0,walking?dy:0,speed,dt/1000,this.jumpRequested&&!this.modal&&!this.inspectionOpen);
+        this.platform.step(walking?dx:0,walking?dy:0,speed,dt/1000,this.jumpRequested&&!this.modal&&!this.inspectionOpen,bodyAllowed,(point,height)=>characterSupport({id:'inspector',roomId:bodyRoom,...point},height,bodies));
         this.roomPoint={...this.platform.point};this.elevation=this.platform.height;
-      }else{this.platform=undefined;if(walking)this.roomPoint=movePlayer(this.roomPoint,dx,dy,dt*.001*speed*3/3.5,indoorAllowed);}
+      }else{this.platform=undefined;if(walking)this.roomPoint=movePlayer(this.roomPoint,dx,dy,dt*.001*speed*3/3.5,p=>indoorAllowed(p)&&bodyAllowed(this.roomPoint!,p));}
       const p=this.roomPoint;
       this.visitor!.setPosition(surface.origin.x+(p.x+.5)*surface.cell,surface.origin.y+(p.y+.5)*surface.cell)
         .setScale(1.1*surface.cell/16).setDepth(3000+surface.origin.y+(p.y+.5)*surface.cell+.999)
         .setFrame(agentFrameForSkin(skin,this.facing,walking,this.clock));
       if(walking && dy>0 && p.y>surface.interior.height-1.2 && Math.abs(p.x-Math.floor(surface.interior.width/2))<.65) context.cutaway?.close();
     } else {
-      if(walking) this.point=movePlayer(this.point,dx,dy,dt*.001*speed,this.allowed);
+      if(walking) this.point=movePlayer(this.point,dx,dy,dt*.001*speed,p=>this.allowed(p)&&bodyAllowed(this.point,p));
       this.outside.setPosition(this.point.x*16+8,this.point.y*16+8).setDepth(this.point.y*16+9)
         .setFrame(agentFrameForSkin(skin,this.facing,walking,this.clock));
       this.effects.setDepth(-705).fillStyle(0xe5cb87,.65).fillEllipse(this.point.x*16+8,this.point.y*16+12,14,5);
@@ -277,6 +282,8 @@ export class ImmersionController {
     this.root.dataset.gait=this.gait;this.root.dataset.elevation=String(this.elevation);this.root.dataset.perch=this.platform?.support||'';
     this.hint.textContent=inspectionCopy().role+' · '+(surface?t('WASD 移動 · 從門口向下離開 · Esc 返回'):t('WASD 移動 · 向上走入門口 · 靠近 Agent 交談'));
     if(document.documentElement.dataset.view==='3d')this.hint.textContent+=' · '+inspectionCopy().gaits+' · '+inspectionCopy()[this.gait]+(surface?' · '+inspectionCopy().perch:'');
+    this.world.visitorBody={id:'inspector',roomId:this.roomId,...(this.roomPoint||this.point),height:this.elevation};
+    context.cutaway?.setVisitorBody(this.world.visitorBody);
     this.root.dataset.playerX=String((this.roomPoint||this.point).x);this.root.dataset.playerY=String((this.roomPoint||this.point).y);this.root.dataset.room=this.roomId;
     if(this.modal || this.inspectionOpen) return;
     const p=surface?this.roomPoint!:this.point;
@@ -354,6 +361,7 @@ export class ImmersionController {
     this.hidePanel();
     window.removeEventListener('pixelverse:locale',this.localize);
     delete document.documentElement.dataset.immersion;
+    this.world.visitorBody=undefined;this.world.immersionContext().cutaway?.setVisitorBody(undefined);
     this.generation++;window.removeEventListener('keydown',this.keydown,true);window.removeEventListener('keyup',this.keyup);window.removeEventListener('blur',this.blur);document.removeEventListener('visibilitychange',this.blur);
     this.world.events.off('postupdate',this.tick);this.root.remove();this.outside.destroy();this.effects.destroy();this.clearVisitor();
   }

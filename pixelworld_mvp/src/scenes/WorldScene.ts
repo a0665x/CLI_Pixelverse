@@ -1,3 +1,4 @@
+import {characterMoveAllowed,type CharacterBody} from '../player/characterCollision';
 import { VillageAtmosphere } from '../rendering/VillageAtmosphere';
 import Phaser from 'phaser';
 import { type VillageLocale, villageCopy } from '../i18n/villageLocale';
@@ -113,6 +114,7 @@ export class WorldScene extends Phaser.Scene {
     emitWorldReady(this.game.events, this);
   }
 
+  visitorBody:CharacterBody|undefined;
   private previousViewFrame=0;
   update(_time: number, delta: number): void {
     // 3D rendering may run below Phaser's smoothing target; use elapsed time so hooks keep moving.
@@ -120,6 +122,13 @@ export class WorldScene extends Phaser.Scene {
     this.previousViewFrame=_time;
     const threeView=typeof document!=='undefined' && document.documentElement?.dataset?.view==='3d';
     if(threeView) delta=Math.min(Math.max(elapsed,0),100);
+    const peers=this.agents?.all()??[];
+    const bodies:CharacterBody[]=peers.filter(a=>a.presence().kind==='outside').map(a=>({id:a.agentId,roomId:'',x:a.sprite.x/16-.5,y:a.sprite.y/16-.5}));
+    if(this.visitorBody)bodies.push(this.visitorBody);
+    for(const actor of peers){const body=bodies.find(b=>b.id===actor.agentId);actor.movementAllowed=(from,to)=>{
+      const allowed=characterMoveAllowed({id:actor.agentId,roomId:'',...from},to,bodies);
+      if(allowed&&body){body.x=to.x;body.y=to.y;}return allowed;
+    };}
     this.agents?.update(delta);
     if(!threeView){
     this.animalSystem?.update(delta);

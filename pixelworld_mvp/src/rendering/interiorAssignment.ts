@@ -16,6 +16,7 @@ import { navigationBlockedCellKeys } from './interiorPlacement';
 import { interactionAccess } from './interiorNavigationPolicy';
 
 export interface InteriorAgentSnapshot {
+  conversationHeld?:boolean;
   agentId: string;
   role: 'main' | 'subagent';
   buildingId: string | undefined;

@@ -1,3 +1,6 @@
+import {characterMoveAllowed,type CharacterBody} from '../player/characterCollision';
+import {ActorNavigation,ActorWalker} from '../player/actorNavigation';
+import {roomBodyAllowed} from '../player/furniturePhysics';
 import { paintInteriorRoom } from './interiorRoomArt';
 import { buildingPalette } from './villageArtDirection';
 import type Phaser from 'phaser';
@@ -387,6 +390,11 @@ const reducedMotionPreferred = (): boolean => (
 );
 
 export class InteriorCutawaySystem {
+  private visitorBody:CharacterBody|undefined;
+  setVisitorBody(body:CharacterBody|undefined):void {this.visitorBody=body;}
+  private bodyNavigation?:{room:InteriorDefinition;nav:ActorNavigation};
+  private bodyFrame=0;
+
   private root: Phaser.GameObjects.Container | undefined;
   private roomViewportLayer: Phaser.GameObjects.Container | undefined;
   private occupantLayer: Phaser.GameObjects.Container | undefined;
@@ -439,6 +447,7 @@ export class InteriorCutawaySystem {
   private readonly occupantViews = new Map<string, {
     sprite: Phaser.GameObjects.Image;
     motion?: ReturnType<typeof interiorMotionAt>;
+    walker?:ActorWalker;
     icon: Phaser.GameObjects.Text;
     bubble: Phaser.GameObjects.Text;
     name: Phaser.GameObjects.Text;
@@ -900,12 +909,24 @@ export class InteriorCutawaySystem {
     }
 
     const threeView=typeof document!=='undefined' && document.documentElement?.dataset?.view==='3d';
+    const seconds=Math.min(.1,Math.max(0,(this.scene.time.now-this.bodyFrame)/1000));this.bodyFrame=this.scene.time.now;
+    if(!threeView&&this.bodyNavigation?.room!==interior)this.bodyNavigation={room:interior,nav:new ActorNavigation(interior.width,interior.height,p=>roomBodyAllowed(interior,p))};
+
     assignments.forEach((assignment) => {
       const snapshot = matchingSnapshots.find(({ agentId }) => agentId === assignment.agentId) ?? assignment;
       const motion = interiorMotionAt(snapshot, interior, assignment, this.scene.time.now);
       const view = this.occupantViews.get(assignment.agentId);
       if (!view) return;
       const skin = agentSkinFor(assignment.agentId, assignment.role);
+      if(!threeView){
+        const bodies:CharacterBody[]=[...this.occupantViews].filter(([id,v])=>id!==assignment.agentId&&v.walker).map(([id,v])=>({id,roomId:building.id,...v.walker!.point}));
+        if(this.visitorBody)bodies.push(this.visitorBody);
+        view.walker??=new ActorWalker(this.bodyNavigation!.nav,motion.point,p=>characterMoveAllowed({id:assignment.agentId,roomId:building.id,...p},p,bodies));
+        const prior=view.walker.point;
+        const result=view.walker.step(motion.point,snapshot.conversationHeld?0:seconds,(from,to)=>characterMoveAllowed({id:assignment.agentId,roomId:building.id,...from},to,bodies));
+        motion.point={...result.point};motion.walking=result.moving;
+        if(result.moving){const dx=result.point.x-prior.x,dy=result.point.y-prior.y;motion.facing=Math.abs(dx)>Math.abs(dy)?(dx<0?'left':'right'):(dy<0?'up':'down');}
+      }
       view.motion = motion;
       if(threeView)return; // 3D consumes motion directly; hidden sprites and DOM need no repaint.
       const frame = agentFrameForSkin(skin, motion.facing, motion.walking, this.scene.time.now);

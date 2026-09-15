@@ -1,3 +1,4 @@
+import {activityLabel} from './agent_activity.mjs';
 export function agentRosterDescriptor(row, {
   selectedId = '',
   spriteFor,
@@ -49,6 +50,9 @@ export function createAgentRosterView({
     name.dataset.externalCopy = 'true';
     const state = documentRef.createElement('span');
     state.className = 'agent-roster-state';
+    const activity = documentRef.createElement('span');activity.className='agent-roster-activity';
+    const glyph=documentRef.createElement('span');glyph.className='activity-glyph';glyph.setAttribute('aria-hidden','true');
+    const activityText=documentRef.createElement('span');activity.append(glyph,activityText);
     const project = documentRef.createElement('span');
     project.className = 'agent-roster-project';
     const task = documentRef.createElement('span');
@@ -59,7 +63,7 @@ export function createAgentRosterView({
     svg.dataset.agentEcg = '';
     const path = documentRef.createElementNS('http://www.w3.org/2000/svg', 'path');
     svg.append(path);
-    copy.append(name, state, project, task, svg);
+    copy.append(name, state, activity, project, task, svg);
     article.append(portrait, copy);
 
     const activate = () => {
@@ -73,7 +77,7 @@ export function createAgentRosterView({
       event.preventDefault();
       activate();
     });
-    return { article, portrait, name, state, project, task, svg };
+    return { article, portrait, name, state, activity, glyph, activityText, project, task, svg };
   };
 
   return {
@@ -91,6 +95,8 @@ export function createAgentRosterView({
         node.article.dataset.selectionId = item.id;
         node.article.dataset.tone = item.tone;
         node.article.dataset.signalKind = item.signalKind;
+        node.activity.hidden=!row.activity;
+        if(row.activity){node.activity.dataset.activity=row.activity.kind;node.glyph.textContent=row.activity.icon;node.activityText.textContent=activityLabel(row.activity,documentRef.documentElement?.lang);node.activity.title=[node.activityText.textContent,row.activity.tool].filter(Boolean).join(' · ');}
         node.article.classList.toggle('selected', item.selected);
         node.article.setAttribute('aria-label', item.ariaLabel);
         node.portrait.src = item.portraitSrc;

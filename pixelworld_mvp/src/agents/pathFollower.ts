@@ -25,7 +25,7 @@ export class PathFollower {
     this.index = options.preservePosition ? 0 : Math.min(1, this.waypoints.length);
   }
 
-  update(deltaMs: number): FollowerSnapshot {
+  update(deltaMs: number, allowed?: (from:PixelPoint,to:PixelPoint)=>boolean): FollowerSnapshot {
     let distanceLeft = this.speedPixelsPerSecond * Math.max(0, deltaMs) / 1000;
     while (distanceLeft > 0 && this.index < this.waypoints.length) {
       const target = this.waypoints[this.index]!;
@@ -37,6 +37,10 @@ export class PathFollower {
         continue;
       }
       this.facing = Math.abs(dx) > 0 ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up');
+      const step = Math.min(distanceLeft, distance, allowed ? this.tileSize*.1 : Infinity);
+      const candidate = {x:this.position.x+dx*step/distance,y:this.position.y+dy*step/distance};
+      if(allowed&&!allowed(this.position,candidate))return {position:{...this.position},facing:this.facing,moving:false,arrived:false};
+      if(step < Math.min(distanceLeft,distance)) {this.position=candidate;distanceLeft-=step;continue;}
       if (distanceLeft >= distance) {
         this.position = { ...target };
         this.index += 1;

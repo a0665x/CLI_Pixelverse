@@ -1,3 +1,4 @@
+import {agentActivity} from './agent_activity.mjs';
 import {agentIdentity} from './agent_identity.mjs';
 const ATTENTION_STATES = new Set(['blocked', 'awaiting_input']);
 const BUSY_PIXEL_STATES = new Set([
@@ -102,6 +103,7 @@ export function buildAgentRoster(model = {}, { nowMs = Date.now() } = {}) {
       urgency: groupRank({ role, needsAttention: signal.needsAttention, signal }),
       freshnessMs: signal.freshnessMs,
       signal,
+      activity:agentActivity(agent),
       portraitInput: {
         agent:id,
         role,

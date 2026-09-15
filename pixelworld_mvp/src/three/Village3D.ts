@@ -1,3 +1,4 @@
+import {characterMoveAllowed,type CharacterBody} from '../player/characterCollision';
 import {guideFor} from '../ui/VillageGuide';
 import {viewOccluded} from './occlusion';
 import {woodlandDetails} from './woodlandDetails';
@@ -275,12 +276,21 @@ for(let i=0;i<16;i++)box(staticWorld,bridge.x-.5+(i+.5)*bridge.width/16,.25,z,br
     for(const actor of context.agents){let g=this.actors.get(actor.agentId);if(!g){g=createHuman(actor.agentId);this.scene.add(g);this.actors.set(actor.agentId,g);}
       const indoor=surface?.agents.find(a=>a.id===actor.agentId);g.visible=surface?Boolean(indoor):actor.presence().kind==='outside';if(!g.visible)continue;
       const desired={x:indoor?.motion?.point.x??indoor?.x??actor.sprite.x/16-.5,y:indoor?.motion?.point.y??indoor?.y??actor.sprite.y/16-.5};
-      if(g.userData.navigation!==nav){g.userData.navigation=nav;g.userData.walker=new ActorWalker(nav,desired);}
+      if(g.userData.navigation!==nav){
+        const peers:CharacterBody[]=[...this.actors].filter(([id,other])=>id!==actor.agentId&&other.visible&&other.userData.navigation===nav).map(([id,other])=>({id,roomId:surface?.buildingId??'',x:other.position.x,y:other.position.z}));
+        if(state.active)peers.push({id:'inspector',roomId:state.roomId,...state.point,height:state.elevation});
+        const walker=new ActorWalker(nav,desired,p=>characterMoveAllowed({id:actor.agentId,roomId:surface?.buildingId??'',...p},p,peers));
+        g.userData.navigation=nav;g.userData.walker=walker;
+        g.position.set(walker.point.x,surface?.02:this.groundHeight(walker.point.x,walker.point.y),walker.point.y);
+      }
       // Outdoor position is authoritative: a second slower planner used to lag behind
       // the door arrival and disappear mid-path when the 2D controller entered.
       const dx=desired.x-g.position.x,dz=desired.y-g.position.z;
       const movement=actor.isConversationHeld()?{point:{x:g.position.x,y:g.position.z},moving:false,heading:g.rotation.y}
-        :surface?(g.userData.walker as ActorWalker).step(desired,dt)
+        :surface?(g.userData.walker as ActorWalker).step(desired,dt,(from,to)=>characterMoveAllowed({id:actor.agentId,roomId:surface.buildingId,...from},to,[
+          ...[...this.actors].filter(([id,other])=>id!==actor.agentId&&other.visible&&other.userData.navigation===nav).map(([id,other])=>({id,roomId:surface.buildingId,x:other.position.x,y:other.position.z})),
+          ...(state.active?[{id:'inspector',roomId:state.roomId,...state.point,height:state.elevation}]:[]),
+        ]))
         :{point:desired,moving:Math.hypot(dx,dz)>.001,heading:Math.atan2(dx,dz)};
       const {x,y:z}=movement.point,moved=movement.moving;
       g.position.set(x,surface?.02:this.groundHeight(x,z),z);
@@ -304,7 +314,7 @@ for(let i=0;i<16;i++)box(staticWorld,bridge.x-.5+(i+.5)*bridge.width/16,.25,z,br
       const points=end?nav.route(start,end):[];
       this.guideLine.geometry.dispose();this.guideLine.geometry=new T.BufferGeometry().setFromPoints(points.map(q=>new T.Vector3(q.x,this.groundHeight(q.x,q.y)+.12,q.y)));
     }
-    this.immersion.setVisibleActors([...this.actors].filter(([,g])=>g.visible).map(([id,g])=>({id,x:g.position.x,y:g.position.z})));
+    this.immersion.setVisibleActors([...this.actors].filter(([,g])=>g.visible).map(([id,g])=>({id,x:g.position.x,y:g.position.z,roomId:surface?.buildingId??'',height:0})));
     if(now-this.actorTelemetryAt>1000){this.actorTelemetryAt=now;this.root.dataset.actors=JSON.stringify(context.agents.map(a=>{const g=this.actors.get(a.agentId);return {id:a.agentId,presence:a.presence(),visible:g?.visible,position:g?.position.toArray(),activity:g?.userData.activity};}));}
     this.workstations?.update(now,(surface?.agents??[]).map(a=>({id:a.id,furnitureId:a.motion?.furnitureId,walking:this.actors.get(a.id)?.userData.activity==='walking'})),context.snapshot?.agents??[]);
     this.refreshScreen();

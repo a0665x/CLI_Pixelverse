@@ -96,7 +96,7 @@ test('view renders accessible selectable portrait cards and marks runtime tasks 
 
   const article = root.children[0];
   const [portrait, copy] = article.children;
-  const [name, state, project, task, svg] = copy.children;
+  const [name, state, activity, project, task, svg] = copy.children;
   assert.equal(article.dataset.selectionKind, 'agent');
   assert.equal(article.dataset.selectionId, 'main');
   assert.equal(article.dataset.signalKind, 'busy');
@@ -129,7 +129,7 @@ test('view removes the external marker when a refreshed row has no runtime task'
   const root = new FakeNode('div');
   const view = createAgentRosterView({ root, documentRef, spriteFor: options.spriteFor, textFor: options.textFor });
   view.render([row]);
-  const task = root.children[0].children[1].children[3];
+  const task = root.children[0].children[1].children.find(n=>n.className==='agent-roster-task');
   assert.equal(task.dataset.externalCopy, 'true');
 
   view.render([{ ...row, externalTask: '' }]);
@@ -141,7 +141,7 @@ test('view hides project metadata when a legacy Agent has no project identity', 
   const root = new FakeNode('div');
   const view = createAgentRosterView({ root, documentRef, spriteFor: options.spriteFor, textFor: options.textFor });
   view.render([row]);
-  const project = root.children[0].children[1].children[2];
+  const project = root.children[0].children[1].children.find(n=>n.className==='agent-roster-project');
   assert.equal(project.hidden, false);
   assert.equal(project.dataset.externalCopy, 'true');
 

@@ -185,7 +185,7 @@ const makeAgent = (agent, nowMs) => {
     targetRoom: activity.roomKey,
     roomKey: activity.roomKey,
     buildingId: activity.roomKey,
-    toolName: agent.tool_name || agent.tool || '',
+    toolName: agent.tool_name || agent.tool_label || agent.recent_actions?.[0]?.tool_name || agent.tool || '',
     processId: agent.process_id ?? null,
     instanceName: agent.instance_name || agent.session_id || '',
     projectPath: String(agent.project_path || ''),
