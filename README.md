@@ -25,8 +25,9 @@ See [verification notes](docs/reference/release-verification.md).
 
 - A 3D village by default, with an optional 2D pixel-art view sharing Agent state.
 - Summon an inspector rabbit with WASD movement, R gait cycling, Space jumps and L flashlight.
-- Feed carrots for a 30-second speed boost or licorice hay for a 30-second growth effect.
-  Refeeding refreshes the timer; both effects can coexist.
+- Feed inspector drops about ten rabbit-sized 3D foods from the sky onto reachable village ground,
+  including one nearby. Walk into landed food to eat: carrots boost speed, licorice hay
+  increases size for 30 seconds. Uneaten food lasts 60 seconds after landing.
 - Furniture and character-body collision, tiered indoor climbing, hourly day/night cycles and meteor arrival.
 - Left-drag map panning, right-drag orbit, and cursor-centered wheel zoom.
 - View-aware Agent portraits, stable rabbit identity badges, project names, and animated ECG.
@@ -265,7 +266,9 @@ is temporarily unavailable.
 
 ## Optional 2D Assets And 3D Attribution
 
-The full 2D office editor uses the separately purchased
+The 2D office editor works out of the box with original procedural furniture.
+No asset purchase is required. All existing furniture placements and editing controls remain available.
+You can optionally replace the default office artwork with the separately purchased
 [Modern Office - Revamped](https://limezu.itch.io/modernoffice) pack. Put
 `Modern_Office_Revamped_v1.zip` in `private_assets/modern-office/`, or run:
 
@@ -275,8 +278,9 @@ PIXELVERSE_MODERN_OFFICE_ZIP=/absolute/path/to/Modern_Office_Revamped_v1.zip \
 ```
 
 See [asset preparation](docs/reference/office-assets.md). The ZIP and extracted
-sprites are excluded from Git. Without them, use the default 3D view; the 2D
-view displays an installation notice and has incomplete office artwork.
+sprites are excluded from Git. Without them, original pixel furniture is generated locally
+without downloads. Existing bundled village assets retain their attribution notices.
+See [clean-install verification](docs/reference/free-2d-verification.md) for reproducible checks.
 
 Village geometry, furniture and procedural surface textures are authored in
 this project. The Honey rabbit was generated with **Meshy**, then rigged and

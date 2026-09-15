@@ -14,8 +14,10 @@ Bundled free furniture source:
 These bundled pieces provide lightweight fallback desks, plants, sofas, and
 terminal-like equipment. Agent sprites remain separate.
 
-The full editable interiors use the separately purchased Modern Office -
-Revamped pack. Its original ZIP belongs at
+Editable interiors now include original procedural office furniture drawn from geometric
+primitives by `freeOfficeArt.ts`. No commercial image is read or transformed.
+Legacy catalog IDs and placement envelopes remain compatible, so saved layouts still work.
+The separately purchased Modern Office - Revamped pack is an optional visual upgrade. Its original ZIP belongs at
 `private_assets/modern-office/Modern_Office_Revamped_v1.zip`; `run.sh`
 invokes `scripts/provision_modern_office_assets.py` to validate and prepare it
 locally. The ZIP and prepared output are Git-ignored and must not be

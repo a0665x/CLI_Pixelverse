@@ -123,6 +123,9 @@ const CATALOG: Record<VillageLocale, readonly string[]> = {
   ]
 };
 const EXTRA:Record<string,Record<string,string>>={
+ '請回村莊空投食物':{'en-US':'Return outdoors to drop food','ja-JP':'村に戻って食べ物を投下','ko-KR':'마을 밖에서 먹이를 투하하세요'},
+ '食物等待拾取':{'en-US':'Food waiting to be collected','ja-JP':'食べ物を拾ってください','ko-KR':'먹이를 주워 주세요'},
+
  '降臨審查員':{'en-US':'Summon inspector','ja-JP':'巡回員を召喚','ko-KR':'순찰원 소환'},
  '✦ 降臨審查員':{'en-US':'✦ Summon inspector','ja-JP':'✦ 巡回員を召喚','ko-KR':'✦ 순찰원 소환'},
  '離開巡檢':{'en-US':'Leave inspection','ja-JP':'巡回を終了','ko-KR':'순찰 종료'},

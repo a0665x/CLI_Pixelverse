@@ -1,3 +1,4 @@
+import {FoodDrops,foodDropHeight} from './foodDrops';
 import {FoodEffects} from './foodEffects';
 import {characterMoveAllowed,characterSupport,type CharacterBody} from './characterCollision';
 import {playerHeading} from './playerHeading';
@@ -25,11 +26,12 @@ const SUMMON_MS = 1600;
 
 export class ImmersionController {
   private active=false;
+  private drops=new FoodDrops();
+  private dropArt:Phaser.GameObjects.Graphics;
   private foodEffects=new FoodEffects();
   private foodScale=1;
   private feeding=document.createElement('div');
   private feedToggle=document.createElement('button');
-  private feedMenu=document.createElement('div');
   private feedStatus=document.createElement('span');
   private interactionQuestion=document.createElement('p');
   private cameraYaw=0;
@@ -49,7 +51,7 @@ export class ImmersionController {
   private inspectionOpen=false;
   setInspectionOpen(open:boolean):void {this.inspectionOpen=open;this.keys.clear();this.walking=false;if(open)this.hidePanel();}
   setCameraYaw(yaw:number):void {this.cameraYaw=yaw;}
-  viewState() {return {food:this.foodEffects.sample(performance.now()),foodScale:this.foodScale,active:this.active, point:{...(this.roomPoint||this.point)}, summonPoint:this.summonPoint,impactAge:performance.now()-(this.landingDeadline-SUMMON_MS*.45),roomId:this.roomId, facing:this.facing, walking:this.walking, gait:this.gait, heading:this.heading, elevation:this.elevation, flashlight:this.flashlight, landing:this.landing/SUMMON_MS, target:this.target};}
+  viewState() {this.drops.expire(performance.now());return {drops:this.drops.items,food:this.foodEffects.sample(performance.now()),foodScale:this.foodScale,active:this.active, point:{...(this.roomPoint||this.point)}, summonPoint:this.summonPoint,impactAge:performance.now()-(this.landingDeadline-SUMMON_MS*.45),roomId:this.roomId, facing:this.facing, walking:this.walking, gait:this.gait, heading:this.heading, elevation:this.elevation, flashlight:this.flashlight, landing:this.landing/SUMMON_MS, target:this.target};}
   private readonly localize=()=>{
     this.root.setAttribute('aria-label',t('降臨審查員'));
     this.toggle.textContent=this.active?t('離開巡檢'):t('✦ 降臨審查員');
@@ -155,16 +157,12 @@ export class ImmersionController {
       this.controls.append(button);
     }
     this.feeding.className='inspector-feeding';this.feedToggle.type='button';copyTo(this.feedToggle,'投餵食物');
-    this.feedMenu.hidden=true;this.feedMenu.className='inspector-food-menu';this.feedToggle.setAttribute('aria-expanded','false');
-    this.feedToggle.onclick=()=>{this.feedMenu.hidden=!this.feedMenu.hidden;this.feedToggle.setAttribute('aria-expanded',String(!this.feedMenu.hidden));this.feedToggle.blur();};
-    for(const [food,label,icon] of [['carrot','胡蘿蔔 · 加速 30 秒','🥕'],['hay','甘草堆 · 變大 30 秒','🌾']] as const){
-      const button=document.createElement('button');button.type='button';copyTo(button,label);button.dataset.food=food;button.title=icon;
-      button.onclick=()=>{if(!this.active)return;this.foodEffects.feed(food,performance.now());this.feedMenu.hidden=true;this.feedToggle.setAttribute('aria-expanded','false');button.blur();};this.feedMenu.append(button);
-    }
-    this.feeding.append(this.feedToggle,this.feedMenu,this.feedStatus);this.feeding.hidden=true;
+    this.feedToggle.onclick=()=>{if(!this.active||this.roomId)return;this.drops.scatter(this.point,this.world.worldDefinition.width,this.world.worldDefinition.height,p=>villagePlayerAllowed(this.world.worldDefinition,this.world.navigationGrid,p),performance.now());this.feedToggle.blur();};
+    this.feeding.append(this.feedToggle,this.feedStatus);this.feeding.hidden=true;
     this.root.append(this.feeding);
     this.root.append(this.toggle,this.hint,this.panel,this.controls);document.querySelector('#app-shell')?.append(this.root);
     this.outside=world.add.image(0,0,skin.sheet,3).setOrigin(.5,.82).setScale(1.1).setTint(0xffe0a3).setVisible(false);
+    this.dropArt=world.add.graphics().setDepth(8900);
     this.effects=world.add.graphics().setDepth(9000);
     window.addEventListener('keydown',this.keydown,true);window.addEventListener('keyup',this.keyup);window.addEventListener('blur',this.blur);document.addEventListener('visibilitychange',this.blur);
     window.addEventListener('pixelverse:locale',this.localize);
@@ -172,7 +170,7 @@ export class ImmersionController {
   }
   private setActive(active:boolean):void {
     if(this.busy) return;
-    this.active=active;this.feeding.hidden=!active;if(!active){this.foodEffects.clear();this.foodScale=1;this.feedMenu.hidden=true;this.feedToggle.setAttribute('aria-expanded','false');}document.documentElement.dataset.immersion=String(active);this.toggle.setAttribute('aria-pressed',String(active));
+    this.active=active;this.feeding.hidden=!active;if(!active){this.foodEffects.clear();this.foodScale=1;}document.documentElement.dataset.immersion=String(active);this.toggle.setAttribute('aria-pressed',String(active));
     this.toggle.textContent=active?t('離開巡檢'):t('✦ 降臨審查員');this.keys.clear();
     this.controls.hidden=!active;this.hopTime=0;this.idleTime=0;this.hint.hidden=!active;this.outside.setVisible(active);this.effects.clear();
     if(active) {
@@ -188,7 +186,12 @@ export class ImmersionController {
   private allowed=(p:PlayerPoint)=>document.documentElement.dataset.view==='3d'?(villagePlayerAllowed(this.world.worldDefinition,this.world.navigationGrid,p)&&(this.gait!=='bound'||villagePlayerAllowed(this.world.worldDefinition,this.world.navigationGrid,{x:p.x+Math.sin(this.heading)*.28,y:p.y+Math.cos(this.heading)*.28}))):this.world.navigationGrid.isWalkable({x:Math.round(p.x),y:Math.round(p.y)});
   private clearVisitor():void {this.platform=undefined;this.hopTime=0;this.elevation=0;this.jumpRequested=false;this.visitor?.destroy();this.visitor=undefined;this.visitorParent=undefined;this.roomPoint=undefined;this.roomId='';}
   private update(delta:number):void {
+    const dropNow=performance.now();this.drops.expire(dropNow);this.dropArt.clear();
+    if(document.documentElement.dataset.view!=='3d'&&!this.world.immersionContext().cutaway?.visitorSurface())for(const d of this.drops.items){if(dropNow<d.born)continue;const x=d.x*16+8,y=d.y*16+8-foodDropHeight(d,dropNow)*16;this.dropArt.fillStyle(d.food==='carrot'?0xe99b44:0xc8b772,.95).fillEllipse(x,y,14,20);this.dropArt.fillStyle(0x739457).fillEllipse(x,y-11,10,6);}
     if(!this.active) return;
+    this.feedToggle.disabled=Boolean(this.roomId)||this.drops.items.length>0;
+    this.feedToggle.title=this.roomId?t('請回村莊空投食物'):this.drops.items.length?`${this.drops.items.length} · ${t('食物等待拾取')}`:'';
+    if(!this.roomId&&this.landing<=0&&this.elevation<.5)for(const d of this.drops.collect(this.point,dropNow))this.foodEffects.feed(d.food,dropNow);
     if(document.documentElement.dataset.view!=='3d'&&this.platform){
       this.roomPoint={...this.platform.groundPoint};this.platform=undefined;this.elevation=0;this.jumpRequested=false;
     }
@@ -385,6 +388,6 @@ export class ImmersionController {
     delete document.documentElement.dataset.immersion;
     this.world.visitorBody=undefined;this.world.immersionContext().cutaway?.setVisitorBody(undefined);
     this.generation++;window.removeEventListener('keydown',this.keydown,true);window.removeEventListener('keyup',this.keyup);window.removeEventListener('blur',this.blur);document.removeEventListener('visibilitychange',this.blur);
-    this.world.events.off('postupdate',this.tick);this.root.remove();this.outside.destroy();this.effects.destroy();this.clearVisitor();
+    this.world.events.off('postupdate',this.tick);this.root.remove();this.outside.destroy();this.effects.destroy();this.dropArt.destroy();this.clearVisitor();
   }
 }

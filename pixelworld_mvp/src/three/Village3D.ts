@@ -1,3 +1,4 @@
+import {FoodRain} from './foodRain';
 import {createGuideSmoke,smokeRoute} from './guideSmoke';
 import {characterMoveAllowed,type CharacterBody} from '../player/characterCollision';
 import {guideFor} from '../ui/VillageGuide';
@@ -117,6 +118,7 @@ export class Village3D {
   }
 
   private actors=new Map<string,T.Group>();
+  private foodRain=new FoodRain();
   private player=createHuman('inspector',true);
   private snack=new T.Group();
   private snackCarrot=new T.Group();
@@ -169,7 +171,7 @@ export class Village3D {
     this.scene.background=new T.Color(0xa7bec1);this.scene.fog=new T.FogExp2(0xa7bec1,.009);
     this.sun.position.set(12,30,14);this.sun.castShadow=true;this.sun.shadow.mapSize.set(software?1024:2048,software?1024:2048);
     Object.assign(this.sun.shadow.camera,{left:-32,right:32,top:24,bottom:-24,near:1,far:100});this.sun.shadow.bias=-.0004;this.sun.shadow.normalBias=.035;
-    this.sun.target.position.set(24,0,14);this.guideLine.renderOrder=900;this.scene.add(this.guideLine);
+    this.sun.target.position.set(24,0,14);this.guideLine.renderOrder=900;this.scene.add(this.guideLine,this.foodRain.group);
     this.scene.add(this.sun,this.sun.target,this.sky,this.overview,this.player,this.torch,this.torch.target,this.indoorLight,this.fx);
     this.torch.castShadow=true;this.torch.shadow.mapSize.set(512,512);this.torch.shadow.bias=-.0005;this.player.visible=false;
     this.buildVillage();
@@ -250,6 +252,7 @@ for(let i=0;i<16;i++)box(staticWorld,bridge.x-.5+(i+.5)*bridge.width/16,.25,z,br
       if(surface){this.navigation.delete(surface.interior);this.room=batchStatic(roomModel(surface.interior,this.world.worldDefinition.buildings.findIndex(b=>b.id===nextId)));this.scene.add(this.room);this.workstations=new WorkstationScreens(surface.interior);this.scene.add(this.workstations.group);}
       this.overview.visible=!surface;this.yaw=0;this.pitch=.65;
       if(!state.active){const center=surface?new T.Vector3(surface.interior.width/2,0,surface.interior.height/2):new T.Vector3(23,0,14);this.controls.target.copy(center);this.camera.position.copy(center).add(surface?new T.Vector3(0,16,15):new T.Vector3(6,35,30));this.controls.update();}}
+    this.foodRain.group.visible=!surface;this.foodRain.update(state.drops,performance.now(),(x,y)=>this.groundHeight(x,y));
     const cycle=dayNightAt(Date.now()),skyColor=new T.Color(0x101d31).lerp(new T.Color(0xb7c8c4),cycle.daylight);
     this.scene.background=skyColor;(this.scene.fog as T.FogExp2).color.copy(this.scene.background);
     (this.scene.fog as T.FogExp2).density=surface?.012:.009+(1-cycle.daylight)*.008;
@@ -359,5 +362,5 @@ for(let i=0;i<16;i++)box(staticWorld,bridge.x-.5+(i+.5)*bridge.width/16,.25,z,br
     }
     for(const [id,node] of this.labelNodes)if(!active.has(id)){node.remove();this.labelNodes.delete(id);}
   }
-  destroy(){this.guideLine.geometry.dispose();this.guideLine.material.dispose();this.setEnabled(false);this.closeScreen();window.removeEventListener('keydown',this.screenKey,true);this.workstations?.dispose();this.resizeObserver.disconnect();this.controls.dispose();this.composer.passes.forEach(p=>p.dispose());this.composer.dispose();disposeGroup(this.scene);this.scene.traverse(o=>{if(o instanceof T.Mesh){const mats=Array.isArray(o.material)?o.material:[o.material];for(const m of mats){if(m instanceof T.MeshStandardMaterial)m.map?.dispose();m.dispose();}}});this.sun.shadow.dispose();this.torch.shadow.dispose();disposeModelMaterials();disposePeopleAssets();disposeSurfaceMaterials();this.renderer.dispose();this.root.remove();}
+  destroy(){this.foodRain.dispose();this.guideLine.geometry.dispose();this.guideLine.material.dispose();this.setEnabled(false);this.closeScreen();window.removeEventListener('keydown',this.screenKey,true);this.workstations?.dispose();this.resizeObserver.disconnect();this.controls.dispose();this.composer.passes.forEach(p=>p.dispose());this.composer.dispose();disposeGroup(this.scene);this.scene.traverse(o=>{if(o instanceof T.Mesh){const mats=Array.isArray(o.material)?o.material:[o.material];for(const m of mats){if(m instanceof T.MeshStandardMaterial)m.map?.dispose();m.dispose();}}});this.sun.shadow.dispose();this.torch.shadow.dispose();disposeModelMaterials();disposePeopleAssets();disposeSurfaceMaterials();this.renderer.dispose();this.root.remove();}
 }

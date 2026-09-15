@@ -3,7 +3,6 @@ import type { WorldScene } from '../scenes/WorldScene';
 import type { ImmersionController } from '../player/ImmersionController';
 import type { Village3D } from './Village3D';
 import { dayNightAt } from '../world/dayNight';
-import {licensedOfficeAvailable} from '../rendering/assetManifest';
 
 export function mountWorldViews(world:WorldScene,immersion:ImmersionController) {
   let view:Village3D|undefined,requested='2d',generation=0;
@@ -13,7 +12,7 @@ export function mountWorldViews(world:WorldScene,immersion:ImmersionController) 
   const publish=(mode:string)=>{window.parent.postMessage({type:'pixelverse.view.changed',mode},window.location.origin);document.documentElement.dataset.view=mode;};
   const switchView=async(mode:string)=>{
     if(mode!=='2d'&&mode!=='3d')return;requested=mode;const version=++generation;notice.hidden=true;
-    if(mode==='2d'){view?.setEnabled(false);publish('2d');if(!licensedOfficeAvailable()){notice.textContent=document.documentElement.lang==='zh-TW'?'完整 2D 家具需另行安裝 Modern Office 素材；請依 README 安裝引導。3D 不需購買素材。':'Full 2D furniture requires the optional Modern Office pack. Follow the README asset guide, or use the included 3D world.';notice.hidden=false;}return;}
+    if(mode==='2d'){view?.setEnabled(false);publish('2d');return;}
     try {const {Village3D,prepareVillageAssets}=await import('./Village3D');if(version!==generation)return;
       if(prepareVillageAssets)await prepareVillageAssets();if(version!==generation)return;
       view??=new Village3D(world,immersion);if(version!==generation)return;view.setEnabled(true);publish('3d');

@@ -1,3 +1,4 @@
+import {installFreeOfficeArt} from './freeOfficeArt';
 import { installRiverArt } from './riverArt';
 import { completeVillageBed } from './villageBed';
 import { VILLAGE_FURNITURE_CATALOG } from './villageFurnitureCatalog';
@@ -173,7 +174,8 @@ export function preloadVillageAssets(scene: Phaser.Scene): void {
 
 export function installVillageCollisionMasks(scene: Phaser.Scene): void {
   if (!licensedOfficeAvailable()) {
-    // Public builds use rectangular geometry, without copying licensed sprite pixels.
+    installFreeOfficeArt(scene);
+    // Original art fills the same placement envelope; collision remains stable.
     installFurnitureAlphaMasks({schemaVersion:1,alphaThreshold:1,assets:new Map(MODERN_OFFICE_CATALOG.map(asset=>{
       const b=asset.opaqueBounds;
       return [asset.id,{width:asset.sourceWidth??32,height:asset.sourceHeight??48,
